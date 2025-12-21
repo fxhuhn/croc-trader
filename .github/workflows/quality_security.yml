@@ -59,7 +59,7 @@ jobs:
 
       - name: Run Bandit
         run: |
-          bandit -r . -f json -o bandit-report.json || true
+          bandit -r . -c .bandit-f json -o bandit-report.json || true
           bandit -r . -f screen
 
       - name: Upload Bandit results
