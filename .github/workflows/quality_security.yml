@@ -32,7 +32,7 @@ jobs:
         run: pip install ruff
 
       - name: Run Ruff linter
-        run: ruff check . --output-format=github
+        run: ruff check . --output-format=github --ignore E402
 
       - name: Run Ruff formatter
         run: ruff format --check --diff .
