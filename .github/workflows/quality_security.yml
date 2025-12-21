@@ -59,8 +59,8 @@ jobs:
 
       - name: Run Bandit
         run: |
-          bandit -r . -c .bandit-f json -o bandit-report.json || true
-          bandit -r . -f screen
+          bandit -r . -f json -o bandit-report.json || true  # JSON output
+          bandit -r . -f screen                             # Human-readable
 
       - name: Upload Bandit results
         uses: actions/upload-artifact@v4
