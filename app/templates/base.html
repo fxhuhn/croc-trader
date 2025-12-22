@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Croc Trader{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- CSS & icons once here -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --bs-body-bg: #f5f6f8;
+            --sidebar-width: 260px;
+        }
+        body {
+            background-color: var(--bs-body-bg);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: #ffffff;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100vh;
+            border-right: 1px solid #e5e7eb;
+            z-index: 1050;
+            padding-top: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+        .sidebar-brand {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #111827;
+            padding: 0 1.5rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .nav-link {
+            color: #6b7280;
+            font-weight: 500;
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.2s;
+        }
+        .nav-link:hover,
+        .nav-link.active {
+            color: #2563eb;
+            background-color: #f3f4f6;
+            border-right: 3px solid #2563eb;
+        }
+        .nav-link i { width: 20px; text-align: center; }
+
+        .mobile-menu-btn {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1060;
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1040;
+        }
+
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { transform: translateX(-100%); }
+            .sidebar.active { transform: translateX(0); }
+            .sidebar-overlay.active { display: block; }
+            .mobile-menu-btn { display: block; }
+            .main-content { margin-left: 0; padding: 1rem; padding-top: 4rem; }
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+<button class="mobile-menu-btn" onclick="toggleSidebar()">
+    <i class="fa-solid fa-bars fa-lg"></i>
+</button>
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+        <i class="fa-solid fa-chart-line text-primary"></i>
+        <span>Croc Trader</span>
+    </div>
+    <div class="nav flex-column">
+        <a href="/croc-signal"
+           class="nav-link{% if request.path == '/croc-signal' %} active{% endif %}">
+            <i class="fa-solid fa-table-columns"></i>
+            Dashboard
+        </a>
+        <a href="/trades"
+           class="nav-link{% if request.path == '/trades' %} active{% endif %}">
+            <i class="fa-solid fa-clipboard-list"></i>
+            Trades
+        </a>
+        <a href="#" class="nav-link">
+            <i class="fa-solid fa-layer-group"></i>
+            Strategies
+        </a>
+        <a href="#" class="nav-link">
+            <i class="fa-solid fa-gears"></i>
+            Settings
+        </a>
+        <a href="https://www.tradingview.com/" target="_blank" class="nav-link">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            TradingView
+        </a>
+    </div>
+</nav>
+
+<main class="main-content">
+    {% block content %}{% endblock %}
+</main>
+
+<script>
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
+}
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

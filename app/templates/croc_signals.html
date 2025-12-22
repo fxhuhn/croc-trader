@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+
+{% block title %}Croc Trader – Signals{% endblock %}
+
+{% block extra_head %}
+<style>
+    .page-header { margin-bottom: 1.5rem; }
+    .page-header h1 { font-size: 1.5rem; font-weight: 700; color: #111827; }
+
+    .stat-card {
+        background: #ffffff;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        border: 1px solid #e5e7eb;
+        height: 100%;
+    }
+    .stat-label { font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase; margin-bottom: 0.25rem; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; color: #111827; line-height: 1; }
+
+    .content-card {
+        background: #ffffff;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border: 1px solid #e5e7eb;
+        overflow: hidden;
+    }
+    .card-header {
+        background: #ffffff;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .card-title { font-size: 1.125rem; font-weight: 700; color: #111827; margin: 0; }
+
+    .filters-bar {
+        background-color: #ffffff;
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    .form-select, .form-control {
+        background-color: #ffffff;
+        border: 1px solid #d1d5db;
+        color: #374151;
+        font-size: 0.85rem;
+        border-radius: 0.375rem;
+        padding: 0.4rem 0.75rem;
+    }
+    .form-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #9ca3af;
+        text-transform: uppercase;
+        margin-bottom: 0.25rem;
+        letter-spacing: 0.02em;
+    }
+
+    .table { margin-bottom: 0; font-size: 0.875rem; }
+    .table thead th {
+        background-color: #f9fafb;
+        color: #6b7280;
+        font-size: 0.7rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid #e5e7eb;
+        padding: 0.75rem 1rem;
+    }
+    .table tbody td {
+        padding: 0.6rem 1rem;
+        vertical-align: middle;
+        border-bottom: 1px solid #e5e7eb;
+        color: #111827;
+    }
+    .table-striped > tbody > tr:nth-of-type(odd) > * {
+        --bs-table-accent-bg: #f9fafb;
+        box-shadow: inset 0 0 0 9999px var(--bs-table-accent-bg);
+    }
+    .table-hover tbody tr:hover > * {
+        --bs-table-accent-bg: #f3f4f6;
+    }
+
+    .badge-soft-success { background-color: #dcfce7; color: #166534; font-weight: 600; }
+    .badge-soft-danger { background-color: #fee2e2; color: #991b1b; font-weight: 600; }
+    .badge-soft-secondary { background-color: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; }
+
+    .btn-view {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.75rem;
+        border-radius: 4px;
+        color: #2563eb;
+        background: white;
+        border: 1px solid #d1d5db;
+    }
+
+    .btn-mark {
+        border: none;
+        background: none;
+        color: #d1d5db;
+        cursor: pointer;
+        padding: 0;
+        transition: color 0.2s;
+    }
+    .btn-mark:hover { color: #f59e0b; }
+    .btn-mark.active { color: #f59e0b; }
+
+    @media (max-width: 768px) {
+        .stats-row { display: none !important; }
+        .table thead th,
+        .table tbody td {
+            padding: 0.5rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        .hide-mobile { display: none; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex justify-content-between align-items-start">
+    <div>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-1" style="font-size: 0.85rem;">
+                <li class="breadcrumb-item"><a href="/" class="text-decoration-none">Home</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Dashboard</li>
+            </ol>
+        </nav>
+        <h1 class="mb-1">Signals Dashboard</h1>
+        <p class="text-muted small mb-0">Real-time trading signals and performance metrics.</p>
+    </div>
+</div>
+
+<!-- Stats Row (hidden on mobile) -->
+<div class="row g-3 mb-4 stats-row">
+    <div class="col-md-3">
+        <div class="stat-card">
+            <div class="stat-label">Total Signals</div>
+            <div class="stat-value">{{ signals|length }}</div>
+            <small class="text-success fw-bold" style="font-size: 0.75rem;">
+                <i class="fa-solid fa-arrow-up"></i> Live
+            </small>
+        </div>
+    </div>
+    {% for sig, count in stats.items() %}
+        {% if loop.index <= 3 %}
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-label">{{ sig }}</div>
+                <div class="stat-value">{{ count }}</div>
+                <small class="text-muted" style="font-size: 0.75rem;">Since start</small>
+            </div>
+        </div>
+        {% endif %}
+    {% endfor %}
+</div>
+
+<div class="content-card">
+    <div class="card-header">
+        <h3 class="card-title">Recent Signals</h3>
+        <a href="/croc-signal" class="btn btn-sm btn-outline-primary" style="font-size: 0.75rem;">Reset</a>
+    </div>
+
+    <!-- Filters -->
+    <div class="filters-bar">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3 col-6">
+                <label class="form-label">Symbol</label>
+                <select name="symbol" class="form-select" onchange="this.form.submit()">
+                    <option value="">All Symbols</option>
+                    {% for sym in unique_symbols %}
+                    <option value="{{ sym }}" {{ 'selected' if current_filters.symbol == sym }}>{{ sym }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="form-label">Timeframe</label>
+                <select name="timeframe" class="form-select" onchange="this.form.submit()">
+                    <option value="">All</option>
+                    {% for tf in unique_timeframes %}
+                    <option value="{{ tf }}" {{ 'selected' if current_filters.timeframe == tf }}>{{ tf }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3 col-6">
+                <label class="form-label">Signal Type</label>
+                <select name="signal" class="form-select" onchange="this.form.submit()">
+                    <option value="">All</option>
+                    {% for sig in unique_signals %}
+                    <option value="{{ sig }}" {{ 'selected' if current_filters.signal == sig }}>{{ sig }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 col-6">
+                <label class="form-label">Date</label>
+                <input type="date"
+                       name="day"
+                       class="form-control"
+                       value="{{ current_filters.day or '' }}"
+                       onchange="this.form.submit()">
+            </div>
+        </form>
+    </div>
+
+    <!-- Signals Table -->
+    <div class="table-responsive">
+        <table class="table table-striped table-hover">
+            <thead>
+                <tr>
+                    <th style="width: 40px;"></th>
+                    <th>TIMESTAMP</th>
+                    <th>SYMBOL</th>
+                    <th class="hide-mobile">TIMEFRAME</th>
+                    <th>SIGNAL</th>
+                    <th class="hide-mobile">CLOSE</th>
+                    <th class="hide-mobile">TREND</th>
+                    <th class="hide-mobile">CANDLE</th>
+                    <th class="hide-mobile">STATUS</th>
+                    <th>ACTION</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in signals %}
+                <tr>
+                    <!-- track toggle -->
+                    <td class="text-center">
+                        <button
+                            class="btn-mark {{ 'active' if row.is_tracked else '' }}"
+                            onclick="toggleTrack(this, '{{ row.symbol }}', '{{ row.timestamp }}', '{{ row.signal }}')"
+                            title="Track trade">
+                            <i class="fa-solid fa-star"></i>
+                        </button>
+                    </td>
+
+                    <td class="text-secondary fw-bold" style="font-size: 0.7rem;">
+                        {{ row.timestamp | datetimeformat('%Y-%m-%d %H:%M') }}
+                    </td>
+
+                    <td>
+                        {% set exch = symbol_markets.get(row.symbol, '') %}
+                        {% if exch %}
+                            {% set tv_symbol = exch ~ ':' ~ row.symbol %}
+                        {% else %}
+                            {% set tv_symbol = row.symbol %}
+                        {% endif %}
+
+                        <a href="https://www.tradingview.com/chart/?symbol={{ tv_symbol }}"
+                           target="_blank"
+                           class="fw-bold text-decoration-none"
+                           style="color:#111827;">
+                            {{ row.symbol }}
+                        </a>
+                    </td>
+
+                    <td class="hide-mobile">
+                        <span class="badge badge-soft-secondary rounded-pill px-3">{{ row.timeframe }}</span>
+                    </td>
+
+                    <td>
+                        {% if 'LONG' in row.signal.upper() or 'BUY' in row.signal.upper() %}
+                            <span class="badge badge-soft-success rounded-pill px-2 py-1">{{ row.signal }}</span>
+                        {% else %}
+                            <span class="badge badge-soft-danger rounded-pill px-2 py-1">{{ row.signal }}</span>
+                        {% endif %}
+                    </td>
+
+                    <td class="font-monospace text-muted hide-mobile">{{ row.close }}</td>
+                    <td class="hide-mobile">{{ row.trend }}</td>
+                    <td class="hide-mobile">{{ row.kerze }}</td>
+                    <td class="hide-mobile">{{ row.status }}</td>
+
+                    <td class="text-center">
+                        <a href="https://www.tradingview.com/chart/?symbol={{ tv_symbol }}"
+                           target="_blank"
+                           class="btn-view"
+                           title="Open in TradingView">
+                            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                        </a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="10" class="text-center py-5 text-muted">No signals found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="mt-4 text-center text-muted" style="font-size: 0.75rem;">
+    &copy; 2025 Croc Trader Systems
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function toggleTrack(btn, symbol, timestamp, signal) {
+    try {
+        const res = await fetch('/toggle-track', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({symbol, timestamp, signal})
+        });
+        const data = await res.json();
+        if (data.status !== 'success') {
+            alert('Error: ' + (data.message || 'Unknown error'));
+            return;
+        }
+        if (data.is_tracked) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Connection failed');
+    }
+}
+</script>
+{% endblock %}
