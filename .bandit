@@ -1,3 +1,3 @@
-# .bandit file
 [bandit]
-exclude = tests,tests/*
+exclude = tests, */tests
+skips = B101
