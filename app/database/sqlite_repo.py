@@ -233,8 +233,8 @@ class SQLiteRepository(SignalRepository):
 
         with self._get_conn() as conn:
             conn.execute(
-                f"UPDATE signal_trades SET {', '.join(fields)} WHERE id = ?",
-                values,  # nosec B608
+                f"UPDATE signal_trades SET {', '.join(fields)} WHERE id = ?",  # nosec B608
+                values,
             )
             conn.commit()
         return True
