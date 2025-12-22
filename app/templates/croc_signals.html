@@ -214,9 +214,9 @@
                     <th class="hide-mobile">TIMEFRAME</th>
                     <th>SIGNAL</th>
                     <th class="hide-mobile">CLOSE</th>
-                    <th class="hide-mobile">TREND</th>
-                    <th class="hide-mobile">CANDLE</th>
-                    <th class="hide-mobile">STATUS</th>
+                    <th>TP (3R)</th>
+                    <th>SL (-1R)</th>
+                    <th>Rejected (0R)</th>
                     <th>ACTION</th>
                 </tr>
             </thead>
@@ -266,9 +266,37 @@
                     </td>
 
                     <td class="font-monospace text-muted hide-mobile">{{ row.close }}</td>
-                    <td class="hide-mobile">{{ row.trend }}</td>
-                    <td class="hide-mobile">{{ row.kerze }}</td>
-                    <td class="hide-mobile">{{ row.status }}</td>
+
+                    <td>
+                        {% if row.tp_3r is not none %}
+                            <span class="badge bg-success-subtle text-success rounded-pill px-2"
+                                title="Basierend auf {{ row.stats_total }} historischen Signalen">
+                                {{ row.tp_3r }}
+                            </span>
+                        {% else %}
+                            <span class="text-muted">–</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if row.sl_1r is not none %}
+                            <span class="badge bg-danger-subtle text-danger rounded-pill px-2">
+                                {{ row.sl_1r }}
+                            </span>
+                        {% else %}
+                            <span class="text-muted">–</span>
+                        {% endif %}
+                    </td>
+
+                    <td>
+                        {% if row.rej_0r is not none %}
+                            <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2">
+                                {{ row.rej_0r }}
+                            </span>
+                        {% else %}
+                            <span class="text-muted">–</span>
+                        {% endif %}
+                    </td>
 
                     <td class="text-center">
                         <a href="https://www.tradingview.com/chart/?symbol={{ tv_symbol }}"
