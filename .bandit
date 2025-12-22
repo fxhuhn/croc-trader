@@ -1,3 +1,3 @@
+# .bandit file
 [bandit]
-# Exclude tests completely (optional, simplest)
-exclude = tests
+exclude = tests,tests/*
