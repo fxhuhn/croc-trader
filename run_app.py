@@ -132,6 +132,18 @@ class SQLiteDatabase:
                 ON signals(symbol, timestamp DESC, signal)
             """)
             conn.commit()
+            # --- NEW: Table for Marked Signals ---
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS marked_signals (
+                    symbol TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    signal TEXT NOT NULL,
+                    marked_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (symbol, timestamp, signal)
+                )
+            """)
+            conn.commit()
+
             logger.info("Database initialized successfully")
 
     def save_signal(self, data: dict[str, Any]) -> None:
@@ -174,30 +186,37 @@ class SQLiteDatabase:
         symbol: Optional[str] = None,
         timeframe: Optional[str] = None,
         signal: Optional[str] = None,
-        day: Optional[str] = None,  # <--- NEW PARAMETER
+        day: Optional[str] = None,
         limit: int = 500,
     ) -> List[dict]:
-        """Retrieve filtered signals"""
-        query = "SELECT * FROM signals WHERE 1=1"
+        """Retrieve filtered signals with marked status"""
+        # LEFT JOIN with marked_signals to see which ones are marked
+        query = """
+            SELECT s.*,
+                   CASE WHEN m.symbol IS NOT NULL THEN 1 ELSE 0 END as is_marked
+            FROM signals s
+            LEFT JOIN marked_signals m
+                   ON s.symbol = m.symbol
+                  AND s.timestamp = m.timestamp
+                  AND s.signal = m.signal
+            WHERE 1=1
+        """
         params = []
 
         if symbol:
-            query += " AND symbol = ?"
+            query += " AND s.symbol = ?"
             params.append(symbol)
         if timeframe:
-            query += " AND timeframe = ?"
+            query += " AND s.timeframe = ?"
             params.append(timeframe)
         if signal:
-            query += " AND signal = ?"
+            query += " AND s.signal = ?"
             params.append(signal)
-
-        # --- NEW: Date Filter Logic ---
         if day:
-            # SQLite date function extracts YYYY-MM-DD from ISO string
-            query += " AND date(timestamp) = ?"
+            query += " AND date(s.timestamp) = ?"
             params.append(day)
 
-        query += " ORDER BY timestamp DESC LIMIT ?"
+        query += " ORDER BY s.timestamp DESC LIMIT ?"
         params.append(limit)
 
         try:
@@ -207,6 +226,35 @@ class SQLiteDatabase:
         except Exception as e:
             logger.error(f"Error fetching signals: {e}")
             return []
+
+    def toggle_mark(self, symbol: str, timestamp: str, signal: str) -> bool:
+        """Toggle the marked status of a signal. Returns True if marked, False if unmarked."""
+        try:
+            with self._get_conn() as conn:
+                # Check if exists
+                cursor = conn.execute(
+                    "SELECT 1 FROM marked_signals WHERE symbol=? AND timestamp=? AND signal=?",
+                    (symbol, timestamp, signal),
+                )
+                exists = cursor.fetchone()
+
+                if exists:
+                    conn.execute(
+                        "DELETE FROM marked_signals WHERE symbol=? AND timestamp=? AND signal=?",
+                        (symbol, timestamp, signal),
+                    )
+                    conn.commit()
+                    return False
+                else:
+                    conn.execute(
+                        "INSERT INTO marked_signals (symbol, timestamp, signal) VALUES (?, ?, ?)",
+                        (symbol, timestamp, signal),
+                    )
+                    conn.commit()
+                    return True
+        except Exception as e:
+            logger.error(f"Error toggling mark: {e}")
+            raise
 
     def get_distinct(self, column: str) -> List[str]:
         """Get distinct values for filters (safeguarded for specific columns)"""
@@ -296,6 +344,18 @@ def dashboard():
             "day": filter_day,  # <--- Pass to template
         },
     )
+
+
+@app.route("/toggle-mark", methods=["POST"])
+def toggle_mark_route():
+    data = request.json
+    try:
+        is_marked = container.repo.toggle_mark(
+            data["symbol"], data["timestamp"], data["signal"]
+        )
+        return jsonify({"status": "success", "is_marked": is_marked})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/webhook", methods=["POST"])
