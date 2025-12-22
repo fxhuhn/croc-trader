@@ -25,3 +25,15 @@ instance/
 
 # Logs
 *.log
+
+# MacOS
+.DS_Store
+
+# Databases
+*.sqlite3
+*.db
+*.csv
+
+# import/output files
+imports/
+exports/
