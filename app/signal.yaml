@@ -1,0 +1,138 @@
+
+# Signal Definitions (comment out to disable)
+signals:
+  Red Lolly: "bull_rot == 1 and bull_1 == 1"
+  Red Orange Lolly: "bull_rot == 1 and bull_orange == 1 and bull_1 == 1"
+  Red Orange: "bull_rot == 1 and bull_orange == 1 and bull_1 != 1"
+  Red Devil: "bull_rot == 1 and bull_1 != 1"
+  Orange Lolly: "bull_orange == 1 and bull_1 == 1"
+  Ultimate Blue: "bull_blau == 1 and bull_gruen == 1"
+  Red Green Rocket: "bull_gruen == 1 and kerze == 'rot'"
+  Orange: "bull_orange == 1 and bull_1 != 1"
+  BB: "bull_bb == 1"
+  Grabber: "bull_grabber == 1"
+  Grau: "bull_grau == 1"
+  Grün: "bull_gruen == 1"
+  AW Rocket: "bull_gruen == 1 and wolke == 'gruen' and (trend == 'schwarz' or trend == 'gruen') and bull_orange == 1"
+  # Add more signals here as needed
+
+# Color Mappings
+mappings:
+  deluxe:
+    Standard: "black"
+    Over Bought High: "darkgreen"
+    Over Bought: "green"
+    Over Sold: "red"
+    Over Sold High: "darkred"
+
+  welle:
+    Welle: "green"
+    Welle.1: "darkgreen"
+    Welle.2: "black"
+    Welle.3: "red"
+    Welle.4: "yellow"
+    Welle.5: "darkred"
+
+  trend:
+    Trend: "black"
+    Trend.1: "red"
+    Trend.2: "green"
+
+  setter:
+    Trend.3: "black"
+    Trend.4: "red"
+    Trend.5: "green"
+
+  wolke:
+    Wolke: "green"
+    Wolke.2: "red"
+
+  kerze:
+    Kerzenfarbe: "green"
+    Kerzenfarbe.1: "black"
+    Kerzenfarbe.2: "red"
+
+  status:
+    Status: "yellow"
+    Status.1: "red"
+    Status.2: "green"
+
+  msi_day:
+    Day OverBought: "green"
+    Day OverBought.2: "red"
+
+  msi_week:
+    Week OverBought: "green"
+
+  msi_month:
+    Week OverBought.3: "green"
+
+# Column Renaming
+renaming:
+  Bull Line Long: "bull_line"
+  Cloud Punkt Long: "bull_wolke"
+  Red Devil Long: "bull_rot"
+  Hellgrüner Punkt Long: "bull_hell_gruen"
+  Oranger Punkt Long: "bull_orange"
+  Blauer Punkt Long: "bull_blau"
+  Grauer Punkt Long: "bull_grau"
+  Kleiner grauen Punkt Long: "bull_grau_klein"
+  Grünes Plus: "bull_plus"
+  Türkis Punkt Long: "bull_gruen"
+  BB Kombi Long: "bull_bb"
+  schwarzer Punkt: "bull_schwarz"
+  Hellgrüner Punkt Long (Grab.): "bull_grabber"
+  Pinker Punkt Oben: "bull_pink"
+  Bull 1 Long: "bull_1"
+  ICEBull 2: "bull_2"
+  ICEBull 3: "bull_3"
+  ICEBull 4: "bull_4"
+  ICEBull 5: "bull_5"
+  ICEBull 6: "bull_6"
+  ICEBull 7: "bull_7"
+  ICEBull 8: "bull_8"
+  ICEBull 9: "bull_9"
+  ICEBull 10: "bull_10"
+  ICEBull 11: "bull_11"
+  ICEBull 12: "bull_12"
+  ICEBull 13: "bull_13"
+  ICEBull 14: "bull_14"
+  ICEBull 15: "bull_15"
+  Bear Line Short: "bear_line"
+  Red Devil Short: "bear_rot"
+  Hellgrüner Punkt Short: "bear_hell_gruen"
+  Grauer Punkt Short: "bear_grau"
+  Kleiner grauer Punkt Short: "bear_grau_klein"
+  Blauer Punkt Short: "bear_blau"
+  Rotes Plus: "bear_plus"
+  Oranger Punkt Short: "bear_orange"
+  Cloud Punkt Short: "bear_wolke"
+  Türkis Punkt Short: "bear_gruen"
+  BB Kombi Short: "bear_bb"
+  Hellgrüner Punkt Short (Grab.): "bear_grabber"
+  Pinker Punkt Unten: "bear_pink"
+  Bear 1 Short: "bear_1"
+  ICEBear 2: "bear_2"
+  ICEBear 3: "bear_3"
+  ICEBear 4: "bear_4"
+  ICEBear 5: "bear_5"
+  ICEBear 6: "bear_6"
+  ICEBear 7: "bear_7"
+  ICEBear 8: "bear_8"
+  ICEBear 9: "bear_9"
+  ICEBear 10: "bear_10"
+  ICEBear 11: "bear_11"
+  ICEBear 12: "bear_12"
+  ICEBear 13: "bear_13"
+  ICEBear 14: "bear_14"
+  ICEBear 15: "bear_15"
+
+# File prefixes to remove when extracting symbol names
+file_prefixes:
+  - "BATS_"
+  - "CBOE_DLY_"
+  - "NASDAQ_DLY_"
+  - "XETR_DLY_"
+  - "CBOEFTSE_DLY_"
+  - "EURONEXT_DLY_"
+

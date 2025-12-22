@@ -81,6 +81,156 @@ class SQLiteRepository(SignalRepository):
             """)
             conn.commit()
 
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS signal_statistic (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    signal TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    wolke TEXT,
+                    welle TEXT,
+                    trend TEXT,
+                    setter TEXT,
+                    tp_3r INTEGER NOT NULL,
+                    sl_1r INTEGER NOT NULL,
+                    rejected_0r INTEGER NOT NULL,
+                    level TEXT NOT NULL,
+                    total_signals INTEGER NOT NULL,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_signal_statistic_key
+                ON signal_statistic(signal, symbol, timeframe, wolke, welle, trend, setter)
+            """)
+            conn.commit()
+
+    def replace_signal_statistics(self, rows: list[dict]) -> None:
+        """Bulk replace statistics table with new data."""
+        with self._get_conn() as conn:
+            conn.execute("DELETE FROM signal_statistic")
+            conn.executemany(
+                """INSERT INTO signal_statistic
+                (signal, symbol, timeframe, wolke, welle, trend, setter,
+                 tp_3r, sl_1r, rejected_0r, level, total_signals)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (
+                        r["signal"],
+                        r["symbol"],
+                        r["timeframe"],
+                        r.get("wolke"),
+                        r.get("welle"),
+                        r.get("trend"),
+                        r.get("setter"),
+                        r["TP(3R)"],
+                        r["SL(-1R)"],
+                        r["Rejected(0R)"],
+                        r["level"],
+                        r["TP(3R)"] + r["SL(-1R)"] + r["Rejected(0R)"],
+                    )
+                    for r in rows
+                ],
+            )
+            conn.commit()
+
+    def enrich_signals_with_stats(self, signals: list[dict]) -> list[dict]:
+        """For each signal row, attach statistics best matching (wolke, welle, trend, setter)."""
+        enriched: list[dict] = []
+
+        for row in signals:
+            stat = self.get_best_stat_for_signal(
+                signal=row.get("signal"),
+                symbol=row.get("symbol"),
+                timeframe=row.get("timeframe"),
+                wolke=row.get("wolke"),
+                welle=row.get("welle"),
+                trend=row.get("trend"),
+                setter=row.get("setter"),
+            )
+            if stat:
+                row["tp_3r"] = stat["tp_3r"]
+                row["sl_1r"] = stat["sl_1r"]
+                row["rej_0r"] = stat["rejected_0r"]
+                row["stats_total"] = stat["total_signals"]
+            else:
+                row["tp_3r"] = None
+                row["sl_1r"] = None
+                row["rej_0r"] = None
+                row["stats_total"] = 0
+            enriched.append(row)
+
+        return enriched
+
+    def get_best_stat_for_signal(
+        self,
+        signal: str,
+        symbol: str,
+        timeframe: str,
+        wolke: str | None,
+        welle: str | None,
+        trend: str | None,
+        setter: str | None,
+    ) -> dict | None:
+        """
+        Try to find the most specific statistic row for this signal:
+        (signal, symbol, timeframe, wolke, welle, trend, setter)
+        fallback by relaxing colors; skip rows with total_signals < 3.
+        """
+        with self._get_conn() as conn:
+
+            def q(where: str, params: tuple) -> dict | None:
+                row = conn.execute(
+                    f"""SELECT * FROM signal_statistic
+                        WHERE {where}
+                          AND total_signals >= 3
+                        ORDER BY total_signals DESC
+                        LIMIT 1""",
+                    params,
+                ).fetchone()
+                return dict(row) if row else None
+
+            # most specific
+            r = q(
+                "signal=? AND symbol=? AND timeframe=? "
+                "AND wolke=? AND welle=? AND trend=? AND setter=?",
+                (signal, symbol, timeframe, wolke, welle, trend, setter),
+            )
+            if r:
+                return r
+
+            # relax setter
+            r = q(
+                "signal=? AND symbol=? AND timeframe=? "
+                "AND wolke=? AND welle=? AND trend=?",
+                (signal, symbol, timeframe, wolke, welle, trend),
+            )
+            if r:
+                return r
+
+            # relax trend
+            r = q(
+                "signal=? AND symbol=? AND timeframe=? AND wolke=? AND welle=?",
+                (signal, symbol, timeframe, wolke, welle),
+            )
+            if r:
+                return r
+
+            # relax welle
+            r = q(
+                "signal=? AND symbol=? AND timeframe=? AND wolke=?",
+                (signal, symbol, timeframe, wolke),
+            )
+            if r:
+                return r
+
+            # only signal+symbol+tf
+            r = q(
+                "signal=? AND symbol=? AND timeframe=?",
+                (signal, symbol, timeframe),
+            )
+            return r
+
     def get_all_trades(self, limit: int = 500) -> list[dict]:
         """Return all tracked trades, newest first."""
         query = """
