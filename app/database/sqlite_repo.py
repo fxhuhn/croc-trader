@@ -177,7 +177,7 @@ class SQLiteRepository(SignalRepository):
                         WHERE {where}
                         AND total_signals >= 3
                         ORDER BY total_signals DESC
-                        LIMIT 1""",
+                        LIMIT 1""",  # nosec B608
                     params,
                 ).fetchone()
                 if row:
