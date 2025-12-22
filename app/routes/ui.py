@@ -19,18 +19,22 @@ def croc_signal():
     f_sig = request.args.get("signal")
     f_day = request.args.get("day")
 
-    signals = current_app.container.repo.get_signals(
+    repo = current_app.container.repo
+    signals = repo.get_signals(
         symbol=f_symbol, timeframe=f_tf, signal=f_sig, day=f_day, limit=500
     )
+
+    # attach statistics
+    signals = repo.enrich_signals_with_stats(signals)
 
     stats = Counter(s["signal"] for s in signals)
     return render_template(
         "croc_signals.html",
         signals=signals,
         stats=stats,
-        unique_symbols=current_app.container.repo.get_distinct("symbol"),
-        unique_timeframes=current_app.container.repo.get_distinct("timeframe"),
-        unique_signals=current_app.container.repo.get_distinct("signal"),
+        unique_symbols=repo.get_distinct("symbol"),
+        unique_timeframes=repo.get_distinct("timeframe"),
+        unique_signals=repo.get_distinct("signal"),
         current_filters={
             "symbol": f_symbol,
             "timeframe": f_tf,
