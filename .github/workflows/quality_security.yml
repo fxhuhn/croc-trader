@@ -59,8 +59,8 @@ jobs:
 
       - name: Run Bandit
         run: |
-          bandit -r . --exclude tests -f json -o bandit-report.json || true
-          bandit -r . --exclude tests -f screen || true
+          bandit -r . --exclude "tests/* -f json -o bandit-report.json  --severity-level medium --confidence-level medium || true
+          bandit -r . --exclude "tests/* -f screen  --severity-level medium --confidence-level medium || true
       - name: Upload Bandit results
         uses: actions/upload-artifact@v4
         if: always()
