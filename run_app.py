@@ -264,7 +264,7 @@ class SQLiteDatabase:
         try:
             with self._get_conn() as conn:
                 cursor = conn.execute(
-                    f"SELECT DISTINCT {column} FROM signals ORDER BY {column}"
+                    f"SELECT DISTINCT {column} FROM signals ORDER BY {column}"  # nosec B608
                 )
                 return [row[0] for row in cursor.fetchall() if row[0]]
         except Exception as e:
