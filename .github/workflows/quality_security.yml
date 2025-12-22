@@ -60,7 +60,7 @@ jobs:
       - name: Run Bandit
         run: |
           bandit -r . -f json -o bandit-report.json
-          bandit -r . -f screen   || true
+          bandit -r . -f screen
       - name: Upload Bandit results
         uses: actions/upload-artifact@v4
         if: always()
