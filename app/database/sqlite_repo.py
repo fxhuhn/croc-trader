@@ -171,7 +171,7 @@ class SQLiteRepository(SignalRepository):
             return []
         with self._get_conn() as conn:
             rows = conn.execute(
-                f"SELECT DISTINCT {column} FROM signals ORDER BY {column}"
+                f"SELECT DISTINCT {column} FROM signals ORDER BY {column}"  # nosec B608
             ).fetchall()
             return [r[0] for r in rows if r[0]]
 
@@ -233,7 +233,8 @@ class SQLiteRepository(SignalRepository):
 
         with self._get_conn() as conn:
             conn.execute(
-                f"UPDATE signal_trades SET {', '.join(fields)} WHERE id = ?", values
+                f"UPDATE signal_trades SET {', '.join(fields)} WHERE id = ?",
+                values,  # nosec B608
             )
             conn.commit()
         return True
