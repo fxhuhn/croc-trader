@@ -266,18 +266,18 @@
                     </td>
 
                     <td class="font-monospace text-muted hide-mobile">{{ row.close }}</td>
-
                     <td>
                         {% if row.tp_3r is not none %}
-                            <span class="badge bg-success-subtle text-success rounded-pill px-2"
-                                title="Basierend auf {{ row.stats_total }} historischen Signalen">
+                            <span
+                            class="badge bg-success-subtle text-success rounded-pill px-2"
+                            title="TP(3R): {{ row.tp_3r }} · SL(-1R): {{ row.sl_1r }} · Rejected: {{ row.rej_0r }}
+                    Qualität: {{ row.match_quality }} · Basis: {{ row.stats_total }} historische Signale">
                                 {{ row.tp_3r }}
                             </span>
                         {% else %}
                             <span class="text-muted">–</span>
                         {% endif %}
                     </td>
-
                     <td>
                         {% if row.sl_1r is not none %}
                             <span class="badge bg-danger-subtle text-danger rounded-pill px-2">

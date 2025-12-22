@@ -135,9 +135,7 @@ class SQLiteRepository(SignalRepository):
             conn.commit()
 
     def enrich_signals_with_stats(self, signals: list[dict]) -> list[dict]:
-        """For each signal row, attach statistics best matching (wolke, welle, trend, setter)."""
-        enriched: list[dict] = []
-
+        enriched = []
         for row in signals:
             stat = self.get_best_stat_for_signal(
                 signal=row.get("signal"),
@@ -153,13 +151,12 @@ class SQLiteRepository(SignalRepository):
                 row["sl_1r"] = stat["sl_1r"]
                 row["rej_0r"] = stat["rejected_0r"]
                 row["stats_total"] = stat["total_signals"]
+                row["match_quality"] = stat.get("match_quality", "")
             else:
-                row["tp_3r"] = None
-                row["sl_1r"] = None
-                row["rej_0r"] = None
+                row["tp_3r"] = row["sl_1r"] = row["rej_0r"] = None
                 row["stats_total"] = 0
+                row["match_quality"] = ""
             enriched.append(row)
-
         return enriched
 
     def get_best_stat_for_signal(
@@ -172,62 +169,62 @@ class SQLiteRepository(SignalRepository):
         trend: str | None,
         setter: str | None,
     ) -> dict | None:
-        """
-        Try to find the most specific statistic row for this signal:
-        (signal, symbol, timeframe, wolke, welle, trend, setter)
-        fallback by relaxing colors; skip rows with total_signals < 3.
-        """
         with self._get_conn() as conn:
 
-            def q(where: str, params: tuple) -> dict | None:
+            def q(where: str, params: tuple, quality: str) -> dict | None:
                 row = conn.execute(
                     f"""SELECT * FROM signal_statistic
                         WHERE {where}
-                          AND total_signals >= 3
+                        AND total_signals >= 3
                         ORDER BY total_signals DESC
                         LIMIT 1""",
                     params,
                 ).fetchone()
-                return dict(row) if row else None
+                if row:
+                    d = dict(row)
+                    d["match_quality"] = quality
+                    return d
+                return None
 
             # most specific
             r = q(
                 "signal=? AND symbol=? AND timeframe=? "
                 "AND wolke=? AND welle=? AND trend=? AND setter=?",
                 (signal, symbol, timeframe, wolke, welle, trend, setter),
+                "exakte Übereinstimmung (Wolke, Welle, Trend, Setter)",
             )
             if r:
                 return r
 
-            # relax setter
             r = q(
                 "signal=? AND symbol=? AND timeframe=? "
                 "AND wolke=? AND welle=? AND trend=?",
                 (signal, symbol, timeframe, wolke, welle, trend),
+                "Wolke + Welle + Trend",
             )
             if r:
                 return r
 
-            # relax trend
             r = q(
                 "signal=? AND symbol=? AND timeframe=? AND wolke=? AND welle=?",
                 (signal, symbol, timeframe, wolke, welle),
+                "Wolke + Welle",
             )
             if r:
                 return r
 
-            # relax welle
             r = q(
                 "signal=? AND symbol=? AND timeframe=? AND wolke=?",
                 (signal, symbol, timeframe, wolke),
+                "nur Wolke",
             )
             if r:
                 return r
 
-            # only signal+symbol+tf
             r = q(
                 "signal=? AND symbol=? AND timeframe=?",
                 (signal, symbol, timeframe),
+                "nur Signal + Symbol + Timeframe",
             )
             return r
 
@@ -248,7 +245,7 @@ class SQLiteRepository(SignalRepository):
             conn.execute(
                 """INSERT INTO signals
                 (symbol, timeframe, timestamp, signal, close, high, low, wuk,
-                 status, kerze, wolke, trend, setter, welle)
+                status, kerze, wolke, trend, setter, welle)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     data["symbol"],
