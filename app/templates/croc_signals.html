@@ -98,13 +98,36 @@
     .btn-mark {
         border: none;
         background: none;
-        color: #d1d5db;
         cursor: pointer;
         padding: 0;
-        transition: color 0.2s;
+        transition: color 0.15s ease, transform 0.1s ease;
     }
-    .btn-mark:hover { color: #f59e0b; }
-    .btn-mark.active { color: #f59e0b; }
+
+    /* idle (not tracked) */
+    .btn-mark:not(.active) {
+        color: #d1d5db;
+    }
+
+    .btn-mark:not(.active):hover {
+        color: #9ca3af;
+        transform: scale(1.1);
+    }
+
+    /* selected (tracked) */
+    .btn-mark.active {
+        color: #f59e0b;  /* gold */
+    }
+
+    /* keep gold while mouse is pressed */
+    .btn-mark.active:active {
+        color: #f59e0b;  /* enforce gold */
+    }
+
+    /* hover on selected */
+    .btn-mark.active:hover {
+        color: #fbbf24;
+        transform: scale(1.1);
+    }
 
     @media (max-width: 768px) {
         .stats-row { display: none !important; }
@@ -226,10 +249,10 @@
                     <!-- track toggle -->
                     <td class="text-center">
                         <button
-                            class="btn-mark {{ 'active' if row.is_tracked else '' }}"
-                            onclick="toggleTrack(this, '{{ row.symbol }}', '{{ row.timestamp }}', '{{ row.signal }}')"
-                            title="Track trade">
-                            <i class="fa-solid fa-star"></i>
+                        class="btn-mark {{ 'active' if row.is_tracked else '' }}"
+                        onclick="toggleTrack(this, '{{ row.symbol }}', '{{ row.timestamp }}', '{{ row.signal }}', '{{ row.timeframe }}')"
+                        title="Track trade">
+                        <i class="fa-solid fa-star"></i>
                         </button>
                     </td>
 
@@ -324,27 +347,31 @@
 
 {% block extra_js %}
 <script>
-async function toggleTrack(btn, symbol, timestamp, signal) {
-    try {
-        const res = await fetch('/toggle-track', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({symbol, timestamp, signal})
-        });
-        const data = await res.json();
-        if (data.status !== 'success') {
-            alert('Error: ' + (data.message || 'Unknown error'));
-            return;
-        }
-        if (data.is_tracked) {
-            btn.classList.add('active');
-        } else {
-            btn.classList.remove('active');
-        }
-    } catch (e) {
-        console.error(e);
-        alert('Connection failed');
+async function toggleTrack(btn, symbol, timestamp, signal, timeframe) {
+  try {
+    const res = await fetch('/toggle-track', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol, timestamp, signal, timeframe })
+    });
+
+    const data = await res.json();
+    console.log('toggle-track data', data);
+
+    if (data.status !== 'success') {
+      alert('Error: ' + (data.message || 'Unknown error'));
+      return;
     }
+
+    if (data.is_tracked) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  } catch (e) {
+    console.error(e);
+    alert('Connection failed');
+  }
 }
 </script>
 {% endblock %}

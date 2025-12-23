@@ -56,6 +56,10 @@ class SQLiteRepository(SignalRepository):
                     timestamp TEXT NOT NULL,
                     signal TEXT NOT NULL,
 
+                    -- NEW: copy of signal metadata
+                    signal_timeframe TEXT,
+                    signal_timestamp TEXT,
+
                     buy_limit REAL,
                     stop_loss REAL,
                     take_profit REAL,
@@ -231,11 +235,17 @@ class SQLiteRepository(SignalRepository):
     def get_all_trades(self, limit: int = 500) -> list[dict]:
         """Return all tracked trades, newest first."""
         query = """
-            SELECT *
-            FROM signal_trades
-            ORDER BY created_at DESC
-            LIMIT ?
-        """
+                SELECT id, symbol, signal, state,
+                    buy_limit, stop_loss, take_profit,
+                    entry_time, entry_price,
+                    exit_time, exit_price,
+                    current_price,
+                    signal_timeframe,
+                    signal_timestamp
+                FROM signal_trades
+                ORDER BY created_at DESC
+                LIMIT ?
+            """
         with self._get_conn() as conn:
             rows = conn.execute(query, (limit,)).fetchall()
             return [dict(r) for r in rows]
@@ -322,27 +332,35 @@ class SQLiteRepository(SignalRepository):
             ).fetchall()
             return [r[0] for r in rows if r[0]]
 
-    def toggle_trade_tracking(self, symbol: str, timestamp: str, signal: str) -> dict:
+    def toggle_trade_tracking(
+        self,
+        symbol: str,
+        timestamp: str,
+        signal: str,
+        timeframe: str | None = None,
+        signal_timestamp: str | None = None,
+    ) -> dict:
         with self._get_conn() as conn:
-            exists = conn.execute(
-                "SELECT id FROM signal_trades WHERE symbol=? AND timestamp=? AND signal=?",
+            existing = conn.execute(
+                "SELECT * FROM signal_trades WHERE symbol=? AND timestamp=? AND signal=?",
                 (symbol, timestamp, signal),
             ).fetchone()
 
-            if exists:
-                conn.execute(
-                    "DELETE FROM signal_trades WHERE symbol=? AND timestamp=? AND signal=?",
-                    (symbol, timestamp, signal),
-                )
+            if existing:
+                # unmark
+                conn.execute("DELETE FROM signal_trades WHERE id=?", (existing["id"],))
                 conn.commit()
-                return {"is_tracked": False}
+                return {"tracked": False, "trade_id": existing["id"]}
 
-            conn.execute(
-                "INSERT INTO signal_trades (symbol, timestamp, signal, state) VALUES (?, ?, ?, 'pending')",
-                (symbol, timestamp, signal),
+            # mark
+            cur = conn.execute(
+                """INSERT INTO signal_trades
+                (symbol, timestamp, signal, signal_timeframe, signal_timestamp)
+                VALUES (?, ?, ?, ?, ?)""",
+                (symbol, timestamp, signal, timeframe, signal_timestamp or timestamp),
             )
             conn.commit()
-            return {"is_tracked": True, "state": "pending"}
+            return {"tracked": True, "trade_id": cur.lastrowid}
 
     def get_trade(self, trade_id: int) -> Optional[dict]:
         with self._get_conn() as conn:

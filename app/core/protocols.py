@@ -23,8 +23,14 @@ class SignalRepository(Protocol):
 
     # trade tracking
     def toggle_trade_tracking(
-        self, symbol: str, timestamp: str, signal: str
+        self,
+        symbol: str,
+        timestamp: str,
+        signal: str,
+        timeframe: str | None = None,
+        signal_timestamp: str | None = None,
     ) -> dict: ...
+
     def get_trade(self, trade_id: int) -> Optional[dict]: ...
     def update_trade(self, trade_id: int, data: dict) -> bool: ...
     def get_all_trades(self, limit: int = 500) -> list[dict]: ...

@@ -74,7 +74,9 @@
             <thead>
                 <tr>
                     <th>SYMBOL</th>
+                    <th>TF</th>              <!-- NEW -->
                     <th>SIGNAL</th>
+                    <th>SIGNAL TIME</th>     <!-- NEW -->
                     <th>STATE</th>
                     <th class="hide-mobile">BUY LIMIT</th>
                     <th class="hide-mobile">STOP</th>
@@ -90,7 +92,11 @@
                 {% for t in trades %}
                 <tr>
                     <td class="fw-semibold">{{ t.symbol }}</td>
+                    <td>{{ t.signal_timeframe or '-' }}</td>   <!-- NEW -->
                     <td>{{ t.signal }}</td>
+                    <td style="font-size: 0.75rem;" class="text-muted">  <!-- NEW -->
+                        {{ t.signal_timestamp or '-' }}
+                    </td>
                     <td>
                         {% if t.state %}
                             <span class="badge badge-{{ t.state }} rounded-pill px-2">{{ t.state|upper }}</span>

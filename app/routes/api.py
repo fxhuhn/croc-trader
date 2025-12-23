@@ -42,11 +42,25 @@ def webhook():
 
 @bp.post("/toggle-track")
 def toggle_track():
-    payload = request.get_json(force=True)
-    res = current_app.container.repo.toggle_trade_tracking(
-        payload["symbol"], payload["timestamp"], payload["signal"]
+    data = request.get_json() or {}
+    ...
+
+    result = current_app.container.repo.toggle_trade_tracking(
+        symbol=data["symbol"],
+        timestamp=data["timestamp"],
+        signal=data["signal"],
+        timeframe=data.get("timeframe"),
+        signal_timestamp=data.get("timestamp"),
     )
-    return jsonify({"status": "success", **res})
+
+    return jsonify(
+        {
+            "status": "success",
+            "tracked": result["tracked"],
+            "is_tracked": result["tracked"],
+            "trade_id": result["trade_id"],
+        }
+    )
 
 
 @bp.get("/get-trade/<int:trade_id>")
