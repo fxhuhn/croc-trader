@@ -491,22 +491,38 @@ class TestTradeTracking:
 
     def test_get_all_trades_ordered_by_created_desc(self, repo, sample_signal):
         """Test that trades are returned newest first."""
+        import time
+
         symbols = ["AAPL", "GOOGL", "MSFT"]
+        trade_ids = []
 
         for symbol in symbols:
             signal = sample_signal.copy()
             signal["symbol"] = symbol
             repo.save_signal(signal)
-            repo.toggle_trade_tracking(
+            result = repo.toggle_trade_tracking(
                 symbol=symbol,
                 timestamp=sample_signal["timestamp"].isoformat(),
                 signal="buy",
             )
+            trade_ids.append(result["trade_id"])
+            # Small delay to ensure different timestamps in created_at
+            time.sleep(0.01)
 
         trades = repo.get_all_trades()
 
-        # Newest (last created) should be first
-        assert trades[0]["symbol"] == "MSFT"
+        # Verify we got all trades
+        assert len(trades) == 3
+
+        # Trades should be ordered by created_at DESC
+        # Last inserted (MSFT) should be first
+        retrieved_symbols = [trade["symbol"] for trade in trades]
+        assert retrieved_symbols[0] == "MSFT"
+        assert retrieved_symbols[-1] == "AAPL"
+
+        # Also verify by trade_id (should be descending)
+        retrieved_ids = [trade["id"] for trade in trades]
+        assert retrieved_ids == sorted(retrieved_ids, reverse=True)
 
     def test_update_trade_with_valid_fields(self, repo, sample_signal):
         """Test updating trade with allowed fields."""

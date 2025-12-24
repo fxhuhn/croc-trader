@@ -423,13 +423,20 @@ class TestErrorHandling:
         with pytest.raises(ValueError, match="positive integer"):
             performance(series, period=-5)
 
-    def test_sma_accepts_zero_and_negative_periods(self):
-        """Test that SMA doesn't validate (relies on pandas behavior)."""
+    def test_sma_with_zero_period_returns_all_nan(self):
+        """Test that SMA with period=0 returns NaN (pandas behavior)."""
         series = pd.Series([1.0, 2.0, 3.0])
 
-        # SMA doesn't validate, so these will fail in pandas
-        with pytest.raises((ValueError, pd.errors.DataError)):
-            sma(series, period=0)
+        # SMA with period=0 works in pandas but returns all NaN
+        result = sma(series, period=0)
+        assert result.isna().all()
+
+    def test_sma_with_negative_period_raises_error(self):
+        """Test that SMA with negative period raises ValueError from pandas."""
+        series = pd.Series([1.0, 2.0, 3.0])
+
+        with pytest.raises(ValueError):
+            sma(series, period=-1)
 
     def test_atr_missing_columns_raises_keyerror(self):
         """Test that ATR raises KeyError for missing columns."""
