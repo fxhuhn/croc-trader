@@ -6,9 +6,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-
 from app import create_app
-from app.config import Config
+from app.config import load_config
 from app.services.worker import start_worker
 
 # logging setup (keep near entrypoint)
@@ -24,11 +23,16 @@ logging.basicConfig(
     ],
 )
 
-app = create_app(Config())
+config = load_config()
+app = create_app(config)
 
 # start worker
 start_worker(app.container.queue, app.container.repo)
 
 if __name__ == "__main__":
-    cfg = Config()
-    app.run(host=cfg.HOST, port=cfg.PORT, debug=cfg.DEBUG, use_reloader=False)
+    app.run(
+        host=config.app.host,
+        port=config.app.port,
+        debug=config.app.debug,
+        use_reloader=False,
+    )
