@@ -66,11 +66,11 @@ def _merge_dict(base_config: Config, data: dict):
             else:
                 # Set simple value (with basic type casting if needed)
                 field_type = type(getattr(base_config, key))
-                if field_type == bool and isinstance(value, str):
+                if field_type is bool and isinstance(value, str):
                     value = value.lower() in ("true", "1", "yes")
-                elif field_type == int and isinstance(value, str):
+                elif field_type is int and isinstance(value, str):
                     value = int(value)
-                elif field_type == float and isinstance(value, str):
+                elif field_type is float and isinstance(value, str):
                     value = float(value)
                 elif key == "path" and isinstance(value, str):
                     value = Path(_base_path, value)
