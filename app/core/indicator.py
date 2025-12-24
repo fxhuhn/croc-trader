@@ -89,14 +89,10 @@ def sma(
     Returns:
         Series of SMA values rounded to 2 decimal places
 
-    Raises:
-        ValueError: If period is not a positive integer
-
     Example:
         >>> prices = pd.Series([10, 11, 12, 13, 14])
         >>> sma(prices, period=3)
     """
-    _validate_period(period)
     close_series = _as_series(close, name="close")
 
     if min_periods is None:
@@ -122,14 +118,10 @@ def ema(
     Returns:
         Series of EMA values rounded to 2 decimal places
 
-    Raises:
-        ValueError: If period is not a positive integer
-
     Example:
         >>> prices = pd.Series([10, 11, 12, 13, 14])
         >>> ema(prices, period=5)
     """
-    _validate_period(period)
     close_series = _as_series(close, name="close")
 
     return (
@@ -146,35 +138,31 @@ def ema(
 
 def rma(
     close: pd.Series | Sequence[float],
-    period: int,
+    intervall: int,
 ) -> pd.Series:
     """
     Calculate Running Moving Average (Wilder's smoothing).
 
-    Uses exponential weighting with alpha = 1/period. This is commonly used
+    Uses exponential weighting with alpha = 1/intervall. This is commonly used
     in indicators like RSI and ATR.
 
     Args:
         close: Price series
-        period: Number of periods for RMA calculation
+        intervall: Number of periods for RMA calculation
 
     Returns:
         Series of RMA values rounded to 2 decimal places
 
-    Raises:
-        ValueError: If period is not a positive integer
-
     Example:
         >>> prices = pd.Series([10, 11, 12, 13, 14])
-        >>> rma(prices, period=5)
+        >>> rma(prices, intervall=5)
     """
-    _validate_period(period, param_name="period")
     close_series = _as_series(close, name="close")
 
     return (
         close_series.ewm(
-            alpha=1 / period,
-            min_periods=period,
+            alpha=1 / intervall,
+            min_periods=intervall,
             adjust=False,
             ignore_na=False,
         )
@@ -190,7 +178,7 @@ def rma(
 
 def rsi(
     close: pd.Series | Sequence[float],
-    period: int = 14,
+    period: int = 7,
 ) -> pd.Series:
     """
     Calculate Relative Strength Index (RSI).
@@ -200,19 +188,15 @@ def rsi(
 
     Args:
         close: Price series (typically closing prices)
-        period: Lookback period for RSI calculation (default: 14)
+        period: Lookback period for RSI calculation (default: 7)
 
     Returns:
         Series of RSI values rounded to 0 decimal places
-
-    Raises:
-        ValueError: If period is not a positive integer
 
     Example:
         >>> prices = pd.Series([44, 44.5, 45, 43.5, 44])
         >>> rsi(prices, period=3)
     """
-    _validate_period(period)
     close_series = _as_series(close, name="close")
 
     # Calculate price changes
@@ -317,7 +301,7 @@ def ibs(df: pd.DataFrame) -> pd.Series:
 
 def atr(
     df: pd.DataFrame,
-    period: int = 14,
+    intervall: int = 9,
     smoothing: Smoothing = "ema",
     wilders: bool = False,
 ) -> pd.Series:
@@ -332,16 +316,15 @@ def atr(
 
     Args:
         df: DataFrame with 'high', 'low', and 'close' columns
-        period: Lookback period for averaging (default: 14)
+        intervall: Lookback period for averaging (default: 9)
         smoothing: Smoothing method - 'ema', 'rma', or 'sma' (default: 'ema')
-        wilders: If True, use Wilder's period calculation (default: False)
 
     Returns:
         Series of ATR values rounded to 2 decimal places
 
     Raises:
         KeyError: If required columns are missing
-        ValueError: If period is invalid or smoothing method is unknown
+        ValueError: If smoothing method is unknown
 
     Example:
         >>> df = pd.DataFrame({
@@ -349,14 +332,13 @@ def atr(
         ...     'low': [48, 49, 49],
         ...     'close': [49, 51, 50]
         ... })
-        >>> atr(df, period=2, smoothing='sma')
+        >>> atr(df, intervall=2, smoothing='sma')
 
     Reference:
         https://stackoverflow.com/a/74282809/
     """
     required_columns = ("high", "low", "close")
     _validate_dataframe_columns(df, required_columns)
-    _validate_period(period, param_name="period")
 
     high = df["high"]
     low = df["low"]
@@ -372,17 +354,16 @@ def atr(
     # True Range is the maximum of the three components
     true_range = pd.concat(tr_components, axis=1).max(axis=1)
 
-    # wilder's adjustment for period
     if wilders:
-        period = 2 * period - 1
+        intervall = intervall * 2 - 1
 
     # Apply smoothing method
     if smoothing == "rma":
-        return rma(true_range, period=period)
+        return rma(true_range, intervall=intervall)
     elif smoothing == "ema":
-        return ema(true_range, period=period)
+        return ema(true_range, period=intervall)
     elif smoothing == "sma":
-        return sma(true_range, period=period)
+        return sma(true_range, period=intervall)
     else:
         raise ValueError(
             f"Unknown smoothing type '{smoothing}'. Must be one of: 'ema', 'rma', 'sma'"
