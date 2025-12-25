@@ -493,38 +493,36 @@ class TestTradeTracking:
 
     def test_get_all_trades_ordered_by_created_desc(self, repo, sample_signal):
         """Test that trades are returned newest first."""
-        import time
-
         symbols = ["AAPL", "GOOGL", "MSFT"]
-        trade_ids = []
 
-        for symbol in symbols:
+        for i, symbol in enumerate(symbols):
             signal = sample_signal.copy()
             signal["symbol"] = symbol
+            # Use different timestamps to ensure different created_at
+            signal["timestamp"] = datetime(2025, 1, 1, 10, i, 0, tzinfo=UTC)
             repo.save_signal(signal)
-            result = repo.toggle_trade_tracking(
+            repo.toggle_trade_tracking(
                 symbol=symbol,
-                timestamp=sample_signal["timestamp"].isoformat(),
+                timestamp=signal["timestamp"].isoformat(),
                 signal="buy",
             )
-            trade_ids.append(result["trade_id"])
-            # Small delay to ensure different timestamps in created_at
-            time.sleep(0.01)
 
         trades = repo.get_all_trades()
 
         # Verify we got all trades
         assert len(trades) == 3
 
-        # Trades should be ordered by created_at DESC
-        # Last inserted (MSFT) should be first
-        retrieved_symbols = [trade["symbol"] for trade in trades]
-        assert retrieved_symbols[0] == "MSFT"
-        assert retrieved_symbols[-1] == "AAPL"
-
-        # Also verify by trade_id (should be descending)
+        # Trades are ordered by created_at DESC (newest first)
+        # Since they were created in order AAPL, GOOGL, MSFT,
+        # MSFT should be first
         retrieved_ids = [trade["id"] for trade in trades]
+
+        # IDs should be in descending order (highest/newest first)
         assert retrieved_ids == sorted(retrieved_ids, reverse=True)
+
+        # Last created (MSFT) should have the highest ID
+        assert trades[0]["symbol"] == "MSFT"
+        assert trades[-1]["symbol"] == "AAPL"
 
     def test_update_trade_with_valid_fields(self, repo, sample_signal):
         """Test updating trade with allowed fields."""

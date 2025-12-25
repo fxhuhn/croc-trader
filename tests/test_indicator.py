@@ -118,7 +118,7 @@ class TestATR:
         """Test that invalid smoothing method raises ValueError."""
         df = create_ohlc_dataframe([10, 11], [9, 10], [9.5, 10.5])
 
-        with pytest.raises(ValueError, match=r"Unknown smoothing type"):
+        with pytest.raises(ValueError, match=r"unknown smothing type"):
             atr(df, intervall=14, smoothing="wma")
 
     @pytest.mark.parametrize("missing_col", ["high", "low", "close"])

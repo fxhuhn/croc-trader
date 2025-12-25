@@ -303,7 +303,6 @@ def atr(
     df: pd.DataFrame,
     intervall: int = 9,
     smoothing: Smoothing = "ema",
-    wilders: bool = False,
 ) -> pd.Series:
     """
     Calculate Average True Range (ATR).
@@ -354,9 +353,6 @@ def atr(
     # True Range is the maximum of the three components
     true_range = pd.concat(tr_components, axis=1).max(axis=1)
 
-    if wilders:
-        intervall = intervall * 2 - 1
-
     # Apply smoothing method
     if smoothing == "rma":
         return rma(true_range, intervall=intervall)
@@ -365,6 +361,4 @@ def atr(
     elif smoothing == "sma":
         return sma(true_range, period=intervall)
     else:
-        raise ValueError(
-            f"Unknown smoothing type '{smoothing}'. \nMust be one of: 'ema', 'rma', 'sma'"
-        )
+        raise ValueError(f"unknown smothing type {smoothing}")
