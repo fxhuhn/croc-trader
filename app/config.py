@@ -107,8 +107,8 @@ def load_config(config_yaml: str = "app/config.yaml") -> Config:
 
     # Database Section
     if os.getenv("SIGNAL_PATH"):
-        cfg.database.path = Path(_base_path, os.getenv("SIGNAL_PATH"))
-        logging.info(f"Config: update database: path = {cfg.database.path}")
+        cfg.database.signal_path = Path(_base_path, os.getenv("SIGNAL_PATH"))
+        logging.info(f"Config: update database: path = {cfg.database.signal_path}")
 
     return cfg
 

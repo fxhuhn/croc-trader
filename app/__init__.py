@@ -23,7 +23,7 @@ def create_app(config: Config | None = None) -> Flask:
         app.symbol_markets = {}
 
     # attach container (simple DI)
-    app.container = build_container(cfg.database.path)
+    app.container = build_container(cfg.database.signal_path)
 
     # register blueprints
     app.register_blueprint(ui_routes.bp)
