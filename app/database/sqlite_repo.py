@@ -66,6 +66,7 @@ class SQLiteRepository(SignalRepository):
             buy_limit REAL,
             stop_loss REAL,
             take_profit REAL,
+            quantity INTEGER,
             entry_time TEXT,
             entry_price REAL,
             exit_time TEXT,
@@ -122,6 +123,7 @@ class SQLiteRepository(SignalRepository):
             "exit_price",
             "current_price",
             "state",
+            "quantity",
         ]
     )
 
@@ -277,6 +279,7 @@ class SQLiteRepository(SignalRepository):
             SELECT s.*,
                    t.id as trade_id,
                    t.state as trade_state,
+                   t.quantity,
                    t.buy_limit, t.stop_loss, t.take_profit,
                    t.entry_time, t.entry_price,
                    t.exit_time, t.exit_price,
@@ -435,7 +438,7 @@ class SQLiteRepository(SignalRepository):
             ...     print(f"{trade['symbol']} - {trade['state']}")
         """
         query = """
-            SELECT id, symbol, signal, state,
+            SELECT id, symbol, signal, state,quantity,
                    buy_limit, stop_loss, take_profit,
                    entry_time, entry_price,
                    exit_time, exit_price,

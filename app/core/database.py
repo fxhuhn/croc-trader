@@ -126,3 +126,76 @@ class OHLCVRepository:
             if row and row[0]:
                 return date.fromisoformat(row[0])
         return None
+
+    def get_candle(self, symbol: str, date_str: str) -> Optional[dict]:
+        """
+        Retrieve a single candle for a specific date.
+
+        Args:
+            symbol: Symbol string
+            date_str: Date string 'YYYY-MM-DD'
+
+        Returns:
+            Dictionary with open, high, low, close, volume or None if not found
+        """
+        query = """
+            SELECT open, high, low, close, volume
+            FROM ohlcv
+            WHERE symbol = ? AND date = ?
+        """
+        with self._connect() as conn:
+            row = conn.execute(query, (symbol, date_str)).fetchone()
+
+        if row:
+            return {
+                "open": row[0],
+                "high": row[1],
+                "low": row[2],
+                "close": row[3],
+                "volume": row[4],
+            }
+        return None
+
+    def get_data_after_date(
+        self, symbols: list[str], after_date: str, inclusive: bool = False
+    ) -> pd.DataFrame:
+        """
+        Retrieve OHLCV data for specific symbols after a given date.
+
+        Args:
+            symbols: List of symbol strings (e.g. ['AAPL'])
+            after_date: Date string 'YYYY-MM-DD'
+            inclusive: If True, includes the after_date itself (>=).
+                       If False, only returns future dates (>).
+
+        Returns:
+            pd.DataFrame with MultiIndex (symbol, date) and columns open, high, low, close, volume
+        """
+        if not symbols:
+            return pd.DataFrame()
+
+        # Create placeholders for SQL IN clause
+        placeholders = ",".join("?" * len(symbols))
+        op = ">=" if inclusive else ">"
+
+        query = f"""
+            SELECT symbol, date, open, high, low, close, volume
+            FROM ohlcv
+            WHERE symbol IN ({placeholders})
+            AND date {op} ?
+            ORDER BY date ASC
+        """
+
+        # specific to your table schema where date is TEXT/ISO format
+        params = list(symbols) + [after_date]
+
+        with self._connect() as conn:
+            df = pd.read_sql_query(query, conn, params=params)
+
+        if not df.empty:
+            # Convert date string to datetime for proper sorting/indexing
+            df["date"] = pd.to_datetime(df["date"])
+            # Set MultiIndex as expected by PaperTrader
+            df.set_index(["symbol", "date"], inplace=True)
+
+        return df
