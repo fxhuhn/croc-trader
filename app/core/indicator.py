@@ -366,5 +366,5 @@ def atr(
         return sma(true_range, period=intervall)
     else:
         raise ValueError(
-            f"Unknown smoothing type '{smoothing}'. Must be one of: 'ema', 'rma', 'sma'"
+            f"Unknown smoothing type '{smoothing}'. \nMust be one of: 'ema', 'rma', 'sma'"
         )

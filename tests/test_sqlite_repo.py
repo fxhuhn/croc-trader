@@ -90,12 +90,14 @@ class TestInitialization:
 
         assert Path(temp_db_path).exists()
         assert Path(temp_db_path).is_file()
+        assert repo.db_path == temp_db_path
 
     def test_accepts_path_object(self, temp_db_path):
         """Test that constructor accepts Path objects."""
         repo = SQLiteRepository(db_path=Path(temp_db_path))
 
         assert Path(temp_db_path).exists()
+        assert repo.db_path == str(temp_db_path)
 
     def test_creates_signals_table(self, repo, temp_db_path):
         """Test that signals table is created with correct schema."""
