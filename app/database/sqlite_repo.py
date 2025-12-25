@@ -292,16 +292,16 @@ class SQLiteRepository(SignalRepository):
         params: list[Any] = []
 
         # Build dynamic WHERE clause
-        if symbol is not None:
+        if symbol:
             query += " AND s.symbol = ?"
             params.append(symbol)
-        if timeframe is not None:
+        if timeframe:
             query += " AND s.timeframe = ?"
             params.append(timeframe)
-        if signal is not None:
+        if signal:
             query += " AND s.signal = ?"
             params.append(signal)
-        if day is not None:
+        if day:
             query += " AND date(s.timestamp) = ?"
             params.append(day)
 
