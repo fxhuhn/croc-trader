@@ -26,7 +26,8 @@ class AppConfig:
 
 @dataclass
 class DatabaseConfig:
-    path: str = "local_database.db"
+    signal_path: str = "local_database.db"
+    market_data_path: str = "market_data.db"
 
 
 @dataclass
@@ -72,7 +73,7 @@ def _merge_dict(base_config: Config, data: dict):
                     value = int(value)
                 elif field_type is float and isinstance(value, str):
                     value = float(value)
-                elif key == "path" and isinstance(value, str):
+                elif "path" in key and isinstance(value, str):
                     value = Path(_base_path, value)
                 setattr(base_config, key, value)
                 logging.info(f"Config: {key} = {value}")
@@ -105,8 +106,11 @@ def load_config(config_yaml: str = "app/config.yaml") -> Config:
         logging.info(f"Config: update app: port = {cfg.app.port}")
 
     # Database Section
-    if os.getenv("DB_PATH"):
-        cfg.database.path = Path(_base_path, os.getenv("DB_PATH"))
+    if os.getenv("SIGNAL_PATH"):
+        cfg.database.path = Path(_base_path, os.getenv("SIGNAL_PATH"))
         logging.info(f"Config: update database: path = {cfg.database.path}")
 
     return cfg
+
+
+settings = load_config()

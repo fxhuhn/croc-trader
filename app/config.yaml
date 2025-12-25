@@ -1,14 +1,15 @@
 app:
-  host: 127.0.0.1
+  host: "127.0.0.1"
   port: 5000
   debug: true
 
 database:
-  path: local_database.db
+  signal_path: "app/local_database.db"
+  market_data_path: "app/market_data.db"
 
 logging:
   level: INFO
-  path: app/logs/app.log
+  path: "app/logs/app.log"
 
 tradingview:
   base_url: "https://www.tradingview.com/chart/"
