@@ -1,6 +1,6 @@
 import sys
 from dataclasses import asdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request
@@ -22,21 +22,25 @@ def health():
 
 @bp.post("/webhook")
 def webhook():
-    if not request.is_json:
-        return jsonify(
-            {"status": "error", "message": "Content-Type must be application/json"}
-        ), 400
+    # Allow requests without "application/json" header if the body is valid JSON
+    if not request.is_json and not request.data:
+        return jsonify({"status": "error", "message": "Missing JSON body"}), 400
 
-    data = request.get_json()
-    data["timestamp"] = datetime.now(UTC)
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+
+    data["timestamp"] = datetime.now(timezone.utc)
     data["source_ip"] = request.headers.get("X-Real-IP", request.remote_addr)
 
     try:
         signal = CrocSignal.from_dict(data)
-    except TypeError as e:
+    except (TypeError, KeyError, ValueError) as e:
         return jsonify({"status": "error", "message": f"Invalid data: {str(e)}"}), 400
 
+    # Non-blocking: Put in queue
     current_app.container.queue.put(asdict(signal))
+
     return jsonify({"status": "queued", "reference": signal.reference}), 202
 
 
