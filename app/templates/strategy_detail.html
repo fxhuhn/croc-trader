@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center border-b border-gray-700 pb-4">
+        <div>
+            <h1 class="text-2xl font-bold text-white">{{ strategy.metrics.strategy_name }}</h1>
+            <p class="text-sm text-gray-400">Backtest Report</p>
+        </div>
+        <a href="{{ url_for('ui.strategies_list') }}" class="text-gray-400 hover:text-white">
+            &larr; Back to List
+        </a>
+    </div>
+
+    <!-- KPIS -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {% set perf = strategy.metrics.performance %}
+        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700">
+            <p class="text-xs text-gray-400 uppercase">Total Return</p>
+            <p class="text-2xl font-bold text-green-400">{{ perf.total_return_pct }}%</p>
+        </div>
+        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700">
+            <p class="text-xs text-gray-400 uppercase">CAGR</p>
+            <p class="text-2xl font-bold text-blue-400">{{ perf.cagr_pct }}%</p>
+        </div>
+        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700">
+            <p class="text-xs text-gray-400 uppercase">Max Drawdown</p>
+            <p class="text-2xl font-bold text-red-400">-{{ perf.max_drawdown_pct }}%</p>
+        </div>
+        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700">
+            <p class="text-xs text-gray-400 uppercase">End Equity</p>
+            <p class="text-2xl font-bold text-white">${{ "{:,.0f}".format(perf.end_equity) }}</p>
+        </div>
+    </div>
+
+    <!-- Chart & Monthly Returns -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Equity Chart -->
+        <div class="lg:col-span-2 bg-gray-800 rounded-lg border border-gray-700 p-4">
+            <h3 class="text-lg font-semibold text-white mb-4">Equity Curve</h3>
+            <img src="{{ strategy.chart_url }}" alt="Equity Chart" class="w-full rounded bg-white/5">
+        </div>
+
+        <!-- Monthly Returns Table -->
+        <div class="bg-gray-800 rounded-lg border border-gray-700 p-4 overflow-x-auto">
+            <h3 class="text-lg font-semibold text-white mb-4">Monthly Returns (%)</h3>
+            <div class="prose prose-invert max-w-none monthly-table-wrapper">
+                {{ strategy.monthly_table | safe }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Trades Table (Reusing DataTables setup) -->
+    <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
+        <h3 class="text-lg font-semibold text-white mb-4">Trade History</h3>
+        <div class="overflow-x-auto">
+            <table id="backtestTradesTable" class="w-full text-sm text-left text-gray-400">
+                <thead class="text-xs text-gray-400 uppercase bg-gray-750 border-b border-gray-700">
+                    <tr>
+                        <th class="px-4 py-3">Symbol</th>
+                        <th class="px-4 py-3">Entry</th>
+                        <th class="px-4 py-3">Exit</th>
+                        <th class="px-4 py-3">Hold Days</th>
+                        <th class="px-4 py-3 text-right">PnL $</th>
+                        <th class="px-4 py-3 text-right">Return %</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in trades %}
+                    <tr class="border-b border-gray-700 hover:bg-gray-750">
+                        <td class="px-4 py-3 font-bold text-white">{{ t.symbol }}</td>
+                        <td class="px-4 py-3">{{ t.entry_date }}</td>
+                        <td class="px-4 py-3">{{ t.exit_date }}</td>
+                        <td class="px-4 py-3">{{ t.hold_days }}</td>
+                        <td class="px-4 py-3 text-right font-mono {% if t.pnl > 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                            {{ "{:,.2f}".format(t.pnl) }}
+                        </td>
+                        <td class="px-4 py-3 text-right font-mono {% if t.return_pct > 0 %}text-green-400{% else %}text-red-400{% endif %}">
+                            {{ "{:,.2f}".format(t.return_pct) }}%
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function() {
+        $('#backtestTradesTable').DataTable({
+            "order": [[ 2, "desc" ]], // Sort by Exit Date
+            "pageLength": 25,
+            "dom": '<"flex justify-between items-center mb-4"f>t<"flex justify-between items-center mt-4"ip>',
+            "language": {
+                "search": "",
+                "searchPlaceholder": "Search trades..."
+            }
+        });
+
+        // Basic styling fix for the Pandas HTML table
+        $('.monthly-table-wrapper table').addClass('w-full text-sm');
+        $('.monthly-table-wrapper th').addClass('px-2 py-1 text-gray-500 font-normal text-center bg-gray-900');
+        $('.monthly-table-wrapper td').addClass('px-2 py-1 text-center border border-gray-700');
+    });
+</script>
+
+<style>
+    /* DataTables Customization for Dark Mode */
+    .dataTables_wrapper .dataTables_filter input {
+        background-color: #374151;
+        border: 1px solid #4B5563;
+        color: #fff;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+        color: #9CA3AF !important;
+    }
+    .dataTables_wrapper .dataTables_paginate .paginate_button.current {
+        background: #4B5563 !important;
+        border-color: #4B5563 !important;
+        color: #fff !important;
+    }
+</style>
+{% endblock %}
