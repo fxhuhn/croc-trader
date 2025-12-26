@@ -23,7 +23,9 @@ from services.market_data.yahoo_loader import YahooLoader
 
 # Default fallback list if "all" is used but no dynamic lists are available
 DEFAULT_SYMBOLS = ["AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "GOOGL", "META", "BRK-B"]
-SYMBOLS = list(set(sp500_symbols() + nasdaq100_symbols() + dow30_symbols()))
+SYMBOLS = list(
+    set(sp500_symbols() + nasdaq100_symbols() + dow30_symbols() + ["QQQ", "SPY"])
+)
 
 # --------------------------------------------------------------------------
 # 2. HELPER FUNCTIONS
