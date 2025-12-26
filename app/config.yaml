@@ -15,3 +15,5 @@ logging:
 tradingview:
   base_url: "https://www.tradingview.com/chart/"
 
+backtest:
+  report_path : app/backtest_report

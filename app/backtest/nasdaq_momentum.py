@@ -30,7 +30,7 @@ class MomentumConfig:
     start_date: str = "2022-01-01"
     initial_capital: float = 100_000.0
     top_n: int = 5
-    out_dir: str = "backtest_results"  # Unified
+    out_dir: str = settings.backtest.report_path
 
 
 class NasdaqMomentumBacktester:

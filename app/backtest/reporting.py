@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -20,7 +18,9 @@ class BacktestReporter:
         self.benchmark_curves = {}
 
         # Standardize Output Directory
-        self.out_dir = Path("backtest_results")  # <--- Unified Folder
+        self.out_dir = (
+            self.cfg.out_dir
+        )  # Path("backtest_results")  # <--- Unified Folder
         self.out_dir.mkdir(parents=True, exist_ok=True)
 
         # Sanitize strategy name for filenames

@@ -28,7 +28,7 @@ class StrategyConfig:
     rs_window: int = 252
     sma_rise_window: int = 20
     min_rs: float = 70.0
-    out_dir: str = "backtest_results"  # Unified
+    out_dir: str = settings.backtest.report_path
 
 
 # --- Main Engine ---

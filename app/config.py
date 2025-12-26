@@ -44,10 +44,16 @@ class LoggingConfig:
 
 
 @dataclass
+class BacktestConfig:
+    report_path: str = "app/backtest_report"
+
+
+@dataclass
 class Config:
     app: AppConfig = field(default_factory=AppConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     tradingview: Tradingview = field(default_factory=Tradingview)
+    backtest: BacktestConfig = field(default_factory=BacktestConfig)
 
 
 # --- Loading Logic ---
