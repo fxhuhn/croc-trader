@@ -28,6 +28,7 @@ class AppConfig:
 class DatabaseConfig:
     signal_path: str = "local_database.db"
     market_data_path: str = "market_data.db"
+    backtest_path: str = "backtest.db"
 
 
 @dataclass
