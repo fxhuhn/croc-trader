@@ -7,10 +7,10 @@ Results are cached to minimize network requests.
 """
 
 import logging
-from functools import lru_cache
 from typing import Final
 
 import pandas as pd
+from cachetools import TTLCache, cached
 
 # ============================================================================
 # Configuration
@@ -45,7 +45,8 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 
-@lru_cache(maxsize=CACHE_SIZE)
+# Cache expires after 24 hours
+@cached(cache=TTLCache(maxsize=3, ttl=86400))
 def _get_symbols_from_wikipedia_table(
     url: str,
     table_index: int,
