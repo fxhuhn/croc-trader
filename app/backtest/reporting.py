@@ -29,8 +29,8 @@ class BacktestReporter:
         )
 
     def generate(self):
-        eq = self.bt_repo.get_equity_curve()
-        trades = self.bt_repo.get_trades()
+        eq = self.bt_repo.get_equity_curve(self.cfg.strategy_name)
+        trades = self.bt_repo.get_trades(self.cfg.strategy_name)
 
         if eq.empty:
             print("⚠️ No equity data to analyze.")

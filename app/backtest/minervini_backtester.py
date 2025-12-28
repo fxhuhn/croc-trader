@@ -257,7 +257,9 @@ class MinerviniBacktester:
             if self.peak_equity > 0
             else 0
         )
-        self.bt_repo.log_equity(str(date.date()), total, self.cash, pos_val, dd)
+        self.bt_repo.log_equity(
+            str(date.date()), total, self.cash, pos_val, dd, self.cfg.strategy_name
+        )
 
     def _force_close_all(self, data, last_date):
         try:

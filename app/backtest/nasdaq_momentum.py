@@ -26,7 +26,7 @@ from app.core.database import OHLCVRepository
 
 @dataclass
 class MomentumConfig:
-    strategy_name: str = "NASDAQ Momentum (Monthly)"
+    strategy_name: str = "NASDAQ Momentum (Monthly) QQQ Regime"
     start_date: str = "2022-01-01"
     initial_capital: float = 100_000.0
     top_n: int = 5
@@ -43,7 +43,8 @@ class NasdaqMomentumBacktester:
 
         self.market_repo = OHLCVRepository(str(settings.database.market_data_path))
         self.bt_repo = BacktestRepository(str(settings.database.backtest_path))
-        self.bt_repo.init_tables(clear_existing=True)
+        self.bt_repo.init_tables()
+        self.bt_repo.cleanup_strategy(config.strategy_name)
 
         self.cash = config.initial_capital
         self.positions: dict[str, dict] = {}
@@ -252,7 +253,9 @@ class NasdaqMomentumBacktester:
             if self.peak_equity > 0
             else 0
         )
-        self.bt_repo.log_equity(str(date.date()), total, self.cash, pos_val, dd)
+        self.bt_repo.log_equity(
+            str(date.date()), total, self.cash, pos_val, dd, self.cfg.strategy_name
+        )
 
     def _force_close_all(self, df, date):
         try:

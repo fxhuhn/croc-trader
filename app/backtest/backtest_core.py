@@ -27,12 +27,23 @@ class BacktestTrade:
 
 
 class BacktestRepository(SQLiteRepository):
-    def init_tables(self, clear_existing: bool = True):
+    def cleanup_strategy(self, strategy_name: str) -> None:
         with self._get_connection() as conn:
-            if clear_existing:
-                conn.execute("DROP TABLE IF EXISTS backtest_trades")
-                conn.execute("DROP TABLE IF EXISTS backtest_equity")
+            conn.execute(
+                "DELETE FROM backtest_trades WHERE strategy_name = ?",
+                (strategy_name,),
+            )
+            conn.execute(
+                "DELETE FROM backtest_equity WHERE strategy_name = ?", (strategy_name,)
+            )
+            conn.commit()
 
+    def init_tables(self, clear_existing: bool = False):
+        with self._get_connection() as conn:
+            """
+            conn.execute("DROP TABLE IF EXISTS backtest_trades")
+            conn.execute("DROP TABLE IF EXISTS backtest_equity")
+            """
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS backtest_trades (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,12 +56,13 @@ class BacktestRepository(SQLiteRepository):
                     pnl REAL NOT NULL,
                     return_pct REAL NOT NULL,
                     hold_days INTEGER NOT NULL,
-                    strategy_name TEXT
+                    strategy_name TEXT NOT NULL
                 )
             """)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS backtest_equity (
                     date TEXT PRIMARY KEY,
+                    strategy_name TEXT NOT NULL,
                     total_equity REAL NOT NULL,
                     cash REAL NOT NULL,
                     positions_value REAL NOT NULL,
@@ -83,22 +95,31 @@ class BacktestRepository(SQLiteRepository):
             )
             conn.commit()
 
-    def log_equity(self, date_str, equity, cash, pos_val, dd):
+    def log_equity(self, date_str, equity, cash, pos_val, dd, strategy_name):
         with self._get_connection() as conn:
             conn.execute(
-                "INSERT OR REPLACE INTO backtest_equity VALUES (?,?,?,?,?)",
-                (date_str, equity, cash, pos_val, dd),
+                "INSERT OR REPLACE INTO backtest_equity VALUES (?,?,?,?,?,?)",
+                (date_str, strategy_name, equity, cash, pos_val, dd),
             )
             conn.commit()
 
-    def get_equity_curve(self) -> pd.DataFrame:
+    def get_equity_curve(self, strategy_name) -> pd.DataFrame:
         with self._get_connection() as conn:
-            df = pd.read_sql("SELECT * FROM backtest_equity ORDER BY date", conn)
+            # Filtert explizit nach der übergebenen Strategie
+            df = pd.read_sql(
+                "SELECT * FROM backtest_equity WHERE strategy_name = ? ORDER BY date",
+                conn,
+                params=(strategy_name,),
+            )
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"])
             return df.set_index("date")
         return df
 
-    def get_trades(self) -> pd.DataFrame:
+    def get_trades(self, strategy_name) -> pd.DataFrame:
         with self._get_connection() as conn:
-            return pd.read_sql("SELECT * FROM backtest_trades", conn)
+            return pd.read_sql(
+                "SELECT * FROM backtest_trades WHERE strategy_name = ?",
+                conn,
+                params=(strategy_name,),
+            )
