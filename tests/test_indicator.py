@@ -3,6 +3,7 @@ Comprehensive unit tests for technical indicators.
 
 Tests cover expected behavior, edge cases, error handling, and numerical
 accuracy for all indicator functions.
+
 """
 
 import sys
@@ -16,7 +17,7 @@ import pytest
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.indicator import atr, ema, ibs, performance, rma, rsi, sma
+from app.core.indicator import atr, ema, ibs, performance, rma, rsi, sma
 
 # ============================================================================
 # Test Fixtures and Helpers
