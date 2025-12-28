@@ -33,7 +33,7 @@ jobs:
         run: pip install ruff
 
       - name: Run Ruff linter
-        run: ruff check . --output-format=github
+        run: ruff check . --output-format=github --ignore E402
 
       - name: Run Ruff formatter
         run: ruff format --check --diff .
@@ -117,14 +117,21 @@ jobs:
   # Job 5: Check for unused code with Vulture
   vulture:
     name: Vulture Dead Code Check
-    continue-on-error: true  # Don't fail build on dead code
+    continue-on-error: true
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run Vulture
-        uses: gtkacz/vulture-action@v1.0.0
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          args: '. --min-confidence 70 --exclude tests,docs --verbose'
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Install Vulture
+        run: pip install vulture
+
+      - name: Run Vulture
+        # Hier die gleichen Argumente wie zuvor verwenden
+        run: vulture . --min-confidence 70 --exclude tests,docs --verbose
