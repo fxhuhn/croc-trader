@@ -4,22 +4,61 @@
 
 {% block content %}
 <div class="card border-0 shadow-sm">
-    <div class="card-header bg-transparent border-0 d-flex justify-content-between align-items-center py-3">
-        <h5 class="mb-0 fw-bold text-primary">Live Signals</h5>
-        <span class="badge bg-primary rounded-pill">{{ signals|length }} Total</span>
+    <div class="card-header bg-transparent border-0 py-3">
+        <div class="d-flex flex-column flex-xl-row justify-content-between align-items-xl-center gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <h5 class="mb-0 fw-bold">Live Signals</h5>
+                <span class="badge bg-light text-dark border">{{ signals|length }}</span>
+            </div>
+
+            <!-- Filters Form -->
+            <form method="GET" class="d-flex flex-wrap gap-2 align-items-center">
+                <!-- Symbol Filter -->
+                <select name="symbol" class="form-select form-select-sm w-auto" style="min-width: 100px;">
+                    <option value="">Symbol: All</option>
+                    {% for s in unique_symbols %}
+                    <option value="{{ s }}" {% if current_filters.symbol == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+
+                <!-- Signal Filter -->
+                <select name="signal" class="form-select form-select-sm w-auto" style="min-width: 120px;">
+                    <option value="">Signal: All</option>
+                    {% for s in unique_signals %}
+                    {% set clean_s = s|replace('↑', '')|replace('↓', '')|replace('▲', '')|replace('▼', '')|trim %}
+                    <option value="{{ s }}" {% if current_filters.signal == s %}selected{% endif %}>{{ clean_s }}</option>
+                    {% endfor %}
+                </select>
+
+                <!-- Timeframe Filter -->
+                <select name="timeframe" class="form-select form-select-sm w-auto">
+                    <option value="">TF: All</option>
+                    {% for tf in unique_timeframes %}
+                    <option value="{{ tf }}" {% if current_filters.timeframe == tf %}selected{% endif %}>{{ tf }}</option>
+                    {% endfor %}
+                </select>
+
+                <!-- Date Filter -->
+                <input type="date" name="day" class="form-control form-control-sm w-auto" value="{{ current_filters.day or '' }}">
+
+                <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+                <a href="{{ url_for('ui.croc_signal') }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            </form>
+        </div>
     </div>
 
     <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-striped table-hover align-middle mb-0 text-nowrap">
             <thead class="table-light">
                 <tr>
                     <th>Timestamp</th>
                     <th>Symbol</th>
+                    <th>TF</th>
                     <th>Signal</th>
                     <th>Price</th>
                     <th>TP (3R)</th>
                     <th>SL (-1R)</th>
-                    <th>Status</th>
+                    <th class="text-center" style="width: 50px;">Track</th>
                 </tr>
             </thead>
             <tbody>
@@ -27,35 +66,54 @@
                 {% for row in signals %}
                 <tr>
                     <td class="text-secondary small">
-                        {{ row.timestamp | replace('T', ' ') | truncate(16, True, '') }}
+                        {# Timestamp safely formatted #}
+                        {{ row.timestamp | string | replace('T', ' ') | truncate(16, True, '') }}
                     </td>
-                    <td class="fw-bold">{{ row.symbol }}</td>
+                        <td class="fw-bold">
+                            <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank" class="text-decoration-none text-dark hover-primary">
+                                {{ row.symbol }} <i class="bi bi-box-arrow-up-right text-muted small ms-1" style="font-size: 0.7em;"></i>
+                            </a>
+                        </td>
                     <td>
-                        {% if 'LONG' in row.signal|upper or 'BUY' in row.signal|upper %}
+                        <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
+                            {{ row.timeframe or 'N/A' }}
+                        </span>
+                    </td>
+                    <td>
+                        {# CLEAN SIGNAL NAME: Remove arrows #}
+                        {% set raw_sig = row.signal %}
+                        {% set clean_sig = raw_sig|replace('↑', '')|replace('↓', '')|replace('▲', '')|replace('▼', '')|trim %}
+
+                        {% if 'LONG' in raw_sig|upper or 'BUY' in raw_sig|upper or 'GREEN' in raw_sig|upper %}
                             <span class="badge bg-success-subtle text-success border border-success-subtle">
-                                <i class="bi bi-arrow-up-short"></i> {{ row.signal }}
+                                {{ clean_sig }}
                             </span>
                         {% else %}
                             <span class="badge bg-danger-subtle text-danger border border-danger-subtle">
-                                <i class="bi bi-arrow-down-short"></i> {{ row.signal }}
+                                {{ clean_sig }}
                             </span>
                         {% endif %}
                     </td>
                     <td>{{ "%.2f"|format(row.close) }}</td>
                     <td class="text-success">{{ "%.2f"|format(row.tp_3r) if row.tp_3r else '-' }}</td>
                     <td class="text-danger">{{ "%.2f"|format(row.sl_1r) if row.sl_1r else '-' }}</td>
-                    <td>
-                        {% if row.rej_0r %}
-                            <span class="badge bg-secondary">Rejected</span>
-                        {% else %}
-                            <span class="badge bg-primary">Active</span>
-                        {% endif %}
+                    <td class="text-center">
+                        <!-- Toggle Track Button -->
+                        <button class="btn btn-link btn-sm p-0 text-decoration-none btn-track"
+                                data-symbol="{{ row.symbol }}"
+                                data-timestamp="{{ row.timestamp }}"
+                                data-signal="{{ row.signal }}"
+                                data-timeframe="{{ row.timeframe }}"
+                                data-tracked="{{ 'true' if row.is_tracked else 'false' }}"
+                                title="{{ 'Stop tracking' if row.is_tracked else 'Track this trade' }}">
+                            <i class="bi {{ 'bi-star-fill text-warning' if row.is_tracked else 'bi-star text-secondary' }} fs-5"></i>
+                        </button>
                     </td>
                 </tr>
                 {% endfor %}
             {% else %}
                 <tr>
-                    <td colspan="7" class="text-center py-5 text-muted">
+                    <td colspan="8" class="text-center py-5 text-muted">
                         <i class="bi bi-inbox fs-1 d-block mb-2"></i>
                         No signals found for current filters.
                     </td>
@@ -65,4 +123,82 @@
         </table>
     </div>
 </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const trackButtons = document.querySelectorAll('.btn-track');
+
+    trackButtons.forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const icon = this.querySelector('i');
+            const isTracked = this.dataset.tracked === 'true';
+
+            // Optimistic UI update
+            if (isTracked) {
+                icon.classList.replace('bi-star-fill', 'bi-star');
+                icon.classList.replace('text-warning', 'text-secondary');
+                this.dataset.tracked = 'false';
+                this.title = 'Track this trade';
+            } else {
+                icon.classList.replace('bi-star', 'bi-star-fill');
+                icon.classList.replace('text-secondary', 'text-warning');
+                this.dataset.tracked = 'true';
+                this.title = 'Stop tracking';
+            }
+
+            try {
+                const response = await fetch("{{ url_for('api.toggle_track') }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        symbol: this.dataset.symbol,
+                        timestamp: this.dataset.timestamp,
+                        signal: this.dataset.signal,
+                        timeframe: this.dataset.timeframe
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                const result = await response.json();
+                console.log('Tracking updated:', result);
+
+                // Ensure state matches server response (in case of error/desync)
+                if (result.is_tracked !== (this.dataset.tracked === 'true')) {
+                     // Revert if mismatch
+                    if (result.is_tracked) {
+                        icon.classList.replace('bi-star', 'bi-star-fill');
+                        icon.classList.replace('text-secondary', 'text-warning');
+                        this.dataset.tracked = 'true';
+                    } else {
+                        icon.classList.replace('bi-star-fill', 'bi-star');
+                        icon.classList.replace('text-warning', 'text-secondary');
+                        this.dataset.tracked = 'false';
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error toggling track:', error);
+                // Revert UI on error
+                if (isTracked) {
+                    icon.classList.replace('bi-star', 'bi-star-fill');
+                    icon.classList.replace('text-secondary', 'text-warning');
+                    this.dataset.tracked = 'true';
+                } else {
+                    icon.classList.replace('bi-star-fill', 'bi-star');
+                    icon.classList.replace('text-warning', 'text-secondary');
+                    this.dataset.tracked = 'false';
+                }
+                alert('Failed to update tracking status');
+            }
+        });
+    });
+});
+</script>
 {% endblock %}

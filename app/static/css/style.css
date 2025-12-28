@@ -278,3 +278,7 @@ body {
     font-size: 0.75rem;
     font-weight: 600;
 }
+
+.hover-primary:hover {
+    color: var(--accent-color) !important;
+}
