@@ -6,6 +6,7 @@ trade tracking, and statistics enrichment.
 """
 
 import sqlite3
+import sys
 import tempfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
