@@ -95,7 +95,9 @@ class PaperTrader:
         signal_date_str = raw_ts.split("T")[0]
 
         # PHASE 1: Initialization
-        if not all(k in trade for k in ("buy_limit", "stop_loss", "quantity")):
+        if not all(
+            trade.get(k) is not None for k in ("buy_limit", "stop_loss", "quantity")
+        ):
             if not self._initialize_trade_params(trade, signal_date_str):
                 return
 
