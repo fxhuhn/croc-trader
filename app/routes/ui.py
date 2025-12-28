@@ -66,9 +66,105 @@ def croc_signal():
 
 @bp.get("/trades")
 def trades():
-    """Journal-like view of all tracked trades."""
-    trades = current_app.container.repo.get_all_trades(limit=1000)
-    return render_template("trades.html", trades=trades)
+    """Journal-like view of all tracked trades with filters and stats."""
+
+    # 1. Get Filters
+    f_symbol = request.args.get("symbol")
+    f_signal = request.args.get("signal")
+    f_state = request.args.get("state")
+
+    # 2. Fetch All Trades (Repo should support filtering, but we can do it in memory for now)
+    all_trades = current_app.container.repo.get_all_trades(limit=2000)
+
+    filtered_trades = []
+
+    # Dropdown lists
+    unique_symbols = set()
+    unique_signals = set()
+    unique_states = set()
+
+    # 3. Filter & Collect Stats
+    for t in all_trades:
+        # Collect unique values for dropdowns
+        if t.get("symbol"):
+            unique_symbols.add(t["symbol"])
+        if t.get("signal"):
+            unique_signals.add(t["signal"])
+        if t.get("state"):
+            unique_states.add(t["state"])
+
+        # Apply Filters
+        if f_symbol and t.get("symbol") != f_symbol:
+            continue
+        if f_signal and t.get("signal") != f_signal:
+            continue
+        if f_state and t.get("state") != f_state:
+            continue
+
+        filtered_trades.append(t)
+
+    # 4. Calculate KPIs based on FILTERED data
+    stats = {
+        "total": len(filtered_trades),
+        "pending": 0,
+        "active": 0,
+        "rejected": 0,
+        "closed": 0,  # win + loss
+        "total_pnl": 0.0,
+    }
+
+    closed_count_for_avg = 0
+
+    for t in filtered_trades:
+        state = (t.get("state") or "").lower()
+        pnl = t.get("profit_loss") or 0.0
+
+        # --- NEW P/L CALCULATION LOGIC ---
+        state = (t.get("state") or "").lower()
+        quantity = t.get("quantity") or 0
+        entry_price = t.get("entry_price")
+        exit_price = t.get("exit_price")
+        current_price = t.get("current_price")  # Ensure your repo fetches this!
+
+        # Fallback for missing quantity to show *some* PnL
+        effective_qty = quantity if quantity and quantity > 0 else 1
+
+        if pnl is None:
+            if state in ["win", "loss", "closed"] and entry_price and exit_price:
+                # Calculate PnL with effective quantity
+                pnl = (exit_price - entry_price) * effective_qty
+            elif state == "active" and entry_price and current_price:
+                pnl = (current_price - entry_price) * effective_qty
+            else:
+                pnl = 0.0
+
+        # Store calculated PnL back into the dict for the template
+        t["profit_loss"] = pnl
+
+        if state == "pending":
+            stats["pending"] += 1
+        elif state == "active":
+            stats["active"] += 1
+        elif state == "rejected":
+            stats["rejected"] += 1
+        elif state in ["win", "loss", "closed"]:
+            stats["closed"] += 1
+            stats["total_pnl"] += pnl
+            closed_count_for_avg += 1
+
+    stats["avg_pnl"] = (
+        (stats["total_pnl"] / closed_count_for_avg) if closed_count_for_avg > 0 else 0.0
+    )
+
+    return render_template(
+        "trades.html",
+        trades=filtered_trades,
+        stats=stats,
+        unique_symbols=sorted(list(unique_symbols)),
+        unique_signals=sorted(list(unique_signals)),
+        unique_states=sorted(list(unique_states)),
+        current_filters={"symbol": f_symbol, "signal": f_signal, "state": f_state},
+    )
 
 
 # --- NEW ROUTES ---
