@@ -1,0 +1,37 @@
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <div class="d-flex align-items-center">
+            <i class="bi bi-lightning-charge-fill text-warning fs-4 me-2"></i>
+            <span class="sidebar-title">Croc Trader</span>
+        </div>
+        <button class="btn-close-sidebar d-lg-none" id="closeSidebar">
+            <i class="bi bi-x-lg"></i>
+        </button>
+    </div>
+
+    <nav class="sidebar-nav">
+        <a href="{{ url_for('ui.croc_signal') }}" class="nav-item {% if request.endpoint == 'ui.croc_signal' %}active{% endif %}">
+            <i class="bi bi-activity"></i>
+            <span>Signals</span>
+        </a>
+        <a href="{{ url_for('ui.trades') }}" class="nav-item {% if request.endpoint == 'ui.trades' %}active{% endif %}">
+            <i class="bi bi-journal-text"></i>
+            <span>Trades</span>
+        </a>
+        <a href="{{ url_for('ui.strategies_list') }}" class="nav-item {% if request.endpoint in ['ui.strategies_list', 'ui.strategy_detail'] %}active{% endif %}">
+            <i class="bi bi-bar-chart-line"></i>
+            <span>Strategies</span>
+        </a>
+
+        <div class="nav-divider"></div>
+
+        <a href="{{ url_for('api.health') }}" class="nav-item" target="_blank">
+            <i class="bi bi-heart-pulse"></i>
+            <span>API Health</span>
+        </a>
+    </nav>
+
+    <div class="sidebar-footer">
+        <small class="text-muted">v0.3.0</small>
+    </div>
+</aside>

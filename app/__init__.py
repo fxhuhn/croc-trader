@@ -11,7 +11,7 @@ from app.routes import ui as ui_routes
 
 
 def create_app(config: Config | None = None) -> Flask:
-    app = Flask(__name__, template_folder="templates")
+    app = Flask(__name__, template_folder="templates", static_folder="static")
     cfg = config or Config()
 
     # NEW: load symbol → exchange map

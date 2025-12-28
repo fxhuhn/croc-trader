@@ -1,127 +1,215 @@
 {% extends "base.html" %}
 
+{% block page_title %}Strategy Report{% endblock %}
+
 {% block content %}
-<div class="space-y-6">
-    <!-- Header -->
-    <div class="flex justify-between items-center border-b border-gray-700 pb-4">
-        <div>
-            <h1 class="text-2xl font-bold text-white">{{ strategy.metrics.strategy_name }}</h1>
-            <p class="text-sm text-gray-400">Backtest Report</p>
-        </div>
-        <a href="{{ url_for('ui.strategies_list') }}" class="text-gray-400 hover:text-white">
-            &larr; Back to List
-        </a>
-    </div>
-
-    <!-- KPIS -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {% set perf = strategy.metrics.performance %}
-        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700">
-            <p class="text-xs text-gray-400 uppercase">Total Return</p>
-            <p class="text-2xl font-bold text-green-400">{{ perf.total_return_pct }}%</p>
-        </div>
-        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700">
-            <p class="text-xs text-gray-400 uppercase">CAGR</p>
-            <p class="text-2xl font-bold text-blue-400">{{ perf.cagr_pct }}%</p>
-        </div>
-        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700">
-            <p class="text-xs text-gray-400 uppercase">Max Drawdown</p>
-            <p class="text-2xl font-bold text-red-400">-{{ perf.max_drawdown_pct }}%</p>
-        </div>
-        <div class="p-4 bg-gray-800 rounded-lg border border-gray-700">
-            <p class="text-xs text-gray-400 uppercase">End Equity</p>
-            <p class="text-2xl font-bold text-white">${{ "{:,.0f}".format(perf.end_equity) }}</p>
-        </div>
-    </div>
-
-    <!-- Chart & Monthly Returns -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Equity Chart -->
-        <div class="lg:col-span-2 bg-gray-800 rounded-lg border border-gray-700 p-4">
-            <h3 class="text-lg font-semibold text-white mb-4">Equity Curve</h3>
-            <img src="{{ strategy.chart_url }}" alt="Equity Chart" class="w-full rounded bg-white/5">
-        </div>
-
-        <!-- Monthly Returns Table -->
-        <div class="bg-gray-800 rounded-lg border border-gray-700 p-4 overflow-x-auto">
-            <h3 class="text-lg font-semibold text-white mb-4">Monthly Returns (%)</h3>
-            <div class="prose prose-invert max-w-none monthly-table-wrapper">
-                {{ strategy.monthly_table | safe }}
+<!-- 1. KPI Cards (Top Row) -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm p-3 h-100">
+            <div class="small text-muted text-uppercase fw-bold">Total Return</div>
+            {% set ret = perf.get('total_return_pct') or perf.get('Return [%]') or perf.get('Total Return') or 0 %}
+            <div class="fs-4 fw-bold {{ 'text-success' if ret|float > 0 else 'text-danger' }}">
+                {{ "%.2f"|format(ret|float) }}%
             </div>
         </div>
     </div>
-
-    <!-- Trades Table (Reusing DataTables setup) -->
-    <div class="bg-gray-800 rounded-lg border border-gray-700 p-6">
-        <h3 class="text-lg font-semibold text-white mb-4">Trade History</h3>
-        <div class="overflow-x-auto">
-            <table id="backtestTradesTable" class="w-full text-sm text-left text-gray-400">
-                <thead class="text-xs text-gray-400 uppercase bg-gray-750 border-b border-gray-700">
-                    <tr>
-                        <th class="px-4 py-3">Symbol</th>
-                        <th class="px-4 py-3">Entry</th>
-                        <th class="px-4 py-3">Exit</th>
-                        <th class="px-4 py-3">Hold Days</th>
-                        <th class="px-4 py-3 text-right">PnL $</th>
-                        <th class="px-4 py-3 text-right">Return %</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for t in trades %}
-                    <tr class="border-b border-gray-700 hover:bg-gray-750">
-                        <td class="px-4 py-3 font-bold text-white">{{ t.symbol }}</td>
-                        <td class="px-4 py-3">{{ t.entry_date }}</td>
-                        <td class="px-4 py-3">{{ t.exit_date }}</td>
-                        <td class="px-4 py-3">{{ t.hold_days }}</td>
-                        <td class="px-4 py-3 text-right font-mono {% if t.pnl > 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                            {{ "{:,.2f}".format(t.pnl) }}
-                        </td>
-                        <td class="px-4 py-3 text-right font-mono {% if t.return_pct > 0 %}text-green-400{% else %}text-red-400{% endif %}">
-                            {{ "{:,.2f}".format(t.return_pct) }}%
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm p-3 h-100">
+            <div class="small text-muted text-uppercase fw-bold">CAGR</div>
+            {% set cagr = perf.get('cagr_pct') or perf.get('CAGR [%]') or perf.get('CAGR') or 0 %}
+            <div class="fs-4 fw-bold">{{ "%.2f"|format(cagr|float) }}%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm p-3 h-100">
+            <div class="small text-muted text-uppercase fw-bold">Max Drawdown</div>
+            {% set dd = perf.get('max_drawdown_pct') or perf.get('Max Drawdown [%]') or perf.get('Max Drawdown') or 0 %}
+            <div class="fs-4 fw-bold text-danger">{{ "%.2f"|format(dd|float) }}%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm p-3 h-100">
+            <div class="small text-muted text-uppercase fw-bold">End Equity</div>
+            {% set eq = perf.get('end_equity') or perf.get('Equity Final [$]') or perf.get('End Equity') or 0 %}
+            <div class="fs-4 fw-bold text-primary">${{ "{:,.0f}".format(eq|float) }}</div>
         </div>
     </div>
 </div>
 
-<script>
-    $(document).ready(function() {
-        $('#backtestTradesTable').DataTable({
-            "order": [[ 2, "desc" ]], // Sort by Exit Date
-            "pageLength": 25,
-            "dom": '<"flex justify-between items-center mb-4"f>t<"flex justify-between items-center mt-4"ip>',
-            "language": {
-                "search": "",
-                "searchPlaceholder": "Search trades..."
-            }
-        });
+<!-- 2. Equity Curve + Monthly Returns Grid -->
+<div class="row g-4 mb-4">
+    <!-- Equity Curve (Full Width on Mobile, 70% on Desktop) -->
+    <div class="col-xl-8">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent border-0 py-3">
+                <h5 class="mb-0 fw-bold">Equity Curve</h5>
+            </div>
+            <div class="card-body text-center d-flex align-items-center justify-content-center bg-light rounded m-3">
+                {% if strategy.chart_url %}
+                    <a href="#" data-bs-toggle="modal" data-bs-target="#chartModal" class="d-block w-100 h-100">
+                        <img src="{{ strategy.chart_url }}" class="img-fluid rounded" style="max-height: 500px; object-fit: contain;" alt="Strategy Chart">
+                    </a>
+                {% else %}
+                    <p class="text-muted">No chart available.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 
-        // Basic styling fix for the Pandas HTML table
-        $('.monthly-table-wrapper table').addClass('w-full text-sm');
-        $('.monthly-table-wrapper th').addClass('px-2 py-1 text-gray-500 font-normal text-center bg-gray-900');
-        $('.monthly-table-wrapper td').addClass('px-2 py-1 text-center border border-gray-700');
-    });
-</script>
+    <!-- Monthly Returns (Stacked on Mobile, 30% on Desktop - Vertical Layout?) -->
+    <!-- ACTUALLY, you asked to place it BELOW to avoid scrolling issues. -->
+    <!-- So let's make it Full Width below the chart for maximum readability -->
+</div>
 
-<style>
-    /* DataTables Customization for Dark Mode */
-    .dataTables_wrapper .dataTables_filter input {
-        background-color: #374151;
-        border: 1px solid #4B5563;
-        color: #fff;
-        padding: 0.5rem 1rem;
-        border-radius: 0.375rem;
-    }
-    .dataTables_wrapper .dataTables_paginate .paginate_button {
-        color: #9CA3AF !important;
-    }
-    .dataTables_wrapper .dataTables_paginate .paginate_button.current {
-        background: #4B5563 !important;
-        border-color: #4B5563 !important;
-        color: #fff !important;
-    }
-</style>
+<!-- 3. Monthly Returns (Full Width) -->
+{% if monthly_data %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-transparent border-0 py-3">
+        <h5 class="mb-0 fw-bold">Monthly Returns (%)</h5>
+    </div>
+    <div class="table-responsive">
+        <!-- 'table-sm' makes it compact, 'w-100' ensures full width usage -->
+        <table class="table table-bordered table-hover text-center mb-0 align-middle w-100">
+            <thead class="table-light">
+                <tr>
+                    {% for col in monthly_cols %}
+                        {% if col|lower in ['year', 'total', 'avg'] %}
+                            <th class="fw-bold text-secondary">{{ col }}</th>
+                        {% else %}
+                            <th class="fw-bold text-secondary">{{ col[:3] }}</th>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in monthly_data %}
+                <tr>
+                    {% set row_year = row['Year'] %}
+                    {% for col in monthly_cols %}
+                        {% set val = row[col] %}
+
+                        {% if col|lower == 'year' %}
+                            <td class="fw-bold bg-light">{{ val }}</td>
+                        {% elif col|lower in ['total', 'avg', 'best', 'worst'] %}
+                            <td class="fw-bold {{ 'text-success' if val|float > 0 else 'text-danger' }}">
+                                {{ "%.1f"|format(val|float) }}
+                            </td>
+                        {% else %}
+                            <!-- Clickable Month Cells -->
+                            {% if val == 0 or val == 0.0 %}
+                                <td class="text-muted bg-light">-</td>
+                            {% else %}
+                                {% set m_map = {'Jan':'01','Feb':'02','Mar':'03','Apr':'04','May':'05','Jun':'06','Jul':'07','Aug':'08','Sep':'09','Oct':'10','Nov':'11','Dec':'12'} %}
+                                {% set month_num = m_map.get(col, '') %}
+
+                                <td class="p-0 position-relative">
+                                    <a href="{{ url_for('ui.strategy_detail', strategy_id=strategy_id, year=row_year, month=month_num) }}"
+                                       class="d-block w-100 h-100 text-decoration-none py-2 {{ 'text-success bg-success-subtle' if val|float > 0 else 'text-danger bg-danger-subtle' }}"
+                                       title="Filter: {{ col }} {{ row_year }}">
+                                        {{ "%.1f"|format(val|float) }}
+                                    </a>
+                                </td>
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- 4. Trade List -->
+<div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent border-0 py-3">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div class="d-flex align-items-center gap-2">
+                <h5 class="mb-0 fw-bold">Trade List</h5>
+                <span class="badge bg-light text-dark border">{{ trades|length }}</span>
+                {% if current_filters.year or current_filters.month or current_filters.symbol %}
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                        Filtered:
+                        {{ current_filters.year if current_filters.year else 'All' }} /
+                        {{ current_filters.month if current_filters.month else 'All' }}
+                    </span>
+                {% endif %}
+            </div>
+
+            <form method="GET" class="d-flex flex-wrap gap-2">
+                <select name="symbol" class="form-select form-select-sm w-auto">
+                    <option value="">Symbol: All</option>
+                    {% for s in symbols %}
+                    <option value="{{ s }}" {% if current_filters.symbol == s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+
+                <select name="year" class="form-select form-select-sm w-auto">
+                    <option value="">Year: All</option>
+                    {% for y in years %}
+                    <option value="{{ y }}" {% if current_filters.year == y %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+
+                <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+                <a href="{{ url_for('ui.strategy_detail', strategy_id=strategy_id) }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            </form>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle mb-0 text-nowrap">
+            <thead class="table-light">
+                <tr>
+                    <th>Symbol</th>
+                    <th>Entry Date</th>
+                    <th>Entry Price</th>
+                    <th>Exit Date</th>
+                    <th>Exit Price</th>
+                    <th class="text-center">Days</th>
+                    <th class="text-end">PnL ($)</th>
+                    <th class="text-end">Return %</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for t in trades %}
+                <tr>
+                    <td class="fw-bold">{{ t.symbol }}</td>
+                    <td class="text-secondary">{{ t.entry_date }}</td>
+                    <td>{{ "%.2f"|format(t.entry_price) if t.entry_price else '-' }}</td>
+                    <td class="text-secondary">{{ t.exit_date }}</td>
+                    <td>{{ "%.2f"|format(t.exit_price) if t.exit_price else '-' }}</td>
+                    <td class="text-center">{{ t.hold_days }}</td>
+                    <td class="text-end fw-bold {{ 'text-success' if t.pnl > 0 else 'text-danger' }}">
+                        {{ "{:,.2f}".format(t.pnl) }}
+                    </td>
+                    <td class="text-end fw-bold {{ 'text-success' if t.return_pct > 0 else 'text-danger' }}">
+                        {{ "{:,.2f}".format(t.return_pct) }}%
+                    </td>
+                </tr>
+            {% else %}
+                <tr>
+                    <td colspan="8" class="text-center py-5 text-muted">No trades match your filter criteria.</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Chart Modal -->
+<div class="modal fade" id="chartModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Equity Curve</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <img src="{{ strategy.chart_url }}" class="img-fluid w-100" alt="Full Chart">
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

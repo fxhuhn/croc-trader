@@ -4,7 +4,15 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify, render_template, request
+from flask import (
+    Blueprint,
+    abort,
+    current_app,
+    jsonify,
+    render_template,
+    request,
+    send_from_directory,
+)
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -68,22 +76,114 @@ def trades():
 
 @bp.route("/strategies")
 def strategies_list():
-    # Now 'viewer' is defined
-    strategies = viewer.list_strategies()
+    # 1. Get basic list (ID, name, timestamp)
+    basic_list = viewer.list_strategies()
+
+    # 2. Enrich with metrics
+    strategies = []
+    for s in basic_list:
+        try:
+            # Re-use get_details logic to load the JSON/YAML
+            details = viewer.get_details(s["id"])
+            if details:
+                # Handle nested performance dict safely
+                raw_metrics = details.get("metrics", {})
+                if not isinstance(raw_metrics, dict):
+                    raw_metrics = {}
+
+                perf = raw_metrics.get("performance", raw_metrics)
+
+                # Attach perf to the strategy object
+                s["perf"] = perf
+            else:
+                s["perf"] = {}
+        except Exception:
+            s["perf"] = {}
+
+        strategies.append(s)
+
     return render_template("strategies.html", strategies=strategies)
+
+
+# app/routes/ui.py
 
 
 @bp.route("/strategies/<strategy_id>")
 def strategy_detail(strategy_id):
+    # 1. Load Data
     data = viewer.get_details(strategy_id)
     if not data:
         abort(404)
 
-    full_name = data["metrics"].get("strategy_name")
-    trades = viewer.get_trades(full_name)
+    raw_metrics = data.get("metrics", {})
+    if not isinstance(raw_metrics, dict):
+        raw_metrics = {}
+
+    perf_data = raw_metrics.get("performance", raw_metrics)
+    full_name = raw_metrics.get("strategy_name")
+
+    # 2. Process Monthly Returns (Pass Data, Not HTML)
+    monthly_data = []
+    monthly_cols = []
+
+    monthly_path = RESULTS_DIR / f"{strategy_id}_monthly_returns.csv"
+    if monthly_path.exists():
+        try:
+            import pandas as pd
+
+            df = pd.read_csv(monthly_path)
+            # Fill NaNs with empty string or 0 for display
+            df = df.fillna(0)
+            # Convert to list of dictionaries for Jinja
+            monthly_data = df.to_dict(orient="records")
+            monthly_cols = df.columns.tolist()
+        except Exception as e:
+            current_app.logger.error(f"Error loading monthly returns: {e}")
+
+    # 3. Get All Trades
+    all_trades = viewer.get_trades(full_name)
+
+    # 4. Filter Logic
+    f_symbol = request.args.get("symbol")
+    f_year = request.args.get("year")
+    f_month = request.args.get("month")
+
+    filtered_trades = []
+    available_symbols = set()
+    available_years = set()
+
+    for t in all_trades:
+        entry = t.get("entry_date", "")
+        t_year = entry[:4] if entry else ""
+        t_month = entry[5:7] if len(entry) >= 7 else ""
+
+        if t.get("symbol"):
+            available_symbols.add(t["symbol"])
+        if t_year:
+            available_years.add(t_year)
+
+        if f_symbol and t.get("symbol") != f_symbol:
+            continue
+        if f_year and t_year != f_year:
+            continue
+        if f_month and t_month != f_month:
+            continue
+
+        filtered_trades.append(t)
 
     return render_template(
-        "strategy_detail.html", strategy=data, trades=trades, strategy_id=strategy_id
+        "strategy_detail.html",
+        strategy=data,
+        perf=perf_data,
+        trades=filtered_trades,
+        strategy_id=strategy_id,
+        # Monthly Data
+        monthly_data=monthly_data,
+        monthly_cols=monthly_cols,
+        # Filters
+        symbols=sorted(list(available_symbols)),
+        years=sorted(list(available_years), reverse=True),
+        current_filters={"symbol": f_symbol, "year": f_year, "month": f_month},
     )
 
 
