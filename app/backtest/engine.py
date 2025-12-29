@@ -30,7 +30,11 @@ class RebalanceEvent:
 
 
 class BacktestEngine:
-    """Runs a schedule of rebalance events and delegates signal generation to a strategy."""
+    """
+    Runs a schedule of rebalance events and delegates signal generation to a strategy.
+
+    Supports dynamic universe per event via strategy.universe_for_date(trade_date).
+    """
 
     def __init__(
         self,
@@ -42,7 +46,9 @@ class BacktestEngine:
         backtest_repo: BacktestRepository,
     ) -> None:
         self.strategy = strategy
-        self.universe = universe
+        self.universe = (
+            universe  # Fallback if strategy doesn't provide universe_for_date
+        )
         self.config = config
         self.market_repo = market_repo
         self.backtest_repo = backtest_repo
@@ -54,40 +60,48 @@ class BacktestEngine:
 
     def run(self) -> None:
         logger.info("Starting backtest: %s", self.strategy.name)
-        logger.debug("Universe size: %d", len(self.universe))
+        logger.debug("Base universe size: %d", len(self.universe))
 
         self.backtest_repo.init_tables()
         self.backtest_repo.cleanup_strategy(self.config.strategy_name)
 
-        raw = self._load_data()
-        if raw.empty:
-            logger.warning("No data loaded; aborting.")
+        # Load minimal anchor data to build rebalance schedule
+        anchor_symbol = self._get_anchor_symbol()
+        anchor_df = self._load_anchor_data(anchor_symbol)
+
+        if anchor_df.empty:
+            logger.warning("No anchor data loaded; aborting.")
             return
 
-        features = self.strategy.prepare_features(raw)
-        schedule = self._build_schedule(features)
-
+        schedule = self._build_schedule(anchor_df)
         logger.info("Rebalance periods: %d", len(schedule))
+
         for event in schedule:
-            self._process_event(features, event)
+            self._process_event(event)
 
         if schedule:
-            self._force_close_all(features, schedule[-1].trade_date)
+            self._force_close_all(schedule[-1].trade_date)
 
         self.reporter.generate()
         logger.info("Backtest finished. Results in %s", self.config.out_dir)
 
-    def _load_data(self) -> pd.DataFrame:
-        start_dt = pd.to_datetime(self.config.start_date) - timedelta(
-            days=self.strategy.lookback_days
-        )
-        logger.info("Loading data from %s", start_dt.date())
+    def _get_anchor_symbol(self) -> str:
+        """Get anchor symbol for schedule building (QQQ preferred, or first symbol)."""
+        if "QQQ" in self.universe:
+            return "QQQ"
+        return self.universe[0] if self.universe else "SPY"
+
+    def _load_anchor_data(self, symbol: str) -> pd.DataFrame:
+        """Load minimal data for schedule building."""
+        start_dt = pd.to_datetime(self.config.start_date) - timedelta(days=30)
+        logger.debug("Loading anchor data (%s) from %s", symbol, start_dt.date())
         return self.market_repo.get_data_after_date(
-            self.universe, str(start_dt.date()), inclusive=True
+            [symbol], str(start_dt.date()), inclusive=True
         )
 
-    def _build_schedule(self, features: pd.DataFrame) -> list[RebalanceEvent]:
-        sched = self.strategy.get_rebalance_schedule(features)
+    def _build_schedule(self, anchor_df: pd.DataFrame) -> list[RebalanceEvent]:
+        """Build rebalance schedule using strategy's schedule method."""
+        sched = self.strategy.get_rebalance_schedule(anchor_df)
         if sched.empty:
             logger.warning("Schedule is empty.")
             return []
@@ -102,19 +116,37 @@ class BacktestEngine:
             )
         return events
 
-    def _process_event(self, features: pd.DataFrame, event: RebalanceEvent) -> None:
-        targets = self.strategy.generate_signals(features, event.signal_date)
-        target_set = set(targets)
+    def _process_event(self, event: RebalanceEvent) -> None:
+        """
+        Process single rebalance event with dynamic universe.
+
+        Universe is determined as-of trade_date to avoid lookahead bias.
+        """
+        # Get universe for this specific trade_date
+        universe = self._get_universe_for_event(event.trade_date)
 
         logger.debug(
-            "Event: signal_date=%s trade_date=%s targets=%d cash=%.2f positions=%d",
+            "Event: signal_date=%s trade_date=%s universe=%d symbols cash=%.2f positions=%d",
             event.signal_date.date(),
             event.trade_date.date(),
-            len(targets),
+            len(universe),
             self.portfolio.cash,
             len(self.portfolio.positions),
         )
 
+        # Load historical data for this universe
+        features = self._load_features(universe, event.trade_date)
+        if features.empty:
+            logger.debug(
+                "No features for trade_date=%s; skipping", event.trade_date.date()
+            )
+            return
+
+        # Generate signals using signal_date (month-end)
+        targets = self.strategy.generate_signals(features, event.signal_date)
+        target_set = set(targets)
+
+        # Get prices for trade_date (month-start)
         try:
             trade_slice = features.loc[event.trade_date]
         except KeyError:
@@ -123,10 +155,12 @@ class BacktestEngine:
             )
             return
 
+        # Close positions not in target set
         for sym in list(self.portfolio.positions.keys()):
             if sym not in target_set:
                 self._close_position(sym, trade_slice, event.trade_date)
 
+        # Open new positions
         slots = self.portfolio.free_slots(self.config.max_positions)
         if slots > 0 and targets and self.portfolio.cash > 1000:
             to_buy = [s for s in targets if not self.portfolio.has_position(s)][:slots]
@@ -137,6 +171,36 @@ class BacktestEngine:
 
         self._mark_to_market(trade_slice, event.trade_date)
 
+    def _get_universe_for_event(self, trade_date: pd.Timestamp) -> list[str]:
+        """Get universe for specific trade_date (dynamic if strategy supports it)."""
+        if hasattr(self.strategy, "universe_for_date"):
+            universe = self.strategy.universe_for_date(trade_date)
+            if universe:
+                logger.debug(
+                    "Using dynamic universe as-of %s: %d symbols",
+                    trade_date.date(),
+                    len(universe),
+                )
+                return universe
+
+        return self.universe
+
+    def _load_features(
+        self, universe: list[str], trade_date: pd.Timestamp
+    ) -> pd.DataFrame:
+        """Load historical data and compute features for given universe."""
+        start_dt = pd.to_datetime(trade_date) - timedelta(
+            days=self.strategy.lookback_days
+        )
+
+        raw = self.market_repo.get_data_after_date(
+            universe, str(start_dt.date()), inclusive=True
+        )
+        if raw.empty:
+            return pd.DataFrame()
+
+        return self.strategy.prepare_features(raw)
+
     def _open_position(
         self,
         symbol: str,
@@ -144,6 +208,7 @@ class BacktestEngine:
         prices: pd.DataFrame,
         date: datetime | pd.Timestamp,
     ) -> None:
+        """Open a new position."""
         if symbol not in prices.index:
             return
 
@@ -161,6 +226,7 @@ class BacktestEngine:
         prices: pd.DataFrame,
         date: datetime | pd.Timestamp,
     ) -> None:
+        """Close an existing position and log the trade."""
         if symbol not in prices.index:
             return
 
@@ -187,6 +253,7 @@ class BacktestEngine:
     def _mark_to_market(
         self, prices: pd.DataFrame, date: datetime | pd.Timestamp
     ) -> None:
+        """Update portfolio equity and log to database."""
         close_prices = prices["close"]
         total = float(self.portfolio.equity(close_prices))
         dd = float(self.portfolio.drawdown_pct(total))
@@ -201,12 +268,27 @@ class BacktestEngine:
             self.config.strategy_name,
         )
 
-    def _force_close_all(self, features: pd.DataFrame, date: pd.Timestamp) -> None:
+    def _force_close_all(self, final_date: pd.Timestamp) -> None:
+        """Force close all remaining positions at end of backtest."""
+        held_symbols = list(self.portfolio.positions.keys())
+        if not held_symbols:
+            return
+
+        # Load recent data for held symbols only
+        start_dt = pd.to_datetime(final_date) - timedelta(days=10)
+        raw = self.market_repo.get_data_after_date(
+            held_symbols, str(start_dt.date()), inclusive=True
+        )
+
+        if raw.empty:
+            logger.debug("No data for final close on %s", final_date.date())
+            return
+
         try:
-            prices = features.loc[date]
+            prices = raw.loc[final_date]
         except KeyError:
-            logger.debug("No prices for final date=%s", date.date())
+            logger.debug("No prices for final date=%s", final_date.date())
             return
 
         for sym in list(self.portfolio.positions.keys()):
-            self._close_position(sym, prices, date)
+            self._close_position(sym, prices, final_date)
