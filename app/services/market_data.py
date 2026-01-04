@@ -35,7 +35,9 @@ def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     ].copy()
 
 
-def convert_to_flat_format(df: pd.DataFrame, provider: str) -> pd.DataFrame:
+def convert_to_flat_format(
+    df: pd.DataFrame, provider: str, timeframe: str = "1D"
+) -> pd.DataFrame:
     """
     Wandelt den yfinance MultiIndex in ein flaches Format für die DB um.
     Fügt die 'provider' Spalte hinzu.
@@ -60,6 +62,9 @@ def convert_to_flat_format(df: pd.DataFrame, provider: str) -> pd.DataFrame:
 
     # Provider hinzufügen
     df["provider"] = provider
+
+    # Timeframe hinzufügen
+    df["timeframe"] = timeframe
 
     # Datentypen erzwingen
     df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
@@ -95,6 +100,7 @@ class MarketDatabase:
             symbol TEXT NOT NULL,
             date TEXT NOT NULL,
             provider TEXT NOT NULL,
+            timeframe TEXT NOT NULL DEFAULT '1D',
             open REAL, high REAL, low REAL, close REAL, volume REAL,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (symbol, date, provider)
@@ -104,37 +110,37 @@ class MarketDatabase:
         with self._get_conn() as conn:
             conn.executescript(schema)
 
-    def get_last_entry(self, symbol: str, provider: str):
-        """Holt das letzte Datum und den Close-Preis für Vergleiche."""
+    def get_last_entry(self, symbol: str, provider: str, timeframe: str = "1D"):
+        """Holt das letzte Datum für spezifischen Timeframe."""
         sql = """
         SELECT date, close FROM market_prices
-        WHERE symbol = ? AND provider = ?
+        WHERE symbol = ? AND provider = ? AND timeframe = ?
         ORDER BY date DESC LIMIT 1
         """
         with self._get_conn() as conn:
-            row = conn.execute(sql, (symbol, provider)).fetchone()
+            row = conn.execute(sql, (symbol, provider, timeframe)).fetchone()
             if row:
                 return {"date": row["date"], "close": row["close"]}
             return None
 
-    def delete_symbol_data(self, symbol: str, provider: str):
-        """Löscht alle Daten eines Symbols (für Full Reload nach Split)."""
+    def delete_symbol_data(self, symbol: str, provider: str, timeframe: str = "1D"):
+        """Löscht Daten nur für diesen Timeframe."""
         with self._get_conn() as conn:
             conn.execute(
-                "DELETE FROM market_prices WHERE symbol = ? AND provider = ?",
-                (symbol, provider),
+                "DELETE FROM market_prices WHERE symbol = ? AND provider = ? AND timeframe = ?",
+                (symbol, provider, timeframe),
             )
 
     def upsert_data(self, df: pd.DataFrame):
-        """Massenspeicherung von Daten."""
         if df.empty:
             return
 
         data = df.to_dict(orient="records")
+        # SQL erweitert um timeframe
         sql = """
         INSERT OR REPLACE INTO market_prices
-        (symbol, date, provider, open, high, low, close, volume)
-        VALUES (:symbol, :date, :provider, :open, :high, :low, :close, :volume)
+        (symbol, date, provider, timeframe, open, high, low, close, volume)
+        VALUES (:symbol, :date, :provider, :timeframe, :open, :high, :low, :close, :volume)
         """
         with self._get_conn() as conn:
             conn.executemany(sql, data)
@@ -205,6 +211,8 @@ class MarketDataWorker:
         logger.info("Market Data Update abgeschlossen.")
 
     def _process_symbol(self, symbol: str, provider: str):
+        TIMEFRAME = "1D"
+
         # 1. Check was wir in der DB haben
         last_entry = self.db.get_last_entry(symbol, provider)
 
@@ -242,6 +250,7 @@ class MarketDataWorker:
         # Spalte 'symbol' und 'provider' hinzufügen für den DB Import
         df["symbol"] = symbol
         df["provider"] = provider
+        df["timeframe"] = TIMEFRAME
 
         # Datum String sicherstellen
         df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
@@ -285,6 +294,7 @@ class MarketDataWorker:
                 df = clean_ohlcv(df)
                 df["symbol"] = symbol
                 df["provider"] = provider
+                df["timeframe"] = TIMEFRAME
                 df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
 
             self.db.delete_symbol_data(symbol, provider)

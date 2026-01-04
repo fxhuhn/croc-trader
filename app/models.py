@@ -3,6 +3,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from .mapping import mapper
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,6 +51,15 @@ class CrocSignal:
 
         if self.exchange is None:
             self.exchange = self.full_symbol or self.symbol  # Letzter Fallback
+
+        mapped_exchange = mapper.get_exchange(self.symbol)
+
+        if mapped_exchange:
+            # Wir haben einen Treffer im JSON -> Überschreiben
+            self.exchange = mapped_exchange
+        elif self.exchange == "BATS" or self.exchange is None:
+            # Kein Treffer im JSON, aber BATS oder Leer -> Fallback Versuche
+            self.exchange = "UNKNOWN"
 
         # Timestamp Parsing (falls String übergeben wurde)
         if isinstance(self.timestamp, str):

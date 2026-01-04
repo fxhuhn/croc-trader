@@ -73,6 +73,13 @@ class SecurityConfig:
     whitelist: List[str] = field(default_factory=list)
 
 
+@dataclass
+class TelegramConfig:
+    token: str = ""
+    chat_id: str = ""
+    enabled: bool = False
+
+
 # ---------------------------------------------------------
 # Teil 2: Die Haupt-Applikations-Konfiguration
 # ---------------------------------------------------------
@@ -89,6 +96,7 @@ class AppConfig:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     worker: WebhookWorkerConfig = field(default_factory=WebhookWorkerConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    telegram: TelegramConfig = field(default_factory=TelegramConfig)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AppConfig":
@@ -121,12 +129,17 @@ class AppConfig:
         sec_data = data.get("security", {})
         sec_config = SecurityConfig(**sec_data) if sec_data else SecurityConfig()
 
+        # 7. Telegram parsen
+        tele_data = data.get("telegram", {})
+        tele_config = TelegramConfig(**tele_data) if tele_data else TelegramConfig()
+
         return cls(
             database=db_config,
             webserver=web_config,
             logging=logging_config,
             worker=worker_config,
             security=sec_config,
+            telegram=tele_config,
         )
 
 

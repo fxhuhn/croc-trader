@@ -128,8 +128,8 @@ class CsvImportWorker:
             try:
                 if file.stat().st_mtime < limit:
                     file.unlink()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Fehler beim Löschen von {file}: {e}")
 
     def backup(self, backup_folder: Path):
         """Erstellt ein Hot-Backup der Datenbank im laufenden Betrieb."""

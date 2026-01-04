@@ -3,6 +3,7 @@ import logging
 from flask import Blueprint, current_app, jsonify, request
 
 from .models import CrocSignal
+from .services.database import SignalDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -91,3 +92,143 @@ def webhook():
     except Exception as e:
         logger.error(f"Internal Error: {e}", exc_info=True)
         return jsonify({"status": "error"}), 500
+
+
+@main_bp.route("/croc-signal", methods=["GET"])
+def get_croc_signals():
+    """
+    Liefert eine Liste der letzten Signale angereichert mit Win-Rates.
+    Parameter:
+      - limit: Anzahl der Einträge (Standard: 50)
+      - symbol: Filter nach Aktienkürzel (Optional)
+    """
+    # 1. Parameter aus URL lesen
+    limit = request.args.get("limit", default=50, type=int)
+    symbol = request.args.get("symbol", default=None, type=str)
+
+    # 2. Datenbank-Pfad aus Config holen
+    conf = current_app.config["APP_CONFIG"]
+    db_path = conf.get_db_path("signals")
+
+    # 3. Datenbank abfragen
+    try:
+        db = SignalDatabase(db_path)
+        data = db.get_latest_signals_with_stats(limit=limit, symbol=symbol)
+
+        return jsonify(
+            {
+                "status": "success",
+                "count": len(data),
+                "filter": {"symbol": symbol, "limit": limit},
+                "data": data,
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"API Error /croc-signal: {e}", exc_info=True)
+        bot = current_app.extensions.get("telegram")
+        if bot:
+            bot.send(f"⚠️ **FEHLER im Webhook:**\n{str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@main_bp.route("/admin/clean-exchanges", methods=["POST"])
+def clean_exchanges():
+    # Security Check (IP Auth)
+    check_ip_auth()
+
+    conf = current_app.config["APP_CONFIG"]
+    db = SignalDatabase(conf.get_db_path("signals"))
+
+    count = db.clean_batz_exchanges()
+
+    return jsonify({"status": "success", "updated_rows": count})
+
+
+@main_bp.route("/screener/dip-buyer", methods=["GET"])
+def get_dip_buyer_results():
+    """
+    Zeigt die Ergebnisse des Dip-Buyer Screeners.
+    Query Params: limit (default 50)
+    """
+    limit = request.args.get("limit", 50, type=int)
+
+    conf = current_app.config["APP_CONFIG"]
+    db_path = conf.get_db_path("signals")
+
+    try:
+        db = SignalDatabase(db_path)
+        # Wir holen explizit die Strategie "dip_buyer"
+        results = db.get_screener_results("dip_buyer", limit=limit)
+
+        return jsonify(
+            {
+                "status": "success",
+                "strategy": "dip_buyer",
+                "count": len(results),
+                "data": results,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen der Screener Daten: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# Optional: Manueller Trigger zum Testen (geschützt)
+@main_bp.route("/screener/run", methods=["POST"])
+def run_screener_manual():
+    check_ip_auth()
+
+    # Zugriff auf den Screener Worker (den wir gleich in __init__ einbauen)
+    screener = current_app.extensions.get("screener_engine")
+    if screener:
+        count = screener.run_dip_buyer()
+        return jsonify({"status": "success", "hits": count})
+    return jsonify({"status": "error", "message": "Screener not initialized"}), 500
+
+
+@main_bp.route("/health")
+def health():
+    # Prüfen, ob DB erreichbar ist
+    # Prüfen, ob Threads noch leben
+    return "OK", 200
+
+
+@main_bp.route("/portfolio/active", methods=["GET"])
+def get_active_trades():
+    """Zeigt alle offenen Trades."""
+    conf = current_app.config["APP_CONFIG"]
+    db = SignalDatabase(conf.get_db_path("signals"))
+
+    trades = db.get_open_trades()
+    return jsonify({"count": len(trades), "trades": trades})
+
+
+@main_bp.route("/portfolio/check", methods=["POST"])
+def trigger_trade_check():
+    """Manuell den TradeManager starten."""
+    check_ip_auth()
+
+    manager = current_app.extensions.get("trade_manager")
+    if manager:
+        manager.check_active_positions()
+        return jsonify({"status": "triggered"})
+    return jsonify({"status": "error"}), 500
+
+
+@main_bp.route("/admin/backfill-signals", methods=["POST"])
+def backfill_signals():
+    """Startet den Screener für die letzten 10 Tage."""
+    check_ip_auth()
+
+    # Optional: Tage per Parameter übergeben ?days=20
+    days = request.args.get("days", 10, type=int)
+
+    screener = current_app.extensions.get("screener_engine")
+    if screener:
+        count = screener.run_historical_test(lookback_days=days)
+        return jsonify(
+            {"status": "success", "signals_generated": count, "days_checked": days}
+        )
+
+    return jsonify({"status": "error", "message": "Screener not ready"}), 500
