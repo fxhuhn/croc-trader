@@ -57,6 +57,9 @@ def convert_to_flat_format(
     # Reset Index um Date und Symbol als Spalten zu haben
     df = df.reset_index()
 
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
     # Spalten bereinigen
     df.columns = df.columns.str.lower()
 
@@ -160,7 +163,7 @@ class MarketDataWorker:
         self.scheduler.add_job(
             self.run_update_job,
             trigger=CronTrigger(
-                hour=18, minute=0, timezone=pytz.timezone("America/New_York")
+                hour=17, minute=0, timezone=pytz.timezone("America/New_York")
             ),
             id="market_update_job",
             replace_existing=True,
@@ -305,4 +308,4 @@ class MarketDataWorker:
                 self.db.upsert_data(df)
                 logger.info(f"{symbol}: {len(df)} neue Tage angefügt.")
             else:
-                logger.info(f"{symbol}: Keine neuen Daten.")
+                logger.debug(f"{symbol}: Keine neuen Daten.")

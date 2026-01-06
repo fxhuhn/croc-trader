@@ -1,5 +1,4 @@
-import logging
-from logging.handlers import TimedRotatingFileHandler  # <--- WICHTIG: Neuer Import
+import logging.config
 from pathlib import Path
 
 import pytz
@@ -13,6 +12,7 @@ from .routes import main_bp
 from .services import BackgroundWorker, CsvImportWorker
 from .services.market_data import MarketDataWorker
 from .services.screener import ScreenerEngine
+from .services.strategy_notifier import StrategyNotifier
 from .services.telegram import TelegramBot
 from .services.trade_manager import TradeManager
 
@@ -37,30 +37,64 @@ def create_app(config_object=settings):
     # 2. Logging Setup (MIT ROTATION)
     log_file_path = config_object.get_log_path()
 
-    # Handler definieren: Täglich rotieren, 5 Backups behalten
-    file_handler = TimedRotatingFileHandler(
-        filename=log_file_path,
-        when="midnight",  # Rotiert um Mitternacht
-        interval=1,  # Alle 1 Tag
-        backupCount=5,  # Behält die letzten 5 Dateien (löscht ältere automatisch)
-        encoding="utf-8",  # Umlaute-Sicherheit
-    )
+    LOGGING_CONFIG = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {
+                "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                "datefmt": "%H:%M:%S",
+            },
+            "clean": {
+                "format": "➜ %(message)s"  # Minimalistisch für die Konsole
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": "INFO",
+                "formatter": "standard",  # 'clean' nutzen, wenn du es noch simpler willst
+            },
+            "file": {
+                "class": "logging.handlers.TimedRotatingFileHandler",
+                "filename": log_file_path,
+                "when": "midnight",
+                "interval": 1,
+                "backupCount": 5,
+                "encoding": "utf-8",
+                "level": "INFO",
+                "formatter": "standard",
+            },
+        },
+        "loggers": {
+            # Root Logger: Fängt alles auf
+            "": {"handlers": ["console", "file"], "level": "INFO", "propagate": True},
+            # STUMMSCHALTEN: Diese Bibliotheken sollen nur bei Fehlern meckern
+            "apscheduler": {
+                "level": "WARNING",
+                "propagate": False,
+                "handlers": ["console", "file"],
+            },
+            "werkzeug": {
+                "level": "WARNING",  # Versteckt die normalen HTTP Requests im Log
+                "propagate": False,
+                "handlers": ["console", "file"],
+            },
+            "urllib3": {
+                "level": "WARNING",
+                "propagate": False,
+                "handlers": ["console", "file"],
+            },
+            # DEINE APP: Hier wollen wir alles sehen
+            "app": {
+                "level": "INFO",
+                "propagate": False,  # Nicht doppelt an Root senden
+                "handlers": ["console", "file"],
+            },
+        },
+    }
 
-    # Formatierung für den File-Handler setzen
-    file_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    file_handler.setFormatter(file_formatter)
-
-    # Basis-Logging konfigurieren
-    logging.basicConfig(
-        level=getattr(logging, config_object.app.logging.level.upper(), logging.INFO),
-        handlers=[
-            logging.StreamHandler(),  # Ausgabe in die Konsole (für Docker Logs wichtig)
-            file_handler,  # Ausgabe in die Datei (mit Rotation)
-        ],
-        force=True,
-    )
+    logging.config.dictConfig(LOGGING_CONFIG)
 
     # 3. Services Initialisieren
     db_path = config_object.get_db_path("signals")
@@ -75,7 +109,7 @@ def create_app(config_object=settings):
     # A) Market Data Worker
     market_worker = MarketDataWorker(
         db_path=Path(db_stocks),
-        run_on_start=False,
+        run_on_start=True,
     )
     market_worker.start()
     app.extensions["market_worker"] = market_worker
@@ -113,6 +147,14 @@ def create_app(config_object=settings):
     )
     app.extensions["trade_manager"] = trade_manager
 
+    # Wir nutzen den Standard-Pfad "data/croc-strategie.yaml"
+    strategy_notifier = StrategyNotifier(
+        db_path=Path(db_signals),
+        telegram_bot=telegram_service,
+        config_path=Path(config_object.db_root_path) / "croc-strategie.yaml",
+    )
+    app.extensions["strategy_notifier"] = strategy_notifier
+
     # 2. Scheduler für Trade Manager (15:50 NY Zeit)
     # Wir hängen uns an den existierenden Scheduler vom MarketWorker oder starten einen neuen.
     # Da wir in __init__ sind, ist es am einfachsten, den Scheduler hier global für die App zu nutzen
@@ -138,6 +180,17 @@ def create_app(config_object=settings):
         replace_existing=True,
     )
 
+    app_scheduler.add_job(
+        func=strategy_notifier.check_and_notify,
+        trigger=CronTrigger(hour=22, minute=30),
+        id="strategy_daily_report",
+        replace_existing=True,
+        kwargs={
+            "lookback_days": 0,
+            "title_prefix": "Tagesabschluss",
+        },  # Nur Signale von heute
+    )
+
     app_scheduler.start()
     app.extensions["scheduler"] = app_scheduler
 
@@ -147,6 +200,14 @@ def create_app(config_object=settings):
     # Nachricht beim Start senden (Optional, gut zum Testen)
     if tele_conf.enabled:
         telegram_service.send("🚀 **Croc-Trader System gestartet!**")
+
+        try:
+            logging.info("Führe initialen Strategie-Check (2 Tage) durch...")
+            strategy_notifier.check_and_notify(
+                lookback_days=15, title_prefix="System Start"
+            )
+        except Exception as e:
+            logging.error(f"Fehler beim Startup-Check: {e}")
 
     # In Extensions speichern für globalen Zugriff
     app.extensions["telegram"] = telegram_service

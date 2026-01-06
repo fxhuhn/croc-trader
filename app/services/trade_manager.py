@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,19 +15,44 @@ class TradeManager:
     def __init__(self, db_path: Path, telegram_bot=None):
         self.db_path = db_path
         self.telegram = telegram_bot
+        # Ordner sicherstellen
+        self.orders_dir = Path("data/orders")
+        self.orders_dir.mkdir(parents=True, exist_ok=True)
 
     def check_active_positions(self):
+        """
+        Hauptlogik:
+        1. Prüft Einstiege (Fill?) und Exits (Stop?).
+        2. Aktualisiert DB Status.
+        3. Erstellt JSON Order-File für den nächsten Tag.
+        """
         db = SignalDatabase(self.db_path)
         trades = db.get_all_managed_trades()
 
         if not trades:
-            logger.info("TradeManager: Keine Trades zu verwalten.")
+            logger.info("TradeManager: Keine Trades vorhanden.")
             return
 
-        alerts = []  # Dringende Aktionen (Entry, Exit)
-        watchlist = []  # Statusbericht für laufende Trades
+        # --- VORBEREITUNG ---
+        alerts = []
+        watchlist = []  # Für Telegram
 
-        # Mapping für Bulk-Download vorbereiten
+        # Listen für den JSON Export
+        json_new_entries = []
+        json_position_updates = []
+
+        # Datums-Handling
+        today = datetime.now().date()
+        # Annahme: Nächster Tag ist morgen (für Sa/So müsste man Kalender prüfen, hier vereinfacht)
+        valid_from = today + timedelta(days=1)
+        valid_until = valid_from  # Day Order
+
+        validity_str = {
+            "valid_from": valid_from.strftime("%Y-%m-%d"),
+            "valid_until": valid_until.strftime("%Y-%m-%d"),
+        }
+
+        # Bulk Download der Daten
         symbols = list(set(t["symbol"] for t in trades))
         logger.info(f"TradeManager: Prüfe {len(trades)} Trades...")
 
@@ -34,127 +60,214 @@ class TradeManager:
             trade_id = trade["id"]
             symbol = trade["symbol"]
             status = trade["status"]
-            entry_price = trade["entry_price"]
-            entry_date_str = trade["entry_date"]
+            entry_price = trade["entry_price"]  # Das Limit vom Screener
             atr_entry = trade["atr_at_entry"]
+            entry_date_str = trade["entry_date"]
 
-            # Daten laden
+            # 1. Daten laden
             try:
                 df = yf.download(symbol, period="10d", progress=False, auto_adjust=True)
                 if df.empty:
                     continue
-
                 df = df.reset_index()
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
                 df.columns = df.columns.str.lower()
                 df["date"] = pd.to_datetime(df["date"])
-
             except Exception as e:
-                logger.error(f"Datenfehler {symbol}: {e}")
+                logger.error(f"Fehler {symbol}: {e}")
                 continue
 
-            signal_date = pd.to_datetime(entry_date_str)
-            trade_still_active = False
+            signal_date_obj = pd.to_datetime(entry_date_str).date()
+            trade_dirty = False  # Wurde der Status geändert?
 
-            # -----------------------------------------------------------
-            # PHASE 1: ENTRY CHECK (CREATED)
-            # -----------------------------------------------------------
+            # ==============================================================================
+            # PHASE 1: STATUS PRÜFUNG (Vergangenheit bis Heute)
+            # ==============================================================================
+
+            # A) CREATED -> Prüfen ob ENTRY erfolgt ist
             if status == "CREATED":
-                potential_entry_days = df[df["date"] > signal_date].copy()
+                # Wir suchen Tage NACH dem Signal
+                potential_days = df[df["date"].dt.date > signal_date_obj]
 
-                if potential_entry_days.empty:
-                    continue
+                if not potential_days.empty:
+                    # Check ersten Tag nach Signal
+                    row = potential_days.iloc[0]
+                    check_date = row["date"].strftime("%Y-%m-%d")
 
-                entry_day_row = potential_entry_days.iloc[0]
-                entry_day_low = entry_day_row["low"]
-                entry_day_date = entry_day_row["date"].strftime("%Y-%m-%d")
+                    if row["low"] <= entry_price:
+                        # FILL!
+                        db.update_trade_status(trade_id, "ACTIVE")
+                        status = "ACTIVE"  # Für Phase 2 sofort nutzen
+                        alerts.append(f"✅ **FILLED**: {symbol} am {check_date}")
+                        trade_dirty = True
+                    else:
+                        # MISSED!
+                        db.update_trade_status(trade_id, "MISSED", "LIMIT_NOT_REACHED")
+                        alerts.append(f"❌ **MISSED**: {symbol} am {check_date}")
+                        continue  # Trade ist raus
 
-                if entry_day_low <= entry_price:
-                    # ENTRY SUCCESS
-                    db.update_trade_status(trade_id, "ACTIVE")
-                    alerts.append(
-                        f"✅ **ENTRY FILLED**: {symbol}\nLimit {entry_price} erreicht am {entry_day_date}."
-                    )
-                    status = "ACTIVE"  # Für den Watchlist-Block unten
-                    trade_still_active = True
+            # B) ACTIVE -> Prüfen ob EXIT erfolgt ist (TimeStop oder LOC)
+            if status == "ACTIVE":
+                # Wir brauchen aktuelle Daten
+                last_row = df.iloc[-1]
+                current_close = last_row["close"]
+                current_high = last_row["high"]  # Das ist das PrevHigh für Morgen!
+
+                # PrevHigh für den heutigen Check (Gestern)
+                if len(df) >= 2:
+                    prev_row = df.iloc[-2]
+                    prev_high_check = prev_row["high"]
                 else:
-                    # ENTRY MISSED
-                    db.update_trade_status(
-                        trade_id, "MISSED", exit_reason="LIMIT_NOT_REACHED"
-                    )
-                    alerts.append(
-                        f"❌ **ENTRY MISSED**: {symbol}\nLimit {entry_price} verpasst (Low: {entry_day_low:.2f})."
-                    )
-                    continue
+                    prev_high_check = 999999
 
-            # -----------------------------------------------------------
-            # PHASE 2: EXIT CHECK (ACTIVE)
-            # -----------------------------------------------------------
-            elif status == "ACTIVE":
-                trade_still_active = True  # Gehen wir erstmal davon aus
+                days_since = (today - signal_date_obj).days
+                time_stop_date = signal_date_obj + timedelta(days=7)
 
-                current_row = df.iloc[-1]
-                current_price = current_row["close"]
-
-                # Prev High für LOC Check HEUTE
-                if len(df) < 2:
-                    continue
-                prev_row = df.iloc[-2]
-                prev_high = prev_row["high"]
-
-                days_since_signal = (datetime.now() - signal_date).days
-
-                # A) TIME STOP CHECK
-                if days_since_signal >= 7:
+                # 1. TIME STOP CHECK (Sind wir schon drüber?)
+                if days_since >= 7:
                     db.close_trade(trade_id, reason="TIME_STOP")
-                    alerts.append(
-                        f"⏰ **TIME STOP**: {symbol} (Tag {days_since_signal}). Trade geschlossen."
+                    alerts.append(f"⏰ **TIME STOP**: {symbol} wird geschlossen.")
+
+                    # Order für Morgen schreiben: RAUS!
+                    json_position_updates.append(
+                        {
+                            "symbol": symbol,
+                            "action": "SELL",
+                            "type": "MARKET_ON_CLOSE",  # Oder MARKET_OPEN
+                            "reason": "TIME_STOP_EXPIRED",
+                            "validity": validity_str,
+                        }
                     )
-                    trade_still_active = False  # Ist jetzt zu
+                    continue  # Trade ist zu
 
-                # B) LOC EXIT CHECK (HEUTE)
-                elif current_price > prev_high:
+                # 2. LOC EXIT CHECK (War Close heute > High gestern?)
+                elif current_close > prev_high_check:
+                    # Signal ist da -> Morgen verkaufen
+                    # Wir lassen Status ACTIVE, aber Order geht raus.
+                    # (User muss dann manuell schließen oder wir bauen Auto-Close beim nächsten Lauf)
                     alerts.append(
-                        f"📈 **LOC EXIT SIGNAL**: {symbol}\nClose {current_price:.2f} > PrevHigh {prev_high:.2f}.\nBitte manuell schließen!"
+                        f"📈 **LOC SIGNAL**: {symbol} (Close {current_close:.2f} > {prev_high_check:.2f})"
                     )
-                    # Wir lassen ihn auf Active, bis du manuell schließt, oder wir schließen hier auch auto.
-                    # trade_still_active = False
 
-            # -----------------------------------------------------------
-            # PHASE 3: WATCHLIST FÜR MORGEN (Nur wenn noch ACTIVE)
-            # -----------------------------------------------------------
-            if trade_still_active and status == "ACTIVE":
-                # Wir berechnen die Levels für den NÄCHSTEN Tag
+                    json_position_updates.append(
+                        {
+                            "symbol": symbol,
+                            "action": "SELL",
+                            "type": "MARKET",  # Sofort raus
+                            "reason": "LOC_TRIGGERED",
+                            "comment": f"Close {current_close:.2f} > PrevHigh {prev_high_check:.2f}",
+                            "validity": validity_str,
+                        }
+                    )
+                    # Wir setzen hier optional den Status auf 'CLOSING_PENDING' wenn wir wollen
 
-                # 1. Das "Prev High" von Morgen ist das "High" von Heute
-                # (Wir nehmen die letzte Kerze im DF, das ist "Heute")
-                current_row = df.iloc[-1]
-                todays_high = current_row["high"]
+            # ==============================================================================
+            # PHASE 2: ORDER ERSTELLUNG (Für Morgen)
+            # ==============================================================================
 
-                # 2. Target
-                target = entry_price + (0.8 * atr_entry)
+            # A) NEUE SIGNALE (Screener von heute abend -> CREATED)
+            # Hinweis: Wenn der Trade gerade erst FILLED wurde (oben), ist er jetzt ACTIVE, nicht mehr CREATED.
+            # Hier greifen wir Trades ab, die noch auf Fill warten (also vom heutigen Screener).
+            if status == "CREATED":
+                # Bracket Werte berechnen
+                target_price = entry_price + (0.8 * atr_entry)
+                stop_date = signal_date_obj + timedelta(days=7)
 
-                # 3. Time Stop Datum
-                time_stop_date = signal_date + timedelta(days=7)
-                days_left = (time_stop_date - datetime.now()).days
+                json_new_entries.append(
+                    {
+                        "symbol": symbol,
+                        "action": "BUY",
+                        "type": "LIMIT",
+                        "limit_price": round(entry_price, 2),
+                        "validity": validity_str,
+                        "bracket_orders": {
+                            "take_profit": {
+                                "type": "LIMIT",
+                                "price": round(target_price, 2),
+                                "validity": "GTC",  # Good till cancelled
+                            },
+                            "time_stop": {
+                                "type": "MARKET_ON_CLOSE",
+                                "trigger_date": stop_date.strftime("%Y-%m-%d"),
+                                "comment": "Verkaufen am Ende von Tag 7",
+                            },
+                        },
+                    }
+                )
+                watchlist.append(f"🆕 **BUY**: {symbol} @ {entry_price:.2f}")
 
-                watchlist.append(
-                    f"🔹 **{symbol}**\n"
-                    f"   LOC Trigger (Morgen): > {todays_high:.2f}\n"
-                    f"   Target: {target:.2f}\n"
-                    f"   Time Stop: in {days_left} Tagen ({time_stop_date.strftime('%d.%m.')})"
+            # B) LAUFENDE TRADES (ACTIVE) -> Updates für Stop-Logik
+            elif status == "ACTIVE":
+                # Wenn wir oben keine Sell Order erstellt haben, definieren wir die Regeln für Morgen
+                # Wir müssen dem System sagen: "Pass auf, wenn morgen X passiert."
+
+                # LOC Trigger für Morgen = High von Heute
+                loc_trigger_level = current_high
+
+                # Target und TimeStop bleiben gleich
+                target_price = entry_price + (0.8 * atr_entry)
+                stop_date = signal_date_obj + timedelta(days=7)
+                days_left = (stop_date - today).days
+
+                json_position_updates.append(
+                    {
+                        "symbol": symbol,
+                        "status": "HOLD",
+                        "current_close": round(current_close, 2),
+                        "validity": validity_str,
+                        "active_orders": {
+                            "loc_exit_watch": {
+                                "trigger_condition": "CLOSE > PREV_HIGH",
+                                "trigger_price_tomorrow": round(loc_trigger_level, 2),
+                                "action_if_triggered": "SELL MARKET_ON_CLOSE",
+                            },
+                            "take_profit": {
+                                "price": round(target_price, 2),
+                                "status": "OPEN",
+                            },
+                            "time_stop": {
+                                "days_remaining": days_left,
+                                "expiry_date": stop_date.strftime("%Y-%m-%d"),
+                            },
+                        },
+                    }
                 )
 
-        # TELEGRAM ZUSAMMENBAUEN
-        msgs = []
-        if alerts:
-            msgs.append("⚡ **ALERTS (Handlungsbedarf)** ⚡\n" + "\n".join(alerts))
+                watchlist.append(
+                    f"🔹 **{symbol}** (Tag {7 - days_left}/7)\n"
+                    f"   LOC Trigger morgen: > {loc_trigger_level:.2f}\n"
+                    f"   Target: {target_price:.2f}"
+                )
 
-        if watchlist:
-            msgs.append("📋 **WATCHLIST (Für Morgen)**\n" + "\n".join(watchlist))
+        # --- JSON EXPORT ---
+        filename = f"orders_{valid_from.strftime('%Y-%m-%d')}.json"
+        file_path = self.orders_dir / filename
 
-        if msgs and self.telegram:
-            full_msg = "\n\n".join(msgs)
-            self.telegram.send(full_msg)
-            logger.info("Trade Report gesendet.")
+        output_data = {
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "valid_for": validity_str,
+            "orders": {
+                "new_entries": json_new_entries,
+                "portfolio_management": json_position_updates,
+            },
+        }
+
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(output_data, f, indent=4, ensure_ascii=False)
+            logger.info(f"Order-File erstellt: {file_path}")
+        except Exception as e:
+            logger.error(f"JSON Error: {e}")
+
+        # --- TELEGRAM ---
+        if alerts or watchlist:
+            msg = []
+            if alerts:
+                msg.append("⚡ **STATUS UPDATES**\n" + "\n".join(alerts))
+            if watchlist:
+                msg.append("📋 **PORTFOLIO WATCH**\n" + "\n".join(watchlist))
+            msg.append(f"\n📁 Order-Datei für {valid_from} erstellt.")
+
+            if self.telegram:
+                self.telegram.send("\n\n".join(msg))

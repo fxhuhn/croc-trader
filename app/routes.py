@@ -222,7 +222,7 @@ def backfill_signals():
     check_ip_auth()
 
     # Optional: Tage per Parameter übergeben ?days=20
-    days = request.args.get("days", 10, type=int)
+    days = request.args.get("days", 2, type=int)
 
     screener = current_app.extensions.get("screener_engine")
     if screener:

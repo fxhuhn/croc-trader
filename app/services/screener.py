@@ -241,7 +241,7 @@ class ScreenerEngine:
 
         return len(hits)
 
-    def run_historical_test(self, lookback_days=10):
+    def run_historical_test(self, lookback_days=5):
         """
         Führt den Screener für die letzten X Tage aus und speichert Signale nachträglich.
         """
@@ -279,7 +279,7 @@ class ScreenerEngine:
             index=closes.index,
             columns=closes.columns,
         )
-        atr5 = tr.ewm(span=5, adjust=False).mean()
+        atr5 = tr.ewm(span=9, adjust=False).mean()
 
         # Indikatoren
         diff_3day = closes - closes.shift(3)
