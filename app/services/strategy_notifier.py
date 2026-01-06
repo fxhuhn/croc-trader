@@ -97,13 +97,31 @@ class StrategyNotifier:
 
         # 3. Senden
         if final_hits:
-            # Alle Treffer zusammenfügen
             result_df = pd.concat(final_hits)
 
-            # Aufräumen für schöne Tabelle
-            # Wir wählen nur relevante Spalten für die Telegram Nachricht
+            # --- START: FORMATIERUNG ---
+
+            # 1. Datum bereinigen: Erst in Datetime wandeln, dann strikt als "YYYY-MM-DD" String formatieren
+            result_df["date"] = pd.to_datetime(result_df["date"]).dt.strftime(
+                "%Y-%m-%d"
+            )
+
+            # 2. Preis schön formatieren (immer 2 Nachkommastellen), falls float
+            # Wir nutzen apply, um Fehler zu vermeiden, falls es kein reiner Float ist
+            result_df["close"] = result_df["close"].apply(
+                lambda x: f"{float(x):.2f}" if pd.notnull(x) else x
+            )
+
+            # --- ENDE: FORMATIERUNG ---
+
             output_columns = ["date", "symbol", "strategy", "close"]
-            display_df = result_df[output_columns].sort_values(by=["date", "strategy"])
+
+            # Sortieren und Reset Index für saubere Ausgabe
+            display_df = (
+                result_df[output_columns]
+                .sort_values(by=["date", "strategy"])
+                .reset_index(drop=True)
+            )
 
             self.telegram.send_dataframe(
                 display_df,

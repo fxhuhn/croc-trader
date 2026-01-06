@@ -96,6 +96,19 @@ def create_app(config_object=settings):
 
     logging.config.dictConfig(LOGGING_CONFIG)
 
+    # -----------------------------------------------------------
+    # HEALTH CHECK FILTER (Unterdrückt "GET /health 200" Logs)
+    # -----------------------------------------------------------
+    class HealthCheckFilter(logging.Filter):
+        def filter(self, record):
+            msg = record.getMessage()
+            # Wenn "/health" UND Status "200" drin vorkommen -> Ignorieren
+            if "/health" in msg and " 200 " in msg:
+                return False
+            return True
+
+    logging.getLogger("werkzeug").addFilter(HealthCheckFilter())
+
     # 3. Services Initialisieren
     db_path = config_object.get_db_path("signals")
     db_stocks = config_object.get_db_path("stocks")
