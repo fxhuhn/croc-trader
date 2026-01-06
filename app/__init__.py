@@ -102,11 +102,8 @@ def create_app(config_object=settings):
     # -----------------------------------------------------------
     class HealthCheckFilter(logging.Filter):
         def filter(self, record):
-            msg = record.getMessage()
             # Wenn "/health" UND Status "200" drin vorkommen -> Ignorieren
-            if "/health" in msg and " 200 " in msg:
-                return False
-            return True
+            return "/health" not in record.getMessage()
 
     logging.getLogger("werkzeug").addFilter(HealthCheckFilter())
 
