@@ -23,6 +23,7 @@ def create_app(config_object=settings):
     # Cache konfigurieren (SimpleCache nutzt den RAM, reicht für Docker)
     app.config["CACHE_TYPE"] = "SimpleCache"
     app.config["CACHE_DEFAULT_TIMEOUT"] = 300  # Standard: 5 Minuten
+    app.config["JSONIFY_MIMETYPE"] = "application/json; charset=utf-8"
 
     # 1. Konfiguration laden
     app.config["SECRET_KEY"] = config_object.env.SECRET_KEY
