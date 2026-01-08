@@ -13,3 +13,9 @@ venv/
 logs/
 data/
 .coverage
+
+#Mac Files
+.DS_Store
+
+#Konfiguration
+settings.yaml
