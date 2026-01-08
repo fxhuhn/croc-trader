@@ -164,6 +164,9 @@ class ConfigManager:
         self.env = self._load_env()
         self.app = self._load_or_create_yaml()
 
+        # NEU: Hier überschreiben wir die YAML-Werte mit ENV-Werten, falls vorhanden
+        self._apply_env_overrides()
+
         # Berechneter Pfad für Datenbanken (Absoluter Pfad)
         self.db_root_path = BASE_DIR / self.app.database.base_folder
         self.db_root_path.mkdir(parents=True, exist_ok=True)
@@ -171,6 +174,17 @@ class ConfigManager:
         # Berechneter Pfad für Logging (Absoluter Pfad)
         self.logging_root_path = BASE_DIR / self.app.logging.base_folder
         self.logging_root_path.mkdir(parents=True, exist_ok=True)
+
+    def _apply_env_overrides(self):
+        """
+        Überschreibt YAML-Werte mit Environment-Variablen (kurz & bündig).
+        """
+        # 1. Strings (Token & Chat ID)
+        # Nimm ENV, sonst behalte den Wert aus der YAML
+        self.app.telegram.token = os.getenv("TELEGRAM_TOKEN", self.app.telegram.token)
+        self.app.telegram.chat_id = os.getenv(
+            "TELEGRAM_CHAT_ID", self.app.telegram.chat_id
+        )
 
     def _load_env(self) -> EnvConfig:
         return EnvConfig(

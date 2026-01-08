@@ -1,9 +1,9 @@
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Dict, List
 
 import pandas as pd
-import yaml
 
 from .database import SignalDatabase
 from .strategy_database import StrategyDatabase
@@ -18,39 +18,29 @@ class StrategyEngine:
         signals_db_path: Path,
         strategy_db_path: Path,
         telegram_bot: TelegramBot,
-        config_path: Path,
+        strategies: List[Dict] = None,
     ):
         self.signals_db_path = signals_db_path
         self.strategy_db_path = strategy_db_path
         self.telegram = telegram_bot
-        self.config_path = config_path
+        # Strategien werden jetzt injiziert, nicht mehr selbst geladen
+        self.strategies = strategies or []
         self.strat_db = StrategyDatabase(self.strategy_db_path)
-
-    def _load_strategies(self):
-        if not self.config_path.exists():
-            return []
-        try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except Exception:
-            return []
 
     def run_daily_analysis(self, lookback_days=1):
         """
-        Führt die Analyse in zwei Schritten durch:
-        1. Fester System-Check (Dip Buyer)
-        2. Dynamischer Strategie-Check (YAML/Webhooks)
+        Führt die Analyse durch.
         """
         start_date = (datetime.now() - timedelta(days=lookback_days)).strftime(
             "%Y-%m-%d"
         )
         total_hits = 0
 
-        # 1. DIP BUYER
+        # 1. DIP BUYER (System Strategie)
         dip_hits = self._process_dip_buyer(start_date)
         total_hits += dip_hits
 
-        # 2. WEBHOOK STRATEGIEN
+        # 2. WEBHOOK STRATEGIEN (Dynamisch aus YAML)
         webhook_hits = self._process_yaml_strategies(start_date)
         total_hits += webhook_hits
 
@@ -60,7 +50,6 @@ class StrategyEngine:
             )
 
     def _process_dip_buyer(self, start_date):
-        """Liest screener_dip_buyer aus und erstellt Limit-Buy Trades."""
         sig_db = SignalDatabase(self.signals_db_path)
         hits = 0
         strategy_name = "Dip Buyer"
@@ -87,16 +76,16 @@ class StrategyEngine:
         return hits
 
     def _process_yaml_strategies(self, start_date):
-        """Liest screener_webhook und erstellt Stop-Buy Trades."""
-        sig_db = SignalDatabase(self.signals_db_path)
-        strategies = self._load_strategies()
-        if not strategies:
+        if not self.strategies:
             return 0
 
+        sig_db = SignalDatabase(self.signals_db_path)
         hits = 0
-        for strat in strategies:
+
+        for strat in self.strategies:
             name = strat.get("name")
             source = strat.get("source")
+            # Wir verarbeiten hier nur Webhook-Strategien, da DipBuyer oben separat läuft
             if source != "webhook":
                 continue
 
@@ -123,7 +112,6 @@ class StrategyEngine:
     def _create_trade_entry(self, row, strategy_name, source_type):
         """Erstellt das Trade-Objekt und speichert es."""
         try:
-            # Initiale Werte
             limit_lmt = None
             limit_stp = None
             stop_loss = 0.0
@@ -132,18 +120,14 @@ class StrategyEngine:
 
             # --- FALL A: WEBHOOK (Breakout -> Stop Buy) ---
             if source_type == "webhook":
-                # Entry bei HIGH (Stop Buy)
                 limit_stp = row["high"]
                 stop_loss = row["low"]
 
-                # Safety für kaputte Daten
                 if limit_stp == 0 or stop_loss == 0:
                     limit_stp = row["close"]
                     stop_loss = row["close"] * 0.95
 
                 entry_price_for_risk = limit_stp
-
-                # Risk Calc
                 risk = entry_price_for_risk - stop_loss
                 if risk <= 0:
                     risk = entry_price_for_risk * 0.01
@@ -151,18 +135,13 @@ class StrategyEngine:
 
             # --- FALL B: DIP BUYER (Pullback -> Limit Buy) ---
             elif source_type == "dip_buyer":
-                # Entry bei Limit
                 limit_lmt = row["entry_limit"]
                 entry_price_for_risk = limit_lmt
-
-                # Kein SL initial, TP am Tageshoch
                 stop_loss = 0.0
                 take_profit = row["high"]
-
-                # Risk pauschal, da kein SL
                 risk = entry_price_for_risk
 
-            # Positionsgröße
+            # Positionsgröße (Risk Management)
             qty = 1
             if risk > 0:
                 qty = int(100 / risk)  # 100$ Risk Unit
@@ -174,8 +153,8 @@ class StrategyEngine:
                 "timeframe": row.get("timeframe", "D1"),
                 "symbol": row["symbol"],
                 "strategy": strategy_name,
-                "limit_stp": round(limit_stp, 2) if limit_stp else None,  # Stop Buy
-                "limit_lmt": round(limit_lmt, 2) if limit_lmt else None,  # Limit Buy
+                "limit_stp": round(limit_stp, 2) if limit_stp else None,
+                "limit_lmt": round(limit_lmt, 2) if limit_lmt else None,
                 "stop_loss": round(stop_loss, 2),
                 "take_profit": round(take_profit, 2),
                 "qty": qty,
@@ -194,12 +173,10 @@ class StrategyEngine:
         if df.empty:
             return
 
-        # 1. Relevante Spalten auswählen und explizit kopieren (.copy()), um die Warnung zu verhindern
         display_df = df[
             ["symbol", "date", "strategy", "limit_stp", "limit_lmt", "take_profit"]
         ].copy()
 
-        # 2. Entry-Spalte formatieren (unterscheidet Stop-Buy und Limit-Buy)
         display_df["Entry"] = display_df.apply(
             lambda x: f"STOP {x['limit_stp']:.2f}"
             if pd.notnull(x["limit_stp"])
@@ -207,14 +184,5 @@ class StrategyEngine:
             axis=1,
         )
 
-        # 3. Finale Auswahl und Umbenennung
-        final_df = display_df[
-            ["date", "symbol", "strategy", "Entry", "take_profit"]
-        ].copy()
-        final_df.rename(columns={"take_profit": "TP"}, inplace=True)
-
-        # quick fix
         final_df = display_df[["date", "symbol", "strategy", "Entry"]].copy()
-
-        # 4. Senden
         self.telegram.send_dataframe(final_df, title="📋 Strategie Plan")

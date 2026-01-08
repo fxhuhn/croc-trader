@@ -2,11 +2,10 @@ import logging
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Tuple
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-import yaml
 
 from ..mapping import mapper
 from .database import SignalDatabase
@@ -19,60 +18,56 @@ class ScreenerEngine:
         self,
         stocks_db_path: Path,
         signals_db_path: Path,
-        config_path: Path = None,
+        strategies: List[Dict] = None,
         telegram_bot=None,
     ):
         self.stocks_db_path = stocks_db_path
         self.signals_db = SignalDatabase(signals_db_path)
-        self.config_path = config_path
+        self.strategies = strategies or []
         self.telegram = telegram_bot
 
-    def _load_strategies(self):
-        if not self.config_path or not self.config_path.exists():
-            return []
-        try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                return yaml.safe_load(f)
-        except Exception as e:
-            logger.error(f"Screener YAML Fehler: {e}")
-            return []
+    def _get_exchange(self, symbol: str) -> str:
+        return mapper.get_exchange(symbol, default="UNKNOWN")
 
-    def _get_exchange(self, symbol):
-        if mapper._mapping and symbol in mapper._mapping:
-            return mapper._mapping[symbol]
-        return "UNKNOWN"
-
-    def _load_market_data(
-        self, days=400
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def _load_market_data(self, days=400) -> Optional[Dict[str, pd.DataFrame]]:
         start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-        with sqlite3.connect(self.stocks_db_path) as conn:
-            df = pd.read_sql_query(
-                f"SELECT date, symbol, open, high, low, close, volume FROM market_prices WHERE date >= '{start_date}' AND timeframe = '1D' ORDER BY date ASC",
-                conn,
-            )
+
+        try:
+            with sqlite3.connect(self.stocks_db_path) as conn:
+                df = pd.read_sql_query(
+                    f"SELECT date, symbol, open, high, low, close, volume "
+                    f"FROM market_prices WHERE date >= '{start_date}' "
+                    f"AND timeframe = '1D' ORDER BY date ASC",
+                    conn,
+                )
+        except Exception as e:
+            logger.error(f"Fehler beim Laden der Marktdaten: {e}")
+            return None
 
         if df.empty:
-            return (
-                pd.DataFrame(),
-                pd.DataFrame(),
-                pd.DataFrame(),
-                pd.DataFrame(),
-                pd.DataFrame(),
-            )
+            return None
 
         df["date"] = pd.to_datetime(df["date"])
-        closes = df.pivot(index="date", columns="symbol", values="close")
-        opens = df.pivot(index="date", columns="symbol", values="open")
-        highs = df.pivot(index="date", columns="symbol", values="high")
-        lows = df.pivot(index="date", columns="symbol", values="low")
-        volumes = df.pivot(index="date", columns="symbol", values="volume")
-        return opens, highs, lows, closes, volumes
 
-    def _calculate_technical_indicators(self, opens, highs, lows, closes, volumes):
+        # Pivot für vektorisierte Berechnungen
+        return {
+            col: df.pivot(index="date", columns="symbol", values=col)
+            for col in ["open", "high", "low", "close", "volume"]
+        }
+
+    def _calculate_technical_indicators(
+        self, data: Dict[str, pd.DataFrame]
+    ) -> Dict[str, pd.DataFrame]:
+        closes = data["close"]
+        highs = data["high"]
+        lows = data["low"]
+        volumes = data["volume"]
+
+        # SMAs
         sma200 = closes.rolling(window=200, min_periods=150).mean()
         vol_sma20 = volumes.rolling(window=20).mean()
 
+        # RSI
         delta = closes.diff()
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
@@ -82,23 +77,26 @@ class ScreenerEngine:
         rsi = 100 - (100 / (1 + rs))
         rsi = rsi.fillna(50)
 
+        # ATR Calculation
         prev_close = closes.shift(1)
         tr1 = highs - lows
         tr2 = (highs - prev_close).abs()
         tr3 = (lows - prev_close).abs()
-        tr = pd.DataFrame(
-            np.maximum(tr1.values, np.maximum(tr2.values, tr3.values)),
-            index=closes.index,
-            columns=closes.columns,
+
+        # Effizientes Maximum über 3 DataFrames
+        tr_values = np.maximum.reduce(
+            [tr1.values, tr2.fillna(0).values, tr3.fillna(0).values]
         )
+
+        tr = pd.DataFrame(tr_values, index=closes.index, columns=closes.columns)
         atr5 = tr.ewm(span=9, adjust=False).mean()
 
+        # Custom Metrics für Dip Buyer
         diff_3day = closes - closes.shift(3)
         atr5_safe = atr5.replace(0, np.nan)
         atr_r3 = diff_3day / atr5_safe
-        setup_score = atr_r3 * -1
-        day_range = highs - lows
-        day_range = day_range.replace(0, 0.01)
+
+        day_range = (highs - lows).replace(0, 0.01)
         ibs = (closes - lows) / day_range
         entry_limits = closes - atr5
 
@@ -108,36 +106,49 @@ class ScreenerEngine:
             "rsi": rsi,
             "atr5": atr5,
             "atr_r3": atr_r3,
-            "setup_score": setup_score,
+            "setup_score": atr_r3 * -1,
             "ibs": ibs,
             "entry_limits": entry_limits,
+            # Rohdaten für Filter durchreichen
+            "close": closes,
+            "open": data["open"],
+            "high": highs,
+            "low": lows,
         }
 
-    def run_dip_buyer(self):
-        logger.info("Starte Dip-Buyer Screening...")
-        opens, highs, lows, closes, volumes = self._load_market_data()
-        if closes.empty:
-            return 0
-        ind = self._calculate_technical_indicators(opens, highs, lows, closes, volumes)
+    def _apply_dip_buyer_logic(
+        self, ind: Dict[str, pd.DataFrame], idx_pos: int
+    ) -> List[Dict]:
+        """Zentrale Logik für Dip Buyer Filterung an einem bestimmten Tag."""
 
-        curr_date = closes.index[-1].strftime("%Y-%m-%d")
-        i_today = -1
+        # Slice Data at specific index position
+        # .iloc[idx] liefert eine Series mit Symbolen als Index
+        i_vol_sma = ind["vol_sma20"].iloc[idx_pos]
+        i_close = ind["close"].iloc[idx_pos]
+        i_open = ind["open"].iloc[idx_pos]
+        i_prev_close = ind["close"].iloc[idx_pos - 1]
+        i_prev_open = ind["open"].iloc[idx_pos - 1]
 
-        c_close = closes.iloc[i_today]
-        # ... Filter Logik unverändert ...
-        cond1 = ind["vol_sma20"].iloc[i_today] > 1_000_000
-        cond2 = c_close > 5.0
-        cond3 = c_close > ind["sma200"].iloc[i_today]
-        cond4 = ind["atr_r3"].iloc[i_today] < -1.0
-        cond5 = (ind["atr5"].iloc[i_today] / c_close) > 0.03
-        cond6 = c_close < opens.iloc[i_today]
-        cond7 = closes.iloc[i_today - 1] < opens.iloc[i_today - 1]
-        cond8 = ind["ibs"].iloc[i_today] < 0.2
+        i_sma200 = ind["sma200"].iloc[idx_pos]
+        i_atr_r3 = ind["atr_r3"].iloc[idx_pos]
+        i_atr5 = ind["atr5"].iloc[idx_pos]
+        i_ibs = ind["ibs"].iloc[idx_pos]
+
+        # Filter Conditions
+        cond1 = i_vol_sma > 1_000_000
+        cond2 = i_close > 5.0
+        cond3 = i_close > i_sma200
+        cond4 = i_atr_r3 < -1.0
+        cond5 = (i_atr5 / i_close) > 0.03
+        cond6 = i_close < i_open
+        cond7 = i_prev_close < i_prev_open
+        cond8 = i_ibs < 0.2
+
         final_mask = cond1 & cond2 & cond3 & cond4 & cond5 & cond6 & cond7 & cond8
-        hits = final_mask[final_mask].index.tolist()
 
-        logger.info(f"Dip-Buyer: {len(hits)} Treffer am {curr_date}.")
-        results_to_save = []
+        hits = final_mask[final_mask].index.tolist()
+        results = []
+        curr_date = ind["close"].index[idx_pos].strftime("%Y-%m-%d")
 
         for symbol in hits:
             res = {
@@ -145,71 +156,135 @@ class ScreenerEngine:
                 "symbol": symbol,
                 "exchange": self._get_exchange(symbol),
                 "timeframe": "1D",
-                "close": round(float(c_close[symbol]), 2),
-                "high": round(
-                    float(highs.iloc[i_today][symbol]), 2
-                ),  # <--- NEU: High speichern
-                "atr_r3": round(float(ind["atr_r3"].iloc[i_today][symbol]), 2),
+                "close": round(float(i_close[symbol]), 2),
+                "high": round(float(ind["high"].iloc[idx_pos][symbol]), 2),
+                "atr_r3": round(float(i_atr_r3[symbol]), 2),
                 "setup_score": round(
-                    float(ind["setup_score"].iloc[i_today][symbol]), 2
+                    float(ind["setup_score"].iloc[idx_pos][symbol]), 2
                 ),
                 "entry_limit": round(
-                    float(ind["entry_limits"].iloc[i_today][symbol]), 2
+                    float(ind["entry_limits"].iloc[idx_pos][symbol]), 2
                 ),
-                "atr5": round(float(ind["atr5"].iloc[i_today][symbol]), 2),
+                "atr5": round(float(i_atr5[symbol]), 2),
             }
-            results_to_save.append(res)
-            # Trade direkt anlegen (hier für Legacy support)
-            self.signals_db.add_trade(
-                symbol=symbol,
-                entry_date=curr_date,
-                entry_price=res["entry_limit"],
-                atr_at_entry=res["atr5"],
-            )
+            results.append(res)
 
-        if results_to_save:
-            self.signals_db.save_screener_dip_buyer(results_to_save)
-            self._send_telegram_report("📉 Dip-Buyer", curr_date, results_to_save)
+        return results
 
-        return len(hits)
+    def run_dip_buyer(self) -> int:
+        """Standard Run für Heute."""
+        return self._run_analysis(backfill_days=0)
+
+    def run_historical_test(self, lookback_days=5) -> int:
+        """Historischer Test."""
+        return self._run_analysis(backfill_days=lookback_days)
+
+    def _run_analysis(self, backfill_days=0) -> int:
+        """
+        Kombinierte Logik für Daily und Backfill.
+        """
+        mode = "Backfill" if backfill_days > 0 else "Daily"
+        logger.info(f"Starte Dip-Buyer ({mode})...")
+
+        data = self._load_market_data(days=400 + backfill_days)
+        if not data:
+            return 0
+
+        ind = self._calculate_technical_indicators(data)
+
+        total_len = len(ind["close"])
+        # Wenn Backfill, starte weiter hinten, sonst nur der letzte Tag
+        start_idx = (
+            max(200, total_len - backfill_days) if backfill_days > 0 else total_len - 1
+        )
+
+        all_results = []
+
+        for i in range(start_idx, total_len):
+            daily_hits = self._apply_dip_buyer_logic(ind, idx_pos=i)
+
+            if daily_hits:
+                all_results.extend(daily_hits)
+
+                # Bei Backfill direkt Trades anlegen (Legacy Support)
+                if backfill_days > 0:
+                    for res in daily_hits:
+                        self.signals_db.add_trade(
+                            symbol=res["symbol"],
+                            entry_date=res["date"],
+                            entry_price=res["entry_limit"],
+                            atr_at_entry=res["atr5"],
+                            quantity=1,
+                        )
+
+        if all_results:
+            self.signals_db.save_screener_dip_buyer(all_results)
+
+            # Bei Daily Run auch Trade anlegen und Telegram Report senden
+            if backfill_days == 0:
+                curr_date = all_results[0]["date"]
+                for res in all_results:
+                    self.signals_db.add_trade(
+                        symbol=res["symbol"],
+                        entry_date=res["date"],
+                        entry_price=res["entry_limit"],
+                        atr_at_entry=res["atr5"],
+                    )
+                self._send_telegram_report("📉 Dip-Buyer", curr_date, all_results)
+
+        count = len(all_results)
+        logger.info(f"Dip-Buyer ({mode}): {count} Treffer.")
+        return count
 
     def process_croc_signals(self, lookback_days=5):
-        """Batch-Import für Webhook Signale."""
+        """Batch-Import für Webhook Signale unter Nutzung der zentralen Strategien."""
         logger.info(f"Verarbeite Croc-Signale der letzten {lookback_days} Tage...")
-        strategies = self._load_strategies()
-        if not strategies:
+
+        if not self.strategies:
+            logger.info("Keine Webhook-Strategien geladen.")
             return 0
+
         start_date = (datetime.now() - timedelta(days=lookback_days)).strftime(
             "%Y-%m-%d"
         )
 
         with self.signals_db._get_conn() as conn:
-            sql = f"SELECT *, date(timestamp) as date_str FROM signals WHERE date(timestamp) >= '{start_date}'"
+            # Optimierte Query
+            sql = f"""
+                SELECT symbol, signal, close, high, low, rsi, sma_200, exchange, timeframe,
+                       date(timestamp) as date_str
+                FROM signals
+                WHERE date(timestamp) >= '{start_date}'
+            """
             df = pd.read_sql_query(sql, conn)
 
         if df.empty:
             return 0
 
-        numeric_cols = ["close", "high", "low", "rsi", "sma_200"]
-        for col in numeric_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        # Numeric conversion safety
+        cols = ["close", "high", "low", "rsi", "sma_200"]
+        for c in cols:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
         total_matches = 0
-        for strat in strategies:
+
+        for strat in self.strategies:
             name = strat.get("name")
             logic = strat.get("logic")
             if not logic:
                 continue
+
             try:
+                # Pandas query Magic
                 matches = df.query(logic).copy()
+
                 if not matches.empty:
                     results = []
                     for _, row in matches.iterrows():
                         res = {
                             "date": row["date_str"],
                             "symbol": row["symbol"],
-                            "exchange": row.get("exchange")
+                            "exchange": row["exchange"]
                             or self._get_exchange(row["symbol"]),
                             "timeframe": row.get("timeframe", "1D"),
                             "strategy": name,
@@ -221,86 +296,18 @@ class ScreenerEngine:
                             "sma_200": round(row["sma_200"], 2),
                         }
                         results.append(res)
+
                     self.signals_db.save_screener_webhook(results)
                     total_matches += len(results)
 
-                    # --- NEU: TELEGRAM NACHRICHT SENDEN ---
-                    # Wir senden einen Report pro gefundener Strategie
                     self._send_telegram_report(
                         f"🚀 Signal: {name}", f"Letzte {lookback_days} Tage", results
                     )
 
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Fehler in Strategie '{name}': {e}")
 
         return total_matches
-
-    def run_historical_test(self, lookback_days=5):
-        logger.info(f"Starte historischen DipBuyer Test für {lookback_days} Tage...")
-        opens, highs, lows, closes, volumes = self._load_market_data(
-            days=400 + lookback_days
-        )
-        if closes.empty:
-            return 0
-        ind = self._calculate_technical_indicators(opens, highs, lows, closes, volumes)
-
-        total_signals = 0
-        start_index = max(200, len(closes) - lookback_days)
-        results_to_save = []
-
-        for i in range(start_index, len(closes)):
-            curr_date = closes.index[i].strftime("%Y-%m-%d")
-            c_close = closes.iloc[i]
-            # ... (Restliche Variablen c_open, p_close etc.) ...
-            c_open = opens.iloc[i]
-            p_close = closes.iloc[i - 1]
-            p_open = opens.iloc[i - 1]
-
-            # ... (Filter Conditions unverändert) ...
-            cond1 = ind["vol_sma20"].iloc[i] > 1_000_000
-            cond2 = c_close > 5.0
-            cond3 = c_close > ind["sma200"].iloc[i]
-            cond4 = ind["atr_r3"].iloc[i] < -1.0
-            cond5 = (ind["atr5"].iloc[i] / c_close) > 0.03
-            cond6 = c_close < c_open
-            cond7 = p_close < p_open
-            cond8 = ind["ibs"].iloc[i] < 0.2
-
-            final_mask = cond1 & cond2 & cond3 & cond4 & cond5 & cond6 & cond7 & cond8
-            hits = final_mask[final_mask].index.tolist()
-
-            for symbol in hits:
-                res = {
-                    "date": curr_date,
-                    "symbol": symbol,
-                    "exchange": self._get_exchange(symbol),
-                    "timeframe": "1D",
-                    "close": round(float(c_close[symbol]), 2),
-                    "high": round(
-                        float(highs.iloc[i][symbol]), 2
-                    ),  # <--- NEU: High speichern
-                    "atr_r3": round(float(ind["atr_r3"].iloc[i][symbol]), 2),
-                    "setup_score": round(float(ind["setup_score"].iloc[i][symbol]), 2),
-                    "entry_limit": round(float(ind["entry_limits"].iloc[i][symbol]), 2),
-                    "atr5": round(float(ind["atr5"].iloc[i][symbol]), 2),
-                }
-                results_to_save.append(res)
-                self.signals_db.add_trade(
-                    symbol=symbol,
-                    entry_date=curr_date,
-                    entry_price=res["entry_limit"],
-                    atr_at_entry=res["atr5"],
-                    quantity=1,
-                )
-                total_signals += 1
-
-        if results_to_save:
-            self.signals_db.save_screener_dip_buyer(results_to_save)
-            logger.info(
-                f"DipBuyer Backtest: {len(results_to_save)} historische Ergebnisse gespeichert."
-            )
-
-        return total_signals
 
     def _send_telegram_report(self, title, date, results):
         if not self.telegram:
@@ -308,4 +315,6 @@ class ScreenerEngine:
         msg = f"🔎 **{title}**\nDatum: {date}\nTreffer: {len(results)}\n"
         for r in results[:5]:
             msg += f"- {r['symbol']}\n"
+        if len(results) > 5:
+            msg += f"... und {len(results) - 5} weitere."
         self.telegram.send(msg)

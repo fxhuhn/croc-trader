@@ -2,6 +2,7 @@ import logging.config
 from pathlib import Path
 
 import pytz
+import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from flask import Flask
@@ -29,7 +30,6 @@ def create_app(config_object=settings):
     app.config["SECRET_KEY"] = config_object.env.SECRET_KEY
     app.config["APP_CONFIG"] = config_object
 
-    # JSON Ausgabe verschönern
     app.json.compact = False
     app.json.ensure_ascii = False
 
@@ -75,7 +75,7 @@ def create_app(config_object=settings):
     }
     logging.config.dictConfig(LOGGING_CONFIG)
 
-    # Healthcheck Logs unterdrücken
+    # Healthcheck Logs filtern
     class HealthCheckFilter(logging.Filter):
         def filter(self, record):
             return not (
@@ -90,14 +90,25 @@ def create_app(config_object=settings):
     db_stocks = config_object.get_db_path("stocks")
     db_signals = config_object.get_db_path("signals")
 
-    # Pfad für Strategy DB (Fallback auf Root, falls nicht in Config definiert)
     try:
         db_strategies = config_object.get_db_path("strategies")
     except KeyError:
         db_strategies = str(Path(config_object.db_root_path) / "strategies.db")
 
-    # Pfad zur YAML Strategie Datei (NEU via Config)
+    # --- ZENTRALES LADEN DER STRATEGIEN ---
     yaml_config_path = config_object.get_strategy_path()
+    loaded_strategies = []
+    if yaml_config_path.exists():
+        try:
+            with open(yaml_config_path, "r", encoding="utf-8") as f:
+                loaded_strategies = yaml.safe_load(f) or []
+            logging.info(
+                f"Strategien geladen: {len(loaded_strategies)} Regeln gefunden."
+            )
+        except Exception as e:
+            logging.error(f"Fehler beim Laden der Strategie-YAML: {e}")
+    else:
+        logging.warning(f"Keine Strategie-Datei gefunden unter: {yaml_config_path}")
 
     # ---------------------------------------------------------
     # 4. Services Initialisieren
@@ -136,11 +147,11 @@ def create_app(config_object=settings):
     csv_worker.start()
     app.extensions["csv_worker"] = csv_worker
 
-    # E) Screener Engine (Mit YAML Pfad für Webhook-Zuordnung)
+    # E) Screener Engine (Erhält nun die geladenen Strategien!)
     screener = ScreenerEngine(
         stocks_db_path=Path(db_stocks),
         signals_db_path=Path(db_signals),
-        config_path=yaml_config_path,  # <--- WICHTIG
+        strategies=loaded_strategies,
         telegram_bot=telegram_service,
     )
     app.extensions["screener_engine"] = screener
@@ -151,12 +162,12 @@ def create_app(config_object=settings):
     )
     app.extensions["trade_manager"] = trade_manager
 
-    # G) Strategy Engine (Die zentrale Logik-Einheit)
+    # G) Strategy Engine (Erhält nun die geladenen Strategien!)
     strategy_engine = StrategyEngine(
         signals_db_path=Path(db_signals),
         strategy_db_path=Path(db_strategies),
         telegram_bot=telegram_service,
-        config_path=yaml_config_path,  # <--- WICHTIG
+        strategies=loaded_strategies,
     )
     app.extensions["strategy_engine"] = strategy_engine
 
@@ -182,9 +193,7 @@ def create_app(config_object=settings):
     def run_strategy_job():
         with app.app_context():
             logging.info("Starte täglichen Strategie-Check...")
-            # 1. Signale analysieren & Trades generieren
             strategy_engine.run_daily_analysis(lookback_days=1)
-            # 2. Bericht senden
             strategy_engine.send_telegram_report()
 
     app_scheduler.add_job(
@@ -202,11 +211,10 @@ def create_app(config_object=settings):
     # ---------------------------------------------------------
     app.register_blueprint(main_bp)
 
-    # Startup Nachricht & Initialer Check
     if tele_conf.enabled:
         telegram_service.send("🚀 **Croc-Trader System gestartet!**")
-
         try:
+            # Kurzer Check beim Start
             logging.info("Führe initialen Strategie-Check (30 Tage Rückblick) durch...")
             strategy_engine.run_daily_analysis(lookback_days=30)
             strategy_engine.send_telegram_report()
