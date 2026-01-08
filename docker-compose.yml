@@ -1,11 +1,10 @@
 services:
   croc-trader:
-    build: .
+    image: ghcr.io/fxhuhn/croc-trader:dev
     container_name: croc-trader
-    restart: unless-stopped
 
     ports:
-      - "8000:8000"
+      - "8001:8000"
 
     volumes:
       - ./data:/app/data
@@ -20,11 +19,10 @@ services:
     # HIER ist der direkte Startbefehl ohne entrypoint.sh
     # workers 1: WICHTIG für deinen Background-Worker (Singleton)
     # threads 8: Erlaubt parallele Webhook-Verarbeitung
-    command: gunicorn --workers 1 --threads 8 --timeout 60 --bind 0.0.0.0:5000 --access-logfile - --error-logfile - run:app
+    command: gunicorn -c gunicorn_conf.py --workers 1 --threads 8 --timeout 60 --bind 0.0.0.0:8001 --access-logfile - --error-logfile - run:app
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 1m
       timeout: 10s
       retries: 3
-      start_period: 10s
