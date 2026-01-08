@@ -37,6 +37,8 @@ class DatabaseConfig:
             # "trades": "trades.db",
             # "backtest": "backtest.db",
             "stocks": "stocks.db",
+            # Optional: Man könnte hier auch den Dateinamen der Strategie hinterlegen
+            # "strategy": "croc-strategie.yaml"
         }
     )
 
@@ -52,7 +54,7 @@ class WebserverConfig:
 
 @dataclass
 class LoggingConfig:
-    """Verwaltet Webserver-Einstellungen."""
+    """Verwaltet Logging-Einstellungen."""
 
     base_folder: str = "logs"
     file_name: str = "croc-trader.log"
@@ -61,7 +63,7 @@ class LoggingConfig:
 
 @dataclass
 class WebhookWorkerConfig:
-    """Verwaltet Webserver-Einstellungen."""
+    """Verwaltet Worker-Einstellungen."""
 
     size: int = 40
     timeout: int = 5
@@ -103,33 +105,31 @@ class AppConfig:
         """
         Wandelt ein Dictionary (aus YAML) rekursiv in Dataclasses um.
         """
-        # 1. Datenbank Config extrahieren und instanziieren
+        # 1. Datenbank Config
         db_data = data.get("database", {})
         db_config = DatabaseConfig(**db_data) if db_data else DatabaseConfig()
 
-        # 2. Webserver Config extrahieren und instanziieren
+        # 2. Webserver Config
         web_data = data.get("webserver", {})
         web_config = WebserverConfig(**web_data) if web_data else WebserverConfig()
 
-        # 3. Loggin Config extrahieren und instanziieren
+        # 3. Logging Config
         logging_data = data.get("logging", {})
-        logging_config = LoggingConfig(**logging_data) if web_data else LoggingConfig()
+        logging_config = (
+            LoggingConfig(**logging_data) if logging_data else LoggingConfig()
+        )
 
-        # 4. Loggin Config extrahieren und instanziieren
-        logging_data = data.get("logging", {})
-        logging_config = LoggingConfig(**logging_data) if web_data else LoggingConfig()
-
-        # 5. Webhook Worker Config extrahieren und instanziieren
+        # 4. Webhook Worker Config
         worker_data = data.get("webhook_worker", {})
         worker_config = (
             WebhookWorkerConfig(**worker_data) if worker_data else WebhookWorkerConfig()
         )
 
-        # 6. Security Config extrahieren und instanziieren
+        # 5. Security Config
         sec_data = data.get("security", {})
         sec_config = SecurityConfig(**sec_data) if sec_data else SecurityConfig()
 
-        # 7. Telegram parsen
+        # 6. Telegram Config
         tele_data = data.get("telegram", {})
         tele_config = TelegramConfig(**tele_data) if tele_data else TelegramConfig()
 
@@ -165,14 +165,12 @@ class ConfigManager:
         self.app = self._load_or_create_yaml()
 
         # Berechneter Pfad für Datenbanken (Absoluter Pfad)
-        # Wir nutzen den Pfad aus dem YAML, relativ zum Projektverzeichnis
         self.db_root_path = BASE_DIR / self.app.database.base_folder
         self.db_root_path.mkdir(parents=True, exist_ok=True)
 
         # Berechneter Pfad für Logging (Absoluter Pfad)
-        # Wir nutzen den Pfad aus dem YAML, relativ zum Projektverzeichnis
-        self.loggin_root_path = BASE_DIR / self.app.logging.base_folder
-        self.loggin_root_path.mkdir(parents=True, exist_ok=True)
+        self.logging_root_path = BASE_DIR / self.app.logging.base_folder
+        self.logging_root_path.mkdir(parents=True, exist_ok=True)
 
     def _load_env(self) -> EnvConfig:
         return EnvConfig(
@@ -185,7 +183,7 @@ class ConfigManager:
             logger.info("Erstelle Standard settings.yaml...")
             default_conf = AppConfig()
 
-            # Helper um nested dataclasses in dicts zu wandeln für den Dump
+            # Helper um nested dataclasses in dicts zu wandeln
             def dataclass_to_dict(obj):
                 if hasattr(obj, "__dataclass_fields__"):
                     return {k: dataclass_to_dict(v) for k, v in obj.__dict__.items()}
@@ -198,7 +196,6 @@ class ConfigManager:
         try:
             with open(CONFIG_FILE, "r") as f:
                 data = yaml.safe_load(f) or {}
-                # manuelle Parsing-Methode
                 return AppConfig.from_dict(data)
         except Exception as e:
             logger.error(f"Fehler beim Laden der Config: {e}")
@@ -208,15 +205,24 @@ class ConfigManager:
         """Liefert den vollen Pfad zu einer spezifischen DB."""
         filename = self.app.database.files.get(db_key)
         if not filename:
+            # Fallback oder Fehler, je nach Wunsch. Hier Fehler.
             raise KeyError(
                 f"DB '{db_key}' nicht in config.yaml unter database.files gefunden."
             )
         return str(self.db_root_path / filename)
 
     def get_log_path(self) -> str:
-        """Liefert den vollen Pfad zu einer spezifischen DB."""
+        """Liefert den vollen Pfad zur Logdatei."""
         filename = self.app.logging.file_name
-        return str(self.loggin_root_path / filename)
+        return str(self.logging_root_path / filename)
+
+    def get_strategy_path(self) -> Path:
+        """
+        NEU: Liefert den vollen Pfad zur Strategie-YAML Datei.
+        Der Dateiname ist aktuell fest 'croc-strategie.yaml', liegt aber
+        im konfigurierten Daten-Ordner (db_root_path).
+        """
+        return self.db_root_path / "croc-strategie.yaml"
 
 
 # Singleton
