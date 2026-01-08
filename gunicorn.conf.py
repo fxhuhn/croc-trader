@@ -1,10 +1,10 @@
 # gunicorn_conf.py
 import logging
 
-accesslog = "-"
-access_log_format = (
-    '%(t)s [gunicorn] %({x-forwarded-for}i)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
-)
+# accesslog = "-"
+# access_log_format = (
+#    '%(t)s [gunicorn] %({x-forwarded-for}i)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
+# )
 
 
 class HealthCheckFilter(logging.Filter):
