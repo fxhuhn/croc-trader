@@ -28,19 +28,24 @@ load_dotenv()
 
 @dataclass
 class DatabaseConfig:
-    """Verwaltet Datenbank-Einstellungen."""
+    """Verwaltet Pfade zu Datenbanken und Datendateien."""
 
     base_folder: str = "data"
+
+    # Zentralisierung aller Dateinamen
     files: Dict[str, str] = field(
         default_factory=lambda: {
             "signals": "signals.db",
-            # "trades": "trades.db",
-            # "backtest": "backtest.db",
             "stocks": "stocks.db",
-            # Optional: Man könnte hier auch den Dateinamen der Strategie hinterlegen
-            # "strategy": "croc-strategie.yaml"
+            "strategies": "strategies.db",
+            "strategy_yaml": "croc-strategie.yaml",
+            "exchange_mapping": "symbol_exchange.json",
+            "stats_import": "croc_statistik.csv",
         }
     )
+
+    # Zentralisierung von Unterordnern
+    folders: Dict[str, str] = field(default_factory=lambda: {"orders": "orders"})
 
 
 @dataclass
@@ -164,7 +169,7 @@ class ConfigManager:
         self.env = self._load_env()
         self.app = self._load_or_create_yaml()
 
-        # NEU: Hier überschreiben wir die YAML-Werte mit ENV-Werten, falls vorhanden
+        # WICHTIG: Overrides anwenden
         self._apply_env_overrides()
 
         # Berechneter Pfad für Datenbanken (Absoluter Pfad)
@@ -175,29 +180,30 @@ class ConfigManager:
         self.logging_root_path = BASE_DIR / self.app.logging.base_folder
         self.logging_root_path.mkdir(parents=True, exist_ok=True)
 
-    def _apply_env_overrides(self):
-        """
-        Überschreibt YAML-Werte mit Environment-Variablen (kurz & bündig).
-        """
-        # 1. Strings (Token & Chat ID)
-        # Nimm ENV, sonst behalte den Wert aus der YAML
-        self.app.telegram.token = os.getenv("TELEGRAM_TOKEN", self.app.telegram.token)
-        self.app.telegram.chat_id = os.getenv(
-            "TELEGRAM_CHAT_ID", self.app.telegram.chat_id
-        )
-
     def _load_env(self) -> EnvConfig:
         return EnvConfig(
             APP_ENV=os.getenv("APP_ENV", "development"),
             SECRET_KEY=os.getenv("FLASK_SECRET_KEY", "dev-fallback-key"),
         )
 
+    def _apply_env_overrides(self):
+        """
+        Überschreibt YAML-Werte mit Environment-Variablen.
+        """
+        # Telegram Secrets: ENV > YAML
+        self.app.telegram.token = os.getenv("TELEGRAM_TOKEN", self.app.telegram.token)
+        self.app.telegram.chat_id = os.getenv(
+            "TELEGRAM_CHAT_ID", self.app.telegram.chat_id
+        )
+
+        if env_enabled := os.getenv("TELEGRAM_ENABLED"):
+            self.app.telegram.enabled = env_enabled.lower() == "true"
+
     def _load_or_create_yaml(self) -> AppConfig:
         if not CONFIG_FILE.exists():
             logger.info("Erstelle Standard settings.yaml...")
             default_conf = AppConfig()
 
-            # Helper um nested dataclasses in dicts zu wandeln
             def dataclass_to_dict(obj):
                 if hasattr(obj, "__dataclass_fields__"):
                     return {k: dataclass_to_dict(v) for k, v in obj.__dict__.items()}
@@ -215,28 +221,30 @@ class ConfigManager:
             logger.error(f"Fehler beim Laden der Config: {e}")
             sys.exit(1)
 
-    def get_db_path(self, db_key: str) -> str:
-        """Liefert den vollen Pfad zu einer spezifischen DB."""
-        filename = self.app.database.files.get(db_key)
+    def get_path(self, key: str) -> Path:
+        """Universeller Abruf für konfigurierte Dateipfade."""
+        filename = self.app.database.files.get(key)
         if not filename:
-            # Fallback oder Fehler, je nach Wunsch. Hier Fehler.
-            raise KeyError(
-                f"DB '{db_key}' nicht in config.yaml unter database.files gefunden."
-            )
-        return str(self.db_root_path / filename)
+            return self.db_root_path / f"MISSING_CONFIG_{key}"
+        return self.db_root_path / filename
+
+    def get_folder(self, key: str) -> Path:
+        """Universeller Abruf für konfigurierte Unterordner."""
+        foldername = self.app.database.folders.get(key, key)
+        path = self.db_root_path / foldername
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    # Helper Methoden für Kompatibilität
+    def get_db_path(self, db_key: str) -> str:
+        return str(self.get_path(db_key))
 
     def get_log_path(self) -> str:
-        """Liefert den vollen Pfad zur Logdatei."""
         filename = self.app.logging.file_name
         return str(self.logging_root_path / filename)
 
     def get_strategy_path(self) -> Path:
-        """
-        NEU: Liefert den vollen Pfad zur Strategie-YAML Datei.
-        Der Dateiname ist aktuell fest 'croc-strategie.yaml', liegt aber
-        im konfigurierten Daten-Ordner (db_root_path).
-        """
-        return self.db_root_path / "croc-strategie.yaml"
+        return self.get_path("strategy_yaml")
 
 
 # Singleton

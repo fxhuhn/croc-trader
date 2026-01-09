@@ -126,8 +126,8 @@ class SignalStat:
             self.setter = self.setter if self.setter else None
             self.exchange = self.exchange if self.exchange else None
 
-        except (ValueError, TypeError):
-            logger.warning("import fehler bei ")
+        except (ValueError, TypeError) as e:
+            logger.warning(f"import fehler bei {e}")
 
     def to_db_row(self) -> dict[str, Any]:
         d = asdict(self)

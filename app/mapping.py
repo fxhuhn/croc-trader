@@ -19,7 +19,8 @@ class ExchangeMapper:
 
     def _load_mapping(self):
         """Lädt die JSON Datei einmalig in den Speicher."""
-        json_path = settings.db_root_path / "symbol_exchange.json"
+        # NEU: Nutzung der zentralen Config
+        json_path = settings.get_path("exchange_mapping")
 
         if not json_path.exists():
             logger.warning(f"Exchange Mapping Datei nicht gefunden: {json_path}")
@@ -34,7 +35,6 @@ class ExchangeMapper:
 
     def get_exchange(self, symbol: str, default: Optional[str] = None) -> str:
         """Gibt den Exchange für ein Symbol zurück oder den Default-Wert."""
-        # Wir suchen case-insensitive, da Symbole oft uppercase sind
         return self._mapping.get(symbol.upper(), default)
 
 

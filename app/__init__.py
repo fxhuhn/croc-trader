@@ -75,7 +75,6 @@ def create_app(config_object=settings):
     }
     logging.config.dictConfig(LOGGING_CONFIG)
 
-    # Healthcheck Logs filtern
     class HealthCheckFilter(logging.Filter):
         def filter(self, record):
             return not (
@@ -90,10 +89,8 @@ def create_app(config_object=settings):
     db_stocks = config_object.get_db_path("stocks")
     db_signals = config_object.get_db_path("signals")
 
-    try:
-        db_strategies = config_object.get_db_path("strategies")
-    except KeyError:
-        db_strategies = str(Path(config_object.db_root_path) / "strategies.db")
+    # NEU: Nutzung der zentralen Config für Strategie-DB
+    db_strategies = config_object.get_db_path("strategies")
 
     # --- ZENTRALES LADEN DER STRATEGIEN ---
     yaml_config_path = config_object.get_strategy_path()
@@ -147,7 +144,7 @@ def create_app(config_object=settings):
     csv_worker.start()
     app.extensions["csv_worker"] = csv_worker
 
-    # E) Screener Engine (Erhält nun die geladenen Strategien!)
+    # E) Screener Engine (mit geladenen Strategien)
     screener = ScreenerEngine(
         stocks_db_path=Path(db_stocks),
         signals_db_path=Path(db_signals),
@@ -162,7 +159,7 @@ def create_app(config_object=settings):
     )
     app.extensions["trade_manager"] = trade_manager
 
-    # G) Strategy Engine (Erhält nun die geladenen Strategien!)
+    # G) Strategy Engine (mit geladenen Strategien)
     strategy_engine = StrategyEngine(
         signals_db_path=Path(db_signals),
         strategy_db_path=Path(db_strategies),
@@ -176,7 +173,6 @@ def create_app(config_object=settings):
     # ---------------------------------------------------------
     app_scheduler = BackgroundScheduler()
 
-    # Job 1: Trade Manager Check (Mo-Fr 15:50 NY Time)
     app_scheduler.add_job(
         func=trade_manager.check_active_positions,
         trigger=CronTrigger(
@@ -189,7 +185,6 @@ def create_app(config_object=settings):
         replace_existing=True,
     )
 
-    # Job 2: Strategy Daily Run (08:00 Uhr Lokalzeit)
     def run_strategy_job():
         with app.app_context():
             logging.info("Starte täglichen Strategie-Check...")
@@ -214,7 +209,6 @@ def create_app(config_object=settings):
     if tele_conf.enabled:
         telegram_service.send("🚀 **Croc-Trader System gestartet!**")
         try:
-            # Kurzer Check beim Start
             logging.info("Führe initialen Strategie-Check (30 Tage Rückblick) durch...")
             strategy_engine.run_daily_analysis(lookback_days=30)
             strategy_engine.send_telegram_report()

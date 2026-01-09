@@ -174,7 +174,8 @@ class SignalDatabase:
                 return len(signals)
             except sqlite3.OperationalError:
                 time.sleep(0.1 * (2**attempt))
-            except Exception:
+            except Exception as e:
+                logger.warning(f"DB save_many failed: {e}")
                 return 0
         return 0
 

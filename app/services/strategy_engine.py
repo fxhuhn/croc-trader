@@ -63,7 +63,8 @@ class StrategyEngine:
         try:
             with sig_db._get_conn() as conn:
                 df = pd.read_sql_query(sql, conn)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"SQL _process_dip_buyer failed: {e}")
             return 0
 
         if df.empty:
@@ -97,7 +98,8 @@ class StrategyEngine:
             try:
                 with sig_db._get_conn() as conn:
                     df = pd.read_sql_query(sql, conn)
-            except Exception:
+            except Exception as e:
+                logger.warning(f"SQL _process_yaml_strategies failed: {e}")
                 continue
 
             if df.empty:

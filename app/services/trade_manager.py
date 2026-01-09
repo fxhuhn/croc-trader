@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
+from ..config import settings  # NEU
 from .database import SignalDatabase
 
 logger = logging.getLogger(__name__)
@@ -15,9 +16,9 @@ class TradeManager:
     def __init__(self, db_path: Path, telegram_bot=None):
         self.db_path = db_path
         self.telegram = telegram_bot
-        # Ordner sicherstellen
-        self.orders_dir = Path("data/orders")
-        self.orders_dir.mkdir(parents=True, exist_ok=True)
+
+        # NEU: Zentralisierter Ordner
+        self.orders_dir = settings.get_folder("orders")
 
     def check_active_positions(self):
         """
@@ -85,92 +86,85 @@ class TradeManager:
             # PHASE 1: STATUS PRÜFUNG (Vergangenheit bis Heute)
             # ==============================================================================
 
-            # A) CREATED -> Prüfen ob ENTRY erfolgt ist
-            if status == "CREATED":
-                # Wir suchen Tage NACH dem Signal
-                potential_days = df[df["date"].dt.date > signal_date_obj]
+            # Python 3.10+ match case für bessere Lesbarkeit
+            match status:
+                case "CREATED":
+                    # Wir suchen Tage NACH dem Signal
+                    potential_days = df[df["date"].dt.date > signal_date_obj]
 
-                if not potential_days.empty:
-                    # Check ersten Tag nach Signal
-                    row = potential_days.iloc[0]
-                    check_date = row["date"].strftime("%Y-%m-%d")
+                    if not potential_days.empty:
+                        # Check ersten Tag nach Signal
+                        row = potential_days.iloc[0]
+                        check_date = row["date"].strftime("%Y-%m-%d")
 
-                    if row["low"] <= entry_price:
-                        # FILL!
-                        db.update_trade_status(trade_id, "ACTIVE")
-                        status = "ACTIVE"  # Für Phase 2 sofort nutzen
-                        alerts.append(f"✅ **FILLED**: {symbol} am {check_date}")
-                        trade_dirty = True
+                        if row["low"] <= entry_price:
+                            # FILL!
+                            db.update_trade_status(trade_id, "ACTIVE")
+                            status = "ACTIVE"  # Für Phase 2 sofort nutzen
+                            alerts.append(f"✅ **FILLED**: {symbol} am {check_date}")
+                            trade_dirty = True
+                        else:
+                            # MISSED!
+                            db.update_trade_status(
+                                trade_id, "MISSED", "LIMIT_NOT_REACHED"
+                            )
+                            alerts.append(f"❌ **MISSED**: {symbol} am {check_date}")
+                            continue  # Trade ist raus
+
+                case "ACTIVE":
+                    # Wir brauchen aktuelle Daten
+                    last_row = df.iloc[-1]
+                    current_close = last_row["close"]
+                    current_high = last_row["high"]  # Das ist das PrevHigh für Morgen!
+
+                    # PrevHigh für den heutigen Check (Gestern)
+                    if len(df) >= 2:
+                        prev_row = df.iloc[-2]
+                        prev_high_check = prev_row["high"]
                     else:
-                        # MISSED!
-                        db.update_trade_status(trade_id, "MISSED", "LIMIT_NOT_REACHED")
-                        alerts.append(f"❌ **MISSED**: {symbol} am {check_date}")
-                        continue  # Trade ist raus
+                        prev_high_check = 999999
 
-            # B) ACTIVE -> Prüfen ob EXIT erfolgt ist (TimeStop oder LOC)
-            if status == "ACTIVE":
-                # Wir brauchen aktuelle Daten
-                last_row = df.iloc[-1]
-                current_close = last_row["close"]
-                current_high = last_row["high"]  # Das ist das PrevHigh für Morgen!
+                    days_since = (today - signal_date_obj).days
+                    time_stop_date = signal_date_obj + timedelta(days=7)
 
-                # PrevHigh für den heutigen Check (Gestern)
-                if len(df) >= 2:
-                    prev_row = df.iloc[-2]
-                    prev_high_check = prev_row["high"]
-                else:
-                    prev_high_check = 999999
+                    # 1. TIME STOP CHECK
+                    if days_since >= 7:
+                        db.close_trade(trade_id, reason="TIME_STOP")
+                        alerts.append(f"⏰ **TIME STOP**: {symbol} wird geschlossen.")
 
-                days_since = (today - signal_date_obj).days
-                time_stop_date = signal_date_obj + timedelta(days=7)
+                        json_position_updates.append(
+                            {
+                                "symbol": symbol,
+                                "action": "SELL",
+                                "type": "MARKET_ON_CLOSE",
+                                "reason": "TIME_STOP_EXPIRED",
+                                "validity": validity_str,
+                            }
+                        )
+                        continue  # Trade ist zu
 
-                # 1. TIME STOP CHECK (Sind wir schon drüber?)
-                if days_since >= 7:
-                    db.close_trade(trade_id, reason="TIME_STOP")
-                    alerts.append(f"⏰ **TIME STOP**: {symbol} wird geschlossen.")
+                    # 2. LOC EXIT CHECK (War Close heute > High gestern?)
+                    elif current_close > prev_high_check:
+                        alerts.append(
+                            f"📈 **LOC SIGNAL**: {symbol} (Close {current_close:.2f} > {prev_high_check:.2f})"
+                        )
 
-                    # Order für Morgen schreiben: RAUS!
-                    json_position_updates.append(
-                        {
-                            "symbol": symbol,
-                            "action": "SELL",
-                            "type": "MARKET_ON_CLOSE",  # Oder MARKET_OPEN
-                            "reason": "TIME_STOP_EXPIRED",
-                            "validity": validity_str,
-                        }
-                    )
-                    continue  # Trade ist zu
-
-                # 2. LOC EXIT CHECK (War Close heute > High gestern?)
-                elif current_close > prev_high_check:
-                    # Signal ist da -> Morgen verkaufen
-                    # Wir lassen Status ACTIVE, aber Order geht raus.
-                    # (User muss dann manuell schließen oder wir bauen Auto-Close beim nächsten Lauf)
-                    alerts.append(
-                        f"📈 **LOC SIGNAL**: {symbol} (Close {current_close:.2f} > {prev_high_check:.2f})"
-                    )
-
-                    json_position_updates.append(
-                        {
-                            "symbol": symbol,
-                            "action": "SELL",
-                            "type": "MARKET",  # Sofort raus
-                            "reason": "LOC_TRIGGERED",
-                            "comment": f"Close {current_close:.2f} > PrevHigh {prev_high_check:.2f}",
-                            "validity": validity_str,
-                        }
-                    )
-                    # Wir setzen hier optional den Status auf 'CLOSING_PENDING' wenn wir wollen
+                        json_position_updates.append(
+                            {
+                                "symbol": symbol,
+                                "action": "SELL",
+                                "type": "MARKET",
+                                "reason": "LOC_TRIGGERED",
+                                "comment": f"Close {current_close:.2f} > PrevHigh {prev_high_check:.2f}",
+                                "validity": validity_str,
+                            }
+                        )
 
             # ==============================================================================
             # PHASE 2: ORDER ERSTELLUNG (Für Morgen)
             # ==============================================================================
 
-            # A) NEUE SIGNALE (Screener von heute abend -> CREATED)
-            # Hinweis: Wenn der Trade gerade erst FILLED wurde (oben), ist er jetzt ACTIVE, nicht mehr CREATED.
-            # Hier greifen wir Trades ab, die noch auf Fill warten (also vom heutigen Screener).
             if status == "CREATED":
-                # Bracket Werte berechnen
                 target_price = entry_price + (0.8 * atr_entry)
                 stop_date = signal_date_obj + timedelta(days=7)
 
@@ -185,7 +179,7 @@ class TradeManager:
                             "take_profit": {
                                 "type": "LIMIT",
                                 "price": round(target_price, 2),
-                                "validity": "GTC",  # Good till cancelled
+                                "validity": "GTC",
                             },
                             "time_stop": {
                                 "type": "MARKET_ON_CLOSE",
@@ -197,15 +191,8 @@ class TradeManager:
                 )
                 watchlist.append(f"🆕 **BUY**: {symbol} @ {entry_price:.2f}")
 
-            # B) LAUFENDE TRADES (ACTIVE) -> Updates für Stop-Logik
             elif status == "ACTIVE":
-                # Wenn wir oben keine Sell Order erstellt haben, definieren wir die Regeln für Morgen
-                # Wir müssen dem System sagen: "Pass auf, wenn morgen X passiert."
-
-                # LOC Trigger für Morgen = High von Heute
-                loc_trigger_level = current_high
-
-                # Target und TimeStop bleiben gleich
+                loc_trigger_level = df.iloc[-1]["high"]
                 target_price = entry_price + (0.8 * atr_entry)
                 stop_date = signal_date_obj + timedelta(days=7)
                 days_left = (stop_date - today).days
@@ -214,7 +201,7 @@ class TradeManager:
                     {
                         "symbol": symbol,
                         "status": "HOLD",
-                        "current_close": round(current_close, 2),
+                        "current_close": round(df.iloc[-1]["close"], 2),
                         "validity": validity_str,
                         "active_orders": {
                             "loc_exit_watch": {

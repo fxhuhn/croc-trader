@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from ..config import settings  # NEU
 from ..models import CrocSignal, SignalStat
 
 # Import aus dem gleichen Package
@@ -70,7 +71,10 @@ class CsvImportWorker:
         self.data_folder = data_folder
         self.db_path = db_path
         self.check_interval = check_interval
-        self.target_file = self.data_folder / "croc_statistik.csv"
+
+        # NEU: Dateiname aus Config
+        self.target_file = settings.get_path("stats_import")
+
         self._stop_event = threading.Event()
         self._thread = threading.Thread(
             target=self._run, daemon=True, name="CSV-Importer"
@@ -124,7 +128,9 @@ class CsvImportWorker:
 
     def _cleanup_old_files(self, days=30):
         limit = time.time() - (days * 86400)
-        for file in self.data_folder.glob("croc_statistik.csv.*"):
+        # Suche nach pattern basierend auf dem Dateinamen
+        pattern = f"{self.target_file.name}.*"
+        for file in self.data_folder.glob(pattern):
             try:
                 if file.stat().st_mtime < limit:
                     file.unlink()
@@ -159,5 +165,4 @@ class CsvImportWorker:
             logger.error(f"Backup fehlgeschlagen: {e}")
 
     def _cleanup_backups(self, folder: Path, keep=7):
-        # ... (Logik zum Löschen alter Dateien, ähnlich wie beim CSV Worker) ...
         pass
