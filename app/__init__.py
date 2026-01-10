@@ -209,7 +209,8 @@ def create_app(config_object=settings):
         with app.app_context():
             logging.info("Starte täglichen Strategie-Check...")
             # Automatische Ausführung am Morgen
-            screener_hits = screener.run_all(days=0)
+            # [FIX] F841: Rückgabewert wird nicht mehr zugewiesen
+            screener.run_all(days=0)
             strategy_engine.run_daily_analysis(lookback_days=1)
             strategy_engine.send_telegram_report()
 
