@@ -10,7 +10,6 @@ main_bp = Blueprint("main", __name__)
 
 
 def check_ip_auth():
-    """Einfache IP-basierte Absicherung."""
     allowed_ips = ["127.0.0.1", "localhost", "::1"]
     if request.remote_addr not in allowed_ips:
         pass
@@ -23,12 +22,11 @@ def health():
 
 @main_bp.route("/webhook", methods=["POST"])
 def webhook():
-    # Deine bestehende Webhook-Logik (hier abgekürzt wie besprochen)
     pass
 
 
 # ==============================================================================
-# HTML VIEWS (NEU)
+# HTML VIEWS (UPDATED)
 # ==============================================================================
 
 
@@ -54,6 +52,8 @@ def view_screener_webhook():
             tr:nth-child(even) { background-color: #f3f3f3; }
             tr:hover { background-color: #f1f1f1; }
             h1 { color: #333; }
+            .details { font-size: 0.85em; color: #555; font-style: italic; }
+            .rank-high { font-weight: bold; color: #d35400; }
         </style>
     </head>
     <body>
@@ -61,11 +61,11 @@ def view_screener_webhook():
         <table>
             <thead>
                 <tr>
-                    <th>Datum</th>
+                    <th>Rank</th> <th>Datum</th>
                     <th>Symbol</th>
                     <th>Strategie</th>
                     <th>Signal</th>
-                    <th>Close</th>
+                    <th>Kriterien (Filter)</th> <th>Close</th>
                     <th>RSI</th>
                     <th>SMA 200</th>
                 </tr>
@@ -73,11 +73,12 @@ def view_screener_webhook():
             <tbody>
                 {% for row in results %}
                 <tr>
+                    <td class="rank-high">#{{ row['rank'] }}</td>
                     <td>{{ row['date'] }}</td>
                     <td><b>{{ row['symbol'] }}</b></td>
                     <td>{{ row['strategy'] }}</td>
                     <td>{{ row['signal'] }}</td>
-                    <td>{{ row['close'] }}</td>
+                    <td class="details">{{ row['filter_details'] }}</td> <td>{{ row['close'] }}</td>
                     <td>{{ row['rsi'] }}</td>
                     <td>{{ row['sma_200'] }}</td>
                 </tr>
@@ -213,18 +214,9 @@ def view_strategy_trades():
     return render_template_string(html, results=results)
 
 
-# ==============================================================================
-# SCREENER ROUTE (Vereinfacht)
-# ==============================================================================
-
-
 @main_bp.route("/screener/run", methods=["POST"])
 def run_screener():
-    """
-    Führt ALLE Strategien aus (DipBuyer, WebhookFilter, etc.).
-    """
     check_ip_auth()
-
     try:
         days = request.args.get("days", default=0, type=int)
         clean = request.args.get("clean", default="false").lower() == "true"
@@ -237,15 +229,11 @@ def run_screener():
                 {"status": "error", "message": "Engines not initialized"}
             ), 500
 
-        # Optional: Aufräumen
         if clean:
             screener.signals_db.clear_screener_webhook()
             logger.info("Screener Tabellen (Webhook) geleert.")
 
-        # 1. SCREENER LAUF (Alle Strategien)
         screener_results = screener.run_all(days=days)
-
-        # 2. STRATEGY ENGINE LAUF (Trades erstellen)
         strategy_engine.run_daily_analysis(lookback_days=days if days > 0 else 1)
 
         return jsonify(
@@ -263,5 +251,4 @@ def run_screener():
 
 @main_bp.route("/portfolio", methods=["GET"])
 def portfolio():
-    # Dein Portfolio Code...
     return jsonify({"status": "ok"})

@@ -42,7 +42,7 @@ class SignalDatabase:
     def _init_db(self) -> None:
         """Erstellt Tabellen, Indizes und Views."""
 
-        # 1. Signals Tabelle (Mit Generated Columns)
+        # 1. Signals Tabelle
         schema_signals = """
         CREATE TABLE IF NOT EXISTS signals (
             symbol TEXT NOT NULL, timeframe TEXT NOT NULL, signal TEXT NOT NULL,
@@ -110,7 +110,7 @@ class SignalDatabase:
         );
         """
 
-        # 5. TABELLE: WEBHOOK SCREENER
+        # 5. TABELLE: WEBHOOK SCREENER (Updated Schema in Migration below)
         schema_webhook = """
         CREATE TABLE IF NOT EXISTS screener_webhook (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,6 +128,9 @@ class SignalDatabase:
             sma_200 REAL,
             sma_20 REAL,
 
+            rank INTEGER,          -- NEU
+            filter_details TEXT,   -- NEU
+
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL,
             dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL,
@@ -135,7 +138,7 @@ class SignalDatabase:
         );
         """
 
-        # 6. Trades (UPDATED: MIT STRATEGY)
+        # 6. Trades
         schema_trades = """
         CREATE TABLE IF NOT EXISTS active_trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -163,7 +166,8 @@ class SignalDatabase:
                 conn.executescript(schema_trades)
 
                 # --- MIGRATIONEN ---
-                # A) Signals Migrationen
+
+                # A) Signals
                 try:
                     conn.execute(
                         "ALTER TABLE signals ADD COLUMN dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL"
@@ -177,7 +181,7 @@ class SignalDatabase:
                 except sqlite3.OperationalError:
                     pass
 
-                # B) Webhook Migrationen
+                # B) Webhook Migrationen (Alte + Neue)
                 try:
                     conn.execute("ALTER TABLE screener_webhook ADD COLUMN sma_20 REAL")
                 except sqlite3.OperationalError:
@@ -195,10 +199,26 @@ class SignalDatabase:
                 except sqlite3.OperationalError:
                     pass
 
-                # C) Active Trades Migration (Strategy Column)
+                # --- NEUE MIGRATIONEN FÜR RANKING & DETAILS ---
+                try:
+                    conn.execute("ALTER TABLE screener_webhook ADD COLUMN rank INTEGER")
+                    logger.info("Migration: 'rank' zu screener_webhook hinzugefügt.")
+                except sqlite3.OperationalError:
+                    pass
+
+                try:
+                    conn.execute(
+                        "ALTER TABLE screener_webhook ADD COLUMN filter_details TEXT"
+                    )
+                    logger.info(
+                        "Migration: 'filter_details' zu screener_webhook hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass
+
+                # C) Active Trades
                 try:
                     conn.execute("ALTER TABLE active_trades ADD COLUMN strategy TEXT")
-                    logger.info("Migration: 'strategy' zu active_trades hinzugefügt.")
                 except sqlite3.OperationalError:
                     pass
 
@@ -208,8 +228,7 @@ class SignalDatabase:
             logger.critical(f"DB Init failed: {e}")
             raise
 
-    # ... (save_many, replace_stats, get_latest_signals_with_stats, clean_batz_exchanges) bleiben gleich ...
-
+    # ... (save_many, replace_stats, get_latest_signals_with_stats, clean_batz_exchanges, save_screener_dip_buyer) ...
     def save_many(self, signals: List[CrocSignal], retries: int = 5) -> int:
         if not signals:
             return 0
@@ -271,10 +290,17 @@ class SignalDatabase:
             conn.executemany(sql, results)
             conn.commit()
 
+    # UPDATED: save_screener_webhook mit neuen Feldern
     def save_screener_webhook(self, results: List[dict]):
         if not results:
             return
-        sql = "INSERT OR IGNORE INTO screener_webhook (date, symbol, exchange, timeframe, strategy, signal, close, high, low, rsi, sma_200, sma_20) VALUES (:date, :symbol, :exchange, :timeframe, :strategy, :signal, :close, :high, :low, :rsi, :sma_200, :sma_20)"
+        # SQL Insert muss rank und filter_details enthalten
+        sql = """
+        INSERT OR IGNORE INTO screener_webhook
+        (date, symbol, exchange, timeframe, strategy, signal, close, high, low, rsi, sma_200, sma_20, rank, filter_details)
+        VALUES
+        (:date, :symbol, :exchange, :timeframe, :strategy, :signal, :close, :high, :low, :rsi, :sma_200, :sma_20, :rank, :filter_details)
+        """
         try:
             with self._get_conn() as conn:
                 conn.executemany(sql, results)
@@ -282,16 +308,16 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler save_screener_webhook: {e}")
 
-    # --- Getter für Views (routes.py) ---
+    # --- Getter für Views (für routes.py) ---
     def get_dip_buyer_results(self, limit: int = 50):
         sql = "SELECT * FROM screener_dip_buyer ORDER BY date DESC, setup_score DESC LIMIT ?"
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
     def get_webhook_results(self, limit: int = 50):
-        sql = (
-            "SELECT * FROM screener_webhook ORDER BY date DESC, created_at DESC LIMIT ?"
-        )
+        # Sortieren nach Rank (Wichtig!) und Datum
+        # (Da wir rank jetzt haben, nutzen wir es für die Sortierung)
+        sql = "SELECT * FROM screener_webhook ORDER BY date DESC, rank ASC, created_at DESC LIMIT ?"
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
@@ -304,8 +330,7 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler beim Leeren von screener_webhook: {e}")
 
-    # --- Trades (KORRIGIERT: Mit Strategy Parameter) ---
-
+    # --- Trades ---
     def add_trade(
         self,
         symbol,
@@ -315,7 +340,6 @@ class SignalDatabase:
         strategy="MANUAL",
         quantity=1,
     ):
-        """Fügt einen neuen Trade hinzu (inkl. Strategie)."""
         with self._get_conn() as conn:
             existing = conn.execute(
                 "SELECT id FROM active_trades WHERE symbol = ? AND status IN ('CREATED', 'ACTIVE')",
@@ -324,7 +348,6 @@ class SignalDatabase:
             if existing:
                 return existing[0]
 
-            # WICHTIG: Hier wird strategy nun auch geschrieben!
             cursor = conn.execute(
                 """
                 INSERT INTO active_trades

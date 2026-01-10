@@ -35,11 +35,14 @@ class BaseStrategy:
     def _send_telegram_report(self, title, date, results):
         if not self.telegram or not results:
             return
-        msg = f"🔎 **{title}**\nDatum: {date}\nTreffer: {len(results)}\n"
-        for r in results[:5]:
-            msg += f"- {r['symbol']}\n"
-        if len(results) > 5:
-            msg += f"... und {len(results) - 5} weitere."
+        # Kompaktere Darstellung für Telegram
+        msg = f"🔎 **{title}** ({date})\n"
+        for r in results[:10]:  # Top 10
+            # Wir zeigen nun auch den Rank im Telegram
+            rank_info = f"[#{r.get('rank', '-')}] "
+            msg += f"• {rank_info}{r['symbol']} ({r['strategy']}): {r['close']}\n"
+        if len(results) > 10:
+            msg += f"... und {len(results) - 10} weitere."
         self.telegram.send(msg)
 
 
@@ -96,7 +99,7 @@ class DipBuyerStrategy(BaseStrategy):
                 entry_price=res["entry_limit"],
                 atr_at_entry=res["atr5"],
                 quantity=1,
-                strategy=self.name,  # WICHTIG: Strategie-Name wird hier übergeben
+                strategy=self.name,
             )
 
     def _load_market_data(self, days=400) -> Optional[Dict[str, pd.DataFrame]]:
@@ -223,20 +226,43 @@ class DipBuyerStrategy(BaseStrategy):
 class WebhookFilterStrategy(BaseStrategy):
     name = "WebhookFilter"
 
-    def __init__(
-        self, signals_db: SignalDatabase, strategies: List[Dict], telegram_bot=None
-    ):
+    def __init__(self, signals_db: SignalDatabase, config: Dict, telegram_bot=None):
         super().__init__(signals_db, telegram_bot)
-        self.strategies = strategies
+
+        self.config = config
+        self.strategies = config.get("strategy_ranking", [])
+        self.seasonal_roadmap = config.get("seasonal_roadmap", {})
+        self.execution_rules = config.get("execution_rules", {})
+
+        self.daily_limit = self.execution_rules.get("daily_limit", 10)
+        self.management_style = self.execution_rules.get("management_style", "STANDARD")
 
     def run(self, days: int = 0) -> int:
         lookback = days if days > 0 else 1
-        logger.info(f"[{self.name}] Verarbeite Signale der letzten {lookback} Tage...")
+        logger.info(f"[{self.name}] Starte Analyse (Lookback: {lookback} Tage)...")
 
         if not self.strategies:
-            logger.info(f"[{self.name}] Keine YAML-Strategien geladen.")
+            logger.warning(f"[{self.name}] Keine Strategien in YAML gefunden.")
             return 0
 
+        # --- SCHRITT A: SAISONALITÄTS-CHECK ---
+        current_month = datetime.now().strftime("%B")
+        season_info = self.seasonal_roadmap.get(current_month)
+
+        if season_info:
+            multiplier = season_info.get("position_size_multiplier", 1.0)
+            if multiplier <= 0.0:
+                msg = f"⚠️ **Trading Pausiert** ({current_month})\nGrund: {season_info.get('description', 'Saisonalität')}"
+                logger.warning(msg)
+                if self.telegram:
+                    self.telegram.send(msg)
+                return 0
+
+            logger.info(
+                f"Saisonalität: {current_month} (Faktor {multiplier}) - {season_info.get('description')}"
+            )
+
+        # --- SCHRITT B: SIGNAL SCANNING ---
         start_date = (datetime.now() - timedelta(days=lookback)).strftime("%Y-%m-%d")
 
         try:
@@ -255,6 +281,7 @@ class WebhookFilterStrategy(BaseStrategy):
             return 0
 
         if df.empty:
+            logger.info(f"[{self.name}] Keine Signale im Zeitraum gefunden.")
             return 0
 
         cols = [
@@ -271,73 +298,120 @@ class WebhookFilterStrategy(BaseStrategy):
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
-        total_matches = 0
+        # --- SCHRITT C: STRATEGIE-MATCHING & FILTERING ---
+        candidates = []
+
         for strat in self.strategies:
-            total_matches += self._process_single_strategy(strat, df, lookback)
+            strat_name = strat.get("signal_name")
+            if not strat_name:
+                continue
 
-        logger.info(f"[{self.name}] Fertig: {total_matches} Treffer.")
-        return total_matches
-
-    def _process_single_strategy(
-        self, strat: Dict, df: pd.DataFrame, lookback_days: int
-    ) -> int:
-        name = strat.get("name", "Unbekannt")
-        logic = self._parse_logic(strat)
-
-        if not logic:
-            return 0
-
-        try:
-            matches = df.query(logic).copy()
+            # 1. Basis-Filter
+            matches = df[df["signal"] == strat_name].copy()
 
             if matches.empty:
-                if name in df["signal"].values:
-                    logger.info(
-                        f"Strategie '{name}': Signale vorhanden, aber Filter-Kriterien nicht erfüllt."
-                    )
-                else:
-                    logger.warning(
-                        f"Strategie '{name}': Keine Einträge für Signal-Name '{name}' gefunden."
-                    )
-                return 0
+                logger.warning(
+                    f"[{self.name}] Strategie '{strat_name}': Keine Einträge für Signal-Name '{strat_name}' gefunden."
+                )
+                continue
 
-            results = []
-            for _, row in matches.iterrows():
-                results.append(
-                    {
-                        "date": row["date_str"],
-                        "symbol": row["symbol"],
-                        "exchange": row["exchange"]
-                        or self._get_exchange(row["symbol"]),
-                        "timeframe": row.get("timeframe", "1D"),
-                        "strategy": name,
-                        "signal": row["signal"],
-                        "close": round(row["close"], 2),
-                        "high": round(row["high"], 2),
-                        "low": round(row["low"], 2),
-                        "rsi": round(row["rsi"], 2),
-                        "sma_200": round(row["sma_200"], 2),
-                        "sma_20": round(row.get("sma_20", 0), 2),
-                    }
+            # 2. Erweiterte Filter
+            filters = strat.get("filters", {})
+
+            # --- NEU: Dokumentation der Filter für die DB ---
+            # Erstellt String wie "dist_ema_20: < 20, RSI: < 70"
+            filter_details_str = ", ".join([f"{k}: {v}" for k, v in filters.items()])
+
+            valid_indices = []
+
+            for idx, row in matches.iterrows():
+                is_valid = True
+                for key, condition in filters.items():
+                    db_col = self._map_key(key)
+                    if db_col not in row:
+                        is_valid = False
+                        break
+
+                    market_value = row[db_col]
+                    if not self._check_condition(market_value, condition):
+                        is_valid = False
+                        break
+
+                if is_valid:
+                    valid_indices.append(idx)
+
+            if valid_indices:
+                accepted = matches.loc[valid_indices].copy()
+
+                # --- NEU: Daten für Ranking & Doku speichern ---
+                accepted["rank"] = strat.get("rank", 999)
+                accepted["filter_details"] = filter_details_str  # Die Doku-Spalte
+
+                accepted["strategy_name"] = strat_name
+                accepted["sort_metric"] = accepted["dist_sma_20"]
+
+                candidates.append(accepted)
+            else:
+                logger.info(
+                    f"[{self.name}] Strategie '{strat_name}': Signale vorhanden, aber Filter nicht erfüllt."
                 )
 
-            self.signals_db.save_screener_webhook(results)
-            self._send_telegram_report(
-                f"🚀 Signal: {name}", f"Letzte {lookback_days} Tage", results
-            )
-            return len(results)
-
-        except Exception as e:
-            logger.error(f"Fehler in Strategie '{name}': {e} | Logik: {logic}")
+        if not candidates:
             return 0
 
-    def _parse_logic(self, strat: Dict) -> str:
-        conditions = []
-        name = strat.get("name")
-        if name:
-            safe_name = name.replace("'", "\\'")
-            conditions.append(f"(signal == '{safe_name}')")
+        final_df = pd.concat(candidates, ignore_index=True)
 
+        # --- SCHRITT D: PRIORISIERUNG & RANKING ---
+        final_df = final_df.sort_values(
+            by=["rank", "sort_metric"], ascending=[True, True]
+        )
+
+        if len(final_df) > self.daily_limit:
+            logger.info(
+                f"Limitierung: {len(final_df)} Kandidaten auf {self.daily_limit} gekürzt."
+            )
+            final_df = final_df.head(self.daily_limit)
+
+        # --- SCHRITT E: OUTPUT-GENERIERUNG ---
+        results = []
+        for _, row in final_df.iterrows():
+            entry = row["close"]
+            risk_unit = entry * 0.01
+            tp1 = entry + (1 * risk_unit)
+            tp3 = entry + (3 * risk_unit)
+            sl = entry - (1 * risk_unit)
+
+            res = {
+                "date": row["date_str"],
+                "symbol": row["symbol"],
+                "exchange": row["exchange"] or self._get_exchange(row["symbol"]),
+                "timeframe": row.get("timeframe", "1D"),
+                "strategy": row["strategy_name"],
+                "signal": row["signal"],
+                "close": round(row["close"], 2),
+                "high": round(row["high"], 2),
+                "low": round(row["low"], 2),
+                "rsi": round(row["rsi"], 2),
+                "sma_200": round(row["sma_200"], 2),
+                "sma_20": round(row.get("sma_20", 0), 2),
+                # --- NEU: Rank & Doku übergeben ---
+                "rank": int(row.get("rank", 999)),
+                "filter_details": row.get("filter_details", ""),
+                "tp1": round(tp1, 2),
+                "tp3": round(tp3, 2),
+                "sl": round(sl, 2),
+            }
+            results.append(res)
+
+        self.signals_db.save_screener_webhook(results)
+        self._send_telegram_report(
+            f"🚀 High-Priority ({current_month})", start_date, results
+        )
+
+        logger.info(f"[{self.name}] Fertig: {len(results)} Top-Kandidaten ausgewählt.")
+        return len(results)
+
+    def _map_key(self, yaml_key: str) -> str:
         key_map = {
             "dist_ema_20": "dist_sma_20",
             "dist_ema_200": "dist_sma_200",
@@ -349,29 +423,38 @@ class WebhookFilterStrategy(BaseStrategy):
             "status": "status",
             "setter": "setter",
         }
+        return key_map.get(yaml_key, yaml_key)
 
-        for k, v in strat.items():
-            db_col = key_map.get(k, k)
-            if k in ["name", "win_rate", "trades", "source"]:
-                continue
+    def _check_condition(self, market_value, condition_string: str) -> bool:
+        try:
+            if isinstance(market_value, str):
+                return market_value == condition_string.strip()
 
-            if isinstance(v, str):
-                v = v.strip()
-                match_range = re.match(
-                    r"Bereich\s+(-?[\d\.]+)\s+bis\s+(-?[\d\.]+)", v, re.IGNORECASE
-                )
-                if match_range:
-                    min_v, max_v = match_range.groups()
-                    conditions.append(f"({db_col} >= {min_v} and {db_col} <= {max_v})")
-                    continue
-                match_op = re.match(r"([<>])\s*(-?[\d\.]+)", v)
-                if match_op:
-                    op, val = match_op.groups()
-                    conditions.append(f"({db_col} {op} {val})")
-                    continue
-                conditions.append(f"({db_col} == '{v}')")
+            if not isinstance(condition_string, str):
+                return market_value == condition_string
 
-        return " and ".join(conditions) if conditions else ""
+            condition_string = condition_string.strip()
+
+            match_range = re.match(
+                r"Bereich\s+(-?[\d\.]+)\s+bis\s+(-?[\d\.]+)",
+                condition_string,
+                re.IGNORECASE,
+            )
+            if match_range:
+                min_val, max_val = map(float, match_range.groups())
+                return min_val <= market_value < max_val
+
+            if condition_string.startswith("<"):
+                threshold = float(condition_string.replace("<", "").strip())
+                return market_value < threshold
+
+            if condition_string.startswith(">"):
+                threshold = float(condition_string.replace(">", "").strip())
+                return market_value > threshold
+
+            return False
+        except Exception:
+            return False
 
 
 # ==============================================================================
@@ -384,19 +467,23 @@ class ScreenerEngine:
         self,
         stocks_db_path: Path,
         signals_db_path: Path,
-        strategies: List[Dict] = None,
+        config: Dict = None,
         telegram_bot=None,
     ):
         self.signals_db = SignalDatabase(signals_db_path)
         self.telegram = telegram_bot
         self.active_strategies: List[BaseStrategy] = []
 
-        # Strategien registrieren
+        if isinstance(config, list):
+            config = {"strategy_ranking": config}
+        elif config is None:
+            config = {}
+
         self.register_strategy(
             DipBuyerStrategy(stocks_db_path, self.signals_db, self.telegram)
         )
         self.register_strategy(
-            WebhookFilterStrategy(self.signals_db, strategies or [], self.telegram)
+            WebhookFilterStrategy(self.signals_db, config, self.telegram)
         )
 
     def register_strategy(self, strategy: BaseStrategy):
@@ -404,13 +491,14 @@ class ScreenerEngine:
         logger.debug(f"Strategie registriert: {strategy.name}")
 
     def run_all(self, days: int = 0) -> Dict[str, int]:
-        """Führt ALLE registrierten Strategien aus."""
         results = {}
         for strat in self.active_strategies:
             try:
                 hits = strat.run(days=days)
                 results[strat.name] = hits
             except Exception as e:
-                logger.error(f"Fehler beim Ausführen von {strat.name}: {e}")
+                logger.error(
+                    f"Fehler beim Ausführen von {strat.name}: {e}", exc_info=True
+                )
                 results[strat.name] = 0
         return results

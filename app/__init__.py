@@ -98,32 +98,36 @@ def create_app(config_object=settings):
     db_signals = config_object.get_db_path("signals")
     db_strategies = config_object.get_db_path("strategies")
 
-    # --- ZENTRALES LADEN DER STRATEGIEN ---
+    # --- ZENTRALES LADEN DER STRATEGIEN (CROC UPDATE) ---
     yaml_config_path = config_object.get_strategy_path()
-    loaded_strategies = []
+    loaded_config = {}  # Wir laden jetzt ein Config-Dict
+
     if yaml_config_path.exists():
         try:
             with open(yaml_config_path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f) or []
+                data = yaml.safe_load(f) or {}
 
+            # Unterstützung für das neue CROC Format & Legacy Fallback
             if isinstance(data, dict):
-                if "signal" in data:
-                    loaded_strategies = data["signal"]
-                elif "strategies" in data:
-                    loaded_strategies = data["strategies"]
-                else:
-                    logging.warning(
-                        "YAML Struktur unbekannt (erwarte Liste oder Key 'signal'). Lade als leere Liste."
+                if "strategy_ranking" in data:
+                    # Das ist das neue Format! Wir übergeben alles.
+                    loaded_config = data
+                    logging.info(
+                        f"CROC Strategie geladen: {len(data.get('strategy_ranking', []))} Regeln."
                     )
-                    loaded_strategies = []
+                elif "signal" in data:
+                    # Legacy Format Support
+                    loaded_config = {"strategy_ranking": data["signal"]}
+                elif "strategies" in data:
+                    # Legacy Format Support
+                    loaded_config = {"strategy_ranking": data["strategies"]}
             elif isinstance(data, list):
-                loaded_strategies = data
+                # Legacy Format (nur Liste)
+                loaded_config = {"strategy_ranking": data}
 
-            logging.info(
-                f"Strategien geladen: {len(loaded_strategies)} Regeln gefunden."
-            )
         except Exception as e:
             logging.error(f"Fehler beim Laden der Strategie-YAML: {e}")
+            loaded_config = {}
     else:
         logging.warning(f"Keine Strategie-Datei gefunden unter: {yaml_config_path}")
 
@@ -164,11 +168,11 @@ def create_app(config_object=settings):
     csv_worker.start()
     app.extensions["csv_worker"] = csv_worker
 
-    # E) Screener Engine
+    # E) Screener Engine (UPDATED: config statt strategies)
     screener = ScreenerEngine(
         stocks_db_path=Path(db_stocks),
         signals_db_path=Path(db_signals),
-        strategies=loaded_strategies,
+        config=loaded_config,
         telegram_bot=telegram_service,
     )
     app.extensions["screener_engine"] = screener
@@ -180,11 +184,18 @@ def create_app(config_object=settings):
     app.extensions["trade_manager"] = trade_manager
 
     # G) Strategy Engine
+    # Wir extrahieren die Liste für die StrategyEngine, da diese (noch) keine Full-Config erwartet
+    strat_list = (
+        loaded_config.get("strategy_ranking", [])
+        if isinstance(loaded_config, dict)
+        else []
+    )
+
     strategy_engine = StrategyEngine(
         signals_db_path=Path(db_signals),
         strategy_db_path=Path(db_strategies),
         telegram_bot=telegram_service,
-        strategies=loaded_strategies,
+        strategies=strat_list,
     )
     app.extensions["strategy_engine"] = strategy_engine
 
@@ -209,7 +220,6 @@ def create_app(config_object=settings):
         with app.app_context():
             logging.info("Starte täglichen Strategie-Check...")
             # Automatische Ausführung am Morgen
-            # [FIX] F841: Rückgabewert wird nicht mehr zugewiesen
             screener.run_all(days=0)
             strategy_engine.run_daily_analysis(lookback_days=1)
             strategy_engine.send_telegram_report()
