@@ -252,3 +252,25 @@ def run_screener():
 @main_bp.route("/portfolio", methods=["GET"])
 def portfolio():
     return jsonify({"status": "ok"})
+
+
+@main_bp.route("/orders/generate", methods=["POST"])
+def generate_orders():
+    """Manuelles Triggern der Order-Erstellung (für Tests)."""
+    check_ip_auth()
+    tm = current_app.extensions.get("trade_manager")
+    if not tm:
+        return jsonify({"status": "error", "message": "TradeManager not found"}), 500
+
+    try:
+        # Führt die Logik aus: Prüfen -> Update -> YAML erstellen
+        tm.check_active_positions()
+        return jsonify(
+            {
+                "status": "success",
+                "message": "TradeManager ausgeführt (siehe Logs/Ordner).",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Fehler bei Order-Generierung: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500

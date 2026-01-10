@@ -110,7 +110,7 @@ class SignalDatabase:
         );
         """
 
-        # 5. TABELLE: WEBHOOK SCREENER (Updated Schema in Migration below)
+        # 5. TABELLE: WEBHOOK SCREENER
         schema_webhook = """
         CREATE TABLE IF NOT EXISTS screener_webhook (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,8 +128,8 @@ class SignalDatabase:
             sma_200 REAL,
             sma_20 REAL,
 
-            rank INTEGER,          -- NEU
-            filter_details TEXT,   -- NEU
+            rank INTEGER,
+            filter_details TEXT,
 
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL,
@@ -181,7 +181,7 @@ class SignalDatabase:
                 except sqlite3.OperationalError:
                     pass
 
-                # B) Webhook Migrationen (Alte + Neue)
+                # B) Webhook Migrationen
                 try:
                     conn.execute("ALTER TABLE screener_webhook ADD COLUMN sma_20 REAL")
                 except sqlite3.OperationalError:
@@ -199,13 +199,12 @@ class SignalDatabase:
                 except sqlite3.OperationalError:
                     pass
 
-                # --- NEUE MIGRATIONEN FÜR RANKING & DETAILS ---
+                # C) Neue CROC Spalten
                 try:
                     conn.execute("ALTER TABLE screener_webhook ADD COLUMN rank INTEGER")
                     logger.info("Migration: 'rank' zu screener_webhook hinzugefügt.")
                 except sqlite3.OperationalError:
                     pass
-
                 try:
                     conn.execute(
                         "ALTER TABLE screener_webhook ADD COLUMN filter_details TEXT"
@@ -216,7 +215,7 @@ class SignalDatabase:
                 except sqlite3.OperationalError:
                     pass
 
-                # C) Active Trades
+                # D) Active Trades
                 try:
                     conn.execute("ALTER TABLE active_trades ADD COLUMN strategy TEXT")
                 except sqlite3.OperationalError:
@@ -228,7 +227,7 @@ class SignalDatabase:
             logger.critical(f"DB Init failed: {e}")
             raise
 
-    # ... (save_many, replace_stats, get_latest_signals_with_stats, clean_batz_exchanges, save_screener_dip_buyer) ...
+    # ... (save_many, replace_stats, get_latest_signals_with_stats, clean_batz_exchanges, save_screener_dip_buyer, save_screener_webhook, get_dip_buyer_results, get_webhook_results, clear_screener_webhook - BLEIBEN GLEICH) ...
     def save_many(self, signals: List[CrocSignal], retries: int = 5) -> int:
         if not signals:
             return 0
@@ -290,11 +289,9 @@ class SignalDatabase:
             conn.executemany(sql, results)
             conn.commit()
 
-    # UPDATED: save_screener_webhook mit neuen Feldern
     def save_screener_webhook(self, results: List[dict]):
         if not results:
             return
-        # SQL Insert muss rank und filter_details enthalten
         sql = """
         INSERT OR IGNORE INTO screener_webhook
         (date, symbol, exchange, timeframe, strategy, signal, close, high, low, rsi, sma_200, sma_20, rank, filter_details)
@@ -308,15 +305,12 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler save_screener_webhook: {e}")
 
-    # --- Getter für Views (für routes.py) ---
     def get_dip_buyer_results(self, limit: int = 50):
         sql = "SELECT * FROM screener_dip_buyer ORDER BY date DESC, setup_score DESC LIMIT ?"
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
     def get_webhook_results(self, limit: int = 50):
-        # Sortieren nach Rank (Wichtig!) und Datum
-        # (Da wir rank jetzt haben, nutzen wir es für die Sortierung)
         sql = "SELECT * FROM screener_webhook ORDER BY date DESC, rank ASC, created_at DESC LIMIT ?"
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
@@ -330,7 +324,8 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler beim Leeren von screener_webhook: {e}")
 
-    # --- Trades ---
+    # --- Trades (UPDATED: BUGFIX FÜR UNIQUE CONSTRAINT) ---
+
     def add_trade(
         self,
         symbol,
@@ -341,23 +336,35 @@ class SignalDatabase:
         quantity=1,
     ):
         with self._get_conn() as conn:
+            # FIX: Wir prüfen jetzt auf (symbol + entry_date), da dies der UNIQUE Constraint ist.
+            # Vorher wurde nur auf status=CREATED/ACTIVE geprüft, was bei geschlossenen/missed Trades
+            # zum Crash führte, wenn man historische Daten neu berechnet.
             existing = conn.execute(
-                "SELECT id FROM active_trades WHERE symbol = ? AND status IN ('CREATED', 'ACTIVE')",
-                (symbol,),
+                "SELECT id FROM active_trades WHERE symbol = ? AND entry_date = ?",
+                (symbol, entry_date),
             ).fetchone()
+
             if existing:
                 return existing[0]
 
-            cursor = conn.execute(
-                """
-                INSERT INTO active_trades
-                (symbol, entry_date, entry_price, atr_at_entry, quantity, status, strategy)
-                VALUES (?, ?, ?, ?, ?, 'CREATED', ?)
-                """,
-                (symbol, entry_date, entry_price, atr_at_entry, quantity, strategy),
-            )
-            conn.commit()
-            return cursor.lastrowid
+            try:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO active_trades
+                    (symbol, entry_date, entry_price, atr_at_entry, quantity, status, strategy)
+                    VALUES (?, ?, ?, ?, ?, 'CREATED', ?)
+                    """,
+                    (symbol, entry_date, entry_price, atr_at_entry, quantity, strategy),
+                )
+                conn.commit()
+                return cursor.lastrowid
+            except sqlite3.IntegrityError:
+                # Fallback: Falls zwischen SELECT und INSERT eine Race Condition auftrat
+                # oder ein anderer Constraint verletzt wurde.
+                logger.debug(
+                    f"Trade existiert bereits (IntegrityError): {symbol} am {entry_date}"
+                )
+                return None
 
     def get_open_trades(self):
         with self._get_conn() as conn:

@@ -37,12 +37,18 @@ class BaseStrategy:
             return
         # Kompaktere Darstellung für Telegram
         msg = f"🔎 **{title}** ({date})\n"
-        for r in results[:10]:  # Top 10
-            # Wir zeigen nun auch den Rank im Telegram
+        for r in results[:10]:  # Top 10 des neuesten Tages
             rank_info = f"[#{r.get('rank', '-')}] "
             msg += f"• {rank_info}{r['symbol']} ({r['strategy']}): {r['close']}\n"
+
+        # Hinweis bei vielen Ergebnissen über mehrere Tage
         if len(results) > 10:
-            msg += f"... und {len(results) - 10} weitere."
+            unique_days = len(set(r["date"] for r in results))
+            if unique_days > 1:
+                msg += f"\n... und weitere Treffer aus insgesamt {unique_days} Tagen."
+            else:
+                msg += f"... und {len(results) - 10} weitere."
+
         self.telegram.send(msg)
 
 
@@ -317,9 +323,6 @@ class WebhookFilterStrategy(BaseStrategy):
 
             # 2. Erweiterte Filter
             filters = strat.get("filters", {})
-
-            # --- NEU: Dokumentation der Filter für die DB ---
-            # Erstellt String wie "dist_ema_20: < 20, RSI: < 70"
             filter_details_str = ", ".join([f"{k}: {v}" for k, v in filters.items()])
 
             valid_indices = []
@@ -342,14 +345,10 @@ class WebhookFilterStrategy(BaseStrategy):
 
             if valid_indices:
                 accepted = matches.loc[valid_indices].copy()
-
-                # --- NEU: Daten für Ranking & Doku speichern ---
                 accepted["rank"] = strat.get("rank", 999)
-                accepted["filter_details"] = filter_details_str  # Die Doku-Spalte
-
+                accepted["filter_details"] = filter_details_str
                 accepted["strategy_name"] = strat_name
                 accepted["sort_metric"] = accepted["dist_sma_20"]
-
                 candidates.append(accepted)
             else:
                 logger.info(
@@ -361,16 +360,23 @@ class WebhookFilterStrategy(BaseStrategy):
 
         final_df = pd.concat(candidates, ignore_index=True)
 
-        # --- SCHRITT D: PRIORISIERUNG & RANKING ---
+        # --- SCHRITT D: PRIORISIERUNG & RANKING (UPDATED) ---
+
+        # 1. Sortieren: Erst Datum, dann Rank, dann Metrik
+        #    Damit stellen wir sicher, dass bei der Groupierung die "Besten" oben stehen.
         final_df = final_df.sort_values(
-            by=["rank", "sort_metric"], ascending=[True, True]
+            by=["date_str", "rank", "sort_metric"], ascending=[False, True, True]
         )
 
-        if len(final_df) > self.daily_limit:
+        # 2. Limitierung PRO TAG anwenden
+        #    Wir gruppieren nach Datum und nehmen jeweils nur die Top X (daily_limit)
+        before_count = len(final_df)
+        final_df = final_df.groupby("date_str").head(self.daily_limit)
+
+        if len(final_df) < before_count:
             logger.info(
-                f"Limitierung: {len(final_df)} Kandidaten auf {self.daily_limit} gekürzt."
+                f"Limitierung: {before_count} Kandidaten auf {len(final_df)} gekürzt (Max {self.daily_limit} pro Tag)."
             )
-            final_df = final_df.head(self.daily_limit)
 
         # --- SCHRITT E: OUTPUT-GENERIERUNG ---
         results = []
@@ -394,7 +400,6 @@ class WebhookFilterStrategy(BaseStrategy):
                 "rsi": round(row["rsi"], 2),
                 "sma_200": round(row["sma_200"], 2),
                 "sma_20": round(row.get("sma_20", 0), 2),
-                # --- NEU: Rank & Doku übergeben ---
                 "rank": int(row.get("rank", 999)),
                 "filter_details": row.get("filter_details", ""),
                 "tp1": round(tp1, 2),
