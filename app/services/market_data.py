@@ -35,52 +35,6 @@ def clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     ].copy()
 
 
-def convert_to_flat_format(
-    df: pd.DataFrame, provider: str, timeframe: str = "1D"
-) -> pd.DataFrame:
-    """
-    Wandelt den yfinance MultiIndex in ein flaches Format für die DB um.
-    Fügt die 'provider' Spalte hinzu.
-    """
-    if df.empty:
-        return df
-
-    # Falls wir nur ein Symbol geladen haben, ist es kein MultiIndex in den Columns
-    if isinstance(df.columns, pd.MultiIndex):
-        # Stack moves Symbol into Index (Date, Symbol)
-        df = df.stack(level=0, future_stack=True)
-    else:
-        # Bei einem Symbol müssen wir das Symbol manuell hinzufügen,
-        # da yfinance es dann oft weglässt im Index
-        pass
-
-    # Reset Index um Date und Symbol als Spalten zu haben
-    df = df.reset_index()
-
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-
-    # Spalten bereinigen
-    df.columns = df.columns.str.lower()
-
-    # Provider hinzufügen
-    df["provider"] = provider
-
-    # Timeframe hinzufügen
-    df["timeframe"] = timeframe
-
-    # Datentypen erzwingen
-    df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-
-    # Benötigte Spalten filtern/ordnen
-    cols = ["symbol", "date", "provider", "open", "high", "low", "close", "volume"]
-    # Falls 'ticker' statt 'symbol' heißt (passiert je nach Pandas version)
-    if "ticker" in df.columns:
-        df = df.rename(columns={"ticker": "symbol"})
-
-    return df[cols]
-
-
 # --------------------------------------------------------------------------
 # Teil B: Die Datenbank Klasse für stocks.db
 # --------------------------------------------------------------------------

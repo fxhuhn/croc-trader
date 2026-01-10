@@ -42,7 +42,7 @@ class SignalDatabase:
     def _init_db(self) -> None:
         """Erstellt Tabellen, Indizes und Views."""
 
-        # 1. Signals Tabelle
+        # 1. Signals Tabelle (Mit Generated Columns)
         schema_signals = """
         CREATE TABLE IF NOT EXISTS signals (
             symbol TEXT NOT NULL, timeframe TEXT NOT NULL, signal TEXT NOT NULL,
@@ -51,7 +51,9 @@ class SignalDatabase:
             wolke TEXT, rsi REAL, sma_200 REAL, sma_20 REAL,
             strategy_id TEXT, exchange TEXT,
             reference TEXT UNIQUE,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL,
+            dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL
         );
         CREATE INDEX IF NOT EXISTS idx_signals_filter ON signals(symbol, timeframe, signal, timestamp DESC);
         """
@@ -87,7 +89,7 @@ class SignalDatabase:
         LEFT JOIN signal_stats gl5 ON gl5.symbol = 'ALL_SYMBOLS' AND s.signal = gl5.signal AND s.timeframe = gl5.timeframe AND gl5.level = 'gesamt';
         """
 
-        # 4. TABELLE: DIP BUYER SCREENER (Die fehlte oder wurde nicht genutzt)
+        # 4. TABELLE: DIP BUYER SCREENER
         schema_dip_buyer = """
         CREATE TABLE IF NOT EXISTS screener_dip_buyer (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,7 +110,7 @@ class SignalDatabase:
         );
         """
 
-        # 5. TABELLE: WEBHOOK SCREENER
+        # 5. TABELLE: WEBHOOK SCREENER (Erweitert um sma_20 und Berechnungen)
         schema_webhook = """
         CREATE TABLE IF NOT EXISTS screener_webhook (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,8 +126,11 @@ class SignalDatabase:
             low REAL,
             rsi REAL,
             sma_200 REAL,
+            sma_20 REAL,
 
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL,
+            dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL,
             UNIQUE(date, symbol, strategy)
         );
         """
@@ -152,16 +157,63 @@ class SignalDatabase:
                 conn.executescript(schema_signals)
                 conn.executescript(schema_stats)
                 conn.execute(schema_view)
-                conn.executescript(schema_dip_buyer)  # Wichtig!
-                conn.executescript(schema_webhook)  # Wichtig!
+                conn.executescript(schema_dip_buyer)
+                conn.executescript(schema_webhook)
                 conn.executescript(schema_trades)
+
+                # --- MIGRATIONEN FÜR BESTEHENDE DATENBANKEN ---
+
+                # A) Migration für signals Tabelle
+                try:
+                    conn.execute(
+                        "ALTER TABLE signals ADD COLUMN dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL"
+                    )
+                    logger.info("Migration: 'dist_sma_20' zu signals hinzugefügt.")
+                except sqlite3.OperationalError:
+                    pass
+
+                try:
+                    conn.execute(
+                        "ALTER TABLE signals ADD COLUMN dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL"
+                    )
+                    logger.info("Migration: 'dist_sma_200' zu signals hinzugefügt.")
+                except sqlite3.OperationalError:
+                    pass
+
+                # B) Migration für screener_webhook Tabelle
+                # Zuerst sma_20 hinzufügen, falls fehlt
+                try:
+                    conn.execute("ALTER TABLE screener_webhook ADD COLUMN sma_20 REAL")
+                    logger.info("Migration: 'sma_20' zu screener_webhook hinzugefügt.")
+                except sqlite3.OperationalError:
+                    pass
+
+                try:
+                    conn.execute(
+                        "ALTER TABLE screener_webhook ADD COLUMN dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL"
+                    )
+                    logger.info(
+                        "Migration: 'dist_sma_20' zu screener_webhook hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass
+
+                try:
+                    conn.execute(
+                        "ALTER TABLE screener_webhook ADD COLUMN dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL"
+                    )
+                    logger.info(
+                        "Migration: 'dist_sma_200' zu screener_webhook hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass
+
                 conn.commit()
+
         except sqlite3.Error as e:
             logger.critical(f"DB Init failed: {e}")
             raise
 
-    # ... save_many, replace_stats, get_latest_signals_with_stats, clean_batz_exchanges ...
-    # (Diese Methoden unverändert lassen)
     def save_many(self, signals: List[CrocSignal], retries: int = 5) -> int:
         if not signals:
             return 0
@@ -215,8 +267,6 @@ class SignalDatabase:
             )
             return conn.total_changes
 
-    # --- HIER SIND DIE WICHTIGEN ÄNDERUNGEN ---
-
     def save_screener_dip_buyer(self, results: List[dict]):
         """Speichert Ergebnisse in die NEUE Tabelle screener_dip_buyer."""
         if not results:
@@ -241,10 +291,11 @@ class SignalDatabase:
         """Speichert Ergebnisse in die NEUE Tabelle screener_webhook."""
         if not results:
             return
+        # Jetzt mit sma_20
         sql = """
             INSERT OR IGNORE INTO screener_webhook
-            (date, symbol, exchange, timeframe, strategy, signal, close, high, low, rsi, sma_200)
-            VALUES (:date, :symbol, :exchange, :timeframe, :strategy, :signal, :close, :high, :low, :rsi, :sma_200)
+            (date, symbol, exchange, timeframe, strategy, signal, close, high, low, rsi, sma_200, sma_20)
+            VALUES (:date, :symbol, :exchange, :timeframe, :strategy, :signal, :close, :high, :low, :rsi, :sma_200, :sma_20)
         """
         try:
             with self._get_conn() as conn:
@@ -253,13 +304,11 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler save_screener_webhook: {e}")
 
-    # Zum Abrufen (genutzt von API /routes.py)
     def get_dip_buyer_results(self, limit: int = 50):
         sql = "SELECT * FROM screener_dip_buyer ORDER BY date DESC, setup_score DESC LIMIT ?"
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
-    # ... Trades Methoden ...
     def add_trade(self, symbol, entry_date, entry_price, atr_at_entry, quantity=1):
         with self._get_conn() as conn:
             existing = conn.execute(

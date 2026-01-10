@@ -9,6 +9,9 @@ from flask import Flask
 
 from .config import settings
 from .extensions import cache
+
+# NEU: Mapper importieren
+from .mapping import mapper
 from .routes import main_bp
 from .services import BackgroundWorker, CsvImportWorker
 from .services.market_data import MarketDataWorker
@@ -84,12 +87,15 @@ def create_app(config_object=settings):
     logging.getLogger("werkzeug").addFilter(HealthCheckFilter())
 
     # ---------------------------------------------------------
+    # NEU: HIER den Mapper laden (nach Logging Config)
+    # ---------------------------------------------------------
+    mapper.load()
+
+    # ---------------------------------------------------------
     # 3. Pfade & DBs initialisieren
     # ---------------------------------------------------------
     db_stocks = config_object.get_db_path("stocks")
     db_signals = config_object.get_db_path("signals")
-
-    # NEU: Nutzung der zentralen Config für Strategie-DB
     db_strategies = config_object.get_db_path("strategies")
 
     # --- ZENTRALES LADEN DER STRATEGIEN ---
@@ -98,7 +104,21 @@ def create_app(config_object=settings):
     if yaml_config_path.exists():
         try:
             with open(yaml_config_path, "r", encoding="utf-8") as f:
-                loaded_strategies = yaml.safe_load(f) or []
+                data = yaml.safe_load(f) or []
+
+            if isinstance(data, dict):
+                if "signal" in data:
+                    loaded_strategies = data["signal"]
+                elif "strategies" in data:
+                    loaded_strategies = data["strategies"]
+                else:
+                    logging.warning(
+                        "YAML Struktur unbekannt (erwarte Liste oder Key 'signal'). Lade als leere Liste."
+                    )
+                    loaded_strategies = []
+            elif isinstance(data, list):
+                loaded_strategies = data
+
             logging.info(
                 f"Strategien geladen: {len(loaded_strategies)} Regeln gefunden."
             )
@@ -144,7 +164,7 @@ def create_app(config_object=settings):
     csv_worker.start()
     app.extensions["csv_worker"] = csv_worker
 
-    # E) Screener Engine (mit geladenen Strategien)
+    # E) Screener Engine
     screener = ScreenerEngine(
         stocks_db_path=Path(db_stocks),
         signals_db_path=Path(db_signals),
@@ -159,7 +179,7 @@ def create_app(config_object=settings):
     )
     app.extensions["trade_manager"] = trade_manager
 
-    # G) Strategy Engine (mit geladenen Strategien)
+    # G) Strategy Engine
     strategy_engine = StrategyEngine(
         signals_db_path=Path(db_signals),
         strategy_db_path=Path(db_strategies),
@@ -188,6 +208,8 @@ def create_app(config_object=settings):
     def run_strategy_job():
         with app.app_context():
             logging.info("Starte täglichen Strategie-Check...")
+            # Automatische Ausführung am Morgen
+            screener_hits = screener.run_all(days=0)
             strategy_engine.run_daily_analysis(lookback_days=1)
             strategy_engine.send_telegram_report()
 
@@ -210,6 +232,8 @@ def create_app(config_object=settings):
         telegram_service.send("🚀 **Croc-Trader System gestartet!**")
         try:
             logging.info("Führe initialen Strategie-Check (30 Tage Rückblick) durch...")
+            # Beim Start auch einmalig alles prüfen
+            screener.run_all(days=30)
             strategy_engine.run_daily_analysis(lookback_days=30)
             strategy_engine.send_telegram_report()
         except Exception as e:

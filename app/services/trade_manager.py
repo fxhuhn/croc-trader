@@ -80,7 +80,6 @@ class TradeManager:
                 continue
 
             signal_date_obj = pd.to_datetime(entry_date_str).date()
-            trade_dirty = False  # Wurde der Status geändert?
 
             # ==============================================================================
             # PHASE 1: STATUS PRÜFUNG (Vergangenheit bis Heute)
@@ -102,7 +101,6 @@ class TradeManager:
                             db.update_trade_status(trade_id, "ACTIVE")
                             status = "ACTIVE"  # Für Phase 2 sofort nutzen
                             alerts.append(f"✅ **FILLED**: {symbol} am {check_date}")
-                            trade_dirty = True
                         else:
                             # MISSED!
                             db.update_trade_status(

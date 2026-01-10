@@ -1,3 +1,4 @@
+import json
 import logging
 
 from flask import Blueprint, current_app, jsonify, request
@@ -45,8 +46,6 @@ def webhook():
     try:
         raw_data = request.data
         decoded_str = raw_data.decode("utf-8")
-        import json
-
         data = json.loads(decoded_str)
     except Exception:
         data = request.get_json()
@@ -75,14 +74,16 @@ def webhook():
 @main_bp.route("/screener/run", methods=["POST"])
 def run_screener():
     """
-    Führt den kompletten Prozess aus:
-    1. Screener (DipBuyer & Webhook-Import)
-    2. StrategyEngine (Generierung der Trades)
+    Führt ALLE Strategien aus (DipBuyer, WebhookFilter, etc.).
+    Parameter:
+      - days (int): Rückblick in Tagen (Default: 0 = Daily).
+      - clean (bool): Wenn true, leere vorher die Screener-Tabellen.
     """
     check_ip_auth()
 
     try:
         days = request.args.get("days", default=0, type=int)
+        clean = request.args.get("clean", default="false").lower() == "true"
 
         screener = current_app.extensions.get("screener_engine")
         strategy_engine = current_app.extensions.get("strategy_engine")
@@ -92,44 +93,32 @@ def run_screener():
                 {"status": "error", "message": "Engines not initialized"}
             ), 500
 
-        # --- SCHRITT 1: SCREENER (Daten sammeln & berechnen) ---
-        if days > 0:
-            # Backfill Mode
-            # 1. DipBuyer Backfill
-            dip_count = screener.run_historical_test(lookback_days=days)
-            # 2. Webhook Import Backfill (damit auch diese Daten bereitstehen)
-            webhook_count = screener.process_croc_signals(lookback_days=days)
+        # 1. Optional: Aufräumen
+        if clean:
+            # Wir leeren die Tabellen der bekannten Strategien
+            screener.signals_db.clear_screener_webhook()
+            # Falls DipBuyer auch geleert werden soll, müsste das in DB ergänzt werden,
+            # aber Webhook ist meistens das Wichtigste beim Testen.
+            logger.info("Screener Tabellen (Webhook) geleert.")
 
-            msg = f"Backfill fertig. Dip: {dip_count}, Webhook: {webhook_count}"
-        else:
-            # Daily Mode
-            # 1. DipBuyer Scan für Heute
-            dip_count = screener.run_dip_buyer()
-            # 2. Webhook Import für Heute
-            webhook_count = screener.process_croc_signals(lookback_days=1)
+        # 2. SCREENER LAUF (Alle Strategien)
+        # Hier nutzen wir jetzt die generische Methode!
+        screener_results = screener.run_all(days=days)
 
-            msg = f"Daily Scan fertig. Dip: {dip_count}, Webhook: {webhook_count}"
-
-        # --- SCHRITT 2: STRATEGY ENGINE (Trades generieren) ---
-        # Wir nutzen den gleichen Zeitraum wie der Screener
-        strat_lookback = days if days > 0 else 1
-
-        strategy_engine.run_daily_analysis(lookback_days=strat_lookback)
-
-        # Report senden (nur bei Daily, sonst spammt es bei Backfill)
-        if days == 0:
-            strategy_engine.send_telegram_report()
+        # 3. STRATEGY ENGINE LAUF (Trades erstellen)
+        # Die Engine schaut in die Tabellen, die der Screener gerade gefüllt hat.
+        strategy_engine.run_daily_analysis(lookback_days=days if days > 0 else 1)
 
         return jsonify(
             {
                 "status": "success",
-                "mode": "backfill" if days > 0 else "daily",
-                "message": msg + " -> Strategy Check complete.",
+                "message": "Screener & Strategy Run completed.",
+                "screener_hits": screener_results,
             }
-        ), 200
+        )
 
     except Exception as e:
-        logger.error(f"Screener Error: {e}", exc_info=True)
+        logger.error(f"Fehler im Screener Run: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

@@ -85,7 +85,7 @@ class StrategyEngine:
 
         for strat in self.strategies:
             name = strat.get("name")
-            source = strat.get("source")
+            source = strat.get("source", "webhook")
             # Wir verarbeiten hier nur Webhook-Strategien, da DipBuyer oben separat läuft
             if source != "webhook":
                 continue

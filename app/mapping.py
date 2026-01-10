@@ -14,12 +14,20 @@ class ExchangeMapper:
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(ExchangeMapper, cls).__new__(cls)
-            cls._instance._load_mapping()
+            # WICHTIG: Nicht mehr sofort laden!
+            # cls._instance._load_mapping()
         return cls._instance
+
+    def load(self):
+        """
+        Lädt das Mapping explizit.
+        Wird von create_app() aufgerufen, wenn das Logging bereit ist.
+        """
+        if not self._mapping:
+            self._load_mapping()
 
     def _load_mapping(self):
         """Lädt die JSON Datei einmalig in den Speicher."""
-        # NEU: Nutzung der zentralen Config
         json_path = settings.get_path("exchange_mapping")
 
         if not json_path.exists():
@@ -35,8 +43,12 @@ class ExchangeMapper:
 
     def get_exchange(self, symbol: str, default: Optional[str] = None) -> str:
         """Gibt den Exchange für ein Symbol zurück oder den Default-Wert."""
+        # Fallback: Falls load() vergessen wurde, hier versuchen (Silent Auto-Load)
+        if not self._mapping:
+            self._load_mapping()
+
         return self._mapping.get(symbol.upper(), default)
 
 
-# Globale Instanz für einfachen Zugriff
+# Globale Instanz (jetzt initial leer)
 mapper = ExchangeMapper()
