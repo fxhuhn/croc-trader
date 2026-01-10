@@ -23,13 +23,15 @@ class StrategyEngine:
         self.signals_db_path = signals_db_path
         self.strategy_db_path = strategy_db_path
         self.telegram = telegram_bot
-        # Strategien werden jetzt injiziert, nicht mehr selbst geladen
         self.strategies = strategies or []
+
+        # Datenbanken initialisieren
         self.strat_db = StrategyDatabase(self.strategy_db_path)
+        self.signals_db = SignalDatabase(self.signals_db_path)
 
     def run_daily_analysis(self, lookback_days=1):
         """
-        Führt die Analyse durch.
+        Führt die Analyse durch und überführt Screener-Treffer in active_trades.
         """
         start_date = (datetime.now() - timedelta(days=lookback_days)).strftime(
             "%Y-%m-%d"
@@ -50,10 +52,7 @@ class StrategyEngine:
             )
 
     def _process_dip_buyer(self, start_date):
-        sig_db = SignalDatabase(self.signals_db_path)
         hits = 0
-        strategy_name = "Dip Buyer"
-
         sql = f"""
             SELECT date, symbol, exchange, timeframe, close, high, entry_limit, atr5
             FROM screener_dip_buyer
@@ -61,7 +60,7 @@ class StrategyEngine:
         """
 
         try:
-            with sig_db._get_conn() as conn:
+            with self.signals_db._get_conn() as conn:
                 df = pd.read_sql_query(sql, conn)
         except Exception as e:
             logger.warning(f"SQL _process_dip_buyer failed: {e}")
@@ -72,119 +71,54 @@ class StrategyEngine:
         df.columns = df.columns.str.lower()
 
         for _, row in df.iterrows():
-            if self._create_trade_entry(row, strategy_name, "dip_buyer"):
-                hits += 1
+            # Erstelle den operativen Trade in active_trades
+            self.signals_db.add_trade(
+                symbol=row["symbol"],
+                entry_date=row["date"],
+                entry_price=row["entry_limit"],
+                atr_at_entry=row["atr5"],
+                quantity=1,
+                strategy="DipBuyer",
+            )
+            hits += 1
         return hits
 
     def _process_yaml_strategies(self, start_date):
-        if not self.strategies:
-            return 0
-
-        sig_db = SignalDatabase(self.signals_db_path)
         hits = 0
 
-        for strat in self.strategies:
-            name = strat.get("name")
-            source = strat.get("source", "webhook")
-            # Wir verarbeiten hier nur Webhook-Strategien, da DipBuyer oben separat läuft
-            if source != "webhook":
-                continue
+        # Wir laden alle Strategie-Treffer aus der Screener-Tabelle
+        sql = f"""
+            SELECT date, symbol, exchange, timeframe, signal, strategy, close, high, low, rsi, sma_200
+            FROM screener_webhook
+            WHERE date >= '{start_date}'
+        """
+        try:
+            with self.signals_db._get_conn() as conn:
+                df = pd.read_sql_query(sql, conn)
+        except Exception as e:
+            logger.warning(f"SQL _process_yaml_strategies failed: {e}")
+            return 0
 
-            sql = f"""
-                SELECT date, symbol, exchange, timeframe, signal, close, high, low, rsi, sma_200
-                FROM screener_webhook
-                WHERE date >= '{start_date}' AND strategy = '{name}'
-            """
-            try:
-                with sig_db._get_conn() as conn:
-                    df = pd.read_sql_query(sql, conn)
-            except Exception as e:
-                logger.warning(f"SQL _process_yaml_strategies failed: {e}")
-                continue
+        if df.empty:
+            return 0
+        df.columns = df.columns.str.lower()
 
-            if df.empty:
-                continue
-            df.columns = df.columns.str.lower()
+        for _, row in df.iterrows():
+            # WICHTIG: Hier übergeben wir den Strategienamen aus der DB!
+            # Bei Webhook-Strategien ist der Entry oft der Close des Signals (oder ein Breakout High)
+            # Hier vereinfacht als Close.
 
-            for _, row in df.iterrows():
-                if self._create_trade_entry(row, name, "webhook"):
-                    hits += 1
+            self.signals_db.add_trade(
+                symbol=row["symbol"],
+                entry_date=row["date"],
+                entry_price=row["close"],
+                atr_at_entry=0,  # Webhooks haben meist keine ATR vorberechnet, daher 0
+                quantity=1,
+                strategy=row["strategy"],  # Name z.B. "Rot Lolly"
+            )
+            hits += 1
         return hits
 
-    def _create_trade_entry(self, row, strategy_name, source_type):
-        """Erstellt das Trade-Objekt und speichert es."""
-        try:
-            limit_lmt = None
-            limit_stp = None
-            stop_loss = 0.0
-            take_profit = 0.0
-            entry_price_for_risk = 0.0
-
-            # --- FALL A: WEBHOOK (Breakout -> Stop Buy) ---
-            if source_type == "webhook":
-                limit_stp = row["high"]
-                stop_loss = row["low"]
-
-                if limit_stp == 0 or stop_loss == 0:
-                    limit_stp = row["close"]
-                    stop_loss = row["close"] * 0.95
-
-                entry_price_for_risk = limit_stp
-                risk = entry_price_for_risk - stop_loss
-                if risk <= 0:
-                    risk = entry_price_for_risk * 0.01
-                take_profit = entry_price_for_risk + (2 * risk)
-
-            # --- FALL B: DIP BUYER (Pullback -> Limit Buy) ---
-            elif source_type == "dip_buyer":
-                limit_lmt = row["entry_limit"]
-                entry_price_for_risk = limit_lmt
-                stop_loss = 0.0
-                take_profit = row["high"]
-                risk = entry_price_for_risk
-
-            # Positionsgröße (Risk Management)
-            qty = 1
-            if risk > 0:
-                qty = int(100 / risk)  # 100$ Risk Unit
-            if qty < 1:
-                qty = 1
-
-            trade_data = {
-                "date": row["date"],
-                "timeframe": row.get("timeframe", "D1"),
-                "symbol": row["symbol"],
-                "strategy": strategy_name,
-                "limit_stp": round(limit_stp, 2) if limit_stp else None,
-                "limit_lmt": round(limit_lmt, 2) if limit_lmt else None,
-                "stop_loss": round(stop_loss, 2),
-                "take_profit": round(take_profit, 2),
-                "qty": qty,
-                "status": "PENDING",
-            }
-
-            self.strat_db.save_trade(trade_data)
-            return True
-
-        except Exception as e:
-            logger.error(f"Fehler bei Trade-Erstellung ({strategy_name}): {e}")
-            return False
-
     def send_telegram_report(self):
-        df = self.strat_db.get_latest_trades(limit=20)
-        if df.empty:
-            return
-
-        display_df = df[
-            ["symbol", "date", "strategy", "limit_stp", "limit_lmt", "take_profit"]
-        ].copy()
-
-        display_df["Entry"] = display_df.apply(
-            lambda x: f"STOP {x['limit_stp']:.2f}"
-            if pd.notnull(x["limit_stp"])
-            else f"LMT {x['limit_lmt']:.2f}",
-            axis=1,
-        )
-
-        final_df = display_df[["date", "symbol", "strategy", "Entry"]].copy()
-        self.telegram.send_dataframe(final_df, title="📋 Strategie Plan")
+        # Optional: Reporting Logik
+        pass

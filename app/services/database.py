@@ -110,7 +110,7 @@ class SignalDatabase:
         );
         """
 
-        # 5. TABELLE: WEBHOOK SCREENER (Erweitert um sma_20 und Berechnungen)
+        # 5. TABELLE: WEBHOOK SCREENER
         schema_webhook = """
         CREATE TABLE IF NOT EXISTS screener_webhook (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -135,7 +135,7 @@ class SignalDatabase:
         );
         """
 
-        # 6. Trades
+        # 6. Trades (UPDATED: MIT STRATEGY)
         schema_trades = """
         CREATE TABLE IF NOT EXISTS active_trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +145,7 @@ class SignalDatabase:
             atr_at_entry REAL NOT NULL,
             quantity INTEGER DEFAULT 1,
             status TEXT DEFAULT 'OPEN',
+            strategy TEXT,
             exit_reason TEXT,
             closed_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -161,50 +162,43 @@ class SignalDatabase:
                 conn.executescript(schema_webhook)
                 conn.executescript(schema_trades)
 
-                # --- MIGRATIONEN FÜR BESTEHENDE DATENBANKEN ---
-
-                # A) Migration für signals Tabelle
+                # --- MIGRATIONEN ---
+                # A) Signals Migrationen
                 try:
                     conn.execute(
                         "ALTER TABLE signals ADD COLUMN dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL"
                     )
-                    logger.info("Migration: 'dist_sma_20' zu signals hinzugefügt.")
                 except sqlite3.OperationalError:
                     pass
-
                 try:
                     conn.execute(
                         "ALTER TABLE signals ADD COLUMN dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL"
                     )
-                    logger.info("Migration: 'dist_sma_200' zu signals hinzugefügt.")
                 except sqlite3.OperationalError:
                     pass
 
-                # B) Migration für screener_webhook Tabelle
-                # Zuerst sma_20 hinzufügen, falls fehlt
+                # B) Webhook Migrationen
                 try:
                     conn.execute("ALTER TABLE screener_webhook ADD COLUMN sma_20 REAL")
-                    logger.info("Migration: 'sma_20' zu screener_webhook hinzugefügt.")
                 except sqlite3.OperationalError:
                     pass
-
                 try:
                     conn.execute(
                         "ALTER TABLE screener_webhook ADD COLUMN dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL"
                     )
-                    logger.info(
-                        "Migration: 'dist_sma_20' zu screener_webhook hinzugefügt."
-                    )
                 except sqlite3.OperationalError:
                     pass
-
                 try:
                     conn.execute(
                         "ALTER TABLE screener_webhook ADD COLUMN dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL"
                     )
-                    logger.info(
-                        "Migration: 'dist_sma_200' zu screener_webhook hinzugefügt."
-                    )
+                except sqlite3.OperationalError:
+                    pass
+
+                # C) Active Trades Migration (Strategy Column)
+                try:
+                    conn.execute("ALTER TABLE active_trades ADD COLUMN strategy TEXT")
+                    logger.info("Migration: 'strategy' zu active_trades hinzugefügt.")
                 except sqlite3.OperationalError:
                     pass
 
@@ -213,6 +207,8 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.critical(f"DB Init failed: {e}")
             raise
+
+    # ... (save_many, replace_stats, get_latest_signals_with_stats, clean_batz_exchanges) bleiben gleich ...
 
     def save_many(self, signals: List[CrocSignal], retries: int = 5) -> int:
         if not signals:
@@ -268,35 +264,17 @@ class SignalDatabase:
             return conn.total_changes
 
     def save_screener_dip_buyer(self, results: List[dict]):
-        """Speichert Ergebnisse in die NEUE Tabelle screener_dip_buyer."""
         if not results:
             return
-        sql = """
-            INSERT OR REPLACE INTO screener_dip_buyer
-            (date, symbol, exchange, timeframe, close, high, atr_r3, setup_score, entry_limit, atr5)
-            VALUES (:date, :symbol, :exchange, :timeframe, :close, :high, :atr_r3, :setup_score, :entry_limit, :atr5)
-        """
-
-        try:
-            with self._get_conn() as conn:
-                conn.executemany(sql, results)
-                conn.commit()
-            logger.info(
-                f"Screener: {len(results)} Treffer in screener_dip_buyer gespeichert."
-            )
-        except sqlite3.Error as e:
-            logger.error(f"Fehler save_screener_dip_buyer: {e}")
+        sql = "INSERT OR REPLACE INTO screener_dip_buyer (date, symbol, exchange, timeframe, close, high, atr_r3, setup_score, entry_limit, atr5) VALUES (:date, :symbol, :exchange, :timeframe, :close, :high, :atr_r3, :setup_score, :entry_limit, :atr5)"
+        with self._get_conn() as conn:
+            conn.executemany(sql, results)
+            conn.commit()
 
     def save_screener_webhook(self, results: List[dict]):
-        """Speichert Ergebnisse in die NEUE Tabelle screener_webhook."""
         if not results:
             return
-        # Jetzt mit sma_20
-        sql = """
-            INSERT OR IGNORE INTO screener_webhook
-            (date, symbol, exchange, timeframe, strategy, signal, close, high, low, rsi, sma_200, sma_20)
-            VALUES (:date, :symbol, :exchange, :timeframe, :strategy, :signal, :close, :high, :low, :rsi, :sma_200, :sma_20)
-        """
+        sql = "INSERT OR IGNORE INTO screener_webhook (date, symbol, exchange, timeframe, strategy, signal, close, high, low, rsi, sma_200, sma_20) VALUES (:date, :symbol, :exchange, :timeframe, :strategy, :signal, :close, :high, :low, :rsi, :sma_200, :sma_20)"
         try:
             with self._get_conn() as conn:
                 conn.executemany(sql, results)
@@ -304,12 +282,40 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler save_screener_webhook: {e}")
 
+    # --- Getter für Views (routes.py) ---
     def get_dip_buyer_results(self, limit: int = 50):
         sql = "SELECT * FROM screener_dip_buyer ORDER BY date DESC, setup_score DESC LIMIT ?"
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
-    def add_trade(self, symbol, entry_date, entry_price, atr_at_entry, quantity=1):
+    def get_webhook_results(self, limit: int = 50):
+        sql = (
+            "SELECT * FROM screener_webhook ORDER BY date DESC, created_at DESC LIMIT ?"
+        )
+        with self._get_conn() as conn:
+            return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
+
+    def clear_screener_webhook(self):
+        try:
+            with self._get_conn() as conn:
+                conn.execute("DELETE FROM screener_webhook")
+                conn.commit()
+            logger.info("Tabelle screener_webhook erfolgreich geleert.")
+        except sqlite3.Error as e:
+            logger.error(f"Fehler beim Leeren von screener_webhook: {e}")
+
+    # --- Trades (KORRIGIERT: Mit Strategy Parameter) ---
+
+    def add_trade(
+        self,
+        symbol,
+        entry_date,
+        entry_price,
+        atr_at_entry,
+        strategy="MANUAL",
+        quantity=1,
+    ):
+        """Fügt einen neuen Trade hinzu (inkl. Strategie)."""
         with self._get_conn() as conn:
             existing = conn.execute(
                 "SELECT id FROM active_trades WHERE symbol = ? AND status IN ('CREATED', 'ACTIVE')",
@@ -317,9 +323,15 @@ class SignalDatabase:
             ).fetchone()
             if existing:
                 return existing[0]
+
+            # WICHTIG: Hier wird strategy nun auch geschrieben!
             cursor = conn.execute(
-                "INSERT INTO active_trades (symbol, entry_date, entry_price, atr_at_entry, quantity, status) VALUES (?, ?, ?, ?, ?, 'CREATED')",
-                (symbol, entry_date, entry_price, atr_at_entry, quantity),
+                """
+                INSERT INTO active_trades
+                (symbol, entry_date, entry_price, atr_at_entry, quantity, status, strategy)
+                VALUES (?, ?, ?, ?, ?, 'CREATED', ?)
+                """,
+                (symbol, entry_date, entry_price, atr_at_entry, quantity, strategy),
             )
             conn.commit()
             return cursor.lastrowid
@@ -332,6 +344,11 @@ class SignalDatabase:
                     "SELECT * FROM active_trades WHERE status = 'OPEN'"
                 ).fetchall()
             ]
+
+    def get_trades_history(self, limit: int = 100):
+        sql = "SELECT * FROM active_trades ORDER BY entry_date DESC, created_at DESC LIMIT ?"
+        with self._get_conn() as conn:
+            return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
     def close_trade(self, trade_id, reason="MANUAL"):
         with self._get_conn() as conn:

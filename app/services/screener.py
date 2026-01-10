@@ -96,6 +96,7 @@ class DipBuyerStrategy(BaseStrategy):
                 entry_price=res["entry_limit"],
                 atr_at_entry=res["atr5"],
                 quantity=1,
+                strategy=self.name,  # WICHTIG: Strategie-Name wird hier übergeben
             )
 
     def _load_market_data(self, days=400) -> Optional[Dict[str, pd.DataFrame]]:
