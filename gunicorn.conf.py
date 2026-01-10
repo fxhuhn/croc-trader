@@ -1,6 +1,8 @@
 import logging
 
-forwarded_allow_ips = "*"
+# forwarded_allow_ips = "*"
+# accesslog = "-"
+# access_log_format = '%({x-real-ip}i)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
 
 
 class HealthCheckFilter(logging.Filter):
