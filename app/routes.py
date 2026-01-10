@@ -1,7 +1,9 @@
+import json
 import logging
 
 from flask import Blueprint, current_app, jsonify, render_template_string, request
 
+from .models import CrocSignal
 from .services.database import SignalDatabase
 
 logger = logging.getLogger(__name__)
@@ -10,9 +12,36 @@ main_bp = Blueprint("main", __name__)
 
 
 def check_ip_auth():
-    allowed_ips = ["127.0.0.1", "localhost", "::1"]
-    if request.remote_addr not in allowed_ips:
-        pass
+    """
+    Prüft die IP-Adresse gegen die Whitelist in der Konfiguration.
+    Unterstützt X-Forwarded-For für Proxies (z.B. Docker/Nginx).
+    """
+    conf = current_app.config["APP_CONFIG"]
+
+    # Zugriff auf die Security-Config sicherstellen
+    if not hasattr(conf.app, "security"):
+        # Fallback, falls Config noch nicht geladen/strukturiert ist
+        return True
+
+    whitelist = conf.app.security.whitelist
+    mode = conf.app.security.mode
+
+    # IP Ermittlung (hinter Reverse Proxy oder direkt)
+    if request.headers.getlist("X-Forwarded-For"):
+        client_ip = request.headers.getlist("X-Forwarded-For")[0].split(",")[0].strip()
+    elif request.headers.get("X-Real-IP"):
+        client_ip = request.headers.get("X-Real-IP").strip()
+    else:
+        client_ip = request.remote_addr
+
+    # Whitelist Check
+    if client_ip not in whitelist:
+        if mode == "block":
+            logger.warning(f"Unauthorized IP: {client_ip} -> BLOCKED")
+            return False
+        logger.warning(f"Unauthorized IP: {client_ip} -> ALLOWED (Warning)")
+
+    return True
 
 
 @main_bp.route("/health", methods=["GET"])
@@ -20,13 +49,48 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@main_bp.route("/", methods=["GET"])
+def main():
+    if check_ip_auth():
+        return jsonify({"status": "error", "message": "Unauthorized IP"}), 403
+    return jsonify({"status": "ok"}), 200
+
+
 @main_bp.route("/webhook", methods=["POST"])
 def webhook():
-    pass
+    # 1. Daten Parsing (Robust für verschiedene Content-Types)
+    try:
+        raw_data = request.data
+        decoded_str = raw_data.decode("utf-8")
+        data = json.loads(decoded_str)
+    except Exception:
+        data = request.get_json()
+
+    # 2. Security Check
+    if not check_ip_auth():
+        return jsonify({"status": "error", "message": "Unauthorized IP"}), 403
+
+    if not data:
+        return jsonify({"status": "error", "message": "JSON required"}), 400
+
+    # 3. Signal Verarbeitung
+    try:
+        signal = CrocSignal(**data)
+        worker = current_app.extensions["worker"]
+        worker.enqueue(signal)
+        logger.info(f"Webhook empfangen: {signal.symbol} {signal.signal}")
+        return jsonify({"status": "queued", "ref": signal.reference}), 202
+
+    except (TypeError, ValueError) as e:
+        logger.warning(f"Invalid Payload: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Internal Error: {e}", exc_info=True)
+        return jsonify({"status": "error"}), 500
 
 
 # ==============================================================================
-# HTML VIEWS (UPDATED)
+# HTML VIEWS
 # ==============================================================================
 
 
@@ -61,11 +125,13 @@ def view_screener_webhook():
         <table>
             <thead>
                 <tr>
-                    <th>Rank</th> <th>Datum</th>
+                    <th>Rank</th>
+                    <th>Datum</th>
                     <th>Symbol</th>
                     <th>Strategie</th>
                     <th>Signal</th>
-                    <th>Kriterien (Filter)</th> <th>Close</th>
+                    <th>Kriterien (Filter)</th>
+                    <th>Close</th>
                     <th>RSI</th>
                     <th>SMA 200</th>
                 </tr>
@@ -78,7 +144,8 @@ def view_screener_webhook():
                     <td><b>{{ row['symbol'] }}</b></td>
                     <td>{{ row['strategy'] }}</td>
                     <td>{{ row['signal'] }}</td>
-                    <td class="details">{{ row['filter_details'] }}</td> <td>{{ row['close'] }}</td>
+                    <td class="details">{{ row['filter_details'] }}</td>
+                    <td>{{ row['close'] }}</td>
                     <td>{{ row['rsi'] }}</td>
                     <td>{{ row['sma_200'] }}</td>
                 </tr>
@@ -214,9 +281,20 @@ def view_strategy_trades():
     return render_template_string(html, results=results)
 
 
+# ==============================================================================
+# ACTIONS (POST)
+# ==============================================================================
+
+
 @main_bp.route("/screener/run", methods=["POST"])
 def run_screener():
-    check_ip_auth()
+    """
+    Führt ALLE Strategien aus (DipBuyer, WebhookFilter, etc.).
+    """
+    # Security Check
+    if not check_ip_auth():
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
     try:
         days = request.args.get("days", default=0, type=int)
         clean = request.args.get("clean", default="false").lower() == "true"
@@ -229,11 +307,15 @@ def run_screener():
                 {"status": "error", "message": "Engines not initialized"}
             ), 500
 
+        # Optional: Aufräumen
         if clean:
             screener.signals_db.clear_screener_webhook()
             logger.info("Screener Tabellen (Webhook) geleert.")
 
+        # 1. SCREENER LAUF (Alle Strategien)
         screener_results = screener.run_all(days=days)
+
+        # 2. STRATEGY ENGINE LAUF (Trades erstellen)
         strategy_engine.run_daily_analysis(lookback_days=days if days > 0 else 1)
 
         return jsonify(
@@ -249,15 +331,15 @@ def run_screener():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@main_bp.route("/portfolio", methods=["GET"])
-def portfolio():
-    return jsonify({"status": "ok"})
-
-
 @main_bp.route("/orders/generate", methods=["POST"])
 def generate_orders():
-    """Manuelles Triggern der Order-Erstellung (für Tests)."""
-    check_ip_auth()
+    """
+    Manuelles Triggern der Order-Erstellung (für Tests).
+    """
+    # Security Check
+    if not check_ip_auth():
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
     tm = current_app.extensions.get("trade_manager")
     if not tm:
         return jsonify({"status": "error", "message": "TradeManager not found"}), 500
@@ -274,3 +356,9 @@ def generate_orders():
     except Exception as e:
         logger.error(f"Fehler bei Order-Generierung: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@main_bp.route("/portfolio", methods=["GET"])
+def portfolio():
+    # Keine strenge IP Prüfung für Portfolio View (ReadOnly), optional hinzufügen wenn gewünscht
+    return jsonify({"status": "ok"})
