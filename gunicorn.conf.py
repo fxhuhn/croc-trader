@@ -1,10 +1,6 @@
-# gunicorn_conf.py
 import logging
 
-# accesslog = "-"
-# access_log_format = (
-#    '%(t)s [gunicorn] %({x-forwarded-for}i)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
-# )
+forwarded_allow_ips = "*"
 
 
 class HealthCheckFilter(logging.Filter):
