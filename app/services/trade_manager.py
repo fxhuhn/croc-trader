@@ -18,12 +18,47 @@ class TradeManager:
         self.telegram = telegram_bot
         self.orders_dir = settings.get_folder("orders")
 
+    def _get_yahoo_ticker(self, symbol: str) -> str:
+        """
+        Übersetzt TradingView/Broker-Symbole in Yahoo Finance Symbole.
+        """
+        mapping = {
+            # --- FUTURES ---
+            "ES1!": "ES=F",  # S&P 500 E-Mini
+            "NQ1!": "NQ=F",  # Nasdaq 100 E-Mini
+            "YM1!": "YM=F",  # Dow Jones E-Mini
+            "RTY1!": "RTY=F",  # Russell 2000
+            "FDAX1!": "DX=F",  # DAX Futures (Eurex)
+            "GC1!": "GC=F",  # Gold
+            "SI1!": "SI=F",  # Silber
+            "CL1!": "CL=F",  # Rohöl
+            "BTC1!": "BTC=F",  # Bitcoin Futures
+            # --- FOREX ---
+            "EURUSD": "EURUSD=X",
+            "GBPUSD": "GBPUSD=X",
+            # --- DEUTSCHE AKTIEN (Beispiele aus deinem Log) ---
+            "JEN": "JEN.DE",  # Jenoptik
+            "VH2": "VH2.DE",  # (Falls Valneva o.ä. auf Xetra gemeint ist)
+        }
+
+        # 1. Direkter Match im Mapping
+        if symbol in mapping:
+            return mapping[symbol]
+
+        # 2. Heuristik für deutsche Aktien (wenn kein Suffix da ist und es kein Future ist)
+        # Wenn das Symbol kurz ist (3-4 Zeichen) und keine Sonderzeichen hat, probieren wir .DE
+        # (Das ist optional, aber hilft oft bei Xetra-Titeln)
+        # if len(symbol) <= 4 and symbol.isalpha() and symbol not in ["AAPL", "TSLA", "MSFT"]:
+        #    return f"{symbol}.DE"
+
+        return symbol
+
     def check_active_positions(self):
         """
         Hauptlogik:
         1. Prüft Einstiege (Fill?) und Exits (Stop?).
         2. Aktualisiert DB Status.
-        3. Erstellt YAML Order-File für die Ausführung.
+        3. Erstellt YAML Order-Files (Gruppiert nach Datum).
         """
         db = SignalDatabase(self.db_path)
         trades = db.get_all_managed_trades()
@@ -35,36 +70,54 @@ class TradeManager:
         # --- VORBEREITUNG ---
         alerts = []
         watchlist = []  # Für Telegram
+        orders_by_date = {}  # Sammeln der Orders pro Datum
 
-        # Liste für die YAML Orders
-        yaml_orders = []
-
-        # Datums-Handling
         today = datetime.now().date()
-        valid_from = today + timedelta(days=1)
+        next_trading_day_str = (today + timedelta(days=1)).strftime("%Y-%m-%d")
 
-        # Bulk Download der Daten
-        # [FIX] F841: Variable 'symbols' wird jetzt im Loop genutzt
         symbols = list(set(t["symbol"] for t in trades))
-        logger.info(f"TradeManager: Prüfe {len(trades)} Trades...")
+        logger.info(
+            f"TradeManager: Prüfe {len(trades)} Trades ({len(symbols)} Symbole)..."
+        )
 
         # Cache für Historiendaten
         data_cache = {}
 
-        # Daten einmal laden
+        # Daten laden (mit Übersetzung und Fehlerbehandlung)
         for symbol in symbols:
+            yahoo_symbol = self._get_yahoo_ticker(symbol)
+
             try:
-                df = yf.download(symbol, period="10d", progress=False, auto_adjust=True)
+                # Wir laden Daten für das Yahoo-Symbol
+                df = yf.download(
+                    yahoo_symbol, period="10d", progress=False, auto_adjust=True
+                )
+
                 if not df.empty:
                     df = df.reset_index()
                     if isinstance(df.columns, pd.MultiIndex):
                         df.columns = df.columns.get_level_values(0)
                     df.columns = df.columns.str.lower()
-                    df["date"] = pd.to_datetime(df["date"])
-                    data_cache[symbol] = df
-            except Exception as e:
-                logger.error(f"Fehler beim Laden von {symbol}: {e}")
 
+                    # Fix: Manchmal heißt die Spalte 'Date' oder 'Datetime'
+                    if "date" in df.columns:
+                        df["date"] = pd.to_datetime(df["date"])
+                    elif "datetime" in df.columns:
+                        df["date"] = pd.to_datetime(df["datetime"])
+
+                    # WICHTIG: Wir speichern es unter dem ORIGINAL Symbol im Cache!
+                    # Damit der Rest des Codes (der 'symbol' nutzt) funktioniert.
+                    data_cache[symbol] = df
+                else:
+                    logger.warning(
+                        f"Keine Daten für {symbol} (Yahoo: {yahoo_symbol}) gefunden."
+                    )
+
+            except Exception as e:
+                # Fehler abfangen, damit der Loop nicht abbricht
+                logger.error(f"Fehler beim Laden von {symbol} -> {yahoo_symbol}: {e}")
+
+        # --- LOGIK DURCHLAUFEN ---
         for trade in trades:
             trade_id = trade["id"]
             symbol = trade["symbol"]
@@ -72,10 +125,11 @@ class TradeManager:
             entry_price = trade["entry_price"]
             atr_entry = trade["atr_at_entry"]
             entry_date_str = trade["entry_date"]
-            # Leerzeichen in ID vermeiden
+
             strategy = trade.get("strategy", "Unknown").replace(" ", "_")
 
             if symbol not in data_cache:
+                # Wenn Daten fehlen, überspringen wir diesen Trade leise
                 continue
 
             df = data_cache[symbol]
@@ -86,32 +140,25 @@ class TradeManager:
             # ==============================================================================
 
             if status == "CREATED":
-                # Wir suchen Tage NACH dem Signal
                 potential_days = df[df["date"].dt.date > signal_date_obj]
 
                 if not potential_days.empty:
-                    # Check ersten Tag nach Signal
                     row = potential_days.iloc[0]
                     check_date = row["date"].strftime("%Y-%m-%d")
 
                     if row["low"] <= entry_price:
-                        # FILL!
                         db.update_trade_status(trade_id, "ACTIVE")
                         status = "ACTIVE"
                         alerts.append(f"✅ **FILLED**: {symbol} am {check_date}")
                     else:
-                        # MISSED!
                         db.update_trade_status(trade_id, "MISSED", "LIMIT_NOT_REACHED")
                         alerts.append(f"❌ **MISSED**: {symbol} am {check_date}")
-                        continue  # Trade ist raus
+                        continue
 
             elif status == "ACTIVE":
-                # Wir brauchen aktuelle Daten
                 last_row = df.iloc[-1]
                 current_close = last_row["close"]
-                # [FIX] F841: current_high Zuweisung entfernt, da ungenutzt
 
-                # PrevHigh Logic
                 prev_high_check = 999999
                 if len(df) >= 2:
                     prev_row = df.iloc[-2]
@@ -119,83 +166,82 @@ class TradeManager:
 
                 days_since = (today - signal_date_obj).days
 
-                # 1. TIME STOP CHECK (7 Tage)
-                # [FIX] F841: time_stop_date Zuweisung entfernt, da ungenutzt
+                # 1. TIME STOP
                 if days_since >= 7:
                     db.close_trade(trade_id, reason="TIME_STOP")
                     alerts.append(f"⏰ **TIME STOP**: {symbol} wird geschlossen.")
 
-                    # Exit Order für YAML
-                    yaml_orders.append(
-                        {
-                            "id": f"{symbol}_{strategy}_EXIT_TIME",
-                            "symbol": symbol,
-                            "qty": trade["quantity"],
-                            "mode": "SINGLE",
-                            "action": "SELL",
-                            "type": "MKT",  # Market on Close force
-                            "tif": "DAY",
-                            "comment": "Time Stop Triggered",
-                        }
-                    )
+                    exit_order = {
+                        "id": f"{symbol}_{strategy}_EXIT_TIME",
+                        "symbol": symbol,
+                        "qty": trade["quantity"],
+                        "mode": "SINGLE",
+                        "action": "SELL",
+                        "type": "MKT",
+                        "tif": "DAY",
+                        "comment": "Time Stop Triggered",
+                    }
+                    if next_trading_day_str not in orders_by_date:
+                        orders_by_date[next_trading_day_str] = []
+                    orders_by_date[next_trading_day_str].append(exit_order)
                     continue
 
-                # 2. LOC EXIT CHECK (Close > PrevHigh)
+                # 2. LOC EXIT
                 elif current_close > prev_high_check:
                     alerts.append(f"📈 **LOC SIGNAL**: {symbol} (Close > PrevHigh)")
 
-                    # Exit Order für YAML
-                    yaml_orders.append(
-                        {
-                            "id": f"{symbol}_{strategy}_EXIT_LOC",
-                            "symbol": symbol,
-                            "qty": trade["quantity"],
-                            "mode": "SINGLE",
-                            "action": "SELL",
-                            "type": "LOC",
-                            "price": 0.0,  # Market on Close logic (oder Limit=0 für MKT)
-                            "tif": "DAY",
-                            "comment": "LOC Triggered",
-                        }
-                    )
+                    exit_order = {
+                        "id": f"{symbol}_{strategy}_EXIT_LOC",
+                        "symbol": symbol,
+                        "qty": trade["quantity"],
+                        "mode": "SINGLE",
+                        "action": "SELL",
+                        "type": "LOC",
+                        "price": 0.0,
+                        "tif": "DAY",
+                        "comment": "LOC Triggered",
+                    }
+                    if next_trading_day_str not in orders_by_date:
+                        orders_by_date[next_trading_day_str] = []
+                    orders_by_date[next_trading_day_str].append(exit_order)
 
             # ==============================================================================
-            # PHASE 2: ORDER ERSTELLUNG (Für Morgen)
+            # PHASE 2: ORDER ERSTELLUNG (Entries)
             # ==============================================================================
 
             if status == "CREATED":
-                # Target Berechnung
                 target_price = entry_price + (0.8 * atr_entry)
 
-                # Aufbau des YAML Eintrags gemäß Anforderung
                 order_entry = {
                     "id": f"{symbol}_{strategy}",
                     "symbol": symbol,
                     "qty": trade["quantity"],
-                    "mode": "BRACKET",  # Parent + Children
-                    # 1. Der Einstieg (Parent)
+                    "mode": "BRACKET",
                     "entry": {
                         "action": "BUY",
                         "type": "LMT",
                         "price": round(entry_price, 2),
                         "tif": "DAY",
                     },
-                    # 2. Die Exits (Children)
                     "exits": [
                         {
                             "action": "SELL",
-                            "type": "LOC",  # Wie im Beispiel gewünscht
+                            "type": "LOC",
                             "price": round(target_price, 2),
                             "tif": "DAY",
                         }
                     ],
                 }
 
-                yaml_orders.append(order_entry)
-                watchlist.append(f"🆕 **BUY**: {symbol} @ {entry_price:.2f}")
+                if entry_date_str not in orders_by_date:
+                    orders_by_date[entry_date_str] = []
+
+                orders_by_date[entry_date_str].append(order_entry)
+
+                if entry_date_str >= datetime.now().strftime("%Y-%m-%d"):
+                    watchlist.append(f"🆕 **BUY**: {symbol} @ {entry_price:.2f}")
 
             elif status == "ACTIVE":
-                # Info für Telegram (Watchlist), aber keine neue Bracket Order
                 loc_trigger_level = df.iloc[-1]["high"]
                 stop_date = signal_date_obj + timedelta(days=7)
                 days_left = (stop_date - today).days
@@ -206,17 +252,22 @@ class TradeManager:
                 )
 
         # --- YAML EXPORT ---
-        if yaml_orders:
-            filename = f"orders_{valid_from.strftime('%Y-%m-%d')}.yaml"
+        generated_files = []
+
+        for date_key, orders in orders_by_date.items():
+            if not orders:
+                continue
+
+            filename = f"orders_{date_key}.yaml"
             file_path = self.orders_dir / filename
 
             try:
                 with open(file_path, "w", encoding="utf-8") as f:
-                    # sort_keys=False behält die Reihenfolge (id, symbol, qty...)
-                    yaml.dump(yaml_orders, f, sort_keys=False, allow_unicode=True)
-                logger.info(f"Order-File erstellt: {file_path}")
+                    yaml.dump(orders, f, sort_keys=False, allow_unicode=True)
+                logger.info(f"Order-File erstellt: {filename} ({len(orders)} Orders)")
+                generated_files.append(filename)
             except Exception as e:
-                logger.error(f"YAML Export Fehler: {e}")
+                logger.error(f"YAML Export Fehler für {filename}: {e}")
 
         # --- TELEGRAM ---
         if alerts or watchlist:
@@ -224,11 +275,14 @@ class TradeManager:
             if alerts:
                 msg.append("⚡ **STATUS UPDATES**\n" + "\n".join(alerts))
             if watchlist:
-                msg.append("📋 **PORTFOLIO WATCH**\n" + "\n".join(watchlist))
+                msg.append("📋 **PORTFOLIO WATCH (Aktuell)**\n" + "\n".join(watchlist))
 
-            if yaml_orders:
+            if generated_files:
+                file_list = ", ".join(generated_files[-3:])
+                if len(generated_files) > 3:
+                    file_list += "..."
                 msg.append(
-                    f"\n📁 Order-Datei für {valid_from} erstellt ({len(yaml_orders)} Orders)."
+                    f"\n📁 {len(generated_files)} Order-Dateien erstellt/aktualisiert."
                 )
 
             if self.telegram:
