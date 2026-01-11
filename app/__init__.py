@@ -14,6 +14,7 @@ from .extensions import cache
 from .mapping import mapper
 from .routes import main_bp
 from .services import BackgroundWorker, CsvImportWorker
+from .services.database import SignalDatabase
 from .services.market_data import MarketDataWorker
 from .services.screener import ScreenerEngine
 from .services.strategy_engine import StrategyEngine
@@ -74,6 +75,7 @@ def create_app(config_object=settings):
             "apscheduler": {"level": "WARNING"},
             "werkzeug": {"level": "WARNING"},
             "urllib3": {"level": "WARNING"},
+            "yfinance": {"level": "ERROR"},
         },
     }
     logging.config.dictConfig(LOGGING_CONFIG)
@@ -87,16 +89,35 @@ def create_app(config_object=settings):
     logging.getLogger("werkzeug").addFilter(HealthCheckFilter())
 
     # ---------------------------------------------------------
-    # NEU: HIER den Mapper laden (nach Logging Config)
-    # ---------------------------------------------------------
-    mapper.load()
-
-    # ---------------------------------------------------------
     # 3. Pfade & DBs initialisieren
     # ---------------------------------------------------------
     db_stocks = config_object.get_db_path("stocks")
     db_signals = config_object.get_db_path("signals")
     db_strategies = config_object.get_db_path("strategies")
+
+    # ---------------------------------------------------------
+    # NEU: HIER den Mapper laden und alte Daten bereinigen
+    # ---------------------------------------------------------
+    mapper.load()
+
+    # Datenbank Bereinigung (BATS Fix)
+    try:
+        logging.info("Führe Startup-Maintenance durch (BATS Fix)...")
+        temp_db = SignalDatabase(Path(db_signals))
+        # Nutzt den Mapper, um Exchanges in der DB zu korrigieren
+        fixed_count = temp_db.clean_batz_exchanges()
+        if fixed_count > 0:
+            logging.info(
+                f"✅ Exchange-Fix: {fixed_count} Datensätze von 'BATS' auf Real-Exchange korrigiert."
+            )
+        else:
+            logging.info("Exchange-Datenbank ist sauber.")
+
+        # Optional: Auch mal aufräumen (VACUUM)
+        temp_db.optimize()
+
+    except Exception as e:
+        logging.warning(f"Startup-Maintenance fehlgeschlagen (nicht kritisch): {e}")
 
     # --- ZENTRALES LADEN DER STRATEGIEN (CROC UPDATE) ---
     yaml_config_path = config_object.get_strategy_path()
