@@ -39,7 +39,8 @@ class BaseStrategy:
         msg = f"🔎 **{title}** ({date})\n"
         for r in results[:10]:  # Top 10 des neuesten Tages
             rank_info = f"[#{r.get('rank', '-')}] "
-            msg += f"• {rank_info}{r['symbol']} ({r['strategy']}): {r['close']}\n"
+            # Hier gab es den Fehler: r['strategy'] muss existieren
+            msg += f"• {rank_info}{r['symbol']} ({r.get('strategy', 'Unknown')}): {r['close']}\n"
 
         # Hinweis bei vielen Ergebnissen über mehrere Tage
         if len(results) > 10:
