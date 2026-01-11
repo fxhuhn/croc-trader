@@ -362,3 +362,75 @@ def generate_orders():
 def portfolio():
     # Keine strenge IP Prüfung für Portfolio View (ReadOnly), optional hinzufügen wenn gewünscht
     return jsonify({"status": "ok"})
+
+
+# ==============================================================================
+# ERROR HANDLERS
+# ==============================================================================
+
+
+@main_bp.app_errorhandler(404)
+def page_not_found(e):
+    """
+    Fängt alle 404 Fehler ab.
+    Entscheidet intelligent, ob JSON (für API/Bots) oder HTML (für Browser) zurückgegeben wird.
+    """
+    # Loggen des Zugriffsversuchs (Wichtig für Security!)
+    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    logger.warning(f"404 Not Found: {request.method} {request.path} - IP: {client_ip}")
+
+    # Wenn der Request JSON erwartet oder an die API geht -> JSON Antwort
+    if (
+        request.path.startswith(("/webhook", "/screener/run", "/orders", "/api"))
+        or request.is_json
+    ):
+        return jsonify(
+            {"status": "error", "message": "Endpoint not found", "path": request.path}
+        ), 404
+
+    # Sonst -> Schöne HTML Seite
+    html = """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>404 - Nicht gefunden</title>
+        <style>
+            body { font-family: sans-serif; text-align: center; padding: 50px; color: #333; }
+            h1 { font-size: 50px; color: #e74c3c; margin-bottom: 10px; }
+            p { font-size: 18px; color: #666; }
+            a { color: #2980b9; text-decoration: none; font-weight: bold; }
+            .croc { font-size: 80px; }
+        </style>
+    </head>
+    <body>
+        <div class="croc">🐊❓</div>
+        <h1>404</h1>
+        <p>Hoppla! Diese Seite existiert nicht im Croc-Trader Universum.</p>
+        <p>Vielleicht wolltest du zu den <a href="/screener/webhook">Screener Ergebnissen</a>?</p>
+    </body>
+    </html>
+    """
+    return render_template_string(html), 404
+
+
+@main_bp.app_errorhandler(500)
+def internal_server_error(e):
+    """
+    Fängt Programmabstürze ab, damit der Server nicht "hängt".
+    """
+    logger.error(f"500 Internal Server Error: {e}", exc_info=True)
+
+    # Immer JSON versuchen bei 500ern, das ist sicherer für debug
+    if request.path.startswith(("/webhook", "/screener", "/orders")) or request.is_json:
+        return jsonify(
+            {
+                "status": "error",
+                "message": "Internal Server Error",
+                "detail": str(e),  # Vorsicht: Im Produktivbetrieb evtl. ausblenden
+            }
+        ), 500
+
+    return render_template_string(
+        "<h1>500 - Server Fehler</h1><p>Der Croc-Trader hat sich verschluckt. Check die Logs!</p>"
+    ), 500
