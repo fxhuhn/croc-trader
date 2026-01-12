@@ -298,6 +298,90 @@ def view_screener_dip_buyer():
     return render_template_string(html, results=results)
 
 
+# ==============================================================================
+# NEU: TURNOVER TIMING VIEW
+# ==============================================================================
+
+
+@main_bp.route("/screener/turnover-timing", methods=["GET"])
+def view_screener_turnover():
+    """Zeigt die Ergebnisse des Turnover-Timing Screeners."""
+    check_ip_auth()
+
+    limit = request.args.get("limit", 100, type=int)
+    conf = current_app.config["APP_CONFIG"]
+    db = SignalDatabase(conf.get_db_path("signals"))
+    results = db.get_turnover_timing_results(limit=limit)
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>Turnover Timing Ergebnisse</title>
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #f9f9f9; }
+            h1 { color: #2c3e50; border-bottom: 3px solid #f39c12; display: inline-block; padding-bottom: 5px; }
+            table { border-collapse: collapse; width: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: 0.9em; background: white; }
+            th, td { border: 1px solid #ddd; padding: 12px 15px; text-align: left; }
+            th { background-color: #f39c12; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
+            tr:nth-child(even) { background-color: #fcfcfc; }
+            tr:hover { background-color: #fff8e1; }
+
+            .index-badge {
+                background: #eee; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; color: #555;
+            }
+            .money { font-family: monospace; color: #27ae60; font-weight: bold; }
+            .entry-zone { color: #d35400; font-weight: bold; }
+
+            /* TradingView Link Styling */
+            a.tv-link { text-decoration: none; color: #e67e22; font-weight: bold; }
+            a.tv-link:hover { text-decoration: underline; color: #d35400; }
+        </style>
+    </head>
+    <body>
+        <h1>🔄 Turnover Timing Screener</h1>
+        <p>Top Aktien nach Turnover (SMA20) über SMA100 aus NDX, SPX, DOW.</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Datum</th>
+                    <th>Symbol</th>
+                    <th>Index (Quelle)</th>
+                    <th>Turnover SMA20 ($)</th>
+                    <th>Close</th>
+                    <th>ATR(3)</th>
+                    <th>Entry 1 (-0.5 ATR)</th>
+                    <th>Entry 2 (-1.0 ATR)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in results %}
+                    {% set exchange_prefix = (row['exchange'] ~ ':') if row['exchange'] and row['exchange'] != 'UNKNOWN' else '' %}
+                    {% set tv_url = "https://www.tradingview.com/chart/?symbol=" ~ exchange_prefix ~ row['symbol'] %}
+
+                <tr>
+                    <td>{{ row['date'] }}</td>
+                    <td>
+                        <a href="{{ tv_url }}" class="tv-link" target="_blank">{{ row['symbol'] }} ↗</a>
+                    </td>
+                    <td><span class="index-badge">{{ row['source_index'] }}</span></td>
+                    <td class="money">{{ "{:,.0f}".format(row['turnover_sma20']) }}</td>
+                    <td>{{ row['close'] }}</td>
+                    <td>{{ row['atr3'] }}</td>
+                    <td class="entry-zone">{{ row['entry_1'] }}</td>
+                    <td class="entry-zone">{{ row['entry_2'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+    return render_template_string(html, results=results)
+
+
 @main_bp.route("/strategy/trades", methods=["GET"])
 def view_strategy_trades():
     """Zeigt eine Übersicht aller generierten Trades (Historie)."""

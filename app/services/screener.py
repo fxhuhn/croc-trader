@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from ..mapping import mapper
+from ..tools.symbol_lists import ExchangeSymbol
 from .database import SignalDatabase
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,6 @@ class BaseStrategy:
         msg = f"🔎 **{title}** ({date})\n"
         for r in results[:10]:  # Top 10 des neuesten Tages
             rank_info = f"[#{r.get('rank', '-')}] "
-            # Hier gab es den Fehler: r['strategy'] muss existieren
             msg += f"• {rank_info}{r['symbol']} ({r.get('strategy', 'Unknown')}): {r['close']}\n"
 
         # Hinweis bei vielen Ergebnissen über mehrere Tage
@@ -226,7 +226,241 @@ class DipBuyerStrategy(BaseStrategy):
 
 
 # ==============================================================================
-# 3. STRATEGIE: WEBHOOK / YAML FILTER
+# 3. STRATEGIE: TURNOVER TIMING (NEU)
+# ==============================================================================
+
+
+class TurnoverTimingStrategy(BaseStrategy):
+    name = "TurnoverTiming"
+
+    def __init__(
+        self, stocks_db_path: Path, signals_db: SignalDatabase, telegram_bot=None
+    ):
+        super().__init__(signals_db, telegram_bot)
+        self.stocks_db_path = stocks_db_path
+        # Singleton Instanz für Symbol-Listen laden
+        self.universe = ExchangeSymbol()
+
+    def run(self, days: int = 0) -> int:
+        """
+        Führt das Screening durch.
+        Logik:
+        1. Laden aller Marktdaten.
+        2. Indikatoren berechnen (SMA100, ATR3, SMA20(Turnover)).
+        3. Datum bestimmen (Freitag der aktuellen oder letzten Woche).
+        4. Pro Index (Dow, SP500, Nasdaq) filtern und Top 4 nach Turnover wählen.
+        """
+        logger.info(f"[{self.name}] Starte Analyse...")
+
+        # 1. Daten laden (Ausreichend Historie für SMA100)
+        data = self._load_market_data(days=365 + days)
+        if not data:
+            return 0
+
+        # 2. Indikatoren berechnen
+        ind = self._calculate_indicators(data)
+
+        # 3. Bestimmung des Analyse-Zeitpunkts
+        if days == 0:
+            # AUTO-MODUS: Wir suchen den korrekten Freitag
+            target_date = self._get_target_analysis_date()
+            target_ts = pd.Timestamp(target_date)
+
+            # Alle verfügbaren Handelsdaten
+            available_dates = ind["close"].index
+
+            # Filtern: Nur Daten VOR oder AM Zieltag (wir wollen nicht in die Zukunft schauen, falls DB neuer ist)
+            # und wir wollen den letzten verfügbaren Tag DAVOR (z.B. Donnerstag, falls Freitag Feiertag war)
+            past_dates = available_dates[available_dates <= target_ts]
+
+            if past_dates.empty:
+                logger.warning(
+                    f"[{self.name}] Keine Daten bis zum Ziel-Datum {target_date} gefunden."
+                )
+                return 0
+
+            current_date_idx = past_dates[-1]
+
+            # Kurzer Check, ob die Daten nicht uralt sind (z.B. > 5 Tage Differenz zum Ziel)
+            diff_days = (target_ts - current_date_idx).days
+            if diff_days > 5:
+                logger.warning(
+                    f"[{self.name}] WARNUNG: Gefundenes Datum {current_date_idx.date()} ist {diff_days} Tage älter als Ziel {target_date}."
+                )
+
+            idx_pos = ind["close"].index.get_loc(current_date_idx)
+            date_str = current_date_idx.strftime("%Y-%m-%d")
+            logger.info(
+                f"[{self.name}] Analysiere Stichtag: {date_str} (Ziel war {target_date})"
+            )
+
+        else:
+            # BACKTEST / OFFSET MODUS: Einfach Offset vom Ende
+            total_len = len(ind["close"])
+            idx_pos = max(100, total_len - days) if days > 0 else total_len - 1
+            current_date_idx = ind["close"].index[idx_pos]
+            date_str = current_date_idx.strftime("%Y-%m-%d")
+
+        all_hits = []
+
+        # Definition der zu prüfenden Universen
+        universes = [
+            ("DOW-30", self.universe.dow_30),
+            ("NASDAQ-100", self.universe.nasdaq_100),
+            ("SP-500", self.universe.sp_500),
+        ]
+
+        processed_symbols = set()  # Um Duplikate zu vermeiden, falls gewünscht
+
+        for idx_name, symbol_list in universes:
+            candidates = []
+
+            for symbol in symbol_list:
+                # Prüfen ob Symbol in Daten vorhanden
+                if symbol not in ind["close"].columns:
+                    continue
+
+                try:
+                    # Werte holen
+                    close = ind["close"].iloc[idx_pos].get(symbol)
+                    sma100 = ind["sma100"].iloc[idx_pos].get(symbol)
+                    turnover_sma20 = ind["turnover_sma20"].iloc[idx_pos].get(symbol)
+                    atr3 = ind["atr3"].iloc[idx_pos].get(symbol)
+
+                    if pd.isna(close) or pd.isna(sma100) or pd.isna(turnover_sma20):
+                        continue
+
+                    # REGEL 1: Aktie muss über dem SMA100 sein
+                    if close > sma100:
+                        candidates.append(
+                            {
+                                "symbol": symbol,
+                                "close": close,
+                                "atr3": atr3,
+                                "turnover_sma20": turnover_sma20,
+                                "source_index": idx_name,
+                            }
+                        )
+                except Exception:
+                    continue
+
+            # REGEL 2: Sortiere nach sma20*(Close * Volumen) -> Turnover SMA
+            candidates.sort(key=lambda x: x["turnover_sma20"], reverse=True)
+
+            # REGEL 3: Top 4 auswählen
+            top_4 = candidates[:4]
+
+            for c in top_4:
+                # Duplikat-Check (Ein Symbol kann im S&P500 und Nasdaq100 sein)
+                if c["symbol"] in processed_symbols:
+                    continue
+
+                processed_symbols.add(c["symbol"])
+
+                # Entry Berechnung
+                entry_1 = c["close"] - (0.5 * c["atr3"])
+                entry_2 = c["close"] - (1.0 * c["atr3"])
+
+                all_hits.append(
+                    {
+                        "date": date_str,
+                        "symbol": c["symbol"],
+                        "exchange": self._get_exchange(c["symbol"]),
+                        "timeframe": "1D",
+                        "source_index": c["source_index"],
+                        "close": round(c["close"], 2),
+                        "atr3": round(c["atr3"], 2),
+                        "turnover_sma20": round(c["turnover_sma20"], 0),
+                        "entry_1": round(entry_1, 2),
+                        "entry_2": round(entry_2, 2),
+                    }
+                )
+
+        # Speichern
+        if all_hits:
+            self.signals_db.save_screener_turnover_timing(all_hits)
+            if days == 0:
+                self._send_telegram_report("🔄 Turnover-Timing", date_str, all_hits)
+
+        logger.info(f"[{self.name}] Fertig: {len(all_hits)} Top-Aktien identifiziert.")
+        return len(all_hits)
+
+    def _get_target_analysis_date(self) -> datetime.date:
+        """
+        Ermittelt den Stichtag für die Analyse basierend auf dem aktuellen Wochentag.
+        Regel:
+        - Wochenende (Sa/So) -> Freitag dieser Woche
+        - Wochentag (Mo-Fr)  -> Freitag der Vorwoche
+        """
+        today = datetime.now().date()
+        weekday = today.weekday()  # 0=Mon, 4=Fri, 5=Sat, 6=Sun
+
+        if weekday >= 5:  # Wochenende (Sa, So)
+            offset = weekday - 4  # Sa(5)->1, So(6)->2
+        else:  # Wochentag (Mo-Fr)
+            offset = weekday + 3  # Mo(0)->3, Di(1)->4 ... Fr(4)->7
+
+        target = today - timedelta(days=offset)
+        return target
+
+    def _load_market_data(self, days=250) -> Optional[Dict[str, pd.DataFrame]]:
+        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        try:
+            with sqlite3.connect(self.stocks_db_path) as conn:
+                df = pd.read_sql_query(
+                    f"SELECT date, symbol, open, high, low, close, volume "
+                    f"FROM market_prices WHERE date >= '{start_date}' "
+                    f"AND timeframe = '1D' ORDER BY date ASC",
+                    conn,
+                )
+        except Exception as e:
+            logger.error(f"{self.name}: DB Fehler: {e}")
+            return None
+
+        if df.empty:
+            return None
+        df["date"] = pd.to_datetime(df["date"])
+
+        return {
+            col: df.pivot(index="date", columns="symbol", values=col)
+            for col in ["open", "high", "low", "close", "volume"]
+        }
+
+    def _calculate_indicators(self, data: Dict[str, pd.DataFrame]):
+        closes = data["close"]
+        highs = data["high"]
+        lows = data["low"]
+        volumes = data["volume"]
+
+        # SMA 100
+        sma100 = closes.rolling(window=100, min_periods=80).mean()
+
+        # Turnover & Turnover SMA20
+        turnover = closes * volumes
+        turnover_sma20 = turnover.rolling(window=20).mean()
+
+        # ATR 3 Berechnung
+        prev_close = closes.shift(1)
+        tr_values = np.maximum.reduce(
+            [
+                (highs - lows).values,
+                (highs - prev_close).abs().fillna(0).values,
+                (lows - prev_close).abs().fillna(0).values,
+            ]
+        )
+        tr = pd.DataFrame(tr_values, index=closes.index, columns=closes.columns)
+        atr3 = tr.ewm(span=3, adjust=False).mean()
+
+        return {
+            "close": closes,
+            "sma100": sma100,
+            "turnover_sma20": turnover_sma20,
+            "atr3": atr3,
+        }
+
+
+# ==============================================================================
+# 4. STRATEGIE: WEBHOOK / YAML FILTER
 # ==============================================================================
 
 
@@ -464,7 +698,7 @@ class WebhookFilterStrategy(BaseStrategy):
 
 
 # ==============================================================================
-# 4. SCREENER ENGINE (Manager)
+# 5. SCREENER ENGINE (Manager)
 # ==============================================================================
 
 
@@ -490,6 +724,10 @@ class ScreenerEngine:
         )
         self.register_strategy(
             WebhookFilterStrategy(self.signals_db, config, self.telegram)
+        )
+        # NEU: Registrierung der Turnover Timing Strategy
+        self.register_strategy(
+            TurnoverTimingStrategy(stocks_db_path, self.signals_db, self.telegram)
         )
 
     def register_strategy(self, strategy: BaseStrategy):

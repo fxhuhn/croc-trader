@@ -19,7 +19,14 @@ from .services.database import (
     SignalDatabase,  # Wichtig für den direkten Zugriff beim Start
 )
 from .services.market_data import MarketDataWorker
-from .services.screener import ScreenerEngine
+
+# IMPORT DER NEUEN STRATEGIE
+from .services.screener import (
+    DipBuyerStrategy,
+    ScreenerEngine,
+    TurnoverTimingStrategy,
+    WebhookFilterStrategy,
+)
 from .services.strategy_engine import StrategyEngine
 from .services.telegram import TelegramBot
 from .services.trade_manager import TradeManager
@@ -190,6 +197,8 @@ def create_app(config_object=settings):
     app.extensions["csv_worker"] = csv_worker
 
     # E) Screener Engine
+    # Hier wird die ScreenerEngine erstellt, die bereits intern (siehe screener.py) alle Strategien
+    # inklusive TurnoverTimingStrategy registriert (dank des Imports und der __init__ der Klasse).
     screener = ScreenerEngine(
         stocks_db_path=Path(db_stocks),
         signals_db_path=Path(db_signals),
@@ -222,7 +231,7 @@ def create_app(config_object=settings):
     # H) Backtester (NEU)
     backtester = DipBuyerBacktester(
         stocks_db_path=Path(db_stocks),
-        strategies_db_path=Path(db_strategies),  # <--- NEU ÜBERGEBEN
+        strategies_db_path=Path(db_strategies),
     )
     app.extensions["backtester"] = backtester
 
