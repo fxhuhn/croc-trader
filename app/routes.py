@@ -434,3 +434,246 @@ def internal_server_error(e):
     return render_template_string(
         "<h1>500 - Server Fehler</h1><p>Der Croc-Trader hat sich verschluckt. Check die Logs!</p>"
     ), 500
+
+
+@main_bp.route("/backtest/dip-buyer", methods=["GET", "POST"])
+def backtest_dip_buyer():
+    """
+    GET: Zeigt Startseite mit Eingabefeld für Debug-Symbol.
+    POST: Startet den Backtest (optional mit Debugging).
+    """
+    check_ip_auth()  # Security Check
+
+    if request.method == "POST":
+        backtester = current_app.extensions.get("backtester")
+
+        # Wir holen das Symbol aus dem Formular.
+        # .strip() entfernt Leerzeichen, "or None" macht aus einem leeren String ein echtes None.
+        debug_sym = request.form.get("debug_symbol", "").strip().upper() or None
+
+        if debug_sym:
+            logger.info(f"Starte Backtest mit Debugging für: {debug_sym}")
+
+        # Backtest starten
+        results = backtester.run_backtest(start_year=2023, debug_symbol=debug_sym)
+
+        return render_backtest_view(results)
+
+    # GET Request: Startseite mit Formular
+    return render_template_string("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Dip-Buyer Backtest</title>
+            <style>
+                body { font-family: 'Segoe UI', sans-serif; padding: 40px; text-align: center; background: #f4f7f6; color: #333; }
+                h1 { color: #2c3e50; }
+                .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: inline-block; }
+                input[type="text"] { padding: 12px; font-size: 16px; border: 1px solid #ddd; border-radius: 5px; width: 250px; margin-right: 10px; }
+                button { padding: 12px 25px; font-size: 16px; background: #2980b9; color: white; border: none; border-radius: 5px; cursor: pointer; transition: background 0.3s; }
+                button:hover { background: #3498db; }
+                p { color: #7f8c8d; margin-bottom: 30px; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div style="font-size: 60px;">📉</div>
+                <h1>Dip-Buyer Strategie Analyse</h1>
+                <p>Backtest über die Jahre 2023, 2024, 2025 bis heute.</p>
+
+                <form method="POST">
+                    <input type="text" name="debug_symbol" placeholder="Debug Symbol (z.B. APP) optional">
+                    <button type="submit">Backtest starten 🚀</button>
+                </form>
+                <br>
+                <small style="color: #999;">Lasse das Feld leer für einen kompletten Lauf ohne Detail-Logs.</small>
+            </div>
+        </body>
+        </html>
+    """)
+
+
+def render_backtest_view(data):
+    if "metrics" not in data:
+        return render_template_string("<h1>Keine Daten</h1>")
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>Backtest Report</title>
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f4f7f6; color: #333; max-width: 1200px; margin: 0 auto; }
+            h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+            .section-title { font-size: 1.1em; color: #7f8c8d; margin-top: 30px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
+
+            .card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+
+            .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
+
+            .metric-box { text-align: center; padding: 15px; border: 1px solid #eee; border-radius: 8px; background: #fafafa; }
+            .metric-box span.val { display: block; font-size: 2em; font-weight: bold; color: #2980b9; margin-bottom: 5px; }
+            .metric-box span.lbl { font-size: 0.9em; color: #7f8c8d; }
+            .metric-box.bad .val { color: #c0392b; }
+
+            /* Tabellen Styles */
+            table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+            th, td { padding: 10px; text-align: center; border-bottom: 1px solid #eee; }
+            th { background: #ecf0f1; color: #555; }
+
+            /* Heatmap */
+            .pos-high { background-color: #27ae60; color: white; }
+            .pos-med { background-color: #2ecc71; color: white; }
+            .pos-low { background-color: #a9dfbf; }
+            .neg-low { background-color: #f5b7b1; }
+            .neg-med { background-color: #e74c3c; color: white; }
+            .neg-high { background-color: #c0392b; color: white; }
+            .neutral { background-color: #fff; color: #eee; }
+
+            /* Trades Table */
+            .trades-table th { text-align: left; }
+            .trades-table td { text-align: left; }
+            .pos-text { color: #27ae60; font-weight: bold; }
+            .neg-text { color: #c0392b; font-weight: bold; }
+
+            .btn { display: inline-block; padding: 10px 20px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }
+            .btn:hover { background: #2980b9; }
+        </style>
+    </head>
+    <body>
+        <h1>📉 Dip-Buyer Backtest Report</h1>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between;">
+                <div>
+                    <b>Zeitraum:</b> {{ data.data_universe.first_record }} bis {{ data.data_universe.last_record }}<br>
+                    <b>Symbole:</b> {{ data.data_universe.total_symbols }}
+                </div>
+                <div style="text-align: right;">
+                    <b>Total Signale:</b> {{ data.metrics.total_signals }}<br>
+                    <b>Ausgeführt:</b> {{ data.metrics.total_trades }} (Fill-Rate: {{ data.metrics.fill_rate }}%)
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">Performance</div>
+            <div class="grid-4">
+                <div class="metric-box">
+                    <span class="val">{{ data.metrics.profit_factor }}</span>
+                    <span class="lbl">Profit Factor</span>
+                </div>
+                <div class="metric-box">
+                    <span class="val">{{ data.metrics.win_rate }}%</span>
+                    <span class="lbl">Win Rate</span>
+                </div>
+                <div class="metric-box">
+                    <span class="val">{{ data.metrics.avg_return_pct }}%</span>
+                    <span class="lbl">Ø Return / Trade</span>
+                </div>
+                <div class="metric-box bad">
+                    <span class="val">{{ data.metrics.max_drawdown }}%</span>
+                    <span class="lbl">Max Drawdown</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-4">
+            <div class="card">
+                <div class="section-title">Exit Gründe</div>
+                <table style="margin-top: 10px;">
+                    {% for reason, count in data.metrics.exit_reasons.items() %}
+                    <tr>
+                        <td style="text-align: left;">{{ reason }}</td>
+                        <td style="text-align: right;"><b>{{ count }}</b></td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            <div class="card">
+                <div class="section-title">Aktueller Monat ({{ data.comparison.current_month_name }})</div>
+                <div style="text-align: center; margin-top: 15px;">
+                    <span style="font-size: 2.5em; font-weight: bold; color: #2c3e50;">{{ data.comparison.current_perf }}%</span>
+                    <br>
+                    <span style="color: #7f8c8d;">Ø Historisch: {{ data.comparison.historical_avg }}%</span><br>
+                    <span style="font-weight: bold; color: {{ 'green' if data.comparison.status == 'BETTER' else 'red' }}">{{ data.comparison.status }}</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">Monatliche Returns (%)</div>
+            <table class="heatmap" style="margin-top: 15px;">
+                <thead>
+                    <tr>
+                        <th>Jahr</th>
+                        {% for m in range(1, 13) %}<th>{{ m }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for year in data.years %}
+                    <tr>
+                        <td><b>{{ year }}</b></td>
+                        {% for m in range(1, 13) %}
+                            {% set val = data.monthly_matrix.get(year, {}).get(m, 0) %}
+                            {% set count = data.monthly_counts.get(year, {}).get(m, 0) %}
+
+                            {% set cls = 'neutral' %}
+                            {% if count > 0 %}
+                                {% if val > 5 %}{% set cls = 'pos-high' %}
+                                {% elif val > 2 %}{% set cls = 'pos-med' %}
+                                {% elif val > 0 %}{% set cls = 'pos-low' %}
+                                {% elif val < -5 %}{% set cls = 'neg-high' %}
+                                {% elif val < -2 %}{% set cls = 'neg-med' %}
+                                {% elif val < 0 %}{% set cls = 'neg-low' %}
+                                {% endif %}
+                            {% endif %}
+
+                            <td class="{{ cls }}">
+                                {% if count > 0 %}
+                                    {{ val }}%<br><small>({{ count }})</small>
+                                {% else %} - {% endif %}
+                            </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <div class="section-title">Letzte 20 Trades</div>
+            <table class="trades-table" style="margin-top: 15px;">
+                <thead>
+                    <tr>
+                        <th>Datum</th>
+                        <th>Symbol</th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th>Return</th>
+                        <th>Grund</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in data.recent_trades %}
+                    <tr>
+                        <td>{{ t.date }}</td>
+                        <td><b>{{ t.symbol }}</b></td>
+                        <td>{{ t.entry }}</td>
+                        <td>{{ t.exit }}</td>
+                        <td class="{{ t.class }}">{{ t.pct }}</td>
+                        <td>{{ t.reason }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="text-align: center; margin-bottom: 40px;">
+            <a href="/backtest/dip-buyer" class="btn">Neuer Backtest</a>
+        </div>
+    </body>
+    </html>
+    """
+    return render_template_string(html, data=data)

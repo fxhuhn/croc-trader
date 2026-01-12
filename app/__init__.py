@@ -14,7 +14,10 @@ from .extensions import cache
 from .mapping import mapper
 from .routes import main_bp
 from .services import BackgroundWorker, CsvImportWorker
-from .services.database import SignalDatabase
+from .services.backtester import DipBuyerBacktester  # <--- IMPORT FÜR BACKTESTER
+from .services.database import (
+    SignalDatabase,  # Wichtig für den direkten Zugriff beim Start
+)
 from .services.market_data import MarketDataWorker
 from .services.screener import ScreenerEngine
 from .services.strategy_engine import StrategyEngine
@@ -75,7 +78,7 @@ def create_app(config_object=settings):
             "apscheduler": {"level": "WARNING"},
             "werkzeug": {"level": "WARNING"},
             "urllib3": {"level": "WARNING"},
-            "yfinance": {"level": "ERROR"},
+            "yfinance": {"level": "ERROR"},  # YFinance weniger geschwätzig machen
         },
     }
     logging.config.dictConfig(LOGGING_CONFIG)
@@ -96,11 +99,13 @@ def create_app(config_object=settings):
     db_strategies = config_object.get_db_path("strategies")
 
     # ---------------------------------------------------------
-    # NEU: HIER den Mapper laden und alte Daten bereinigen
+    # 4. Mapper & Startup Maintenance (BATS Fix)
     # ---------------------------------------------------------
+
+    # A) Mapper laden
     mapper.load()
 
-    # Datenbank Bereinigung (BATS Fix)
+    # B) Datenbank Bereinigung (BATS Fix)
     try:
         logging.info("Führe Startup-Maintenance durch (BATS Fix)...")
         temp_db = SignalDatabase(Path(db_signals))
@@ -121,29 +126,24 @@ def create_app(config_object=settings):
 
     # --- ZENTRALES LADEN DER STRATEGIEN (CROC UPDATE) ---
     yaml_config_path = config_object.get_strategy_path()
-    loaded_config = {}  # Wir laden jetzt ein Config-Dict
+    loaded_config = {}
 
     if yaml_config_path.exists():
         try:
             with open(yaml_config_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
 
-            # Unterstützung für das neue CROC Format & Legacy Fallback
             if isinstance(data, dict):
                 if "strategy_ranking" in data:
-                    # Das ist das neue Format! Wir übergeben alles.
                     loaded_config = data
                     logging.info(
                         f"CROC Strategie geladen: {len(data.get('strategy_ranking', []))} Regeln."
                     )
                 elif "signal" in data:
-                    # Legacy Format Support
                     loaded_config = {"strategy_ranking": data["signal"]}
                 elif "strategies" in data:
-                    # Legacy Format Support
                     loaded_config = {"strategy_ranking": data["strategies"]}
             elif isinstance(data, list):
-                # Legacy Format (nur Liste)
                 loaded_config = {"strategy_ranking": data}
 
         except Exception as e:
@@ -153,7 +153,7 @@ def create_app(config_object=settings):
         logging.warning(f"Keine Strategie-Datei gefunden unter: {yaml_config_path}")
 
     # ---------------------------------------------------------
-    # 4. Services Initialisieren
+    # 5. Services Initialisieren
     # ---------------------------------------------------------
 
     # A) Telegram
@@ -189,7 +189,7 @@ def create_app(config_object=settings):
     csv_worker.start()
     app.extensions["csv_worker"] = csv_worker
 
-    # E) Screener Engine (UPDATED: config statt strategies)
+    # E) Screener Engine
     screener = ScreenerEngine(
         stocks_db_path=Path(db_stocks),
         signals_db_path=Path(db_signals),
@@ -205,7 +205,6 @@ def create_app(config_object=settings):
     app.extensions["trade_manager"] = trade_manager
 
     # G) Strategy Engine
-    # Wir extrahieren die Liste für die StrategyEngine, da diese (noch) keine Full-Config erwartet
     strat_list = (
         loaded_config.get("strategy_ranking", [])
         if isinstance(loaded_config, dict)
@@ -220,11 +219,19 @@ def create_app(config_object=settings):
     )
     app.extensions["strategy_engine"] = strategy_engine
 
+    # H) Backtester (NEU)
+    backtester = DipBuyerBacktester(
+        stocks_db_path=Path(db_stocks),
+        strategies_db_path=Path(db_strategies),  # <--- NEU ÜBERGEBEN
+    )
+    app.extensions["backtester"] = backtester
+
     # ---------------------------------------------------------
-    # 5. Scheduler Jobs
+    # 6. Scheduler Jobs
     # ---------------------------------------------------------
     app_scheduler = BackgroundScheduler()
 
+    # Job 1: Trade Manager (Active Positions checken + Orders erstellen)
     app_scheduler.add_job(
         func=trade_manager.check_active_positions,
         trigger=CronTrigger(
@@ -237,10 +244,10 @@ def create_app(config_object=settings):
         replace_existing=True,
     )
 
+    # Job 2: Täglicher Strategie-Check (Screener + Strategy Engine)
     def run_strategy_job():
         with app.app_context():
             logging.info("Starte täglichen Strategie-Check...")
-            # Automatische Ausführung am Morgen
             screener.run_all(days=0)
             strategy_engine.run_daily_analysis(lookback_days=1)
             strategy_engine.send_telegram_report()
@@ -252,11 +259,42 @@ def create_app(config_object=settings):
         replace_existing=True,
     )
 
+    # Job 3: Wöchentlicher Backtest (NEU)
+    def run_weekly_backtest():
+        with app.app_context():
+            logging.info("Starte wöchentlichen Dip-Buyer Backtest...")
+            report = backtester.run_backtest(start_year=2023)
+            # Report per Telegram (Zusammenfassung)
+            if report and telegram_service:
+                summary = report.get("summary", {})
+                comp = report.get("comparison", {})
+                if "error" in report:
+                    telegram_service.send(f"⚠️ Backtest Fehler: {report['error']}")
+                else:
+                    msg = (
+                        f"📊 **Wöchentlicher Backtest Report**\n"
+                        f"Trades (3J): {summary.get('total_trades')}\n"
+                        f"Win Rate: {summary.get('win_rate')}%\n"
+                        f"Avg Return: {summary.get('avg_return_pct')}%\n\n"
+                        f"📅 **{comp.get('current_month_name')} Performance**\n"
+                        f"Aktuell: {comp.get('current_perf')}%\n"
+                        f"Historisch Ø: {comp.get('historical_avg')}%\n"
+                        f"Status: {comp.get('status')}"
+                    )
+                    telegram_service.send(msg)
+
+    app_scheduler.add_job(
+        func=run_weekly_backtest,
+        trigger=CronTrigger(day_of_week="sat", hour=10, minute=0),  # Samstag 10:00
+        id="weekly_backtest",
+        replace_existing=True,
+    )
+
     app_scheduler.start()
     app.extensions["scheduler"] = app_scheduler
 
     # ---------------------------------------------------------
-    # 6. Finalisierung
+    # 7. Finalisierung
     # ---------------------------------------------------------
     app.register_blueprint(main_bp)
 
@@ -264,7 +302,6 @@ def create_app(config_object=settings):
         telegram_service.send("🚀 **Croc-Trader System gestartet!**")
         try:
             logging.info("Führe initialen Strategie-Check (30 Tage Rückblick) durch...")
-            # Beim Start auch einmalig alles prüfen
             screener.run_all(days=30)
             strategy_engine.run_daily_analysis(lookback_days=30)
             strategy_engine.send_telegram_report()
