@@ -109,15 +109,33 @@ def view_screener_webhook():
         <meta charset="UTF-8">
         <title>Screener Webhook Ergebnisse</title>
         <style>
-            body { font-family: sans-serif; padding: 20px; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; }
+            h1 { color: #333; }
+            table { border-collapse: collapse; width: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: 0.9em; }
             th, td { border: 1px solid #ddd; padding: 12px 15px; text-align: left; }
-            th { background-color: #009879; color: white; }
+            th { background-color: #009879; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
             tr:nth-child(even) { background-color: #f3f3f3; }
             tr:hover { background-color: #f1f1f1; }
-            h1 { color: #333; }
             .details { font-size: 0.85em; color: #555; font-style: italic; }
             .rank-high { font-weight: bold; color: #d35400; }
+
+            /* TradingView Link Styling */
+            a.tv-link {
+                text-decoration: none;
+                color: #009879; /* Angepasst an Header-Farbe */
+                font-weight: bold;
+                display: inline-flex;
+                align-items: center;
+            }
+            a.tv-link:hover {
+                text-decoration: underline;
+                color: #007f65;
+            }
+            .tv-icon {
+                font-size: 0.8em;
+                margin-left: 4px;
+                color: #7f8c8d;
+            }
         </style>
     </head>
     <body>
@@ -128,6 +146,7 @@ def view_screener_webhook():
                     <th>Rank</th>
                     <th>Datum</th>
                     <th>Symbol</th>
+                    <th>Exchange</th>
                     <th>Strategie</th>
                     <th>Signal</th>
                     <th>Kriterien (Filter)</th>
@@ -138,10 +157,30 @@ def view_screener_webhook():
             </thead>
             <tbody>
                 {% for row in results %}
+                    {# --- TradingView URL Logic --- #}
+                    {% set exchange_prefix = '' %}
+                    {% if row['exchange'] and row['exchange'] != 'UNKNOWN' %}
+                        {% set exchange_prefix = row['exchange'] ~ ':' %}
+                    {% endif %}
+
+                    {% set tv_interval = 'D' %}
+                    {% if row['timeframe'] == '1D' %}
+                        {% set tv_interval = 'D' %}
+                    {% else %}
+                        {% set tv_interval = row['timeframe'] %}
+                    {% endif %}
+
+                    {% set tv_url = "https://www.tradingview.com/chart/?symbol=" ~ exchange_prefix ~ row['symbol'] ~ "&interval=" ~ tv_interval %}
+
                 <tr>
                     <td class="rank-high">#{{ row['rank'] }}</td>
                     <td>{{ row['date'] }}</td>
-                    <td><b>{{ row['symbol'] }}</b></td>
+                    <td>
+                        <a href="{{ tv_url }}" class="tv-link" target="_blank" title="Chart auf TradingView öffnen">
+                            {{ row['symbol'] }} <span class="tv-icon">↗</span>
+                        </a>
+                    </td>
+                    <td style="font-size: 0.8em; color: #666;">{{ row['exchange'] }}</td>
                     <td>{{ row['strategy'] }}</td>
                     <td>{{ row['signal'] }}</td>
                     <td class="details">{{ row['filter_details'] }}</td>
@@ -173,13 +212,31 @@ def view_screener_dip_buyer():
         <meta charset="UTF-8">
         <title>Screener Dip-Buyer Ergebnisse</title>
         <style>
-            body { font-family: sans-serif; padding: 20px; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; }
+            h1 { color: #2c3e50; }
+            table { border-collapse: collapse; width: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: 0.9em; }
             th, td { border: 1px solid #ddd; padding: 12px 15px; text-align: left; }
-            th { background-color: #2980b9; color: white; }
-            tr:nth-child(even) { background-color: #f3f3f3; }
-            tr:hover { background-color: #f1f1f1; }
-            h1 { color: #333; }
+            th { background-color: #2980b9; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
+            tr:hover { background-color: #e9ecef; }
+
+            /* TradingView Link Styling */
+            a.tv-link {
+                text-decoration: none;
+                color: #2980b9;
+                font-weight: bold;
+                display: inline-flex;
+                align-items: center;
+            }
+            a.tv-link:hover {
+                text-decoration: underline;
+                color: #1a5276;
+            }
+            .tv-icon {
+                font-size: 0.8em;
+                margin-left: 4px;
+                color: #7f8c8d;
+            }
         </style>
     </head>
     <body>
@@ -189,6 +246,7 @@ def view_screener_dip_buyer():
                 <tr>
                     <th>Datum</th>
                     <th>Symbol</th>
+                    <th>Exchange</th>
                     <th>Setup Score</th>
                     <th>ATR R3</th>
                     <th>Entry Limit</th>
@@ -198,12 +256,36 @@ def view_screener_dip_buyer():
             </thead>
             <tbody>
                 {% for row in results %}
+                    {# --- Logic für TradingView URL Aufbau --- #}
+
+                    {# 1. Exchange Prefix: Nur setzen, wenn Exchange bekannt und nicht UNKNOWN ist #}
+                    {% set exchange_prefix = '' %}
+                    {% if row['exchange'] and row['exchange'] != 'UNKNOWN' %}
+                        {% set exchange_prefix = row['exchange'] ~ ':' %}
+                    {% endif %}
+
+                    {# 2. Timeframe Mapping: 1D -> D für TradingView URL #}
+                    {% set tv_interval = 'D' %}
+                    {% if row['timeframe'] == '1D' %}
+                        {% set tv_interval = 'D' %}
+                    {% else %}
+                        {% set tv_interval = row['timeframe'] %}
+                    {% endif %}
+
+                    {# 3. Finale URL #}
+                    {% set tv_url = "https://www.tradingview.com/chart/?symbol=" ~ exchange_prefix ~ row['symbol'] ~ "&interval=" ~ tv_interval %}
+
                 <tr>
                     <td>{{ row['date'] }}</td>
-                    <td><b>{{ row['symbol'] }}</b></td>
+                    <td>
+                        <a href="{{ tv_url }}" class="tv-link" target="_blank" title="Chart auf TradingView öffnen">
+                            {{ row['symbol'] }} <span class="tv-icon">↗</span>
+                        </a>
+                    </td>
+                    <td style="font-size: 0.8em; color: #666;">{{ row['exchange'] }}</td>
                     <td>{{ row['setup_score'] }}</td>
-                    <td>{{ row['atr_r3'] }}</td>
-                    <td>{{ row['entry_limit'] }}</td>
+                    <td style="{{ 'color: green;' if row['atr_r3'] < -2 else '' }}">{{ row['atr_r3'] }}</td>
+                    <td><b>{{ row['entry_limit'] }}</b></td>
                     <td>{{ row['atr5'] }}</td>
                     <td>{{ row['close'] }}</td>
                 </tr>
