@@ -7,7 +7,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+import yaml
 
+from ..config import settings
 from ..mapping import mapper
 from ..tools.symbol_lists import ExchangeSymbol
 from .database import SignalDatabase
@@ -698,7 +700,227 @@ class WebhookFilterStrategy(BaseStrategy):
 
 
 # ==============================================================================
-# 5. SCREENER ENGINE (Manager)
+# 5. STRATEGIE: CROC SETUP (NEU)
+# ==============================================================================
+
+
+class CrocSetupStrategy(BaseStrategy):
+    name = "CrocSetup"
+
+    def __init__(self, signals_db: SignalDatabase, telegram_bot=None):
+        super().__init__(signals_db, telegram_bot)
+        # NEU: Nutzung der zentralen Config für saubere Pfad-Auflösung in data/
+        self.config_path = settings.get_path("ranking_yaml")
+        self.ranking_rules = self._load_config()
+
+    def _load_config(self) -> List[Dict]:
+        if not self.config_path.exists():
+            logger.error(
+                f"[{self.name}] Konfigurationsdatei nicht gefunden: {self.config_path}"
+            )
+            return []
+
+        try:
+            with open(self.config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            return data.get("ranking_2026", [])
+        except Exception as e:
+            logger.error(f"[{self.name}] Fehler beim Laden der YAML: {e}")
+            return []
+
+    def run(self, days: int = 0) -> int:
+        # 1. Zeitraum definieren (Standard: 10 Tage Scan)
+        scan_days = 10 if days <= 0 else days
+        start_date = (datetime.now() - timedelta(days=scan_days)).strftime("%Y-%m-%d")
+
+        logger.info(f"[{self.name}] Starte Scan ab {start_date}...")
+
+        # 2. Signale laden
+        try:
+            with self.signals_db._get_conn() as conn:
+                # Wir holen explizit Spalten, die für Filter relevant sein könnten
+                # WICHTIG: 'deluxe' ist jetzt im SELECT enthalten
+                # NEU: Filter auf timeframe = '1D'
+                sql = f"""
+                    SELECT symbol, signal, exchange, timeframe, close, high, low, rsi,
+                           dist_sma_20, dist_sma_200,
+                           kerze, welle, deluxe, status, trend,
+                           date(timestamp) as date_str
+                    FROM signals
+                    WHERE date(timestamp) >= '{start_date}' AND timeframe = '1D'
+                """
+                df = pd.read_sql_query(sql, conn)
+        except Exception as e:
+            logger.error(f"[{self.name}] DB Fehler beim Laden der Signale: {e}")
+            return 0
+
+        if df.empty:
+            logger.info(f"[{self.name}] Keine Signale gefunden.")
+            return 0
+
+        # Vorverarbeitung
+        numeric_cols = ["close", "high", "low", "rsi", "dist_sma_20", "dist_sma_200"]
+        for c in numeric_cols:
+            if c in df.columns:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+
+        results = []
+
+        # 3. Matching Logik
+        # Iteration über jedes Signal in der DB
+        for _, row in df.iterrows():
+            signal_name = row["signal"]
+
+            # Suche passenden Eintrag in der YAML
+            rule = next(
+                (r for r in self.ranking_rules if r["signal"] == signal_name), None
+            )
+            if not rule:
+                continue
+
+            match_found = False
+            active_r = rule.get("base_r_per_trade", 0.0)
+            match_reason = ""
+
+            filters = rule.get("filters", {})
+            if not filters:
+                continue
+
+            # A) Check EMA
+            if best_ema := filters.get("best_ema"):
+                # Prüfe dist_sma_200
+                if cond := best_ema.get("ema_200"):
+                    if self._check_range_condition(row.get("dist_sma_200"), cond):
+                        match_found = True
+                        active_r = best_ema.get("r_per_trade", active_r)
+                        match_reason = f"EMA 200 ({cond})"
+
+                # Prüfe dist_sma_20 (falls noch kein Match oder als Alternative)
+                if not match_found and (cond := best_ema.get("ema_20")):
+                    if self._check_range_condition(row.get("dist_sma_20"), cond):
+                        match_found = True
+                        active_r = best_ema.get("r_per_trade", active_r)
+                        match_reason = f"EMA 20 ({cond})"
+
+            # B) Check RSI (ODER Verknüpfung)
+            if not match_found and (best_rsi := filters.get("best_rsi")):
+                if cond := best_rsi.get("rsi"):
+                    if self._check_rsi_zone(row.get("rsi"), cond):
+                        match_found = True
+                        active_r = best_rsi.get("r_per_trade", active_r)
+                        match_reason = f"RSI ({cond})"
+
+            # C) Check Extra (ODER Verknüpfung)
+            if not match_found and (best_extra := filters.get("best_extra")):
+                # Extra Iteriert über keys wie 'kerze', 'welle', 'status' etc.
+                for col_key, target_val in best_extra.items():
+                    if col_key in ["r_per_trade", "active"]:
+                        continue  # Metadaten überspringen
+
+                    current_val = row.get(col_key)
+                    if current_val == target_val:
+                        match_found = True
+                        active_r = best_extra.get("r_per_trade", active_r)
+                        match_reason = f"{col_key.capitalize()} ({target_val})"
+                        break
+
+            if match_found:
+                logger.info(
+                    f"[{self.name}] Treffer: {row['symbol']} ({signal_name}) via {match_reason}"
+                )
+
+                # Dist EMA auswählen für Display (bevorzugt 200er wenn verfügbar, sonst 20er)
+                display_ema = (
+                    row.get("dist_sma_200")
+                    if pd.notna(row.get("dist_sma_200"))
+                    else row.get("dist_sma_20")
+                )
+
+                results.append(
+                    {
+                        "date": row["date_str"],
+                        "symbol": row["symbol"],
+                        "exchange": row["exchange"] or "UNKNOWN",
+                        "timeframe": row["timeframe"],
+                        "signal": signal_name,
+                        "rank": rule.get("rank", 999),
+                        "r_per_trade": float(active_r),
+                        "recommended_strategy": rule.get(
+                            "recommended_strategy", "Standard"
+                        ),
+                        "close": float(row["close"] or 0.0),
+                        "high": float(row["high"] or 0.0),
+                        "low": float(row["low"] or 0.0),
+                        "rsi": float(row["rsi"] or 0.0),
+                        "dist_ema": float(display_ema or 0.0),
+                        "match_filter": match_reason,
+                    }
+                )
+
+        # 4. Speichern
+        if results:
+            self.signals_db.save_screener_croc(results)
+            self._send_telegram_report(
+                f"🐊 Croc Setup ({len(results)} Hits)", start_date, results
+            )
+
+        logger.info(f"[{self.name}] Fertig: {len(results)} neue Setups identifiziert.")
+        return len(results)
+
+    def _check_range_condition(self, value: Optional[float], condition: str) -> bool:
+        """Parsen von Bedingungen wie '-3 to 0%', '> 10%', '< -5%'."""
+        if value is None or pd.isna(value):
+            return False
+
+        condition = condition.replace("%", "").strip()
+
+        # Case: Range "X to Y"
+        if " to " in condition:
+            try:
+                min_s, max_s = condition.split(" to ")
+                return float(min_s) <= value <= float(max_s)
+            except ValueError:
+                return False
+
+        # Case: Greater "> X"
+        if condition.startswith(">"):
+            try:
+                return value > float(condition.replace(">", ""))
+            except ValueError:
+                return False
+
+        # Case: Less "< X"
+        if condition.startswith("<"):
+            try:
+                return value < float(condition.replace("<", ""))
+            except ValueError:
+                return False
+
+        return False
+
+    def _check_rsi_zone(self, rsi: Optional[float], zone_name: str) -> bool:
+        """Mapping der Text-Zonen zu Zahlenwerten."""
+        if rsi is None or pd.isna(rsi):
+            return False
+
+        zone_name = zone_name.lower()
+
+        if "oversold" in zone_name or "<30" in zone_name:
+            return rsi < 30
+        elif "weak" in zone_name:  # 30-45
+            return 30 <= rsi <= 45
+        elif "neutral" in zone_name:  # 45-55
+            return 45 <= rsi <= 55
+        elif "strong" in zone_name:  # 55-70
+            return 55 <= rsi <= 70
+        elif "overbought" in zone_name or ">70" in zone_name:
+            return rsi > 70
+        else:
+            return False
+
+
+# ==============================================================================
+# 6. SCREENER ENGINE (Manager)
 # ==============================================================================
 
 
@@ -725,10 +947,11 @@ class ScreenerEngine:
         self.register_strategy(
             WebhookFilterStrategy(self.signals_db, config, self.telegram)
         )
-        # NEU: Registrierung der Turnover Timing Strategy
         self.register_strategy(
             TurnoverTimingStrategy(stocks_db_path, self.signals_db, self.telegram)
         )
+        # NEU: Registrierung CrocSetupStrategy
+        self.register_strategy(CrocSetupStrategy(self.signals_db, self.telegram))
 
     def register_strategy(self, strategy: BaseStrategy):
         self.active_strategies.append(strategy)

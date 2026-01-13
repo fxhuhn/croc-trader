@@ -48,7 +48,7 @@ class SignalDatabase:
             symbol TEXT NOT NULL, timeframe TEXT NOT NULL, signal TEXT NOT NULL,
             timestamp TEXT NOT NULL, close REAL, high REAL, low REAL, wuk REAL,
             status TEXT, kerze TEXT, trend TEXT, setter TEXT, welle TEXT,
-            wolke TEXT, rsi REAL, sma_200 REAL, sma_20 REAL,
+            wolke TEXT, deluxe TEXT, rsi REAL, sma_200 REAL, sma_20 REAL,
             strategy_id TEXT, exchange TEXT,
             reference TEXT UNIQUE,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -138,7 +138,7 @@ class SignalDatabase:
         );
         """
 
-        # 6. TABELLE: TURNOVER TIMING SCREENER (NEU)
+        # 6. TABELLE: TURNOVER TIMING SCREENER
         schema_turnover = """
         CREATE TABLE IF NOT EXISTS screener_turnover_timing (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +178,30 @@ class SignalDatabase:
         );
         """
 
+        # 8. TABELLE: CROC SETUP SCREENER (Update: high/low added)
+        schema_screener_croc = """
+        CREATE TABLE IF NOT EXISTS screener_croc (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            exchange TEXT,
+            timeframe TEXT,
+            signal TEXT,
+            rank INTEGER,
+            r_per_trade REAL,
+            recommended_strategy TEXT,
+            close REAL,
+            high REAL,
+            low REAL,
+            rsi REAL,
+            dist_ema REAL,
+            match_filter TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(date, symbol, signal)
+        );
+        CREATE INDEX IF NOT EXISTS idx_screener_croc_date ON screener_croc(date);
+        """
+
         try:
             with self._get_conn() as conn:
                 conn.executescript(schema_signals)
@@ -185,13 +209,37 @@ class SignalDatabase:
                 conn.execute(schema_view)
                 conn.executescript(schema_dip_buyer)
                 conn.executescript(schema_webhook)
-                conn.executescript(schema_turnover)  # NEU
+                conn.executescript(schema_turnover)
                 conn.executescript(schema_trades)
+                conn.executescript(schema_screener_croc)
 
                 # --- MIGRATIONEN ---
-                # (Hier nur der Vollständigkeit halber, falls die Tabelle noch nicht existiert, wird sie oben erstellt)
 
-                # ... (Bestehende Migrationen Code wie vorher) ...
+                # Migration für DELUXE Spalte
+                try:
+                    conn.execute("ALTER TABLE signals ADD COLUMN deluxe TEXT")
+                    logger.info(
+                        "Migration: Spalte 'deluxe' zu Tabelle 'signals' hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass
+
+                # Migration für HIGH/LOW in screener_croc
+                try:
+                    conn.execute("ALTER TABLE screener_croc ADD COLUMN high REAL")
+                    logger.info(
+                        "Migration: Spalte 'high' zu Tabelle 'screener_croc' hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass  # Bereits vorhanden
+
+                try:
+                    conn.execute("ALTER TABLE screener_croc ADD COLUMN low REAL")
+                    logger.info(
+                        "Migration: Spalte 'low' zu Tabelle 'screener_croc' hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass  # Bereits vorhanden
 
                 conn.commit()
 
@@ -199,12 +247,16 @@ class SignalDatabase:
             logger.critical(f"DB Init failed: {e}")
             raise
 
-    # ... (save_many, replace_stats, get_latest_signals_with_stats, clean_batz_exchanges, save_screener_dip_buyer, save_screener_webhook - BLEIBEN UNVERÄNDERT) ...
-
     def save_many(self, signals: List[CrocSignal], retries: int = 5) -> int:
         if not signals:
             return 0
-        sql = "INSERT OR IGNORE INTO signals (symbol, timeframe, timestamp, signal, close, high, low, wuk, status, kerze, wolke, trend, setter, welle, rsi, sma_200, sma_20, strategy_id, reference, exchange) VALUES (:symbol, :timeframe, :timestamp, :signal, :close, :high, :low, :wuk, :status, :kerze, :wolke, :trend, :setter, :welle, :rsi, :sma_200, :sma_20, :strategy_id, :reference, :exchange)"
+
+        sql = """
+        INSERT OR IGNORE INTO signals
+        (symbol, timeframe, timestamp, signal, close, high, low, wuk, status, kerze, wolke, trend, setter, welle, deluxe, rsi, sma_200, sma_20, strategy_id, reference, exchange)
+        VALUES
+        (:symbol, :timeframe, :timestamp, :signal, :close, :high, :low, :wuk, :status, :kerze, :wolke, :trend, :setter, :welle, :deluxe, :rsi, :sma_200, :sma_20, :strategy_id, :reference, :exchange)
+        """
         for attempt in range(retries):
             try:
                 with self._get_conn() as conn:
@@ -278,7 +330,7 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler save_screener_webhook: {e}")
 
-    # --- NEU: TURNOVER TIMING SPEICHERN ---
+    # --- TURNOVER TIMING SPEICHERN ---
     def save_screener_turnover_timing(self, results: List[dict]):
         if not results:
             return
@@ -294,6 +346,27 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler save_screener_turnover_timing: {e}")
 
+    # --- CROC SETUP SPEICHERN ---
+    def save_screener_croc(self, results: List[dict]):
+        if not results:
+            return
+
+        # SQL Update: high und low hinzugefügt
+        sql = """
+        INSERT OR REPLACE INTO screener_croc
+        (date, symbol, exchange, timeframe, signal, rank, r_per_trade,
+         recommended_strategy, close, high, low, rsi, dist_ema, match_filter)
+        VALUES
+        (:date, :symbol, :exchange, :timeframe, :signal, :rank, :r_per_trade,
+         :recommended_strategy, :close, :high, :low, :rsi, :dist_ema, :match_filter)
+        """
+        try:
+            with self._get_conn() as conn:
+                conn.executemany(sql, results)
+                conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Fehler save_screener_croc: {e}")
+
     def get_dip_buyer_results(self, limit: int = 50):
         sql = "SELECT * FROM screener_dip_buyer ORDER BY date DESC, setup_score DESC LIMIT ?"
         with self._get_conn() as conn:
@@ -304,9 +377,19 @@ class SignalDatabase:
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
-    # --- NEU: TURNOVER TIMING LESEN ---
+    # --- TURNOVER TIMING LESEN ---
     def get_turnover_timing_results(self, limit: int = 50):
         sql = "SELECT * FROM screener_turnover_timing ORDER BY date DESC, turnover_sma20 DESC LIMIT ?"
+        with self._get_conn() as conn:
+            return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
+
+    # --- CROC SETUP LESEN ---
+    def get_croc_results(self, limit: int = 100) -> List[dict]:
+        sql = """
+        SELECT * FROM screener_croc
+        ORDER BY date DESC, rank ASC, r_per_trade DESC
+        LIMIT ?
+        """
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 

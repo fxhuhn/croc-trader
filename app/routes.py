@@ -197,6 +197,102 @@ def view_screener_webhook():
     return render_template_string(html, results=results)
 
 
+@main_bp.route("/screener/webhook_2", methods=["GET"])
+def view_screener_croc():
+    """Zeigt die Ergebnisse des Croc-Setup Screeners (Ranking 2026)."""
+    check_ip_auth()  # Security
+
+    limit = request.args.get("limit", 200, type=int)
+    conf = current_app.config["APP_CONFIG"]
+    db = SignalDatabase(conf.get_db_path("signals"))
+
+    # Holt Ergebnisse sortiert nach Rank ASC, R-Per-Trade DESC
+    results = db.get_croc_results(limit=limit)
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>🐊 Croc Setup Screener</title>
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background: #fdfdfd; }
+            h1 { color: #27ae60; border-bottom: 2px solid #27ae60; padding-bottom: 10px; display: inline-block; }
+            table { border-collapse: collapse; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.08); font-size: 0.9em; background: white; }
+            th, td { border: 1px solid #eee; padding: 12px 15px; text-align: left; }
+            th { background-color: #27ae60; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            tr:hover { background-color: #f0fdf4; }
+
+            .rank-badge {
+                background: #333; color: #fff; padding: 3px 8px; border-radius: 10px; font-weight: bold; font-size: 0.85em;
+            }
+            .r-val { color: #d35400; font-weight: bold; }
+            .strat-highlight { color: #2980b9; font-weight: bold; }
+
+            /* TradingView Link */
+            a.tv-link { text-decoration: none; color: #27ae60; font-weight: bold; display: inline-flex; align-items: center; }
+            a.tv-link:hover { text-decoration: underline; color: #1e8449; }
+        </style>
+    </head>
+    <body>
+        <h1>🐊 Croc Setup (Ranking 2026)</h1>
+        <p>Top Setups basierend auf EMA, RSI und Extra-Filtern der letzten 10 Tage.</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Datum</th>
+                    <th>Symbol</th>
+                    <th>Signal</th>
+                    <th>R / Trade</th>
+                    <th>Empf. Strategie</th>
+                    <th>Close</th>
+                    <th>RSI</th>
+                    <th>Dist EMA %</th>
+                    <th>Auslöser (Filter)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in results %}
+                    {% set exchange_prefix = (row['exchange'] ~ ':') if row['exchange'] and row['exchange'] != 'UNKNOWN' else '' %}
+
+                    {# Timeframe Mapping für TradingView: 1D -> D #}
+                    {% set tv_interval = 'D' %}
+                    {% if row['timeframe'] != '1D' %}
+                         {% set tv_interval = row['timeframe'] %}
+                    {% endif %}
+
+                    {% set tv_url = "https://www.tradingview.com/chart/?symbol=" ~ exchange_prefix ~ row['symbol'] ~ "&interval=" ~ tv_interval %}
+                <tr>
+                    <td><span class="rank-badge">#{{ row['rank'] }}</span></td>
+                    <td>{{ row['date'] }}</td>
+                    <td>
+                        <a href="{{ tv_url }}" class="tv-link" target="_blank">{{ row['symbol'] }} ↗</a>
+                    </td>
+                    <td>{{ row['signal'] }}</td>
+                    <td class="r-val">{{ row['r_per_trade'] }}</td>
+                    <td class="strat-highlight">{{ row['recommended_strategy'] }}</td>
+                    <td>{{ row['close'] }}</td>
+
+                    {# RSI: Clean rendering for None #}
+                    <td>{{ row['rsi']|round(1) if row['rsi'] is not none else '-' }}</td>
+
+                    {# EMA: Clean rendering for None (vermeidet 'None%') #}
+                    <td>{{ row['dist_ema'] ~ '%' if row['dist_ema'] is not none else '-' }}</td>
+
+                    <td style="font-style: italic; color: #666;">{{ row['match_filter'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+    return render_template_string(html, results=results)
+
+
 @main_bp.route("/screener/dip-buyer", methods=["GET"])
 def view_screener_dip_buyer():
     """Zeigt die Ergebnisse des Dip-Buyer-Screeners als HTML-Tabelle."""
