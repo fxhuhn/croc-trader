@@ -158,7 +158,7 @@ class DipBuyerStrategy(BaseStrategy):
             ]
         )
         tr = pd.DataFrame(tr_values, index=closes.index, columns=closes.columns)
-        atr5 = tr.ewm(span=9, adjust=False).mean()
+        atr5 = tr.ewm(span=(2 * 5) - 1, adjust=False).mean()
 
         atr_r3 = (closes - closes.shift(3)) / atr5.replace(0, np.nan)
         ibs = (closes - lows) / (highs - lows).replace(0, 0.01)
@@ -449,7 +449,7 @@ class TurnoverTimingStrategy(BaseStrategy):
             ]
         )
         tr = pd.DataFrame(tr_values, index=closes.index, columns=closes.columns)
-        atr3 = tr.ewm(span=3, adjust=False).mean()
+        atr3 = tr.ewm(span=(2 * 3) - 1, adjust=False).mean()
 
         return {
             "close": closes,
