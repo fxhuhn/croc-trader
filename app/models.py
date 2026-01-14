@@ -33,6 +33,7 @@ class CrocSignal:
     sma_200: Optional[float] = None
     sma_20: Optional[float] = None
     wolke: Optional[str] = None
+    deluxe: Optional[str] = None
     strategy_id: Optional[str] = None
     reference: Optional[str] = None
     # Factory default sorgt für korrekten Zeitpunkt bei Instanziierung
