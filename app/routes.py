@@ -941,3 +941,82 @@ def render_backtest_view(data):
     </html>
     """
     return render_template_string(html, data=data)
+
+
+@main_bp.route("/active-trades", methods=["GET"])
+def view_active_trades_raw():
+    """
+    Zeigt die rohen Inhalte der Tabelle active_trades,
+    sortiert nach entry_date absteigend.
+    """
+    # Standardmäßig ein höheres Limit für die Gesamtübersicht
+    limit = request.args.get("limit", 500, type=int)
+    conf = current_app.config["APP_CONFIG"]
+    db = SignalDatabase(conf.get_db_path("signals"))
+
+    # get_trades_history sortiert bereits: ORDER BY entry_date DESC, created_at DESC
+    results = db.get_trades_history(limit=limit)
+
+    html = """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>DB: Active Trades</title>
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #f4f4f9; }
+            h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; display: inline-block; }
+            table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+            th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; font-size: 0.9em; }
+            th { background-color: #34495e; color: white; text-transform: uppercase; font-size: 0.85em; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
+            tr:hover { background-color: #e2e6ea; }
+
+            .status-created { color: #d35400; font-weight: bold; }
+            .status-active { color: #27ae60; font-weight: bold; }
+            .status-closed { color: #7f8c8d; }
+            .status-missed { color: #c0392b; text-decoration: line-through; }
+        </style>
+    </head>
+    <body>
+        <h1>🗃️ Tabelle: active_trades</h1>
+        <p>Inhalt der Datenbank (Limit: {{ limit }}), sortiert nach <b>Entry Date (DESC)</b>.</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Symbol</th>
+                    <th>Entry Date</th>
+                    <th>Strategy</th>
+                    <th>Status</th>
+                    <th>Entry Price</th>
+                    <th>ATR</th>
+                    <th>Qty</th>
+                    <th>Exit Reason</th>
+                    <th>Closed At</th>
+                    <th>Created At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in results %}
+                <tr>
+                    <td>{{ row['id'] }}</td>
+                    <td><b>{{ row['symbol'] }}</b></td>
+                    <td>{{ row['entry_date'] }}</td>
+                    <td>{{ row['strategy'] }}</td>
+                    <td class="status-{{ row['status']|lower }}">{{ row['status'] }}</td>
+                    <td>{{ row['entry_price'] }}</td>
+                    <td>{{ row['atr_at_entry'] }}</td>
+                    <td>{{ row['quantity'] }}</td>
+                    <td>{{ row['exit_reason'] or '' }}</td>
+                    <td>{{ row['closed_at'] or '' }}</td>
+                    <td style="color: #999; font-size: 0.8em;">{{ row['created_at'] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """
+    return render_template_string(html, results=results, limit=limit)
