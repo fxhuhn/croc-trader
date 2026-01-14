@@ -1,8 +1,9 @@
 import logging
-from dataclasses import asdict, dataclass, field
+import sqlite3
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 
 import pandas as pd
 import yaml
@@ -13,35 +14,60 @@ from .database import SignalDatabase
 
 logger = logging.getLogger(__name__)
 
+# --------------------------------------------------------------------------
+# Domain Types & Constants
+# --------------------------------------------------------------------------
+
+OrderAction = Literal["BUY", "SELL"]
+OrderType = Literal["LMT", "MKT", "LOC", "STP"]
+TimeInForce = Literal["DAY", "GTC"]
+TradeStatus = Literal["CREATED", "ACTIVE", "CLOSED", "MISSED"]
+
+# Festes Risiko pro Trade laut Anforderung
+RISK_PER_TRADE_CROC_USD = 100.0
+
 
 @dataclass
 class OrderLeg:
-    action: Literal["BUY", "SELL"]
-    type: Literal["LMT", "MKT", "LOC", "STP"]
+    action: OrderAction
+    order_type: OrderType
     price: float
-    tif: str = "DAY"
+    quantity: int | None = None  # None bedeutet: Restliche/Volle Position
+    tif: TimeInForce = "DAY"
 
 
 @dataclass
 class Order:
     id: str
     symbol: str
-    qty: int
+    total_quantity: int
     mode: str
     entry: OrderLeg
-    exits: List[OrderLeg]
-    ib_id: Optional[int] = None
+    exits: list[OrderLeg]
     last_status: str = "PendingSubmit"
     last_update: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
 
+@dataclass
+class CrocContext:
+    """Hält Kontext-Daten (Low für StopLoss), die nicht in active_trades stehen."""
+
+    high: float
+    low: float
+
+
+# --------------------------------------------------------------------------
+# Service Class
+# --------------------------------------------------------------------------
+
+
 class TradeManager:
     """
     Verwaltet den Lebenszyklus von Trades:
-    1. Status-Updates bestehender Positionen (via Market Data).
-    2. Generierung von Order-Files für neue Signale.
+    1. Status-Updates (Fills/Exits) via Market Data prüfen.
+    2. YAML-Orders für neue Signale ('CREATED') generieren.
     """
 
     def __init__(self, db_path: Path, telegram_bot=None):
@@ -51,275 +77,332 @@ class TradeManager:
 
     def run_daily_process(self, investment_per_trade: float = 2000.0) -> None:
         """
-        Führt den täglichen Prozess aus: Status prüfen -> Neue Orders schreiben.
+        Orchestriert den täglichen Prozess.
         """
-        # 1. Datenbank-Status aktualisieren (Fills, Exits, Time-Stops erkennen)
-        self.update_positions_status()
+        try:
+            self._update_positions_status()
+            self._export_orders_to_yaml(investment_per_trade)
+        except Exception as error:
+            logger.error(f"Kritischer Fehler im TradeManager Prozess: {error}")
 
-        # 2. Orders für NEUE Signale generieren (DipBuyer)
-        self.export_orders_to_yaml(investment_per_trade)
+    # ----------------------------------------------------------------------
+    # Teil A: Status Updates (Marktdaten-Check)
+    # ----------------------------------------------------------------------
 
-    def update_positions_status(self) -> None:
-        """
-        Prüft 'CREATED' Trades auf Fills und 'ACTIVE' Trades auf Exits/Time-Stops.
-        Aktualisiert den Status in der Datenbank und sendet Alerts.
-        """
+    def _update_positions_status(self) -> None:
         db = SignalDatabase(self.db_path)
         trades = db.get_all_managed_trades()
 
         if not trades:
-            logger.info("TradeManager: Keine aktiven Trades zur Prüfung.")
             return
 
         logger.info(f"Prüfe Status für {len(trades)} Trades...")
 
-        # --- Daten laden (Batch Processing) ---
-        symbols = list({t["symbol"] for t in trades})
-        data_cache = {}
-
-        for symbol in symbols:
-            yahoo_symbol = self._get_yahoo_ticker(symbol)
-            try:
-                # Daten laden (letzte 10 Tage reichen für aktuelle Prüfungen)
-                df = yf.download(
-                    yahoo_symbol, period="10d", progress=False, auto_adjust=True
-                )
-
-                if not df.empty:
-                    df = df.reset_index()
-                    # Spalten bereinigen (MultiIndex flatten falls nötig)
-                    if isinstance(df.columns, pd.MultiIndex):
-                        df.columns = df.columns.get_level_values(0)
-                    df.columns = df.columns.str.lower()
-
-                    # Datumsspalte normalisieren
-                    if "date" in df.columns:
-                        df["date"] = pd.to_datetime(df["date"])
-                    elif "datetime" in df.columns:
-                        df["date"] = pd.to_datetime(df["datetime"])
-
-                    data_cache[symbol] = df
-                else:
-                    logger.warning(
-                        f"Keine Daten für {symbol} (Yahoo: {yahoo_symbol}) gefunden."
-                    )
-
-            except Exception as e:
-                logger.error(f"Fehler beim Laden von {symbol} -> {yahoo_symbol}: {e}")
-
-        # --- Status Logik ---
-        alerts = []
+        market_data_cache = self._fetch_market_data_batch(trades)
+        alerts: list[str] = []
         today = datetime.now().date()
 
         for trade in trades:
-            trade_id = trade["id"]
             symbol = trade["symbol"]
-            status = trade["status"]
-            entry_price = trade["entry_price"]
-            entry_date_str = trade["entry_date"]
-
-            if symbol not in data_cache:
+            if symbol not in market_data_cache:
                 continue
 
-            df = data_cache[symbol]
-            # Sicherstellen, dass entry_date als String vorliegt (Fallback)
-            if not isinstance(entry_date_str, str):
-                # Falls es wider Erwarten ein Timestamp ist
-                entry_date_str = entry_date_str.strftime("%Y-%m-%d")
+            df = market_data_cache[symbol]
+            alert = self._evaluate_trade_status(db, trade, df, today)
+            if alert:
+                alerts.append(alert)
 
-            signal_date_obj = pd.to_datetime(entry_date_str).date()
+        if alerts and self.telegram:
+            self.telegram.send("⚡ **STATUS UPDATES**\n" + "\n".join(alerts))
 
-            # Fall A: Trade ist noch im Wartestand (CREATED) -> Prüfen ob gefillt
-            if status == "CREATED":
-                # Wir suchen Tage NACH dem Signal
+    def _fetch_market_data_batch(self, trades: list[dict]) -> dict[str, pd.DataFrame]:
+        symbols = list({t["symbol"] for t in trades})
+        cache = {}
+
+        for symbol in symbols:
+            yahoo_symbol = self._map_to_yahoo_ticker(symbol)
+            try:
+                df = yf.download(
+                    yahoo_symbol, period="10d", progress=False, auto_adjust=True
+                )
+                if df.empty:
+                    continue
+
+                # Normalisierung
+                df = df.reset_index()
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                df.columns = df.columns.str.lower()
+
+                date_col = "date" if "date" in df.columns else "datetime"
+                if date_col in df.columns:
+                    df["date"] = pd.to_datetime(df[date_col])
+                    cache[symbol] = df
+
+            except Exception:
+                logger.warning(f"Fehler beim Laden von Marktdaten für {symbol}")
+
+        return cache
+
+    def _evaluate_trade_status(
+        self, db: SignalDatabase, trade: dict, df: pd.DataFrame, today
+    ) -> str | None:
+        trade_id = trade["id"]
+        status: TradeStatus = trade["status"]
+        entry_price = float(trade["entry_price"])
+
+        entry_date_raw = trade["entry_date"]
+        entry_date_str = (
+            entry_date_raw
+            if isinstance(entry_date_raw, str)
+            else entry_date_raw.strftime("%Y-%m-%d")
+        )
+        signal_date_obj = pd.to_datetime(entry_date_str).date()
+
+        match status:
+            case "CREATED":
+                # Prüfe auf Fill am Tag NACH dem Signal
                 potential_days = df[df["date"].dt.date > signal_date_obj]
+                if potential_days.empty:
+                    return None
 
-                if not potential_days.empty:
-                    # Checke den ersten Tag nach Signal
-                    row = potential_days.iloc[0]
-                    check_date = row["date"].strftime("%Y-%m-%d")
+                row = potential_days.iloc[0]
+                check_date = row["date"].strftime("%Y-%m-%d")
 
-                    # Limit Buy Logik: Wenn Low <= Limit, dann Fill
-                    if row["low"] <= entry_price:
-                        db.update_trade_status(trade_id, "ACTIVE")
-                        alerts.append(f"✅ **FILLED**: {symbol} am {check_date}")
-                    else:
-                        # Setup verfallen (Gap Up o.ä.), wenn Bedingungen nicht erfüllt
-                        # Hier vereinfacht: Wenn am Tag 1 nicht geholt, dann MISSED
-                        db.update_trade_status(trade_id, "MISSED", "LIMIT_NOT_REACHED")
-                        alerts.append(f"❌ **MISSED**: {symbol} am {check_date}")
+                # Generischer Fill-Check: Wurde Preislimit intraday berührt?
+                price_touched = row["low"] <= entry_price <= row["high"]
 
-            # Fall B: Trade läuft (ACTIVE) -> Prüfen auf Time Stop oder Exit-Signale
-            elif status == "ACTIVE":
-                last_row = df.iloc[-1]
-                current_close = last_row["close"]
+                if price_touched:
+                    db.update_trade_status(trade_id, "ACTIVE")
+                    return f"✅ **FILLED**: {trade['symbol']} am {check_date}"
+                else:
+                    db.update_trade_status(trade_id, "MISSED", "LIMIT_NOT_REACHED")
+                    return f"❌ **MISSED**: {trade['symbol']} am {check_date}"
+
+            case "ACTIVE":
+                # Time Stop (7 Tage)
                 days_since = (today - signal_date_obj).days
-
-                # 1. TIME STOP (nach 7 Tagen)
                 if days_since >= 7:
                     db.close_trade(trade_id, reason="TIME_STOP")
-                    alerts.append(
-                        f"⏰ **TIME STOP**: {symbol} wird geschlossen (DB Update)."
-                    )
-                    # Hinweis: Exit-Order wird hier laut Anforderung ignoriert (nur DB Pflege)
+                    return f"⏰ **TIME STOP**: {trade['symbol']} wird geschlossen."
 
-                # 2. LOC EXIT Check (nur Alerting, da Positionen ignoriert werden sollen)
-                else:
-                    prev_high = 999999
-                    if len(df) >= 2:
-                        prev_high = df.iloc[-2]["high"]
+        return None
 
-                    if current_close > prev_high:
-                        alerts.append(f"📈 **LOC SIGNAL**: {symbol} (Close > PrevHigh)")
+    # ----------------------------------------------------------------------
+    # Teil B: Order Generierung (Strategy Dispatcher)
+    # ----------------------------------------------------------------------
 
-        # --- Telegram Benachrichtigung ---
-        if alerts and self.telegram:
-            msg = "⚡ **STATUS UPDATES**\n" + "\n".join(alerts)
-            self.telegram.send(msg)
-
-    def export_orders_to_yaml(self, investment_amount: float) -> None:
-        """
-        Erstellt YAML-Order-Files NUR für neue 'DipBuyer' Trades.
-        Bestehende Positionen werden laut Anforderung ignoriert.
-        """
+    def _export_orders_to_yaml(self, investment_amount: float) -> None:
         db = SignalDatabase(self.db_path)
 
-        # Wir holen alle Trades, filtern aber in Python explizit
-        all_trades = db.get_all_managed_trades()
-
-        # Filter: Nur 'CREATED' (neu) und Strategie 'DipBuyer'
-        new_dip_signals = [
-            t
-            for t in all_trades
-            if t["status"] == "CREATED" and self._is_dip_buyer(t.get("strategy"))
+        # Nur neue Trades verarbeiten
+        new_trades = [
+            t for t in db.get_all_managed_trades() if t["status"] == "CREATED"
         ]
 
-        if not new_dip_signals:
-            logger.info("Keine neuen DipBuyer-Signale für Order-Generierung.")
+        if not new_trades:
+            logger.info("Keine neuen Trades (Status CREATED) gefunden.")
             return
 
-        orders_by_date = {}
+        logger.info(f"Erstelle Orders für {len(new_trades)} Signale...")
+        orders_by_date: dict[str, list[dict]] = {}
 
-        for trade in new_dip_signals:
+        for trade in new_trades:
             try:
-                order = self._create_dip_buyer_order(trade, investment_amount)
+                order = self._create_order_strategy_dispatch(trade, investment_amount)
 
-                # Gruppierung nach Datum (Entry Date)
-                entry_date = trade["entry_date"]
-                if entry_date not in orders_by_date:
-                    orders_by_date[entry_date] = []
+                if not order:
+                    continue
 
-                orders_by_date[entry_date].append(asdict(order))
+                date_key = trade["entry_date"]
+                if date_key not in orders_by_date:
+                    orders_by_date[date_key] = []
 
-            except ValueError as e:
-                logger.error(f"Fehler bei Order-Erstellung für {trade['symbol']}: {e}")
-                continue
+                orders_by_date[date_key].append(self._dataclass_to_dict(order))
+
+            except ValueError as error:
+                logger.error(f"Order-Fehler {trade['symbol']}: {error}")
 
         self._write_yaml_files(orders_by_date)
 
-    def _create_dip_buyer_order(self, trade: dict, budget: float) -> Order:
-        """
-        Erstellt das Order-Datenobjekt basierend auf der DipBuyer-Logik.
-        Regel: Entry = Limit, Exit = LOC (Target), Qty = Budget / Preis.
-        """
+    def _create_order_strategy_dispatch(
+        self, trade: dict, budget: float
+    ) -> Order | None:
+        """Wählt die Order-Logik anhand des Strategienamens."""
+        raw_name = str(trade.get("strategy", ""))
+        strategy_clean = raw_name.lower().replace(" ", "")
+        symbol = trade["symbol"]
+
+        # 1. Moonbag (Croc)
+        if "moonbag(tp5)" in strategy_clean:
+            return self._build_moonbag_order(trade)
+
+        # 2. DipBuyer (Legacy)
+        if "dipbuyer" in strategy_clean:
+            return self._build_dip_buyer_order(trade, budget)
+
+        logger.debug(f"[{symbol}] Strategie '{raw_name}' wird ignoriert.")
+        return None
+
+    def _build_dip_buyer_order(self, trade: dict, budget: float) -> Order:
+        """Legacy Logik für DipBuyer."""
         symbol = trade["symbol"]
         entry_price = float(trade["entry_price"])
         atr = float(trade["atr_at_entry"])
 
-        if entry_price <= 0:
-            raise ValueError(f"Ungültiger Entry-Preis: {entry_price}")
-
-        # Berechnung Quantity (abgerundet)
-        qty = int(budget / entry_price)
-        if qty < 1:
-            logger.warning(
-                f"{symbol}: Budget ({budget}) zu klein für Preis ({entry_price}). Setze Qty=1."
-            )
-            qty = 1
-
-        # Logik: Entry LMT, Exit LOC (Target)
+        quantity = max(1, int(budget / entry_price))
         target_price = entry_price + (0.8 * atr)
 
-        # Unique ID generieren
-        order_id = f"{symbol}_DIP_Buyer"
+        return Order(
+            id=f"{symbol}_DIP",
+            symbol=symbol,
+            total_quantity=quantity,
+            mode="BRACKET",
+            entry=OrderLeg(action="BUY", order_type="LMT", price=round(entry_price, 2)),
+            exits=[
+                OrderLeg(action="SELL", order_type="LOC", price=round(target_price, 2))
+            ],
+        )
 
-        # Order Legs definieren
+    def _build_moonbag_order(self, trade: dict) -> Order | None:
+        """
+        Neue Logik für 'Moonbag (TP5)':
+        - Entry: Stop Buy @ High (aus active_trades)
+        - Stop: @ Low (nachgeladen aus screener_croc)
+        - Risk: 100 USD (fix)
+        - Exit: 50% bei 1R
+        """
+        symbol = trade["symbol"]
+        entry_date = trade["entry_date"]
+
+        # Entry Price ist bei Moonbag das High der Signalkerze (Stop Buy)
+        entry_price = float(trade["entry_price"])
+
+        # Kontext (Low) aus Screener-Tabelle nachladen
+        context = self._fetch_croc_context(symbol, entry_date)
+        if not context:
+            logger.warning(
+                f"[{symbol}] Order übersprungen: Fehlendes Low in screener_croc."
+            )
+            return None
+
+        stop_loss = context.low
+        risk_per_share = entry_price - stop_loss
+
+        # Sicherheitscheck
+        if risk_per_share <= 0:
+            logger.warning(f"[{symbol}] Ungültiges Risiko (High <= Low).")
+            return None
+
+        # Positionsgröße: 100$ Risk / (High - Low)
+        quantity = int(RISK_PER_TRADE_CROC_USD / risk_per_share)
+        if quantity < 1:
+            quantity = 1  # Fallback
+
+        # Ziel: 1R (Entry + Risk)
+        target_1r = entry_price + risk_per_share
+        qty_exit_1 = int(quantity * 0.5)
+
+        # --- Order Konstruktion ---
+
+        # 1. Entry: Stop Buy
         entry_leg = OrderLeg(
-            action="BUY", type="LMT", price=round(entry_price, 2), tif="DAY"
+            action="BUY", order_type="STP", price=round(entry_price, 2)
         )
 
-        exit_leg = OrderLeg(
-            action="SELL",
-            type="LOC",  # Limit On Close
-            price=round(target_price, 2),
-            tif="DAY",
+        exits = []
+
+        # 2. Stop Loss (für gesamte verbleibende Menge)
+        exits.append(
+            OrderLeg(
+                action="SELL",
+                order_type="STP",
+                price=round(stop_loss, 2),
+                quantity=None,
+            )
         )
+
+        # 3. Take Profit (1R) für 50%
+        if qty_exit_1 > 0:
+            exits.append(
+                OrderLeg(
+                    action="SELL",
+                    order_type="LMT",
+                    price=round(target_1r, 2),
+                    quantity=qty_exit_1,
+                )
+            )
 
         return Order(
-            id=order_id,
+            id=f"{symbol}_MNBG",
             symbol=symbol,
-            qty=qty,
+            total_quantity=quantity,
             mode="BRACKET",
             entry=entry_leg,
-            exits=[exit_leg],
-            ib_id=None,
-            last_status="PendingSubmit",
+            exits=exits,
         )
 
-    def _write_yaml_files(self, orders_map: dict) -> None:
-        """Schreibt die gesammelten Orders in YAML-Dateien."""
+    def _fetch_croc_context(self, symbol: str, date_val) -> CrocContext | None:
+        """Holt Low/High für Risk-Berechnung."""
+        # Datum sicher in String YYYY-MM-DD wandeln
+        date_str = str(date_val).split(" ")[0]
+
+        sql = """
+            SELECT high, low
+            FROM screener_croc
+            WHERE symbol = ? AND date = ?
+            LIMIT 1
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(sql, (symbol, date_str)).fetchone()
+
+                if row:
+                    return CrocContext(high=float(row["high"]), low=float(row["low"]))
+        except Exception as e:
+            logger.error(f"DB Fehler Context ({symbol}): {e}")
+
+        return None
+
+    def _write_yaml_files(self, orders_map: dict[str, list[dict]]) -> None:
         for date_key, orders_list in orders_map.items():
             file_name = f"orders_{date_key}.yaml"
             file_path = self.orders_dir / file_name
 
             try:
                 with open(file_path, "w", encoding="utf-8") as f:
-                    # sort_keys=False behält die Reihenfolge der Felder bei (wichtig für Lesbarkeit)
                     yaml.dump(orders_list, f, sort_keys=False, allow_unicode=True)
 
                 logger.info(
                     f"Order-File erstellt: {file_name} ({len(orders_list)} Orders)"
                 )
-
                 if self.telegram:
                     self.telegram.send(f"📁 **New Orders**: {file_name} generated.")
 
-            except OSError as e:
-                logger.error(f"Konnte YAML Datei nicht schreiben: {e}")
+            except OSError as error:
+                logger.error(f"Konnte YAML Datei {file_name} nicht schreiben: {error}")
 
-    def _is_dip_buyer(self, strategy_name: Optional[str]) -> bool:
-        """
-        Hilfsmethode zur Identifikation der Strategie.
-        Robust gegen Groß-/Kleinschreibung oder Varianten.
-        """
-        if not strategy_name:
-            return False
-        return "dipbuyer" in strategy_name.lower().replace("_", "").replace(" ", "")
-
-    def _get_yahoo_ticker(self, symbol: str) -> str:
-        """
-        Übersetzt TradingView/Broker-Symbole in Yahoo Finance Symbole.
-        """
+    def _map_to_yahoo_ticker(self, symbol: str) -> str:
         mapping = {
-            # --- FUTURES ---
             "ES1!": "ES=F",
             "NQ1!": "NQ=F",
             "YM1!": "YM=F",
             "RTY1!": "RTY=F",
-            "FDAX1!": "DX=F",
-            "GC1!": "GC=F",
-            "SI1!": "SI=F",
-            "CL1!": "CL=F",
-            "BTC1!": "BTC=F",
-            # --- FOREX ---
             "EURUSD": "EURUSD=X",
             "GBPUSD": "GBPUSD=X",
-            # --- SPEZIAL ---
             "JEN": "JEN.DE",
             "VH2": "VH2.DE",
         }
+        return mapping.get(symbol, symbol)
 
-        if symbol in mapping:
-            return mapping[symbol]
-
-        return symbol
+    def _dataclass_to_dict(self, obj):
+        if hasattr(obj, "__dataclass_fields__"):
+            return {
+                k: self._dataclass_to_dict(v)
+                for k, v in obj.__dict__.items()
+                if v is not None
+            }
+        if isinstance(obj, list):
+            return [self._dataclass_to_dict(i) for i in obj]
+        return obj
