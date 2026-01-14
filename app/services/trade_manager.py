@@ -406,10 +406,12 @@ class TradeManager:
 
     def _dataclass_to_dict(self, obj):
         if hasattr(obj, "__dataclass_fields__"):
+            # Filterung: Diese Felder sollen NICHT in der YAML auftauchen
+            excluded = ["last_status", "last_update"]
             return {
                 k: self._dataclass_to_dict(v)
                 for k, v in obj.__dict__.items()
-                if v is not None
+                if v is not None and k not in excluded
             }
         if isinstance(obj, list):
             return [self._dataclass_to_dict(i) for i in obj]
