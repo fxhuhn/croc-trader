@@ -43,6 +43,7 @@ class SignalDatabase:
         """Erstellt Tabellen, Indizes und Views."""
 
         # 1. Signals Tabelle
+        # NEU: dist_sma_20 und dist_sma_200 als GENERATED COLUMNS
         schema_signals = """
         CREATE TABLE IF NOT EXISTS signals (
             symbol TEXT NOT NULL, timeframe TEXT NOT NULL, signal TEXT NOT NULL,
@@ -52,8 +53,16 @@ class SignalDatabase:
             strategy_id TEXT, exchange TEXT,
             reference TEXT UNIQUE,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL,
-            dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL
+            dist_sma_20 REAL GENERATED ALWAYS AS (
+                CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0
+                THEN ROUND(((close - sma_20) / sma_20) * 100, 2)
+                ELSE NULL END
+            ) VIRTUAL,
+            dist_sma_200 REAL GENERATED ALWAYS AS (
+                CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0
+                THEN ROUND(((close - sma_200) / sma_200) * 100, 2)
+                ELSE NULL END
+            ) VIRTUAL
         );
         CREATE INDEX IF NOT EXISTS idx_signals_filter ON signals(symbol, timeframe, signal, timestamp DESC);
         """
@@ -111,6 +120,7 @@ class SignalDatabase:
         """
 
         # 5. TABELLE: WEBHOOK SCREENER
+        # Auch hier fügen wir die virtuellen Spalten hinzu, damit der Screener konsistent ist
         schema_webhook = """
         CREATE TABLE IF NOT EXISTS screener_webhook (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,8 +142,16 @@ class SignalDatabase:
             filter_details TEXT,
 
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            dist_sma_20 REAL GENERATED ALWAYS AS (CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0 THEN ROUND(((close - sma_20) / sma_20) * 100, 2) ELSE NULL END) VIRTUAL,
-            dist_sma_200 REAL GENERATED ALWAYS AS (CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0 THEN ROUND(((close - sma_200) / sma_200) * 100, 2) ELSE NULL END) VIRTUAL,
+            dist_sma_20 REAL GENERATED ALWAYS AS (
+                CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0
+                THEN ROUND(((close - sma_20) / sma_20) * 100, 2)
+                ELSE NULL END
+            ) VIRTUAL,
+            dist_sma_200 REAL GENERATED ALWAYS AS (
+                CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0
+                THEN ROUND(((close - sma_200) / sma_200) * 100, 2)
+                ELSE NULL END
+            ) VIRTUAL,
             UNIQUE(date, symbol, strategy)
         );
         """
@@ -178,7 +196,7 @@ class SignalDatabase:
         );
         """
 
-        # 8. TABELLE: CROC SETUP SCREENER (Update: high/low added)
+        # 8. TABELLE: CROC SETUP SCREENER
         schema_screener_croc = """
         CREATE TABLE IF NOT EXISTS screener_croc (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -224,6 +242,39 @@ class SignalDatabase:
                 except sqlite3.OperationalError:
                     pass
 
+                # Migration: dist_sma_20 (Virtual Column)
+                # Löst den Fehler "no such column: dist_sma_20"
+                try:
+                    conn.execute("""
+                        ALTER TABLE signals
+                        ADD COLUMN dist_sma_20 REAL GENERATED ALWAYS AS (
+                            CASE WHEN sma_20 IS NOT NULL AND sma_20 != 0
+                            THEN ROUND(((close - sma_20) / sma_20) * 100, 2)
+                            ELSE NULL END
+                        ) VIRTUAL
+                    """)
+                    logger.info(
+                        "Migration: Spalte 'dist_sma_20' zu 'signals' hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass  # Existiert schon
+
+                # Migration: dist_sma_200 (Virtual Column)
+                try:
+                    conn.execute("""
+                        ALTER TABLE signals
+                        ADD COLUMN dist_sma_200 REAL GENERATED ALWAYS AS (
+                            CASE WHEN sma_200 IS NOT NULL AND sma_200 != 0
+                            THEN ROUND(((close - sma_200) / sma_200) * 100, 2)
+                            ELSE NULL END
+                        ) VIRTUAL
+                    """)
+                    logger.info(
+                        "Migration: Spalte 'dist_sma_200' zu 'signals' hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass  # Existiert schon
+
                 # Migration für HIGH/LOW in screener_croc
                 try:
                     conn.execute("ALTER TABLE screener_croc ADD COLUMN high REAL")
@@ -231,7 +282,7 @@ class SignalDatabase:
                         "Migration: Spalte 'high' zu Tabelle 'screener_croc' hinzugefügt."
                     )
                 except sqlite3.OperationalError:
-                    pass  # Bereits vorhanden
+                    pass
 
                 try:
                     conn.execute("ALTER TABLE screener_croc ADD COLUMN low REAL")
@@ -239,7 +290,7 @@ class SignalDatabase:
                         "Migration: Spalte 'low' zu Tabelle 'screener_croc' hinzugefügt."
                     )
                 except sqlite3.OperationalError:
-                    pass  # Bereits vorhanden
+                    pass
 
                 conn.commit()
 
