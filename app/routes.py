@@ -608,7 +608,9 @@ def generate_orders():
 
     try:
         # Führt die Logik aus: Prüfen -> Update -> YAML erstellen
-        tm.check_active_positions()
+        # HIER DIE ÄNDERUNG: Aufruf der neuen Methode
+        tm.run_daily_process()
+
         return jsonify(
             {
                 "status": "success",

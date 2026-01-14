@@ -298,7 +298,11 @@ class DipBuyerBacktester:
                         }
                     )
 
-            except Exception:
+            except Exception as e:
+                # FIX: B112 - Logging des Fehlers statt stummes Continue
+                logger.warning(
+                    f"Fehler bei Trade-Berechnung für {symbol} am {signal_date}: {e}"
+                )
                 continue
 
         return trades

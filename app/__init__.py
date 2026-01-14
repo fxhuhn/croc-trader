@@ -241,8 +241,9 @@ def create_app(config_object=settings):
     app_scheduler = BackgroundScheduler()
 
     # Job 1: Trade Manager (Active Positions checken + Orders erstellen)
+    # AKTUALISIERT: Methodenname geändert
     app_scheduler.add_job(
-        func=trade_manager.check_active_positions,
+        func=trade_manager.run_daily_process,
         trigger=CronTrigger(
             day_of_week="mon-fri",
             hour=15,
