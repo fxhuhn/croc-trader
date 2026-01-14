@@ -3,7 +3,7 @@ import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -41,8 +41,8 @@ class BaseStrategy:
         # Kompaktere Darstellung für Telegram
         msg = f"🔎 **{title}** ({date})\n"
         for r in results[:10]:  # Top 10 des neuesten Tages
-            rank_info = f"[#{r.get('rank', '-')}] "
-            msg += f"• {rank_info}{r['symbol']} ({r.get('strategy', 'Unknown')}): {r['close']}\n"
+            rank_info = f"[Score: {r.get('score', r.get('rank', '-'))}] "
+            msg += f"• {rank_info}{r['symbol']} ({r.get('signal', 'Unknown')}): {r['close']}\n"
 
         # Hinweis bei vielen Ergebnissen über mehrere Tage
         if len(results) > 10:
@@ -343,7 +343,9 @@ class TurnoverTimingStrategy(BaseStrategy):
                                 "source_index": idx_name,
                             }
                         )
-                except Exception:
+                except Exception as e:
+                    # FIX: B112 - Logging statt continue
+                    logger.debug(f"Fehler bei Symbol {symbol}: {e}")
                     continue
 
             # REGEL 2: Sortiere nach sma20*(Close * Volumen) -> Turnover SMA
@@ -700,7 +702,7 @@ class WebhookFilterStrategy(BaseStrategy):
 
 
 # ==============================================================================
-# 5. STRATEGIE: CROC SETUP (NEU)
+# 5. STRATEGIE: CROC SETUP (NEU - REVISED FOR FLAT YAML - NO PARSING - LOGGING)
 # ==============================================================================
 
 
@@ -709,7 +711,6 @@ class CrocSetupStrategy(BaseStrategy):
 
     def __init__(self, signals_db: SignalDatabase, telegram_bot=None):
         super().__init__(signals_db, telegram_bot)
-        # NEU: Nutzung der zentralen Config für saubere Pfad-Auflösung in data/
         self.config_path = settings.get_path("ranking_yaml")
         self.ranking_rules = self._load_config()
 
@@ -723,28 +724,25 @@ class CrocSetupStrategy(BaseStrategy):
         try:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
+            if isinstance(data, list):
+                return data
             return data.get("ranking_2026", [])
         except Exception as e:
             logger.error(f"[{self.name}] Fehler beim Laden der YAML: {e}")
             return []
 
     def run(self, days: int = 0) -> int:
-        # 1. Zeitraum definieren (Standard: 10 Tage Scan)
         scan_days = 10 if days <= 0 else days
         start_date = (datetime.now() - timedelta(days=scan_days)).strftime("%Y-%m-%d")
 
         logger.info(f"[{self.name}] Starte Scan ab {start_date}...")
 
-        # 2. Signale laden
         try:
             with self.signals_db._get_conn() as conn:
-                # Wir holen explizit Spalten, die für Filter relevant sein könnten
-                # WICHTIG: 'deluxe' ist jetzt im SELECT enthalten
-                # NEU: Filter auf timeframe = '1D'
                 sql = f"""
                     SELECT symbol, signal, exchange, timeframe, close, high, low, rsi,
                            dist_sma_20, dist_sma_200,
-                           kerze, welle, deluxe, status, trend,
+                           kerze, welle, deluxe, status, trend, wolke, setter,
                            date(timestamp) as date_str
                     FROM signals
                     WHERE date(timestamp) >= '{start_date}' AND timeframe = '1D'
@@ -758,83 +756,75 @@ class CrocSetupStrategy(BaseStrategy):
             logger.info(f"[{self.name}] Keine Signale gefunden.")
             return 0
 
-        # Vorverarbeitung
         numeric_cols = ["close", "high", "low", "rsi", "dist_sma_20", "dist_sma_200"]
         for c in numeric_cols:
             if c in df.columns:
                 df[c] = pd.to_numeric(df[c], errors="coerce")
 
         results = []
+        meta_keys = [
+            "Signal",
+            "Exit",
+            "Score",
+            "Status",
+            "R_Hist",
+            "Risk_95",
+            "R_2026",
+        ]
 
-        # 3. Matching Logik
-        # Iteration über jedes Signal in der DB
         for _, row in df.iterrows():
             signal_name = row["signal"]
+            candidates = [
+                r for r in self.ranking_rules if r.get("Signal") == signal_name
+            ]
 
-            # Suche passenden Eintrag in der YAML
-            rule = next(
-                (r for r in self.ranking_rules if r["signal"] == signal_name), None
-            )
-            if not rule:
+            if not candidates:
                 continue
 
-            match_found = False
-            active_r = rule.get("base_r_per_trade", 0.0)
-            match_reason = ""
+            best_match = None
+            best_score = -999.0
+            match_reason = []
 
-            filters = rule.get("filters", {})
-            if not filters:
-                continue
+            for rule in candidates:
+                all_filters_passed = True
+                current_reasons = []
 
-            # A) Check EMA
-            if best_ema := filters.get("best_ema"):
-                # Prüfe dist_sma_200
-                if cond := best_ema.get("ema_200"):
-                    if self._check_range_condition(row.get("dist_sma_200"), cond):
-                        match_found = True
-                        active_r = best_ema.get("r_per_trade", active_r)
-                        match_reason = f"EMA 200 ({cond})"
+                for key, value in rule.items():
+                    if key in meta_keys:
+                        continue
 
-                # Prüfe dist_sma_20 (falls noch kein Match oder als Alternative)
-                if not match_found and (cond := best_ema.get("ema_20")):
-                    if self._check_range_condition(row.get("dist_sma_20"), cond):
-                        match_found = True
-                        active_r = best_ema.get("r_per_trade", active_r)
-                        match_reason = f"EMA 20 ({cond})"
+                    db_col = self._map_key(key)
+                    market_val = row.get(db_col)
 
-            # B) Check RSI (ODER Verknüpfung)
-            if not match_found and (best_rsi := filters.get("best_rsi")):
-                if cond := best_rsi.get("rsi"):
-                    if self._check_rsi_zone(row.get("rsi"), cond):
-                        match_found = True
-                        active_r = best_rsi.get("r_per_trade", active_r)
-                        match_reason = f"RSI ({cond})"
-
-            # C) Check Extra (ODER Verknüpfung)
-            if not match_found and (best_extra := filters.get("best_extra")):
-                # Extra Iteriert über keys wie 'kerze', 'welle', 'status' etc.
-                for col_key, target_val in best_extra.items():
-                    if col_key in ["r_per_trade", "active"]:
-                        continue  # Metadaten überspringen
-
-                    current_val = row.get(col_key)
-                    if current_val == target_val:
-                        match_found = True
-                        active_r = best_extra.get("r_per_trade", active_r)
-                        match_reason = f"{col_key.capitalize()} ({target_val})"
+                    # Nutzt die neue, strikte Überprüfung ohne Parsing (Mit Logging)
+                    if not self._check_condition(market_val, value, key):
+                        all_filters_passed = False
                         break
+                    else:
+                        current_reasons.append(f"{key}={value}")
 
-            if match_found:
+                if all_filters_passed:
+                    rule_score = float(rule.get("Score", 0.0))
+                    if best_match is None or rule_score > best_score:
+                        best_match = rule
+                        best_score = rule_score
+                        match_reason = current_reasons
+
+            if best_match:
+                reason_str = (
+                    ", ".join(match_reason) if match_reason else "Basis-Signal (Match)"
+                )
                 logger.info(
-                    f"[{self.name}] Treffer: {row['symbol']} ({signal_name}) via {match_reason}"
+                    f"[{self.name}] Treffer: {row['symbol']} ({signal_name}) via {reason_str}"
                 )
 
-                # Dist EMA auswählen für Display (bevorzugt 200er wenn verfügbar, sonst 20er)
                 display_ema = (
                     row.get("dist_sma_200")
                     if pd.notna(row.get("dist_sma_200"))
                     else row.get("dist_sma_20")
                 )
+
+                r_val = best_match.get("R_Hist", best_match.get("R_2026", 0.0))
 
                 results.append(
                     {
@@ -843,21 +833,27 @@ class CrocSetupStrategy(BaseStrategy):
                         "exchange": row["exchange"] or "UNKNOWN",
                         "timeframe": row["timeframe"],
                         "signal": signal_name,
-                        "rank": rule.get("rank", 999),
-                        "r_per_trade": float(active_r),
-                        "recommended_strategy": rule.get(
-                            "recommended_strategy", "Standard"
-                        ),
+                        "rank": best_match.get("Score", 0),
+                        "score": best_match.get("Score", 0),
+                        "r_per_trade": float(r_val),
+                        "recommended_strategy": best_match.get("Exit", "Standard"),
                         "close": float(row["close"] or 0.0),
                         "high": float(row["high"] or 0.0),
                         "low": float(row["low"] or 0.0),
-                        "rsi": float(row["rsi"] or 0.0),
-                        "dist_ema": float(display_ema or 0.0),
-                        "match_filter": match_reason,
+                        "rsi": (
+                            float(row["rsi"])
+                            if row["rsi"] is not None and not pd.isna(row["rsi"])
+                            else None
+                        ),
+                        "dist_ema": (
+                            float(display_ema)
+                            if display_ema is not None and not pd.isna(display_ema)
+                            else None
+                        ),
+                        "match_filter": reason_str,
                     }
                 )
 
-        # 4. Speichern
         if results:
             self.signals_db.save_screener_croc(results)
             self._send_telegram_report(
@@ -867,56 +863,80 @@ class CrocSetupStrategy(BaseStrategy):
         logger.info(f"[{self.name}] Fertig: {len(results)} neue Setups identifiziert.")
         return len(results)
 
-    def _check_range_condition(self, value: Optional[float], condition: str) -> bool:
-        """Parsen von Bedingungen wie '-3 to 0%', '> 10%', '< -5%'."""
-        if value is None or pd.isna(value):
+    def _map_key(self, yaml_key: str) -> str:
+        mapping = {
+            "ema_20": "dist_sma_20",
+            "ema_200": "dist_sma_200",
+            "rsi": "rsi",
+            "kerze": "kerze",
+            "welle": "welle",
+            "deluxe": "deluxe",
+            "trend": "trend",
+            "status": "status",
+            "wolke": "wolke",
+            "setter": "setter",
+        }
+        return mapping.get(yaml_key, yaml_key)
+
+    def _check_condition(self, market_value: Any, condition: Any, key: str) -> bool:
+        """
+        Prüft einen Marktwert gegen eine Bedingung (String) OHNE komplexes Parsing.
+        Nur exakter String-Vergleich oder vordefinierte Range-Lookups.
+        LOGGT FEHLER BEI UNBEKANNTEN FILTERWERTEN.
+        """
+        if market_value is None or pd.isna(market_value):
             return False
 
-        condition = condition.replace("%", "").strip()
+        # 1. EMA (Abstand in %)
+        if "ema" in key.lower():
+            val = float(market_value)
+            cond = str(condition).strip()
 
-        # Case: Range "X to Y"
-        if " to " in condition:
-            try:
-                min_s, max_s = condition.split(" to ")
-                return float(min_s) <= value <= float(max_s)
-            except ValueError:
-                return False
+            if cond == "< -10%":
+                return val < -10.0
+            elif cond == "-10 to -3%":
+                return -10.0 <= val <= -3.0
+            elif cond == "-3 to 0%":
+                return -3.0 <= val <= 0.0
+            elif cond == "0 to 3%":
+                return 0.0 <= val <= 3.0
+            elif cond == "3 to 10%":
+                return 3.0 <= val <= 10.0
+            elif cond == "> 10%":
+                return val > 10.0
 
-        # Case: Greater "> X"
-        if condition.startswith(">"):
-            try:
-                return value > float(condition.replace(">", ""))
-            except ValueError:
-                return False
-
-        # Case: Less "< X"
-        if condition.startswith("<"):
-            try:
-                return value < float(condition.replace("<", ""))
-            except ValueError:
-                return False
-
-        return False
-
-    def _check_rsi_zone(self, rsi: Optional[float], zone_name: str) -> bool:
-        """Mapping der Text-Zonen zu Zahlenwerten."""
-        if rsi is None or pd.isna(rsi):
+            # Fallback für unbekannte Strings
+            logger.error(
+                f"[{self.name}] Unbekannter EMA-Filterwert: '{cond}' für Key '{key}'"
+            )
             return False
 
-        zone_name = zone_name.lower()
+        # 2. RSI (Zonen)
+        elif key.lower() == "rsi":
+            val = float(market_value)
+            cond = str(condition).strip()
 
-        if "oversold" in zone_name or "<30" in zone_name:
-            return rsi < 30
-        elif "weak" in zone_name:  # 30-45
-            return 30 <= rsi <= 45
-        elif "neutral" in zone_name:  # 45-55
-            return 45 <= rsi <= 55
-        elif "strong" in zone_name:  # 55-70
-            return 55 <= rsi <= 70
-        elif "overbought" in zone_name or ">70" in zone_name:
-            return rsi > 70
+            if cond == "Oversold (<30)":
+                return val < 30.0
+            elif cond == "Weak (30-45)":
+                # "mindestens 30 bis unter 45"
+                return 30.0 <= val < 45.0
+            elif cond == "Neutral (45-55)":
+                # "zwischen 45 und 55 (einschließlich)"
+                return 45.0 <= val <= 55.0
+            elif cond == "Strong (55-70)":
+                # "über 55 bis maximal 70"
+                return 55.0 < val <= 70.0
+            elif cond == "Overbought (>70)":
+                return val > 70.0
+
+            # Fallback für unbekannte Strings
+            logger.error(f"[{self.name}] Unbekannter RSI-Filterwert: '{cond}'")
+            return False
+
+        # 3. Sonstige (Kerze, Welle, etc.) -> Exakter String Match
         else:
-            return False
+            return str(market_value).lower() == str(condition).lower()
 
 
 # ==============================================================================
