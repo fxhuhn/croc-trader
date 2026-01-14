@@ -30,9 +30,11 @@ RISK_PER_TRADE_CROC_USD = 100.0
 @dataclass
 class OrderLeg:
     action: OrderAction
-    order_type: OrderType
+    type: OrderType  # ANPASSUNG: order_type -> type
     price: float
-    quantity: int | None = None  # None bedeutet: Restliche/Volle Position
+    qty: int | None = (
+        None  # ANPASSUNG: quantity -> qty (None bedeutet: Restliche/Volle Position)
+    )
     tif: TimeInForce = "DAY"
 
 
@@ -40,7 +42,7 @@ class OrderLeg:
 class Order:
     id: str
     symbol: str
-    total_quantity: int
+    qty: int  # ANPASSUNG: total_quantity -> qty
     mode: str
     entry: OrderLeg
     exits: list[OrderLeg]
@@ -256,11 +258,15 @@ class TradeManager:
         return Order(
             id=f"{symbol}_DIP",
             symbol=symbol,
-            total_quantity=quantity,
+            qty=quantity,  # ANPASSUNG: total_quantity -> qty
             mode="BRACKET",
-            entry=OrderLeg(action="BUY", order_type="LMT", price=round(entry_price, 2)),
+            entry=OrderLeg(
+                action="BUY", type="LMT", price=round(entry_price, 2)
+            ),  # ANPASSUNG: order_type -> type
             exits=[
-                OrderLeg(action="SELL", order_type="LOC", price=round(target_price, 2))
+                OrderLeg(
+                    action="SELL", type="LOC", price=round(target_price, 2)
+                )  # ANPASSUNG: order_type -> type
             ],
         )
 
@@ -307,7 +313,9 @@ class TradeManager:
 
         # 1. Entry: Stop Buy
         entry_leg = OrderLeg(
-            action="BUY", order_type="STP", price=round(entry_price, 2)
+            action="BUY",
+            type="STP",
+            price=round(entry_price, 2),  # ANPASSUNG: order_type -> type
         )
 
         exits = []
@@ -316,9 +324,9 @@ class TradeManager:
         exits.append(
             OrderLeg(
                 action="SELL",
-                order_type="STP",
+                type="STP",  # ANPASSUNG: order_type -> type
                 price=round(stop_loss, 2),
-                quantity=None,
+                qty=None,  # ANPASSUNG: quantity -> qty
             )
         )
 
@@ -327,16 +335,16 @@ class TradeManager:
             exits.append(
                 OrderLeg(
                     action="SELL",
-                    order_type="LMT",
+                    type="LMT",  # ANPASSUNG: order_type -> type
                     price=round(target_1r, 2),
-                    quantity=qty_exit_1,
+                    qty=qty_exit_1,  # ANPASSUNG: quantity -> qty
                 )
             )
 
         return Order(
             id=f"{symbol}_MNBG",
             symbol=symbol,
-            total_quantity=quantity,
+            qty=quantity,  # ANPASSUNG: total_quantity -> qty
             mode="BRACKET",
             entry=entry_leg,
             exits=exits,
