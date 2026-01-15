@@ -345,6 +345,9 @@ class SignalDatabase:
 
     @cache.memoize(timeout=10)
     def get_latest_signals_with_stats(self, limit=50, symbol=None):
+        # todo: Cleanup function
+        logger.warning("Aktell nicht im einsatz")
+
         with self._get_conn() as conn:
             if symbol:
                 cursor = conn.execute(
@@ -503,6 +506,9 @@ class SignalDatabase:
                 return None
 
     def get_open_trades(self):
+        # Todo: cleanup
+        logger.warning("Status OPEN wird nicht verwendet")
+
         with self._get_conn() as conn:
             return [
                 dict(row)

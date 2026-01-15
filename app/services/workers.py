@@ -165,4 +165,5 @@ class CsvImportWorker:
             logger.error(f"Backup fehlgeschlagen: {e}")
 
     def _cleanup_backups(self, folder: Path, keep=7):
-        pass
+        # todo: Missing Backup Function
+        logger.warning("Cleanup Backups nicht implementiert")
