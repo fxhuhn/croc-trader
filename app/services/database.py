@@ -189,6 +189,7 @@ class SignalDatabase:
             quantity INTEGER DEFAULT 1,
             status TEXT DEFAULT 'OPEN',
             strategy TEXT,
+            exit_price REAL,
             exit_reason TEXT,
             closed_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -232,6 +233,17 @@ class SignalDatabase:
                 conn.executescript(schema_screener_croc)
 
                 # --- MIGRATIONEN ---
+
+                # Migration für exit_price in active trades Spalte
+                try:
+                    conn.execute(
+                        "ALTER TABLE active_trades ADD COLUMN exit_price REAL;"
+                    )
+                    logger.info(
+                        "Migration: Spalte 'exit_price' zu Tabelle 'active_trades' hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass
 
                 # Migration für DELUXE Spalte
                 try:
