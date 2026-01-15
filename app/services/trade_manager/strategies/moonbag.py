@@ -115,13 +115,8 @@ class MoonbagStrategy(BaseTradeStrategy):
             target_1r = entry_price + risk_per_share
             qty_half = int(qty * 0.5)
 
-            # Update Quantity in DB
-            with db._get_conn() as conn:
-                conn.execute(
-                    "UPDATE active_trades SET quantity = ? WHERE id = ?",
-                    (qty, trade["id"]),
-                )
-                conn.commit()
+            # Update Quantity in DB (WICHTIG: Sofort speichern!)
+            db.update_trade_quantity(trade["id"], qty)
 
             exits = []
             # 1. Stop Loss (Full)
@@ -153,6 +148,16 @@ class MoonbagStrategy(BaseTradeStrategy):
         elif status == "ACTIVE":
             # Orders beibehalten/erneuern für den nächsten Tag
             qty = int(trade["quantity"])
+
+            # --- SELF HEALING: Falls Qty noch 1 ist (Fehlerbehebung) ---
+            if qty <= 1:
+                qty = int(self.RISK_PER_TRADE / risk_per_share)
+                qty = max(1, qty)
+                logger.info(
+                    f"[{symbol}] Fixing Moonbag quantity 1 -> {qty} (Self-Healing)"
+                )
+                db.update_trade_quantity(trade["id"], qty)
+
             target_1r = entry_price + risk_per_share
             qty_half = int(qty * 0.5)
 
@@ -166,8 +171,6 @@ class MoonbagStrategy(BaseTradeStrategy):
             exits = []
 
             # 1. Stop Loss (100% der Position)
-            # Wir senden qty=None (oder qty), was oft als "Restposition" interpretiert wird,
-            # hier explizit qty für Klarheit in der YAML.
             exits.append(
                 OrderLeg(action="SELL", type="STP", price=round(stop_loss, 2), qty=qty)
             )

@@ -83,19 +83,22 @@ class DipBuyerStrategy(BaseTradeStrategy):
         # --- A) Entry Order (CREATED) ---
         if status == "CREATED":
             entry_price = float(trade["entry_price"])
-            atr = float(trade["atr_at_entry"])
-            target_price = entry_price + (0.8 * atr)
+            # atr = float(trade["atr_at_entry"])
+            # target_price = entry_price + (0.8 * atr)
+
+            # NEU: Vortages-High aus der Historie holen (letzter Eintrag in df_history ist Tag 0)
+            # Fallback, falls df_history leer ist (sollte nicht passieren)
+            prev_day_high = (
+                df_history.iloc[-1]["high"]
+                if not df_history.empty
+                else (entry_price * 1.05)
+            )
 
             # Quantity berechnen
             qty = max(1, int(budget / entry_price))
 
-            # Update Quantity in DB für spätere Exits
-            with db._get_conn() as conn:
-                conn.execute(
-                    "UPDATE active_trades SET quantity = ? WHERE id = ?",
-                    (qty, trade["id"]),
-                )
-                conn.commit()
+            # Update Quantity in DB (WICHTIG: Sofort speichern!)
+            db.update_trade_quantity(trade["id"], qty)
 
             return Order(
                 id=f"{symbol}_DIP",
@@ -104,7 +107,8 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 mode="BRACKET",
                 entry=OrderLeg(action="BUY", type="LMT", price=round(entry_price, 2)),
                 exits=[
-                    OrderLeg(action="SELL", type="LOC", price=round(target_price, 2))
+                    # ANPASSUNG: Hier prev_day_high statt target_price verwenden
+                    OrderLeg(action="SELL", type="LOC", price=round(prev_day_high, 2))
                 ],
             )
 
@@ -121,13 +125,21 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
             entry_price = float(trade["entry_price"])
             atr = float(trade["atr_at_entry"])
-            qty = int(trade["quantity"])  # Muss in DB aktuell sein!
+            qty = int(trade["quantity"])
+
+            # --- SELF HEALING: Falls Qty noch 1 ist (Fehlerbehebung) ---
+            if qty <= 1:
+                qty = max(1, int(budget / entry_price))
+                logger.info(
+                    f"[{symbol}] Fixing DipBuyer quantity 1 -> {qty} (Self-Healing)"
+                )
+                db.update_trade_quantity(trade["id"], qty)
 
             tp_price = round(entry_price + (0.8 * atr), 2)
             prev_day_high = round(df_since.iloc[-1]["high"], 2)  # High von gestern
 
             exits = []
-            # Order 1: Immer Take Profit
+            # Order 1: Immer Take Profit (LMT Order basierend auf ATR vom Einstieg)
             exits.append(OrderLeg(action="SELL", type="LMT", price=tp_price, qty=qty))
 
             # Order 2: Management (LOC oder MOC)
@@ -139,7 +151,6 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 exits.append(
                     OrderLeg(action="SELL", type="LOC", price=prev_day_high, qty=qty)
                 )
-
             return Order(
                 id=f"{symbol}_MGMT_D{current_day}",
                 symbol=symbol,
