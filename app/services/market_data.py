@@ -2,7 +2,6 @@ import logging
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List
 
 import pandas as pd
 import pytz
@@ -142,7 +141,7 @@ class MarketDataWorker:
     def stop(self):
         self.scheduler.shutdown()
 
-    def _load_symbols(self) -> List[str]:
+    def _load_symbols(self) -> list[str]:
         symbols = ExchangeSymbol().all
         if symbols is None:
             logger.warning("Keine Symbole gefunden.")
