@@ -209,7 +209,9 @@ def create_app(config_object=settings):
 
     # F) Trade Manager
     trade_manager = TradeManager(
-        db_path=Path(db_signals), telegram_bot=telegram_service
+        db_path=Path(db_signals),
+        stocks_db_path=Path(db_stocks),  # <--- NEU HINZUGEFÜGT
+        telegram_bot=telegram_service,
     )
     app.extensions["trade_manager"] = trade_manager
 
@@ -246,8 +248,8 @@ def create_app(config_object=settings):
         func=trade_manager.run_daily_process,
         trigger=CronTrigger(
             day_of_week="mon-fri",
-            hour=15,
-            minute=50,
+            hour=1,
+            minute=00,
             timezone=pytz.timezone("America/New_York"),
         ),
         id="trade_manager_check",
