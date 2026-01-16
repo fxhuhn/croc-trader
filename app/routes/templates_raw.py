@@ -309,6 +309,243 @@ HTML_TEMPLATES = {
     </body>
     </html>
     """,
+    "active_trades_dashboard": """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>Portfolio Dashboard</title>
+        <style>
+            body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 20px; background-color: #f0f2f5; color: #333; }
+
+            /* Header & Layout */
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+            h1 { margin: 0; color: #2c3e50; font-size: 1.8rem; }
+            .badge-count { background: #3498db; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.6em; vertical-align: middle; }
+
+            /* Sections */
+            .section { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); padding: 20px; margin-bottom: 25px; }
+            .section-title { font-size: 1.1rem; font-weight: bold; color: #7f8c8d; margin-bottom: 15px; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
+
+            /* Tables */
+            table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+            th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+            th { background-color: #fafafa; color: #7f8c8d; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px; }
+            tr:hover { background-color: #f9f9f9; }
+
+            /* Status Badges */
+            .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; text-transform: uppercase; }
+            .st-active { background-color: #e8f8f5; color: #27ae60; border: 1px solid #27ae60; }
+            .st-created { background-color: #fef5e7; color: #d35400; border: 1px solid #d35400; }
+            .st-closed { background-color: #f2f3f4; color: #7f8c8d; }
+            .st-missed { background-color: #fdedec; color: #c0392b; text-decoration: line-through; }
+
+            /* Helper Classes */
+            .price { font-family: monospace; font-weight: bold; }
+            .profit-pos { color: #27ae60; }
+            .profit-neg { color: #c0392b; }
+
+            /* Search Input */
+            #searchInput { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 250px; font-size: 0.9em; }
+
+            /* No Data */
+            .empty-state { text-align: center; padding: 20px; color: #999; font-style: italic; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h1>🐊 Portfolio Dashboard</h1>
+            <div>
+                <a href="/screener/webhook" style="margin-right: 15px; text-decoration: none; color: #3498db;">Zu den Screenern →</a>
+            </div>
+        </div>
+
+        {% if stats %}
+        <div class="section">
+            <div class="section-title">📊 Performance nach Strategie</div>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                {% for s in stats %}
+                <div style="flex: 1; min-width: 200px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;">
+                    <div style="font-weight: bold; color: #2c3e50; font-size: 1.1em; margin-bottom: 5px;">
+                        {{ s.name }}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #666;">
+                        <span>Trades: <b>{{ s.count }}</b></span>
+                        <span>Win Rate: <b>{{ s.win_rate }}%</b></span>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 1.2em; font-weight: bold; color: {{ 'green' if s.avg_return > 0 else 'red' }};">
+                        Ø {{ s.avg_return }}%
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="section">
+            <div class="section-title">
+                🚀 Laufende Positionen (Active) <span class="badge-count">{{ active_trades|length }}</span>
+            </div>
+
+            {% if active_trades %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Strategie</th>
+                        <th>Entry Date</th>
+                        <th>Status</th>
+                        <th>Entry Price</th>
+                        <th>Stop / Target</th>
+                        <th>Qty</th>
+                        <th>Invest</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in active_trades %}
+                    <tr>
+                        <td>
+                            <a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" target="_blank" style="text-decoration:none; color:#2c3e50; font-weight:bold;">
+                                {{ row['symbol'] }} ↗
+                            </a>
+                        </td>
+                        <td>{{ row['strategy'] }}</td>
+                        <td>{{ row['entry_date'] }}</td>
+                        <td>
+                            <span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span>
+                        </td>
+                        <td class="price">{{ row['entry_price'] }}</td>
+                        <td style="font-size: 0.85em; color: #666;">
+                           ATR: {{ row['atr_at_entry'] }}
+                        </td>
+                        <td>{{ row['quantity'] }}</td>
+                        <td class="price">{{ (row['entry_price'] * row['quantity']) | round(0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+                <div class="empty-state">Keine aktiven Positionen.</div>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <div class="section-title">
+                🆕 Neue Signale (Created/Pending) <span class="badge-count">{{ new_trades|length }}</span>
+            </div>
+
+            {% if new_trades %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Strategie</th>
+                        <th>Entry Date</th>
+                        <th>Status</th>
+                        <th>Limit / Stop</th>
+                        <th>Setup Info</th>
+                        <th>Qty (Plan)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in new_trades %}
+                    <tr>
+                        <td>
+                            <a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" target="_blank" style="text-decoration:none; color:#2c3e50; font-weight:bold;">
+                                {{ row['symbol'] }} ↗
+                            </a>
+                        </td>
+                        <td>{{ row['strategy'] }}</td>
+                        <td>{{ row['entry_date'] }}</td>
+                        <td>
+                            <span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span>
+                        </td>
+                        <td class="price">{{ row['entry_price'] }}</td>
+                        <td style="font-size: 0.85em; color: #666;">
+                           ATR: {{ row['atr_at_entry'] }}
+                        </td>
+                        <td>{{ row['quantity'] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+                <div class="empty-state">Keine neuen Signale in der Pipeline.</div>
+            {% endif %}
+        </div>
+
+        <div class="section">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; margin-bottom: 15px;">
+                <div class="section-title" style="margin:0; border:none;">📚 Historie (Letzte {{ limit }})</div>
+                <input type="text" id="searchInput" onkeyup="filterHistory()" placeholder="Suche Symbol, Strategie...">
+            </div>
+
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>Datum</th>
+                        <th>Symbol</th>
+                        <th>Strategie</th>
+                        <th>Status</th>
+                        <th>Entry</th>
+                        <th>Exit</th>
+                        <th>Ergebnis</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in history %}
+                    <tr>
+                        <td>{{ row['closed_at'] or row['entry_date'] }}</td>
+                        <td style="font-weight:bold;">{{ row['symbol'] }}</td>
+                        <td>{{ row['strategy'] }}</td>
+                        <td><span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span></td>
+                        <td class="price">{{ row['entry_price'] }}</td>
+                        <td class="price">{{ row['exit_price'] or '-' }}</td>
+                        <td>
+                           {% if row['status'] == 'CLOSED' and row['exit_price'] %}
+                               {% set pct = ((row['exit_price'] - row['entry_price']) / row['entry_price'] * 100) | round(2) %}
+                               <span class="{{ 'profit-pos' if pct > 0 else 'profit-neg' }}">
+                                   {{ pct }}% <small>({{ row['exit_reason'] }})</small>
+                               </span>
+                           {% else %}
+                               <span style="color:#ccc;">{{ row['exit_reason'] or '-' }}</span>
+                           {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <script>
+            function filterHistory() {
+                var input, filter, table, tr, td, i, txtValue;
+                input = document.getElementById("searchInput");
+                filter = input.value.toUpperCase();
+                table = document.getElementById("historyTable");
+                tr = table.getElementsByTagName("tr");
+
+                for (i = 1; i < tr.length; i++) {
+                    // Suche in Symbol (Index 1) und Strategie (Index 2)
+                    var tdSymbol = tr[i].getElementsByTagName("td")[1];
+                    var tdStrat = tr[i].getElementsByTagName("td")[2];
+
+                    if (tdSymbol || tdStrat) {
+                        var txtSymbol = tdSymbol.textContent || tdSymbol.innerText;
+                        var txtStrat = tdStrat.textContent || tdStrat.innerText;
+
+                        if (txtSymbol.toUpperCase().indexOf(filter) > -1 || txtStrat.toUpperCase().indexOf(filter) > -1) {
+                            tr[i].style.display = "";
+                        } else {
+                            tr[i].style.display = "none";
+                        }
+                    }
+                }
+            }
+        </script>
+    </body>
+    </html>
+    """,
     "backtest_form": """
         <!DOCTYPE html>
         <html>
