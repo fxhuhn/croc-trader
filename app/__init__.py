@@ -314,8 +314,8 @@ def create_app(config_object=settings):
         telegram_service.send("🚀 **Croc-Trader System gestartet!**")
         try:
             logging.info("Führe initialen Strategie-Check (30 Tage Rückblick) durch...")
-            screener.run_all(days=30)
-            strategy_engine.run_daily_analysis(lookback_days=30)
+            screener.run_all(days=3)
+            strategy_engine.run_daily_analysis(lookback_days=3)
             strategy_engine.send_telegram_report()
         except Exception as e:
             logging.error(f"Fehler beim Startup-Check: {e}")
