@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple, TypeAlias
@@ -25,6 +26,7 @@ class MarketDatabase:
 
     def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path)
+        # WAL Mode für bessere Concurrency (Lesen blockiert Schreiben nicht)
         conn.execute("PRAGMA journal_mode = WAL;")
         conn.execute("PRAGMA synchronous = NORMAL;")
         conn.row_factory = sqlite3.Row
@@ -89,13 +91,16 @@ class MarketDatabase:
 class MarketDataWorker:
     PROVIDER = "yahoo"
     TIMEFRAME = "1D"
+    # Optimierung: Standard-Batch auf 100 erhöhen, bei Fehlern wird halbiert
     BATCH_SIZE = 100
+    # Parallelität begrenzen, um Yahoo Rate-Limits zu vermeiden
+    MAX_WORKERS = 2
 
     def __init__(self, db_path: Path, run_on_start: bool = True) -> None:
         self.db = MarketDatabase(db_path)
         self.scheduler = BackgroundScheduler()
 
-        # Schedule: Täglich 17:00 NY Time (ca. 23:00 DE)
+        # Schedule: Täglich 17:00 NY Time
         self.scheduler.add_job(
             self.run_update_job,
             trigger=CronTrigger(
@@ -119,53 +124,78 @@ class MarketDataWorker:
             logger.info("Market Data Scheduler gestartet.")
 
     def run_update_job(self) -> None:
-        logger.info("Starte Market Data Update (Batch-Modus)...")
+        logger.info("Starte Market Data Update (High-Performance Mode)...")
 
         all_symbols = ExchangeSymbol().all
         if not all_symbols:
-            logger.warning("Keine Symbole in ExchangeSymbol gefunden.")
+            logger.warning("Keine Symbole gefunden.")
             return
 
-        # 1. State laden: Was ist der letzte Stand in der DB?
+        # 1. State laden (vermeidet N+1 Queries)
         last_entries = self.db.get_all_last_entries_map(self.PROVIDER, self.TIMEFRAME)
 
-        # 2. Batches verarbeiten
+        # 2. Batches vorbereiten
+        batches = [
+            all_symbols[i : i + self.BATCH_SIZE]
+            for i in range(0, len(all_symbols), self.BATCH_SIZE)
+        ]
+
         split_candidates: Set[str] = set()
-        processed_count = 0
+        processed_records = 0
+        processed_batches = 0
 
-        # Chunking list into batches
-        for i in range(0, len(all_symbols), self.BATCH_SIZE):
-            batch_symbols = all_symbols[i : i + self.BATCH_SIZE]
+        # 3. Parallel Processing Pipeline
+        # ThreadPoolExecutor erlaubt es, den nächsten Batch zu laden,
+        # während der aktuelle in die DB geschrieben wird (IO-Overlapping).
+        with ThreadPoolExecutor(max_workers=self.MAX_WORKERS) as executor:
+            # Wir mappen Future -> Batch-Index für Logging
+            future_to_idx = {
+                executor.submit(self._download_batch_with_backoff, batch): i
+                for i, batch in enumerate(batches)
+            }
 
-            try:
-                # Download mit adaptivem Backoff
-                df_batch = self._download_batch_with_backoff(batch_symbols)
+            for future in as_completed(future_to_idx):
+                batch_idx = future_to_idx[future]
+                try:
+                    df_batch = future.result()
 
-                if df_batch is None or df_batch.empty:
-                    continue
+                    if df_batch is None or df_batch.empty:
+                        continue
 
-                # Daten verarbeiten & auf Splits prüfen
-                records_to_save, splits_in_batch = self._process_batch_data(
-                    df_batch, last_entries
-                )
+                    # CPU-Bound: Daten verarbeiten
+                    records, splits = self._process_batch_data(df_batch, last_entries)
 
-                if records_to_save:
-                    self.db.upsert_many(records_to_save)
-                    processed_count += len(records_to_save)
-                    logger.debug(f"Batch saved: {len(records_to_save)} records.")
+                    # IO-Bound: DB Insert (sequentiell im Main Thread, was gut für SQLite ist)
+                    if records:
+                        self.db.upsert_many(records)
+                        processed_records += len(records)
+                        # Speicher explizit freigeben
+                        del records
 
-                split_candidates.update(splits_in_batch)
+                    split_candidates.update(splits)
+                    processed_batches += 1
 
-            except Exception as e:
-                logger.error(f"Unerwarteter Fehler im Batch {i}: {e}", exc_info=True)
+                    # Kleines Progress-Log alle 5 Batches
+                    if processed_batches % 5 == 0:
+                        logger.info(
+                            f"Progress: {processed_batches}/{len(batches)} Batches verarbeitet."
+                        )
 
-        logger.info(f"Basis-Update fertig. {processed_count} neue Datensätze.")
+                except Exception as e:
+                    logger.error(
+                        f"Kritischer Fehler bei Batch {batch_idx}: {e}", exc_info=True
+                    )
 
-        # 3. Splits / Full Reloads verarbeiten
+        logger.info(
+            f"Basis-Update fertig. {processed_records} neue Datensätze importiert."
+        )
+
+        # 4. Splits / Full Reloads verarbeiten
         if split_candidates:
             logger.warning(
-                f"Starte Full Reload für {len(split_candidates)} Symbole mit erkannten Splits/Abweichungen."
+                f"Starte Full Reload für {len(split_candidates)} Symbole (Splits/Inkonsistenzen)."
             )
+            # Full Reloads machen wir sequentiell, da sie seltener sind und 'heavier'
             self._perform_full_reload(list(split_candidates))
 
         logger.info("Market Data Update vollständig abgeschlossen.")
@@ -174,46 +204,44 @@ class MarketDataWorker:
         self, symbols: List[str]
     ) -> Optional[pd.DataFrame]:
         """
-        Versucht Symbole zu laden. Bei Fehler wird die Liste halbiert.
-        Rekursiver Ansatz.
+        Versucht Symbole zu laden. Bei Fehler wird die Liste halbiert (Divide & Conquer).
         """
         if not symbols:
             return None
 
         try:
-            # yfinance Multi-Download
-            # group_by='ticker' sorgt für saubere Struktur bei Multi-Index
+            # yfinance nutzt intern bereits Threads.
+            # timeout hilft, hängende Verbindungen schneller zu kappen.
             df = yf.download(
                 tickers=" ".join(symbols),
-                period="1mo",  # Kurzer Zeitraum reicht für Update
+                period="1mo",  # 1 Monat Rückblick reicht für Daily Update & Split Check
                 group_by="ticker",
                 auto_adjust=True,
                 threads=True,
                 progress=False,
-                timeout=10,
+                timeout=15,
             )
             return df
 
         except Exception as e:
             # Fehlerfall
             if len(symbols) <= 1:
-                # Einzelnes Symbol fehlgeschlagen
                 logger.error(f"Timeout/Fehler bei Einzelsymbol '{symbols[0]}': {e}")
                 return None
 
-            # Batch halbieren
+            # Backoff: Batch halbieren
             mid = len(symbols) // 2
             left_chunk = symbols[:mid]
             right_chunk = symbols[mid:]
 
             logger.warning(
-                f"Batch-Fehler bei {len(symbols)} Symbolen. Versuche Split ({len(left_chunk)} / {len(right_chunk)})."
+                f"Batch-Fehler bei {len(symbols)} Symbolen. Splitte in {len(left_chunk)} + {len(right_chunk)}."
             )
 
+            # Rekursiver Aufruf (sequentiell innerhalb des Threads, was okay ist)
             df_left = self._download_batch_with_backoff(left_chunk)
             df_right = self._download_batch_with_backoff(right_chunk)
 
-            # Ergebnisse zusammenfügen
             results = []
             if df_left is not None and not df_left.empty:
                 results.append(df_left)
@@ -223,11 +251,8 @@ class MarketDataWorker:
             if not results:
                 return None
 
-            # Bei unterschiedlichen Columns (weil Ticker unterschiedlich) müssen wir aufpassen.
-            # yfinance returns bei Multi-Tickers einen DataFrame mit Columns Levels.
-            # Ein Concat hier ist tricky wenn die Structure nicht passt.
-            # Besser: Wir geben einen Dict von Dataframes zurück oder nutzen einfach pd.concat axis=1
             try:
+                # Zusammenfügen entlang der Spalten (axis=1)
                 return pd.concat(results, axis=1)
             except Exception as join_error:
                 logger.error(f"Fehler beim Mergen der Split-Batches: {join_error}")
@@ -242,85 +267,78 @@ class MarketDataWorker:
         records: List[MarketRecord] = []
         splits: Set[str] = set()
 
-        # Handle Single Symbol vs Multi Symbol DataFrame Structure from yfinance
-        # If columns is MultiIndex, level 0 is Ticker, level 1 is OHLCV (due to group_by='ticker')
-        # If single symbol, simple Index.
-
         is_multi_index = isinstance(df_batch.columns, pd.MultiIndex)
 
-        # Liste der Ticker im DF ermitteln
+        # Ticker-Liste aus DF extrahieren
         if is_multi_index:
             tickers_in_df = df_batch.columns.get_level_values(0).unique().tolist()
         else:
-            # Workaround für yfinance quirks bei 1 Symbol im Batch return
-            # Wir nehmen an, dass der Caller (download) immer group_by='ticker' nutzt,
-            # aber bei 1 Ticker flacht yf das manchmal ab.
-            # Da wir "tickers=" string passierte, sollte yf den Ticker kennen.
-            # Wir extrahieren ihn hier nicht trivial, daher Fallback:
-            # Wenn wir hier landen, ist die Struktur meist flach.
-            # Wir skippen hier komplexe Single-Logik und verlassen uns auf den Loop unten,
-            # der für Multi ausgelegt ist.
-            # Einzige Lösung: Re-Index oder Prüfung.
-            # Simpler Hack: Wenn nur 1 Ticker im Batch war, ist df_batch direkt das Dataframe.
-            return (
-                [],
-                set(),
-            )  # Edge Case handling vereinfacht: Skip saving if structure invalid
+            # Fallback bei Einzel-Ticker Response (Struktur ist anders)
+            # Da yf.download mit group_by='ticker' aufgerufen wurde, ist dies selten,
+            # kann aber bei Batches passieren, wo nur 1 Ticker gültig war.
+            # Um die Logik sauber zu halten, nehmen wir an, der Caller weiß was er tut
+            # oder wir ignorieren Edge-Cases bei kaputten Batches.
+            # Einfachster Weg: DF hat direkt OHLCV Spalten -> Wir brauchen den Ticker Namen nicht aus Spalten.
+            # Wir überspringen diesen Fall hier der Einfachheit halber oder müssten den Ticker erraten.
+            return [], set()
 
         for ticker in tickers_in_df:
-            # Slice für den Ticker holen
             try:
-                df_ticker = df_batch[ticker].copy()
+                # Performance: Slice nur einmal erstellen
+                df_ticker = df_batch[ticker]
             except KeyError:
                 continue
 
-            df_ticker = self._clean_ohlcv(df_ticker)
+            # Kopie ist wichtig, um Warnungen beim Filtern zu vermeiden
+            df_ticker = self._clean_ohlcv(df_ticker.copy())
             if df_ticker.empty:
                 continue
 
-            # DB Status prüfen
+            # Check gegen DB State
             last_entry = last_entries.get(ticker)
 
             if last_entry:
                 last_date_str, last_close = last_entry
 
-                # Zeile suchen, die dem DB-Datum entspricht
+                # Haben wir Daten für den Tag?
                 if last_date_str in df_ticker.index:
-                    # Parse Timestamp to String for comparison if needed, but yf index is Timestamp
-                    # df_ticker.index is DatetimeIndex.
-                    # We compare using string representation yyyy-mm-dd
                     try:
                         matched_row = df_ticker.loc[last_date_str]
-                        # Wenn mehrere Einträge pro Tag (dirty data), nimm den letzten
+                        # Falls Duplikate im Index
                         if isinstance(matched_row, pd.DataFrame):
                             matched_row = matched_row.iloc[-1]
 
                         new_close = float(matched_row["close"])
 
-                        # Split Check (1% Abweichung)
+                        # Split Erkennung (> 1% Abweichung am selben Tag)
                         if abs(new_close - last_close) / last_close > 0.01:
                             splits.add(ticker)
-                            continue  # Nicht speichern, kommt in Queue
+                            continue  # Ticker komplett überspringen, kommt in Full Reload
 
-                        # Nur neue Daten nehmen
+                        # Nur neuere Daten speichern
                         df_ticker = df_ticker[df_ticker.index > last_date_str]
 
                     except KeyError:
-                        pass  # Datum im Batch nicht enthalten (Gap?), einfach alles Neue speichern
+                        pass
 
-            # Records erstellen
-            for ts, row in df_ticker.iterrows():
+            if df_ticker.empty:
+                continue
+
+            # Schnelle Iteration für DB Records
+            # itertuples ist schneller als iterrows
+            for row in df_ticker.itertuples():
+                # row.Index ist der Timestamp
                 records.append(
                     {
                         "symbol": ticker,
-                        "date": ts.strftime("%Y-%m-%d"),
+                        "date": row.Index.strftime("%Y-%m-%d"),
                         "provider": self.PROVIDER,
                         "timeframe": self.TIMEFRAME,
-                        "open": float(row["open"]),
-                        "high": float(row["high"]),
-                        "low": float(row["low"]),
-                        "close": float(row["close"]),
-                        "volume": float(row["volume"]),
+                        "open": float(row.open),
+                        "high": float(row.high),
+                        "low": float(row.low),
+                        "close": float(row.close),
+                        "volume": float(row.volume),
                     }
                 )
 
@@ -328,7 +346,7 @@ class MarketDataWorker:
 
     def _perform_full_reload(self, symbols: List[str]) -> None:
         """
-        Lädt die komplette Historie ab 2020 für Split-Kandidaten.
+        Lädt komplette Historie für Split-Kandidaten.
         """
         start_date = "2020-01-01"
 
@@ -342,34 +360,30 @@ class MarketDataWorker:
                     timeout=20,
                 )
 
+                df = self._clean_ohlcv(df)
                 if df.empty:
                     continue
 
-                # Clean & Formatting
-                df = self._clean_ohlcv(df)
-
-                # Delete Old
                 self.db.delete_symbol_data(symbol, self.PROVIDER, self.TIMEFRAME)
 
-                # Prepare New
                 records = []
-                for ts, row in df.iterrows():
+                for row in df.itertuples():
                     records.append(
                         {
                             "symbol": symbol,
-                            "date": ts.strftime("%Y-%m-%d"),
+                            "date": row.Index.strftime("%Y-%m-%d"),
                             "provider": self.PROVIDER,
                             "timeframe": self.TIMEFRAME,
-                            "open": float(row["open"]),
-                            "high": float(row["high"]),
-                            "low": float(row["low"]),
-                            "close": float(row["close"]),
-                            "volume": float(row["volume"]),
+                            "open": float(row.open),
+                            "high": float(row.high),
+                            "low": float(row.low),
+                            "close": float(row.close),
+                            "volume": float(row.volume),
                         }
                     )
 
                 self.db.upsert_many(records)
-                logger.warning(f"Full Reload durchgeführt für: {symbol}")
+                logger.warning(f"Full Reload (Split korrigiert): {symbol}")
 
             except Exception as e:
                 logger.error(f"Fehler bei Full Reload für {symbol}: {e}")
@@ -377,15 +391,13 @@ class MarketDataWorker:
     @staticmethod
     def _clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
         df.columns = df.columns.str.lower()
-        required = {"open", "high", "low", "close", "volume"}
-        if not required.issubset(df.columns):
-            return pd.DataFrame()
-
-        return df[
+        # Plausibilitäts-Checks
+        mask = (
             (df["open"] > 0)
             & (df["high"] > 0)
             & (df["low"] > 0)
             & (df["close"] > 0)
             & (df["volume"] >= 0)
             & (df["high"] >= df["low"])
-        ].copy()
+        )
+        return df[mask]
