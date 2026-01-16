@@ -548,3 +548,15 @@ class SignalDatabase:
                     "SELECT * FROM active_trades WHERE status IN ('CREATED', 'ACTIVE')"
                 ).fetchall()
             ]
+
+    def update_trade_quantity(self, trade_id: int, quantity: int):
+        """Aktualisiert die Stückzahl eines Trades."""
+        try:
+            with self._get_conn() as conn:
+                conn.execute(
+                    "UPDATE active_trades SET quantity = ? WHERE id = ?",
+                    (quantity, trade_id),
+                )
+                conn.commit()
+        except Exception as e:
+            logger.error(f"Fehler beim Update der Quantity für Trade {trade_id}: {e}")
