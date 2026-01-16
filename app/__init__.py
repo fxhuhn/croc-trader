@@ -313,7 +313,7 @@ def create_app(config_object=settings):
     if tele_conf.enabled:
         telegram_service.send("🚀 **Croc-Trader System gestartet!**")
         try:
-            logging.info("Führe initialen Strategie-Check (30 Tage Rückblick) durch...")
+            logging.info("Führe initialen Strategie-Check durch...")
             screener.run_all(days=3)
             strategy_engine.run_daily_analysis(lookback_days=3)
             strategy_engine.send_telegram_report()
