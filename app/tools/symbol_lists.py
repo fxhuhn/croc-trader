@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class ExchangeSymbol:
     """
     Singleton class to fetch and cache stock symbols from Wikipedia.
-    Data is loaded once during initialization.
+    Uses dynamic table search to be robust against page layout changes.
     """
 
     _instance: Optional["ExchangeSymbol"] = None
@@ -24,7 +24,7 @@ class ExchangeSymbol:
         return cls._instance
 
     def __init__(self):
-        # Only initialize once (Singleton pattern)
+        # Singleton: Nur einmal initialisieren
         if ExchangeSymbol._initialized:
             return
 
@@ -33,84 +33,142 @@ class ExchangeSymbol:
         self._sp_500: List[str] = []
         self._nasdaq_100: List[str] = []
         self._dow_30: List[str] = []
+        self._russell_1000: List[str] = []
 
-        # Load all symbols during initialization
-        self._sp_500 = self._fetch_symbols(
+        # 1. S&P 500
+        self._sp_500 = self._fetch_from_wikipedia(
             url="https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-            table_index=0,
-            column_name="Symbol",
+            search_columns=["Symbol", "Ticker"],
             name="S&P 500",
         )
 
-        self._nasdaq_100 = self._fetch_symbols(
+        # 2. NASDAQ-100
+        self._nasdaq_100 = self._fetch_from_wikipedia(
             url="https://en.wikipedia.org/wiki/Nasdaq-100",
-            table_index=4,
-            column_name="Ticker",
+            search_columns=["Ticker", "Symbol"],
             name="NASDAQ-100",
         )
 
-        self._dow_30 = self._fetch_symbols(
+        # 3. Dow Jones 30
+        self._dow_30 = self._fetch_from_wikipedia(
             url="https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
-            table_index=2,
-            column_name="Symbol",
+            search_columns=["Symbol", "Ticker"],
             name="Dow Jones 30",
+        )
+
+        # 4. Russell 1000
+        # Wir suchen dynamisch nach der Tabelle mit 'Ticker' oder 'Symbol'
+        self._russell_1000 = self._fetch_from_wikipedia(
+            url="https://en.wikipedia.org/wiki/Russell_1000_Index",
+            search_columns=["Symbol", "Ticker", "Company"],
+            name="Russell 1000",
         )
 
         ExchangeSymbol._initialized = True
         logger.info(
-            f"✓ ExchangeSymbol initialized successfully: "
+            f"✓ ExchangeSymbol initialized: "
             f"S&P 500={len(self._sp_500)}, "
             f"NASDAQ-100={len(self._nasdaq_100)}, "
-            f"Dow 30={len(self._dow_30)} symbols"
+            f"Dow 30={len(self._dow_30)}, "
+            f"Russell 1000={len(self._russell_1000)}"
         )
 
-    def _fetch_symbols(
-        self, url: str, table_index: int, column_name: str, name: str
+    def _fetch_from_wikipedia(
+        self, url: str, search_columns: List[str], name: str
     ) -> List[str]:
         """
-        Fetch stock symbols from a Wikipedia table.
+        Lädt alle Tabellen einer Wikipedia-Seite und sucht die richtige heraus,
+        indem geprüft wird, ob eine der 'search_columns' existiert.
         """
         try:
-            logger.info(f"Fetching {name} symbols from {url}...")
+            logger.info(f"Fetching {name} from {url}...")
 
-            # Read table from Wikipedia
-            df = pd.read_html(url, storage_options={"User-Agent": "Mozilla/5.0"})[
-                table_index
+            # Alle Tabellen der Seite laden
+            try:
+                tables = pd.read_html(
+                    url, storage_options={"User-Agent": "Mozilla/5.0"}
+                )
+            except Exception as e:
+                logger.error(f"Error reading HTML from {url}: {e}")
+                return []
+
+            target_df = None
+            found_col = None
+
+            # Durchsuche alle gefundenen Tabellen
+            for i, df in enumerate(tables):
+                # Prüfe ob eine der gesuchten Spalten (z.B. "Symbol") existiert
+                for col_candidate in search_columns:
+                    # Case-insensitive Suche in den Spaltennamen
+                    match = next(
+                        (
+                            c
+                            for c in df.columns
+                            if str(c).strip().lower() == col_candidate.lower()
+                        ),
+                        None,
+                    )
+                    if match:
+                        target_df = df
+                        found_col = match
+                        # logger.debug(f"Found '{col_candidate}' in table index {i} for {name}")
+                        break
+
+                if target_df is not None:
+                    break
+
+            if target_df is None:
+                logger.warning(
+                    f"Could not find a table with columns {search_columns} for {name}. Found {len(tables)} tables."
+                )
+                return []
+
+            # Symbole extrahieren und bereinigen
+            symbols = target_df[found_col].astype(str).str.strip()
+
+            # Bereinigung: Punkte durch Striche ersetzen (BRK.B -> BRK-B), leere entfernen
+            clean_symbols = [
+                s.replace(".", "-")
+                for s in symbols
+                if len(s) > 0 and s.lower() != "nan"
             ]
 
-            # Extract and clean symbols
-            symbols = df[column_name].str.replace(".", "-", regex=False).tolist()
-            symbols = [s for s in symbols if s and isinstance(s, str) and len(s) > 0]
+            # Duplikate entfernen und sortieren
+            result = sorted(list(set(clean_symbols)))
 
-            logger.info(f"✓ Loaded {len(symbols)} {name} symbols")
-            return symbols
+            logger.info(
+                f"✓ Loaded {len(result)} {name} symbols (found in table with col '{found_col}')"
+            )
+            return result
 
         except Exception as e:
-            logger.error(f"Failed to load {name} symbols from {url}: {e}")
+            logger.error(f"Failed to load {name}: {e}")
             return []
 
     @property
     def sp_500(self) -> List[str]:
-        """Get S&P 500 symbols."""
         return self._sp_500.copy()
 
     @property
     def nasdaq_100(self) -> List[str]:
-        """Get NASDAQ-100 symbols."""
         return self._nasdaq_100.copy()
 
     @property
     def dow_30(self) -> List[str]:
-        """Get Dow Jones 30 symbols."""
         return self._dow_30.copy()
 
     @property
+    def russell_1000(self) -> List[str]:
+        return self._russell_1000.copy()
+
+    @property
     def all(self) -> List[str]:
-        """Get Dow Jones 30 symbols."""
-        return list(set(self._dow_30 + self.nasdaq_100 + self.sp_500)).copy()
+        combined = set(
+            self._dow_30 + self._nasdaq_100 + self._sp_500 + self._russell_1000
+        )
+        return sorted(list(combined))
 
 
 if __name__ == "__main__":
     exchange = ExchangeSymbol()
-    symbols = exchange.all
-    print(symbols)
+    print(f"Total Unique Symbols: {len(exchange.all)}")
