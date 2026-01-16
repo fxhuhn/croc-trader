@@ -83,13 +83,11 @@ class DipBuyerStrategy(BaseTradeStrategy):
         # --- A) Entry Order (CREATED) ---
         if status == "CREATED":
             entry_price = float(trade["entry_price"])
-            # atr = float(trade["atr_at_entry"])
-            # target_price = entry_price + (0.8 * atr)
 
-            # NEU: Vortages-High aus der Historie holen (letzter Eintrag in df_history ist Tag 0)
-            # Fallback, falls df_history leer ist (sollte nicht passieren)
+            # NEU: Vortages-High aus der Historie holen
+            # FIX: float() hinzufügen, um NumPy-Typen zu vermeiden
             prev_day_high = (
-                df_history.iloc[-1]["high"]
+                float(df_history.iloc[-1]["high"])
                 if not df_history.empty
                 else (entry_price * 1.05)
             )
@@ -107,7 +105,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 mode="BRACKET",
                 entry=OrderLeg(action="BUY", type="LMT", price=round(entry_price, 2)),
                 exits=[
-                    # ANPASSUNG: Hier prev_day_high statt target_price verwenden
+                    # prev_day_high ist nun sicher ein float
                     OrderLeg(action="SELL", type="LOC", price=round(prev_day_high, 2))
                 ],
             )
@@ -136,7 +134,9 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 db.update_trade_quantity(trade["id"], qty)
 
             tp_price = round(entry_price + (0.8 * atr), 2)
-            prev_day_high = round(df_since.iloc[-1]["high"], 2)  # High von gestern
+
+            # FIX: Auch hier float() verwenden
+            prev_day_high = round(float(df_since.iloc[-1]["high"]), 2)
 
             exits = []
             # Order 1: Immer Take Profit (LMT Order basierend auf ATR vom Einstieg)
