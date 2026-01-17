@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 from flask import Blueprint, Response, current_app, jsonify, request
@@ -101,11 +102,6 @@ def trigger_orders() -> Response:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@api_bp.route("/portfolio", methods=["GET"])
-def get_portfolio() -> Response:
-    return jsonify({"status": "ok"})
-
-
 @api_bp.route("/trades/backfill", methods=["POST"])
 @require_ip_whitelist
 def trigger_trades_backfill() -> Response:
@@ -126,3 +122,67 @@ def trigger_trades_backfill() -> Response:
     except Exception as e:
         logger.error(f"Backfill Failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@api_bp.route("/market/update", methods=["POST"])
+@require_ip_whitelist
+def trigger_market_update() -> Response:
+    """Stößt das reguläre Markt-Update (letzte 30 Tage) im Hintergrund an."""
+    # KORREKTUR: "market_worker" statt "market_data"
+    worker = current_app.extensions.get("market_worker")
+    if not worker:
+        return jsonify({"status": "error", "message": "MarketDataWorker missing"}), 500
+
+    # Job asynchron in den Scheduler werfen
+    worker.scheduler.add_job(
+        worker.run_update_job,
+        trigger="date",
+        run_date=datetime.now(),
+        id="manual_market_update",
+        replace_existing=True,
+    )
+
+    return jsonify(
+        {"status": "queued", "message": "Market data update started in background"}
+    )
+
+
+@api_bp.route("/market/reload", methods=["POST"])
+@require_ip_whitelist
+def reload_market_data() -> Response:
+    """
+    Erzwingt einen Full-Reload für eine Liste von Symbolen.
+    Body: {"symbols": ["AAPL", "TSLA"]}
+    """
+    data = request.get_json(silent=True)
+    if not data or "symbols" not in data:
+        return jsonify(
+            {"status": "error", "message": "Missing 'symbols' list in body"}
+        ), 400
+
+    # KORREKTUR: "market_worker" statt "market_data"
+    worker = current_app.extensions.get("market_worker")
+    if not worker:
+        return jsonify({"status": "error", "message": "MarketDataWorker missing"}), 500
+
+    # Full Reload (lädt ab 2020) im Hintergrund starten
+    worker.scheduler.add_job(
+        worker._perform_full_reload,
+        args=[data["symbols"]],
+        trigger="date",
+        run_date=datetime.now(),
+        id="manual_full_reload",
+        replace_existing=True,
+    )
+
+    return jsonify(
+        {
+            "status": "queued",
+            "message": f"Full reload for {len(data['symbols'])} symbols queued",
+        }
+    )
+
+
+@api_bp.route("/portfolio", methods=["GET"])
+def get_portfolio() -> Response:
+    return jsonify({"status": "ok"})

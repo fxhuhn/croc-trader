@@ -54,19 +54,25 @@ class TradeManager:
                     f"⚠️ **CRITICAL ERROR**: TradeManager ist abgestürzt!\n`{error}`"
                 )
 
-    def run_backfill(self) -> dict:
+    def run_backfill(self, default_budget: float = 2000.0) -> dict:
         """
         Simuliert die Vergangenheit für hängen gebliebene CREATED Trades.
-        Prüft Entry und simuliert den Verlauf bis heute.
+        Prüft Entry, BERECHNET Quantity und simuliert den Verlauf bis heute.
         """
         logger.info("Starte Backfill-Prozess für CREATED Trades...")
 
-        stats = {"processed": 0, "filled": 0, "missed": 0, "errors": 0}
+        stats = {
+            "processed": 0,
+            "filled": 0,
+            "missed": 0,
+            "errors": 0,
+            "skipped_no_data": 0,
+        }
         db = SignalDatabase(self.db_path)
 
         # 1. Alle alten 'CREATED' Trades laden
         with db._get_conn() as conn:
-            # Wir nehmen nur CREATED Trades, die NICHT von heute sind (um Konflikte mit dem Live-Betrieb zu vermeiden)
+            # Wir nehmen nur CREATED Trades, die NICHT von heute sind
             sql = "SELECT * FROM active_trades WHERE status = 'CREATED' AND entry_date < date('now') ORDER BY entry_date ASC"
             trades = [dict(row) for row in conn.execute(sql).fetchall()]
 
@@ -103,7 +109,12 @@ class TradeManager:
                         market_cache[symbol] = df
 
                 df_hist = market_cache[symbol]
+
                 if df_hist.empty:
+                    logger.warning(
+                        f"[{symbol}] SKIPPED: Keine Marktdaten in stocks.db gefunden."
+                    )
+                    stats["skipped_no_data"] += 1
                     continue
 
                 # --- SCHRITT A: Entry Prüfung ---
@@ -112,7 +123,10 @@ class TradeManager:
                 entry_rows = df_hist[df_hist["date"] == entry_ts]
 
                 if entry_rows.empty:
-                    # Keine Daten für diesen Tag -> Kann nicht bewertet werden
+                    logger.warning(
+                        f"[{symbol}] SKIPPED: Keine Daten für Entry-Datum {entry_date_str} gefunden."
+                    )
+                    stats["skipped_no_data"] += 1
                     continue
 
                 entry_candle = entry_rows.iloc[0]
@@ -120,6 +134,7 @@ class TradeManager:
                 # Check Entry Logic (manuell nachgebaut, um Status-Kontrolle zu haben)
                 filled = False
                 entry_price = float(trade["entry_price"])
+                strategy_key = str(trade.get("strategy", "")).lower()
 
                 # Unterscheidung der Logik basierend auf Instanz
                 if isinstance(strat_impl, MoonbagStrategy):
@@ -136,7 +151,41 @@ class TradeManager:
                     db.update_trade_status(trade["id"], "MISSED", "Backfill_Calc")
                     stats["missed"] += 1
                 else:
-                    # FILLED -> Auf ACTIVE setzen und simulieren
+                    # FILLED -> Quantity berechnen und auf ACTIVE setzen
+
+                    # --- QUANTITY FIX START ---
+                    new_qty = 1
+                    try:
+                        if isinstance(strat_impl, MoonbagStrategy):
+                            # Moonbag Logik: Risk Based
+                            # Wir greifen auf die interne Methode zu, da wir im "Notfallmodus" sind
+                            ctx = strat_impl._fetch_croc_context(
+                                symbol, entry_date_str, db
+                            )
+                            if ctx and ctx.low:
+                                risk = entry_price - ctx.low
+                                if risk > 0:
+                                    risk_budget = getattr(
+                                        strat_impl, "RISK_PER_TRADE", 100.0
+                                    )
+                                    new_qty = int(risk_budget / risk)
+                        elif isinstance(strat_impl, DipBuyerStrategy):
+                            # DipBuyer Logik: Fixed Budget
+                            new_qty = int(default_budget / entry_price)
+
+                        new_qty = max(1, new_qty)
+                        db.update_trade_quantity(trade["id"], new_qty)
+                        trade["quantity"] = new_qty  # Update für Simulation
+                        logger.info(
+                            f"[{symbol}] Entry Filled. Quantity berechnet: {new_qty}"
+                        )
+
+                    except Exception as q_err:
+                        logger.error(
+                            f"[{symbol}] Fehler bei Quantity Berechnung: {q_err}"
+                        )
+                    # --- QUANTITY FIX END ---
+
                     db.update_trade_status(trade["id"], "ACTIVE")
                     stats["filled"] += 1
 
