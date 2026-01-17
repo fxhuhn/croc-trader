@@ -104,3 +104,25 @@ def trigger_orders() -> Response:
 @api_bp.route("/portfolio", methods=["GET"])
 def get_portfolio() -> Response:
     return jsonify({"status": "ok"})
+
+
+@api_bp.route("/trades/backfill", methods=["POST"])
+@require_ip_whitelist
+def trigger_trades_backfill() -> Response:
+    """
+    Startet den Backfill-Prozess für hängengebliebene CREATED Trades.
+    """
+    tm = current_app.extensions.get("trade_manager")
+    if not tm:
+        return jsonify({"status": "error", "message": "TradeManager missing"}), 500
+
+    try:
+        # Führe den Backfill im TradeManager aus
+        stats = tm.run_backfill()
+
+        return jsonify(
+            {"status": "success", "message": "Backfill completed", "stats": stats}
+        )
+    except Exception as e:
+        logger.error(f"Backfill Failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500

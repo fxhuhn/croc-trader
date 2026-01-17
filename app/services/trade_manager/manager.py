@@ -54,6 +54,121 @@ class TradeManager:
                     f"⚠️ **CRITICAL ERROR**: TradeManager ist abgestürzt!\n`{error}`"
                 )
 
+    def run_backfill(self) -> dict:
+        """
+        Simuliert die Vergangenheit für hängen gebliebene CREATED Trades.
+        Prüft Entry und simuliert den Verlauf bis heute.
+        """
+        logger.info("Starte Backfill-Prozess für CREATED Trades...")
+
+        stats = {"processed": 0, "filled": 0, "missed": 0, "errors": 0}
+        db = SignalDatabase(self.db_path)
+
+        # 1. Alle alten 'CREATED' Trades laden
+        with db._get_conn() as conn:
+            # Wir nehmen nur CREATED Trades, die NICHT von heute sind (um Konflikte mit dem Live-Betrieb zu vermeiden)
+            sql = "SELECT * FROM active_trades WHERE status = 'CREATED' AND entry_date < date('now') ORDER BY entry_date ASC"
+            trades = [dict(row) for row in conn.execute(sql).fetchall()]
+
+        if not trades:
+            logger.info("Keine alten CREATED Trades gefunden.")
+            return stats
+
+        market_cache = {}
+
+        for trade in trades:
+            stats["processed"] += 1
+            symbol = trade["symbol"]
+            entry_date_str = trade["entry_date"]  # Format: YYYY-MM-DD
+
+            try:
+                # Strategie Instanz wählen
+                strat_impl = self._get_strategy(trade)
+                if not strat_impl:
+                    logger.warning(
+                        f"[{symbol}] Unbekannte Strategie für Backfill: {trade.get('strategy')}"
+                    )
+                    stats["errors"] += 1
+                    continue
+
+                # Marktdaten laden (Caching pro Symbol)
+                if symbol not in market_cache:
+                    with sqlite3.connect(self.stocks_db_path) as conn:
+                        df = pd.read_sql_query(
+                            "SELECT date, open, high, low, close FROM market_prices WHERE symbol = ? AND timeframe='1D' ORDER BY date ASC",
+                            conn,
+                            params=(symbol,),
+                        )
+                        df["date"] = pd.to_datetime(df["date"])
+                        market_cache[symbol] = df
+
+                df_hist = market_cache[symbol]
+                if df_hist.empty:
+                    continue
+
+                # --- SCHRITT A: Entry Prüfung ---
+                entry_ts = pd.Timestamp(entry_date_str)
+                # Kerze am Entry-Tag finden
+                entry_rows = df_hist[df_hist["date"] == entry_ts]
+
+                if entry_rows.empty:
+                    # Keine Daten für diesen Tag -> Kann nicht bewertet werden
+                    continue
+
+                entry_candle = entry_rows.iloc[0]
+
+                # Check Entry Logic (manuell nachgebaut, um Status-Kontrolle zu haben)
+                filled = False
+                entry_price = float(trade["entry_price"])
+
+                # Unterscheidung der Logik basierend auf Instanz
+                if isinstance(strat_impl, MoonbagStrategy):
+                    if entry_candle["high"] >= entry_price:  # Stop Buy
+                        filled = True
+                elif isinstance(strat_impl, DipBuyerStrategy):
+                    if (
+                        entry_candle["low"] <= entry_price <= entry_candle["high"]
+                    ):  # Limit Buy
+                        filled = True
+
+                if not filled:
+                    # MISSED setzen
+                    db.update_trade_status(trade["id"], "MISSED", "Backfill_Calc")
+                    stats["missed"] += 1
+                else:
+                    # FILLED -> Auf ACTIVE setzen und simulieren
+                    db.update_trade_status(trade["id"], "ACTIVE")
+                    stats["filled"] += 1
+
+                    # Simulation der Tage NACH dem Entry bis heute
+                    future_candles = df_hist[df_hist["date"] > entry_ts].sort_values(
+                        "date"
+                    )
+
+                    for _, current_candle in future_candles.iterrows():
+                        # Wir simulieren den Zustand an diesem Tag
+                        simulated_history = df_hist[
+                            df_hist["date"] <= current_candle["date"]
+                        ]
+
+                        # Strategie-Logik prüfen (Exit, TimeStop etc.)
+                        # manage_active_trade macht selbstständig DB Updates (CLOSED etc.)
+                        result_msg = strat_impl.manage_active_trade(
+                            trade, simulated_history, db
+                        )
+
+                        if result_msg:
+                            # Trade wurde geschlossen
+                            logger.info(f"[Backfill] {result_msg}")
+                            break
+
+            except Exception as e:
+                logger.error(f"Fehler Backfill {symbol}: {e}")
+                stats["errors"] += 1
+
+        logger.info(f"Backfill beendet: {stats}")
+        return stats
+
     def _cleanup_stale_trades(self) -> None:
         """
         Bereinigt Trades, die hängen geblieben sind (z.B. durch Script-Absturz am Vortag).
