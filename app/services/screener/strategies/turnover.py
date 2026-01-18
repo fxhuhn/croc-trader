@@ -44,7 +44,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         all_hits: list[dict[str, Any]] = []
 
         universes = [
-            ("DOW-30", self.universe.dow_30),
+            # ("DOW-30", self.universe.dow_30),
             ("NASDAQ-100", self.universe.nasdaq_100),
             ("SP-500", self.universe.sp_500),
         ]
