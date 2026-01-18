@@ -12,6 +12,7 @@ from ..database import SignalDatabase
 from .strategies.abstract import BaseTradeStrategy
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.moonbag import MoonbagStrategy
+from .strategies.split_target import SplitTargetStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -29,26 +30,26 @@ class TradeManager:
         self.orders_dir = settings.get_folder("orders")
 
         # Strategie-Register
-        self.strategies = {
+        self.strategies: dict[str, BaseTradeStrategy] = {
             "dipbuyer": DipBuyerStrategy(),
             "moonbag": MoonbagStrategy(),
             "moonshot": MoonbagStrategy(),  # Alias
             "crocsetup": MoonbagStrategy(),  # Alias
+            # Mapping für die Split Strategie
+            "split": SplitTargetStrategy(),
+            "webhook": SplitTargetStrategy(),
+            "tp1_tp3": SplitTargetStrategy(),
         }
 
     def run_daily_process(self, investment_per_trade: float = 2000.0) -> None:
         """Hauptprozess: Updates & Order Generierung (01:00 Uhr)."""
         try:
-            # 1. Self-Healing: Alte Leichen entfernen bevor wir starten
             self._cleanup_stale_trades()
-
-            # 2. Regulärer Prozess
             self._update_positions_status()
             self._export_orders_to_yaml(investment_per_trade)
 
         except Exception as error:
             logger.error(f"TradeManager Crash: {error}", exc_info=True)
-            # WICHTIG: Fehler auch per Telegram melden!
             if self.telegram:
                 self.telegram.send(
                     f"⚠️ **CRITICAL ERROR**: TradeManager ist abgestürzt!\n`{error}`"
@@ -56,28 +57,34 @@ class TradeManager:
 
     def run_backfill(self, default_budget: float = 2000.0) -> dict:
         """
-        Simuliert die Vergangenheit für hängen gebliebene CREATED Trades.
-        Prüft Entry, BERECHNET Quantity und simuliert den Verlauf bis heute.
+        Simuliert die Vergangenheit.
+        1. Prüft 'CREATED' Trades auf Entry (Next Day Logic).
+        2. Prüft 'ACTIVE' Trades auf verpasste Exits (Full Replay).
         """
-        logger.info("Starte Backfill-Prozess für CREATED Trades...")
+        logger.info("Starte Smart-Backfill-Prozess...")
 
         stats = {
             "processed": 0,
             "filled": 0,
             "missed": 0,
+            "closed_active": 0,  # Neu
             "errors": 0,
             "skipped_no_data": 0,
         }
         db = SignalDatabase(self.db_path)
 
-        # 1. Alle alten 'CREATED' Trades laden
+        # 1. Trades laden: CREATED (alt) ODER ACTIVE (alle)
         with db._get_conn() as conn:
-            # Wir nehmen nur CREATED Trades, die NICHT von heute sind
-            sql = "SELECT * FROM active_trades WHERE status = 'CREATED' AND entry_date < date('now') ORDER BY entry_date ASC"
+            sql = """
+                SELECT * FROM active_trades
+                WHERE (status = 'CREATED' AND entry_date < date('now'))
+                   OR status = 'ACTIVE'
+                ORDER BY entry_date ASC
+            """
             trades = [dict(row) for row in conn.execute(sql).fetchall()]
 
         if not trades:
-            logger.info("Keine alten CREATED Trades gefunden.")
+            logger.info("Keine Trades für Backfill gefunden.")
             return stats
 
         market_cache = {}
@@ -85,19 +92,15 @@ class TradeManager:
         for trade in trades:
             stats["processed"] += 1
             symbol = trade["symbol"]
-            entry_date_str = trade["entry_date"]  # Format: YYYY-MM-DD
+            status = trade["status"]
+            entry_date_str = trade["entry_date"]
 
             try:
-                # Strategie Instanz wählen
                 strat_impl = self._get_strategy(trade)
                 if not strat_impl:
-                    logger.warning(
-                        f"[{symbol}] Unbekannte Strategie für Backfill: {trade.get('strategy')}"
-                    )
-                    stats["errors"] += 1
                     continue
 
-                # Marktdaten laden (Caching pro Symbol)
+                # Marktdaten laden
                 if symbol not in market_cache:
                     with sqlite3.connect(self.stocks_db_path) as conn:
                         df = pd.read_sql_query(
@@ -109,110 +112,132 @@ class TradeManager:
                         market_cache[symbol] = df
 
                 df_hist = market_cache[symbol]
-
                 if df_hist.empty:
-                    logger.warning(
-                        f"[{symbol}] SKIPPED: Keine Marktdaten in stocks.db gefunden."
-                    )
                     stats["skipped_no_data"] += 1
                     continue
 
-                # --- SCHRITT A: Entry Prüfung ---
                 entry_ts = pd.Timestamp(entry_date_str)
-                # Kerze am Entry-Tag finden
-                entry_rows = df_hist[df_hist["date"] == entry_ts]
+                future_candles = df_hist[df_hist["date"] > entry_ts].sort_values("date")
 
-                if entry_rows.empty:
-                    logger.warning(
-                        f"[{symbol}] SKIPPED: Keine Daten für Entry-Datum {entry_date_str} gefunden."
-                    )
-                    stats["skipped_no_data"] += 1
+                if future_candles.empty:
                     continue
 
-                entry_candle = entry_rows.iloc[0]
+                # === FALL A: Trade ist noch CREATED (Entry Check) ===
+                if status == "CREATED":
+                    execution_candle = future_candles.iloc[0]  # Erster Tag nach Signal
 
-                # Check Entry Logic (manuell nachgebaut, um Status-Kontrolle zu haben)
-                filled = False
-                entry_price = float(trade["entry_price"])
-                strategy_key = str(trade.get("strategy", "")).lower()
+                    result_msg = strat_impl.check_entry(trade, execution_candle, db)
 
-                # Unterscheidung der Logik basierend auf Instanz
-                if isinstance(strat_impl, MoonbagStrategy):
-                    if entry_candle["high"] >= entry_price:  # Stop Buy
-                        filled = True
-                elif isinstance(strat_impl, DipBuyerStrategy):
-                    if (
-                        entry_candle["low"] <= entry_price <= entry_candle["high"]
-                    ):  # Limit Buy
-                        filled = True
+                    if result_msg and "FILLED" in result_msg:
+                        stats["filled"] += 1
+                        # Quantity Fix (wie gehabt)
+                        try:
+                            entry_price = float(trade["entry_price"])
+                            new_qty = 1
+                            if isinstance(strat_impl, DipBuyerStrategy):
+                                new_qty = int(default_budget / entry_price)
+                            elif isinstance(strat_impl, SplitTargetStrategy):
+                                # Split: Risk based on Signal Candle Low
+                                signal_candle_row = df_hist[df_hist["date"] == entry_ts]
+                                sl_price = entry_price * 0.99
+                                if not signal_candle_row.empty:
+                                    sl_price = float(signal_candle_row.iloc[0]["low"])
 
-                if not filled:
-                    # MISSED setzen
-                    db.update_trade_status(trade["id"], "MISSED", "Backfill_Calc")
-                    stats["missed"] += 1
-                else:
-                    # FILLED -> Quantity berechnen und auf ACTIVE setzen
-
-                    # --- QUANTITY FIX START ---
-                    new_qty = 1
-                    try:
-                        if isinstance(strat_impl, MoonbagStrategy):
-                            # Moonbag Logik: Risk Based
-                            # Wir greifen auf die interne Methode zu, da wir im "Notfallmodus" sind
-                            ctx = strat_impl._fetch_croc_context(
-                                symbol, entry_date_str, db
-                            )
-                            if ctx and ctx.low:
-                                risk = entry_price - ctx.low
+                                if sl_price >= entry_price:
+                                    sl_price = entry_price * 0.99
+                                risk = entry_price - sl_price
                                 if risk > 0:
-                                    risk_budget = getattr(
-                                        strat_impl, "RISK_PER_TRADE", 100.0
-                                    )
-                                    new_qty = int(risk_budget / risk)
-                        elif isinstance(strat_impl, DipBuyerStrategy):
-                            # DipBuyer Logik: Fixed Budget
-                            new_qty = int(default_budget / entry_price)
+                                    new_qty = int(100.0 / risk)
+                                else:
+                                    new_qty = 2
+                            else:
+                                new_qty = int(default_budget / entry_price)
 
-                        new_qty = max(1, new_qty)
-                        db.update_trade_quantity(trade["id"], new_qty)
-                        trade["quantity"] = new_qty  # Update für Simulation
-                        logger.info(
-                            f"[{symbol}] Entry Filled. Quantity berechnet: {new_qty}"
-                        )
+                            new_qty = max(1, new_qty)
+                            db.update_trade_quantity(trade["id"], new_qty)
+                            trade["quantity"] = new_qty
+                            trade["status"] = (
+                                "ACTIVE"  # Lokal updaten für sofortige Simulation unten
+                            )
 
-                    except Exception as q_err:
-                        logger.error(
-                            f"[{symbol}] Fehler bei Quantity Berechnung: {q_err}"
-                        )
-                    # --- QUANTITY FIX END ---
+                        except Exception as e:
+                            logger.error(f"Qty Calc Error {symbol}: {e}")
+                    else:
+                        if not result_msg:
+                            db.update_trade_status(
+                                trade["id"], "MISSED", "BACKFILL_NO_FILL"
+                            )
+                        stats["missed"] += 1
+                        continue  # Weiter zum nächsten Trade
 
-                    db.update_trade_status(trade["id"], "ACTIVE")
-                    stats["filled"] += 1
+                # === FALL B: Trade ist ACTIVE (Simulation Management) ===
+                # (Läuft auch durch, wenn er gerade eben oben erst auf ACTIVE gesetzt wurde)
 
-                    # Simulation der Tage NACH dem Entry bis heute
-                    future_candles = df_hist[df_hist["date"] > entry_ts].sort_values(
-                        "date"
+                # Wir simulieren JEDEN Tag ab dem Entry (bzw. ab Execution)
+                # Finden wo der Entry war (Execution Candle)
+                # Falls wir schon mitten drin sind, starten wir beim ersten Tag nach Entry
+
+                start_idx = 0
+                if not future_candles.empty:
+                    # Wir suchen den Index der ersten Kerze nach Entry Date
+                    # Das ist future_candles.iloc[0]
+                    start_idx_in_hist = df_hist.index.get_loc(
+                        future_candles.iloc[0].name
+                    )
+                    candles_to_simulate = df_hist.iloc[start_idx_in_hist:]
+                else:
+                    candles_to_simulate = pd.DataFrame()
+
+                for _, current_candle in candles_to_simulate.iterrows():
+                    # Historie wächst mit jedem Tag
+                    simulated_history = df_hist[
+                        df_hist["date"] <= current_candle["date"]
+                    ]
+
+                    # Management Logik aufrufen
+                    # Hinweis: Da wir "ACTIVE" Trades aus der DB geladen haben, könnte 'exit_reason'
+                    # schon "TP1_LOCKED" enthalten. Das ist gut! Die Strategie macht da weiter wo sie war.
+
+                    # Wir müssen den aktuellen Trade-Status aus der DB neu lesen, falls er sich
+                    # in der Loop geändert hat (z.B. TP1 Update)
+                    # Performance-Optimierung: Wir updaten das lokale 'trade' dict manuell,
+                    # wenn die Strategie Strings wie "TP1 HIT" zurückgibt, um SQL-Reads zu sparen?
+                    # Besser: Wir vertrauen der Strategie, dass sie DB updates macht,
+                    # aber für den Loop müssen wir wissen, ob CLOSED.
+
+                    mgmt_msg = strat_impl.manage_active_trade(
+                        trade, simulated_history, db
                     )
 
-                    for _, current_candle in future_candles.iterrows():
-                        # Wir simulieren den Zustand an diesem Tag
-                        simulated_history = df_hist[
-                            df_hist["date"] <= current_candle["date"]
-                        ]
+                    if mgmt_msg:
+                        # Prüfen ob geschlossen
+                        if (
+                            "EXIT" in mgmt_msg
+                            or "STOP" in mgmt_msg
+                            or "WIN" in mgmt_msg
+                        ):
+                            logger.info(f"[{symbol}] BACKFILL CATCH-UP: {mgmt_msg}")
+                            if (
+                                trade["status"] == "ACTIVE"
+                            ):  # Nur zählen wenn vorher aktiv
+                                stats["closed_active"] += 1
+                            break  # Trade vorbei
 
-                        # Strategie-Logik prüfen (Exit, TimeStop etc.)
-                        # manage_active_trade macht selbstständig DB Updates (CLOSED etc.)
-                        result_msg = strat_impl.manage_active_trade(
-                            trade, simulated_history, db
-                        )
-
-                        if result_msg:
-                            # Trade wurde geschlossen
-                            logger.info(f"[Backfill] {result_msg}")
-                            break
+                        # Wenn TP1 Hit: Wir müssen das lokale 'trade' Objekt updaten,
+                        # damit im nächsten Loop-Durchlauf (nächster Tag) das 'TP1_LOCKED' bekannt ist!
+                        if "TP1" in mgmt_msg and "LOCKED" in mgmt_msg:
+                            # Wir lesen exit_reason neu aus DB oder parsen die Message
+                            # Einfacher: Kurz neu laden
+                            with db._get_conn() as c:
+                                row = c.execute(
+                                    "SELECT exit_reason FROM active_trades WHERE id=?",
+                                    (trade["id"],),
+                                ).fetchone()
+                                if row:
+                                    trade["exit_reason"] = row[0]
 
             except Exception as e:
-                logger.error(f"Fehler Backfill {symbol}: {e}")
+                logger.error(f"Fehler Backfill {symbol}: {e}", exc_info=True)
                 stats["errors"] += 1
 
         logger.info(f"Backfill beendet: {stats}")
@@ -220,33 +245,26 @@ class TradeManager:
 
     def _cleanup_stale_trades(self) -> None:
         """
-        Bereinigt Trades, die hängen geblieben sind (z.B. durch Script-Absturz am Vortag).
+        Bereinigt Trades, die hängen geblieben sind.
         Setzt alte 'CREATED' auf 'MISSED' und uralte 'ACTIVE' auf 'CLOSED'.
         """
         try:
             db = SignalDatabase(self.db_path)
             with db._get_conn() as conn:
                 # CREATED älter als 3 Tage -> MISSED
-                res_created = conn.execute("""
+                conn.execute("""
                     UPDATE active_trades
                     SET status = 'MISSED', exit_reason = 'STALE_CLEANUP', closed_at = CURRENT_TIMESTAMP
                     WHERE status = 'CREATED' AND entry_date < date('now', '-3 days')
                 """)
 
-                # ACTIVE älter als 14 Tage -> CLOSED (Sicherheitsnetz, falls Moonbag TimeStop versagt)
-                res_active = conn.execute("""
+                # ACTIVE älter als 20 Tage -> CLOSED (Sicherheitsnetz)
+                conn.execute("""
                     UPDATE active_trades
                     SET status = 'CLOSED', exit_reason = 'STALE_CLEANUP', closed_at = CURRENT_TIMESTAMP
-                    WHERE status = 'ACTIVE' AND entry_date < date('now', '-14 days')
+                    WHERE status = 'ACTIVE' AND entry_date < date('now', '-20 days')
                 """)
-
                 conn.commit()
-
-                if res_created.rowcount > 0 or res_active.rowcount > 0:
-                    logger.info(
-                        f"DB Cleanup: {res_created.rowcount} veraltete Entries, {res_active.rowcount} veraltete Active Trades bereinigt."
-                    )
-
         except Exception as e:
             logger.error(f"Fehler bei DB-Cleanup: {e}")
 
@@ -266,13 +284,14 @@ class TradeManager:
             if symbol not in market_data:
                 continue
 
-            # Strategie finden
             strat_impl = self._get_strategy(trade)
             if not strat_impl:
                 continue
 
             # Historie für Symbol
             df_hist = market_data[symbol]
+            if df_hist.empty:
+                continue
 
             # Dispatch Status
             msg = None
@@ -305,22 +324,17 @@ class TradeManager:
 
         for trade in trades:
             symbol = trade["symbol"]
-            if symbol not in market_data and trade["status"] == "ACTIVE":
-                continue  # Active Trades brauchen History
+            if symbol not in market_data:
+                continue
 
             strat_impl = self._get_strategy(trade)
             if not strat_impl:
                 continue
 
-            # Historie übergeben (kann leer sein bei CREATED wenn nicht benötigt,
-            # aber besser konsistent übergeben)
+            # Historie übergeben
             df_hist = market_data.get(symbol, pd.DataFrame())
 
-            # Guard Clause: Verhindert Abstürze durch leere Dataframes in den Strategien
             if df_hist.empty and trade["status"] == "ACTIVE":
-                logger.warning(
-                    f"[{symbol}] Keine Historie für aktiven Trade gefunden. Überspringe Order-Generierung."
-                )
                 continue
 
             try:
@@ -330,7 +344,7 @@ class TradeManager:
                         orders_by_date[today_str] = []
                     orders_by_date[today_str].append(self._dataclass_to_dict(order))
             except Exception as e:
-                logger.error(f"Order Gen Error {symbol}: {e}")
+                logger.error(f"Order Gen Error {symbol}: {e}", exc_info=True)
 
         self._write_yaml_files(orders_by_date)
 
@@ -346,7 +360,8 @@ class TradeManager:
         if not symbols:
             return {}
 
-        start_date = (datetime.now() - pd.Timedelta(days=20)).strftime("%Y-%m-%d")
+        # Etwas mehr Puffer für Indikatoren/TimeStop Checks
+        start_date = (datetime.now() - pd.Timedelta(days=40)).strftime("%Y-%m-%d")
         placeholders = ",".join("?" for _ in symbols)
 
         sql = f"""
@@ -390,11 +405,9 @@ class TradeManager:
         if isinstance(obj, list):
             return [self._dataclass_to_dict(i) for i in obj]
 
-        # --- GLOBALE TYP-KONVERTIERUNG (NumPy Fix) ---
-        # Fängt alle NumPy Integer ab (int32, int64 etc.)
+        # NumPy Fix
         if isinstance(obj, (np.integer, np.int64, np.int32)):
             return int(obj)
-        # Fängt alle NumPy Floats ab (float32, float64 etc.)
         if isinstance(obj, (np.floating, np.float64, np.float32)):
             return round(float(obj), 2)
 
