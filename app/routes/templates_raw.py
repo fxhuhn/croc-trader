@@ -342,8 +342,8 @@ HTML_TEMPLATES = {
 
             /* Helper Classes */
             .price { font-family: monospace; font-weight: bold; }
-            .profit-pos { color: #27ae60; }
-            .profit-neg { color: #c0392b; }
+            .profit-pos { color: #27ae60; font-weight: bold; }
+            .profit-neg { color: #c0392b; font-weight: bold; }
 
             /* Search Input */
             #searchInput { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 250px; font-size: 0.9em; }
@@ -396,9 +396,11 @@ HTML_TEMPLATES = {
                         <th>Entry Date</th>
                         <th>Status</th>
                         <th>Entry Price</th>
-                        <th>Stop / Target</th>
+                        <th>Last Close</th>
                         <th>Qty</th>
                         <th>Invest</th>
+                        <th>PnL ($)</th>
+                        <th>PnL (%)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -415,11 +417,23 @@ HTML_TEMPLATES = {
                             <span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span>
                         </td>
                         <td class="price">{{ row['entry_price'] }}</td>
-                        <td style="font-size: 0.85em; color: #666;">
-                           ATR: {{ row['atr_at_entry'] }}
-                        </td>
+                        <td class="price">{{ row['current_price'] or '-' }}</td>
                         <td>{{ row['quantity'] }}</td>
                         <td class="price">{{ (row['entry_price'] * row['quantity']) | round(0) }}</td>
+                        <td>
+                           {% if row['pnl_val'] is not none %}
+                             <span class="{{ 'profit-pos' if row['pnl_val'] >= 0 else 'profit-neg' }}">
+                               {{ row['pnl_val']|round(2) }} $
+                             </span>
+                           {% else %} - {% endif %}
+                        </td>
+                        <td>
+                           {% if row['pnl_pct'] is not none %}
+                             <span class="{{ 'profit-pos' if row['pnl_pct'] >= 0 else 'profit-neg' }}">
+                               {{ row['pnl_pct']|round(2) }} %
+                             </span>
+                           {% else %} - {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -483,7 +497,8 @@ HTML_TEMPLATES = {
             <table id="historyTable">
                 <thead>
                     <tr>
-                        <th>Datum</th>
+                        <th>Entry Date</th>
+                        <th>Exit Date</th>
                         <th>Symbol</th>
                         <th>Strategie</th>
                         <th>Status</th>
@@ -495,7 +510,8 @@ HTML_TEMPLATES = {
                 <tbody>
                     {% for row in history %}
                     <tr>
-                        <td>{{ row['closed_at'] or row['entry_date'] }}</td>
+                        <td style="font-size: 0.9em; color: #555;">{{ row['entry_date'] }}</td>
+                        <td style="font-size: 0.9em; color: #555;">{{ row['closed_at'] or '-' }}</td>
                         <td style="font-weight:bold;">{{ row['symbol'] }}</td>
                         <td>{{ row['strategy'] }}</td>
                         <td><span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span></td>
@@ -526,9 +542,9 @@ HTML_TEMPLATES = {
                 tr = table.getElementsByTagName("tr");
 
                 for (i = 1; i < tr.length; i++) {
-                    // Suche in Symbol (Index 1) und Strategie (Index 2)
-                    var tdSymbol = tr[i].getElementsByTagName("td")[1];
-                    var tdStrat = tr[i].getElementsByTagName("td")[2];
+                    // Spalten Indices angepasst (Symbol=2, Strategie=3)
+                    var tdSymbol = tr[i].getElementsByTagName("td")[2];
+                    var tdStrat = tr[i].getElementsByTagName("td")[3];
 
                     if (tdSymbol || tdStrat) {
                         var txtSymbol = tdSymbol.textContent || tdSymbol.innerText;

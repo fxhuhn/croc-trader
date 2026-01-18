@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 
 import pandas as pd
 from flask import Blueprint, current_app, render_template_string, request
@@ -58,26 +59,91 @@ def view_strategy_trades() -> str:
 def view_active_trades_dashboard() -> str:
     """
     Zeigt das Portfolio-Dashboard an.
-    Reihenfolge: Stats -> Active -> Created -> History
+    Erweitert um Live-PnL Berechnung basierend auf stocks.db.
     """
     limit = request.args.get("limit", 500, type=int)
     all_trades = _get_db().get_trades_history(limit=limit)  # type: ignore
 
-    # 1. Sortierung in 3 Eimer: Active, Created, History
+    # 1. Sortierung in 3 Eimer
     active_trades = []  # Status ACTIVE
     new_trades = []  # Status CREATED
     history_log = []  # CLOSED, MISSED, etc.
 
     for trade in all_trades:
-        status = str(trade.get("status", "")).upper()
-        if status == "ACTIVE":
-            active_trades.append(trade)
-        elif status == "CREATED":
-            new_trades.append(trade)
-        else:
-            history_log.append(trade)
+        # trade ist hier ein sqlite3.Row oder dict, wir wandeln es in dict um
+        t_dict = dict(trade)
 
-    # 2. Statistik Berechnung (Basierend auf History)
+        # --- FIX START: Defaults initialisieren ---
+        # Damit das Template nicht crasht, falls die PnL-Berechnung fehlschlägt (Exception),
+        # setzen wir die Keys hier sicherheitshalber auf None.
+        t_dict["current_price"] = None
+        t_dict["pnl_val"] = None
+        t_dict["pnl_pct"] = None
+        # --- FIX END ---
+
+        status = str(t_dict.get("status", "")).upper()
+
+        if status == "ACTIVE":
+            active_trades.append(t_dict)
+        elif status == "CREATED":
+            new_trades.append(t_dict)
+        else:
+            history_log.append(t_dict)
+
+    # 2. PnL Berechnung für Active Trades
+    if active_trades:
+        try:
+            # Pfad zur Stocks DB holen
+            conf = current_app.config["APP_CONFIG"]
+            stocks_db_path = conf.get_db_path("stocks")
+
+            # Symbole sammeln
+            symbols = [t["symbol"] for t in active_trades]
+            placeholders = ",".join("?" for _ in symbols)
+
+            # Letzten Kurs für jedes Symbol holen
+            sql = f"""
+                SELECT symbol, close
+                FROM market_prices
+                WHERE symbol IN ({placeholders})
+                GROUP BY symbol
+                HAVING date = MAX(date)
+            """
+
+            price_map = {}
+            # Nutzung eines Context Managers für sicheres Schließen
+            with sqlite3.connect(stocks_db_path) as conn:
+                cursor = conn.cursor()
+                rows = cursor.execute(sql, symbols).fetchall()
+                for r in rows:
+                    price_map[r[0]] = float(r[1])
+
+            # PnL in die Trade-Objekte injecten
+            for trade in active_trades:
+                sym = trade["symbol"]
+                current_price = price_map.get(sym)
+
+                if current_price and trade.get("entry_price") and trade.get("quantity"):
+                    entry_price = float(trade["entry_price"])
+                    qty = int(trade["quantity"])
+
+                    pnl_val = (current_price - entry_price) * qty
+                    pnl_pct = ((current_price - entry_price) / entry_price) * 100
+
+                    trade["current_price"] = current_price
+                    trade["pnl_val"] = pnl_val
+                    trade["pnl_pct"] = pnl_pct
+                else:
+                    # Falls kein aktueller Preis da ist, bleiben die Defaults (None)
+                    # oder wir setzen explizite Nullen, falls gewünscht.
+                    pass
+
+        except Exception as e:
+            # Hier lag das Problem: Wenn das passierte, fehlten die Keys im Dict.
+            # Durch die Init oben ist das jetzt abgefangen.
+            logger.error(f"Fehler bei PnL Berechnung: {e}")
+
+    # 3. Statistik Berechnung (Basierend auf History)
     strategy_stats = []
     if history_log:
         try:
@@ -116,7 +182,6 @@ def view_active_trades_dashboard() -> str:
         except Exception as e:
             logger.error(f"Statistik Fehler: {e}")
 
-    # Übergabe der getrennten Listen an das Template
     return render_template_string(
         HTML_TEMPLATES["active_trades_dashboard"],
         active_trades=active_trades,
