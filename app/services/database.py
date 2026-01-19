@@ -1,6 +1,7 @@
 import logging
 import sqlite3
 import time
+from datetime import datetime, timedelta  # <--- NEU: Für Datumsberechnung
 from pathlib import Path
 from typing import List
 
@@ -43,7 +44,6 @@ class SignalDatabase:
         """Erstellt Tabellen, Indizes und Views."""
 
         # 1. Signals Tabelle
-        # NEU: dist_sma_20 und dist_sma_200 als GENERATED COLUMNS
         schema_signals = """
         CREATE TABLE IF NOT EXISTS signals (
             symbol TEXT NOT NULL, timeframe TEXT NOT NULL, signal TEXT NOT NULL,
@@ -120,7 +120,6 @@ class SignalDatabase:
         """
 
         # 5. TABELLE: WEBHOOK SCREENER
-        # Auch hier fügen wir die virtuellen Spalten hinzu, damit der Screener konsistent ist
         schema_webhook = """
         CREATE TABLE IF NOT EXISTS screener_webhook (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,10 +178,12 @@ class SignalDatabase:
         """
 
         # 7. Trades
+        # NEU: signal_date hinzugefügt für saubere Trennung
         schema_trades = """
         CREATE TABLE IF NOT EXISTS active_trades (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol TEXT NOT NULL,
+            signal_date TEXT,
             entry_date TEXT NOT NULL,
             entry_price REAL NOT NULL,
             atr_at_entry REAL NOT NULL,
@@ -193,6 +194,7 @@ class SignalDatabase:
             exit_reason TEXT,
             closed_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            exit_date TEXT,
             UNIQUE(symbol, entry_date)
         );
         """
@@ -234,28 +236,21 @@ class SignalDatabase:
 
                 # --- MIGRATIONEN ---
 
-                # Migration für exit_price in active trades Spalte
+                # Migration für exit_price
                 try:
                     conn.execute(
                         "ALTER TABLE active_trades ADD COLUMN exit_price REAL;"
                     )
-                    logger.info(
-                        "Migration: Spalte 'exit_price' zu Tabelle 'active_trades' hinzugefügt."
-                    )
                 except sqlite3.OperationalError:
                     pass
 
-                # Migration für DELUXE Spalte
+                # Migration für DELUXE
                 try:
                     conn.execute("ALTER TABLE signals ADD COLUMN deluxe TEXT")
-                    logger.info(
-                        "Migration: Spalte 'deluxe' zu Tabelle 'signals' hinzugefügt."
-                    )
                 except sqlite3.OperationalError:
                     pass
 
-                # Migration: dist_sma_20 (Virtual Column)
-                # Löst den Fehler "no such column: dist_sma_20"
+                # Virtual Columns
                 try:
                     conn.execute("""
                         ALTER TABLE signals
@@ -265,13 +260,9 @@ class SignalDatabase:
                             ELSE NULL END
                         ) VIRTUAL
                     """)
-                    logger.info(
-                        "Migration: Spalte 'dist_sma_20' zu 'signals' hinzugefügt."
-                    )
                 except sqlite3.OperationalError:
-                    pass  # Existiert schon
+                    pass
 
-                # Migration: dist_sma_200 (Virtual Column)
                 try:
                     conn.execute("""
                         ALTER TABLE signals
@@ -281,34 +272,32 @@ class SignalDatabase:
                             ELSE NULL END
                         ) VIRTUAL
                     """)
-                    logger.info(
-                        "Migration: Spalte 'dist_sma_200' zu 'signals' hinzugefügt."
-                    )
                 except sqlite3.OperationalError:
-                    pass  # Existiert schon
+                    pass
 
-                # Migration für HIGH/LOW in screener_croc
+                # Croc High/Low
                 try:
                     conn.execute("ALTER TABLE screener_croc ADD COLUMN high REAL")
-                    logger.info(
-                        "Migration: Spalte 'high' zu Tabelle 'screener_croc' hinzugefügt."
-                    )
                 except sqlite3.OperationalError:
                     pass
-
                 try:
                     conn.execute("ALTER TABLE screener_croc ADD COLUMN low REAL")
-                    logger.info(
-                        "Migration: Spalte 'low' zu Tabelle 'screener_croc' hinzugefügt."
-                    )
                 except sqlite3.OperationalError:
                     pass
 
-                # --- NEU: Migration für exit_date ---
+                # Exit Date
                 try:
                     conn.execute("ALTER TABLE active_trades ADD COLUMN exit_date TEXT")
+                except sqlite3.OperationalError:
+                    pass
+
+                # --- NEU: MIGRATION FÜR signal_date ---
+                try:
+                    conn.execute(
+                        "ALTER TABLE active_trades ADD COLUMN signal_date TEXT"
+                    )
                     logger.info(
-                        "Migration: Spalte 'exit_date' zu Tabelle 'active_trades' hinzugefügt."
+                        "Migration: Spalte 'signal_date' zu Tabelle 'active_trades' hinzugefügt."
                     )
                 except sqlite3.OperationalError:
                     pass  # Existiert schon
@@ -319,10 +308,11 @@ class SignalDatabase:
             logger.critical(f"DB Init failed: {e}")
             raise
 
+    # ... (save_many, replace_stats, etc. bleiben unverändert) ...
+
     def save_many(self, signals: List[CrocSignal], retries: int = 5) -> int:
         if not signals:
             return 0
-
         sql = """
         INSERT OR IGNORE INTO signals
         (symbol, timeframe, timestamp, signal, close, high, low, wuk, status, kerze, wolke, trend, setter, welle, deluxe, rsi, sma_200, sma_20, strategy_id, reference, exchange)
@@ -354,9 +344,7 @@ class SignalDatabase:
 
     @cache.memoize(timeout=10)
     def get_latest_signals_with_stats(self, limit=50, symbol=None):
-        # todo: Cleanup function
         logger.warning("Aktell nicht im einsatz")
-
         with self._get_conn() as conn:
             if symbol:
                 cursor = conn.execute(
@@ -379,7 +367,7 @@ class SignalDatabase:
             conn.executemany(
                 "UPDATE signals SET exchange = ? WHERE symbol = ?", update_data
             )
-            conn.commit()  # <--- FIX: Änderungen speichern!
+            conn.commit()
             return conn.total_changes
 
     def save_screener_dip_buyer(self, results: List[dict]):
@@ -406,7 +394,6 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler save_screener_webhook: {e}")
 
-    # --- TURNOVER TIMING SPEICHERN ---
     def save_screener_turnover_timing(self, results: List[dict]):
         if not results:
             return
@@ -422,12 +409,9 @@ class SignalDatabase:
         except sqlite3.Error as e:
             logger.error(f"Fehler save_screener_turnover_timing: {e}")
 
-    # --- CROC SETUP SPEICHERN ---
     def save_screener_croc(self, results: List[dict]):
         if not results:
             return
-
-        # SQL Update: high und low hinzugefügt
         sql = """
         INSERT OR REPLACE INTO screener_croc
         (date, symbol, exchange, timeframe, signal, rank, r_per_trade,
@@ -453,13 +437,11 @@ class SignalDatabase:
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
-    # --- TURNOVER TIMING LESEN ---
     def get_turnover_timing_results(self, limit: int = 50):
         sql = "SELECT * FROM screener_turnover_timing ORDER BY date DESC, turnover_sma20 DESC LIMIT ?"
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
 
-    # --- CROC SETUP LESEN ---
     def get_croc_results(self, limit: int = 100) -> List[dict]:
         sql = """
         SELECT * FROM screener_croc
@@ -483,42 +465,64 @@ class SignalDatabase:
     def add_trade(
         self,
         symbol,
-        entry_date,
+        signal_date,  # <--- NEU: Signal Date ist Pflichtfeld
         entry_price,
         atr_at_entry,
         strategy="MANUAL",
         quantity=1,
     ):
+        """
+        Erstellt einen neuen Trade.
+        Berechnet entry_date automatisch als Signal Date + 1 Tag (T+1),
+        da man am Signal-Tag nicht mehr einsteigen kann.
+        """
+        # Berechnung des Earliest Valid Entry (T+1)
+        try:
+            sig_dt = datetime.strptime(str(signal_date).split(" ")[0], "%Y-%m-%d")
+            # Entry erst ab MORGEN gültig
+            valid_from = (sig_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+        except Exception:
+            # Fallback falls Format nicht passt
+            valid_from = signal_date
+
         with self._get_conn() as conn:
+            # Duplikat-Check auf Basis von Signal Date
             existing = conn.execute(
-                "SELECT id FROM active_trades WHERE symbol = ? AND entry_date = ?",
-                (symbol, entry_date),
+                "SELECT id FROM active_trades WHERE symbol = ? AND signal_date = ?",
+                (symbol, signal_date),
             ).fetchone()
 
             if existing:
                 return existing[0]
 
             try:
+                # Wir speichern BEIDES: Wann das Signal kam und ab wann Entry gültig ist
                 cursor = conn.execute(
                     """
                     INSERT INTO active_trades
-                    (symbol, entry_date, entry_price, atr_at_entry, quantity, status, strategy)
-                    VALUES (?, ?, ?, ?, ?, 'CREATED', ?)
+                    (symbol, signal_date, entry_date, entry_price, atr_at_entry, quantity, status, strategy)
+                    VALUES (?, ?, ?, ?, ?, ?, 'CREATED', ?)
                     """,
-                    (symbol, entry_date, entry_price, atr_at_entry, quantity, strategy),
+                    (
+                        symbol,
+                        signal_date,
+                        valid_from,
+                        entry_price,
+                        atr_at_entry,
+                        quantity,
+                        strategy,
+                    ),
                 )
                 conn.commit()
                 return cursor.lastrowid
             except sqlite3.IntegrityError:
                 logger.debug(
-                    f"Trade existiert bereits (IntegrityError): {symbol} am {entry_date}"
+                    f"Trade existiert bereits (IntegrityError): {symbol} am {signal_date}"
                 )
                 return None
 
     def get_open_trades(self):
-        # Todo: cleanup
         logger.warning("Status OPEN wird nicht verwendet")
-
         with self._get_conn() as conn:
             return [
                 dict(row)
@@ -528,6 +532,7 @@ class SignalDatabase:
             ]
 
     def get_trades_history(self, limit: int = 100):
+        # Sortierung: Entry Date absteigend
         sql = "SELECT * FROM active_trades ORDER BY entry_date DESC, created_at DESC LIMIT ?"
         with self._get_conn() as conn:
             return [dict(row) for row in conn.execute(sql, (limit,)).fetchall()]
@@ -560,7 +565,6 @@ class SignalDatabase:
             ]
 
     def update_trade_quantity(self, trade_id: int, quantity: int):
-        """Aktualisiert die Stückzahl eines Trades."""
         try:
             with self._get_conn() as conn:
                 conn.execute(

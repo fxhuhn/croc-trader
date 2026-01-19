@@ -54,11 +54,38 @@ class CrocSetupStrategy(BaseStrategy):
 
         if results:
             self.signals_db.save_screener_croc(results)
+
+            # --- NEU: Automatische Trade-Erstellung ---
+            if days == 0:
+                self._create_trades(results)
+
             self._send_telegram_report(
                 f"🐊 Croc Setup ({len(results)} Hits)", start_date, results
             )
 
         return len(results)
+
+    def _create_trades(self, results: list[dict[str, Any]]) -> None:
+        """Erstellt CREATED Trades in der DB für T+1 Entry."""
+        for res in results:
+            # Entry Logic: Stop Buy @ High der Signal-Kerze
+            entry_price = res["high"]
+
+            # Risiko-Proxy: High - Low (da ATR hier nicht direkt vorliegt)
+            # Wird von Strategien (Moonbag/Split) später präzisiert
+            risk_range = res["high"] - res["low"]
+
+            # Strategie-Zuweisung aus Ranking (z.B. Moonbag, SplitTarget)
+            strategy_name = res.get("recommended_strategy", "MANUAL")
+
+            self.signals_db.add_trade(
+                symbol=res["symbol"],
+                signal_date=res["date"],  # WICHTIG: Signal Date
+                entry_price=entry_price,
+                atr_at_entry=risk_range,  # Proxy
+                quantity=1,
+                strategy=strategy_name,
+            )
 
     def _load_signals(self, start_date: str) -> pd.DataFrame:
         sql = f"""
@@ -89,7 +116,6 @@ class CrocSetupStrategy(BaseStrategy):
         for _, row in df.iterrows():
             signal_name = row["signal"]
 
-            # Relevante Regeln für dieses Signal finden
             candidates = [
                 r for r in self.ranking_rules if r.get("Signal") == signal_name
             ]
@@ -101,7 +127,6 @@ class CrocSetupStrategy(BaseStrategy):
             match_reason = []
 
             for rule in candidates:
-                # Prüfen ob alle Filter der Regel passen
                 passed, reasons = self._evaluate_rule(row, rule, meta_keys)
 
                 if passed:
@@ -145,7 +170,6 @@ class CrocSetupStrategy(BaseStrategy):
         r_val = match.get("R_Hist", match.get("R_2026", 0.0))
         reason_str = ", ".join(reason) if reason else "Basis-Signal (Match)"
 
-        # Helper for safe float conversion
         def safe_float(val):
             return float(val) if pd.notna(val) else 0.0
 
@@ -186,7 +210,6 @@ class CrocSetupStrategy(BaseStrategy):
         )
         cond_str = str(condition).strip()
 
-        # EMA Check
         if "ema" in key_lower:
             match cond_str:
                 case "< -10%":
@@ -205,7 +228,6 @@ class CrocSetupStrategy(BaseStrategy):
                     logger.error(f"Unbekannter EMA-Filter: '{cond_str}'")
                     return False
 
-        # RSI Check
         elif key_lower == "rsi":
             match cond_str:
                 case "Oversold (<30)":
@@ -222,5 +244,4 @@ class CrocSetupStrategy(BaseStrategy):
                     logger.error(f"Unbekannter RSI-Filter: '{cond_str}'")
                     return False
 
-        # String Match
         return str(market_value).lower() == str(condition).lower()

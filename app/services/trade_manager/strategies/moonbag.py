@@ -18,19 +18,34 @@ class MoonbagStrategy(BaseTradeStrategy):
     ) -> Optional[str]:
         # Stop Buy Logic: Wir kaufen, wenn Kurs >= Entry (High berührt Entry)
         entry_price = float(trade["entry_price"])
-        entry_date_ts = pd.Timestamp(str(trade["entry_date"]).split(" ")[0])
 
-        if candle["date"] < entry_date_ts:
+        # FIX: Nutzung von signal_date für T+1 Check
+        signal_date_str = trade.get("signal_date") or trade["entry_date"]
+        signal_date_ts = pd.Timestamp(str(signal_date_str).split(" ")[0])
+
+        # Einstieg erst am Tag NACH dem Signal erlaubt
+        if candle["date"] <= signal_date_ts:
             return None
 
         # Wenn High >= Entry, dann wurde der Stop Buy ausgelöst
         if candle["high"] >= entry_price:
-            db.update_trade_status(trade["id"], "ACTIVE")
-            return f"✅ **FILLED (Stop Buy)**: {trade['symbol']} @ {entry_price}"
+            # DB UPDATE: Setze entry_date auf den ECHTEN Fill-Tag
+            fill_date_str = candle["date"].strftime("%Y-%m-%d")
+            try:
+                with db._get_conn() as conn:
+                    conn.execute(
+                        "UPDATE active_trades SET status = 'ACTIVE', entry_date = ? WHERE id = ?",
+                        (fill_date_str, trade["id"]),
+                    )
+                    conn.commit()
+            except Exception as e:
+                logger.error(f"Moonbag Fill Error: {e}")
 
-        # TimeStop für Entry (z.B. nach 1 Tag nicht abgeholt -> Missed)
-        db.update_trade_status(trade["id"], "MISSED", "NO_MOMENTUM")
-        return f"❌ **MISSED**: {trade['symbol']} - Stop Buy nicht ausgelöst."
+            return f"✅ **FILLED (Stop Buy)**: {trade['symbol']} @ {entry_price} am {fill_date_str}"
+
+        # TimeStop für Entry (z.B. nach 3 Tagen nicht abgeholt -> Missed)
+        # Hier optional, aktuell im Code noch nicht strikt forciert, außer Manager cleanup.
+        return None
 
     def manage_active_trade(
         self, trade: dict, df_history: pd.DataFrame, db: SignalDatabase
@@ -44,7 +59,7 @@ class MoonbagStrategy(BaseTradeStrategy):
         entry_date_ts = pd.Timestamp(str(entry_date).split(" ")[0])
         symbol = trade["symbol"]
 
-        # Historie seit Entry
+        # Historie seit Entry (Fill Date)
         df_since = df_history[df_history["date"] >= entry_date_ts].reset_index(
             drop=True
         )
@@ -55,8 +70,11 @@ class MoonbagStrategy(BaseTradeStrategy):
         exit_date_str = current_candle["date"].strftime("%Y-%m-%d")
 
         # --- 1. STOP LOSS PRÜFUNG ---
-        # Wir brauchen das Low vom Setup-Tag als Stop Loss
-        context = self._fetch_croc_context(symbol, entry_date, db)
+        # WICHTIG: SL kommt aus dem Screener Context vom SIGNAL DATE
+        # Daher müssen wir das Signal Date kennen.
+        signal_date = trade.get("signal_date") or entry_date  # Fallback
+
+        context = self._fetch_croc_context(symbol, signal_date, db)
 
         if context:
             stop_loss_price = context.low
@@ -82,7 +100,7 @@ class MoonbagStrategy(BaseTradeStrategy):
                 f"[{symbol}] Konnte SL-Preis (Context) für Active Trade Management nicht laden."
             )
 
-        # --- 2. TIME STOP PRÜFUNG ---
+        # --- 2. TIME STOP PRÜFUNG (7 Tage ab Fill) ---
         if len(df_since) >= 7:
             exit_price = current_candle["close"]
             self._close_trade_in_db(
@@ -98,10 +116,11 @@ class MoonbagStrategy(BaseTradeStrategy):
         status = trade["status"]
         symbol = trade["symbol"]
         entry_price = float(trade["entry_price"])
-        entry_date = trade["entry_date"]
 
-        # --- Kontext laden (für SL Berechnung notwendig) ---
-        context = self._fetch_croc_context(symbol, entry_date, db)
+        # Context laden via Signal Date
+        signal_date = trade.get("signal_date") or trade["entry_date"]
+        context = self._fetch_croc_context(symbol, signal_date, db)
+
         if not context:
             logger.warning(
                 f"[{symbol}] Order-Gen abgebrochen: Kein Low in screener_croc gefunden."
@@ -111,29 +130,24 @@ class MoonbagStrategy(BaseTradeStrategy):
         stop_loss = context.low
         risk_per_share = entry_price - stop_loss
 
-        # Sicherheitscheck
         if risk_per_share <= 0:
             return None
 
         # --- A) Entry Order (CREATED) ---
         if status == "CREATED":
-            # Position Size Calculation
             qty = int(self.RISK_PER_TRADE / risk_per_share)
             qty = max(1, qty)
 
             target_1r = entry_price + risk_per_share
             qty_half = int(qty * 0.5)
 
-            # Update Quantity in DB (WICHTIG: Sofort speichern!)
             db.update_trade_quantity(trade["id"], qty)
 
             exits = []
-            # 1. Stop Loss (Full)
             exits.append(
                 OrderLeg(action="SELL", type="STP", price=round(stop_loss, 2), qty=None)
             )
 
-            # 2. Take Profit (Half)
             if qty_half > 0:
                 exits.append(
                     OrderLeg(
@@ -155,36 +169,27 @@ class MoonbagStrategy(BaseTradeStrategy):
 
         # --- B) Management Order (ACTIVE) ---
         elif status == "ACTIVE":
-            # Orders beibehalten/erneuern für den nächsten Tag
             qty = int(trade["quantity"])
-
-            # --- SELF HEALING: Falls Qty noch 1 ist (Fehlerbehebung) ---
             if qty <= 1:
                 qty = int(self.RISK_PER_TRADE / risk_per_share)
                 qty = max(1, qty)
-                logger.info(
-                    f"[{symbol}] Fixing Moonbag quantity 1 -> {qty} (Self-Healing)"
-                )
                 db.update_trade_quantity(trade["id"], qty)
 
             target_1r = entry_price + risk_per_share
             qty_half = int(qty * 0.5)
 
-            # Prüfung TimeStop (keine Orders mehr wenn Tag 7 vorbei)
-            entry_date_ts = pd.Timestamp(str(entry_date).split(" ")[0])
+            # TimeStop Check ab Fill Date
+            entry_date_ts = pd.Timestamp(str(trade["entry_date"]).split(" ")[0])
             if not df_history.empty:
                 df_since = df_history[df_history["date"] >= entry_date_ts]
                 if len(df_since) >= 7:
                     return None
 
             exits = []
-
-            # 1. Stop Loss (100% der Position)
             exits.append(
                 OrderLeg(action="SELL", type="STP", price=round(stop_loss, 2), qty=qty)
             )
 
-            # 2. Take Profit (50% der Position)
             if qty_half > 0:
                 exits.append(
                     OrderLeg(
@@ -200,7 +205,7 @@ class MoonbagStrategy(BaseTradeStrategy):
                 symbol=symbol,
                 qty=qty,
                 mode="MANAGE",
-                entry=None,  # Reine Management Order
+                entry=None,
                 exits=exits,
             )
 
@@ -210,7 +215,6 @@ class MoonbagStrategy(BaseTradeStrategy):
         self, symbol: str, date_val, db: SignalDatabase
     ) -> Optional[CrocContext]:
         date_str = str(date_val).split(" ")[0]
-        # SQL sucht nach dem passenden Eintrag in der Screener Tabelle
         sql = (
             "SELECT high, low FROM screener_croc WHERE symbol = ? AND date = ? LIMIT 1"
         )

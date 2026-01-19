@@ -74,36 +74,42 @@ def view_active_trades_dashboard() -> str:
         # trade ist hier ein sqlite3.Row oder dict, wir wandeln es in dict um
         t_dict = dict(trade)
 
-        # --- FIX START: Defaults initialisieren ---
-        # Damit das Template nicht crasht, falls die PnL-Berechnung fehlschlägt (Exception),
-        # setzen wir die Keys hier sicherheitshalber auf None.
+        # --- FIX: Defaults initialisieren ---
+        # Verhindert Abstürze im Template, wenn PnL nicht berechnet werden kann
         t_dict["current_price"] = None
         t_dict["pnl_val"] = None
         t_dict["pnl_pct"] = None
-        # --- FIX END ---
 
-        # --- NEU: Haltedauer Berechnung ---
+        # --- Haltedauer Berechnung ---
         entry_str = t_dict.get("entry_date")
         exit_str = t_dict.get("exit_date")
         display_exit = exit_str
         days_held = "-"
 
         if not display_exit and t_dict.get("closed_at"):
-            # Backwards compatibility: closed_at format is "YYYY-MM-DD HH:MM:SS"
+            # Fallback für alte Trades ohne exit_date Spalte
             display_exit = str(t_dict["closed_at"]).split(" ")[0]
 
-        if entry_str and display_exit:
+        if entry_str:
             try:
+                # CREATED: entry_date ist das "Valid From" Datum (T+1)
+                # ACTIVE: entry_date ist das Fill Datum
                 d1 = datetime.strptime(str(entry_str).split(" ")[0], "%Y-%m-%d")
-                d2 = datetime.strptime(str(display_exit).split(" ")[0], "%Y-%m-%d")
-                delta = (d2 - d1).days
-                days_held = str(delta)
+
+                if display_exit:
+                    d2 = datetime.strptime(str(display_exit).split(" ")[0], "%Y-%m-%d")
+                    delta = (d2 - d1).days
+                    days_held = str(delta)
+                elif t_dict.get("status") == "ACTIVE":
+                    # Wenn aktiv, Dauer bis heute
+                    d2 = datetime.now()
+                    delta = (d2 - d1).days
+                    days_held = str(delta)
             except Exception:
                 pass
 
         t_dict["display_exit_date"] = display_exit or "-"
         t_dict["holding_days"] = days_held
-        # --- END NEU ---
 
         status = str(t_dict.get("status", "")).upper()
 
@@ -135,7 +141,6 @@ def view_active_trades_dashboard() -> str:
             """
 
             price_map = {}
-            # Nutzung eines Context Managers für sicheres Schließen
             with sqlite3.connect(stocks_db_path) as conn:
                 cursor = conn.cursor()
                 rows = cursor.execute(sql, symbols).fetchall()
@@ -157,14 +162,8 @@ def view_active_trades_dashboard() -> str:
                     trade["current_price"] = current_price
                     trade["pnl_val"] = pnl_val
                     trade["pnl_pct"] = pnl_pct
-                else:
-                    # Falls kein aktueller Preis da ist, bleiben die Defaults (None)
-                    # oder wir setzen explizite Nullen, falls gewünscht.
-                    pass
 
         except Exception as e:
-            # Hier lag das Problem: Wenn das passierte, fehlten die Keys im Dict.
-            # Durch die Init oben ist das jetzt abgefangen.
             logger.error(f"Fehler bei PnL Berechnung: {e}")
 
     # 3. Statistik Berechnung (Basierend auf History)

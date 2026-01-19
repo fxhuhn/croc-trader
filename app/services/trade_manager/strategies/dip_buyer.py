@@ -17,23 +17,23 @@ class DipBuyerStrategy(BaseTradeStrategy):
     ) -> Optional[str]:
         """
         Prüft, ob der Trade gefüllt wurde.
-        Basis: Signal Date. Entry muss strikt NACH Signal Date erfolgen.
+        Basis: Signal Date. Entry muss strikt NACH Signal Date erfolgen (T+1).
         """
-        # 1. Signal Datum ermitteln (Fallback auf entry_date für alte Daten)
+        # 1. Datum ermitteln: Wenn signal_date vorhanden (neu), nutze das.
+        # Fallback auf entry_date (alt), aber das ist unsicher.
         signal_date_str = trade.get("signal_date") or trade["entry_date"]
         signal_date_ts = pd.Timestamp(str(signal_date_str).split(" ")[0])
 
-        # CHECK: Kerze muss NACH dem Signal-Tag liegen (T+1)
+        # CHECK: Kerze muss NACH dem Signal-Tag liegen
         if candle["date"] <= signal_date_ts:
             return None
 
         entry_price = float(trade["entry_price"])
 
         # Klassischer Limit Check (Low <= Limit <= High)
-        # Annahme: Buy Limit Order
         if candle["low"] <= entry_price <= candle["high"]:
-            # DB UPDATE: Status ACTIVE und Entry Date = Heute (Fill Date)
-            # Wir nutzen direkt SQL, um entry_date zu überschreiben
+            # DB UPDATE: Status ACTIVE
+            # WICHTIG: entry_date wird jetzt auf den ECHTEN FILL-Tag aktualisiert!
             fill_date_str = candle["date"].strftime("%Y-%m-%d")
 
             try:
@@ -50,11 +50,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 f"✅ **FILLED**: {trade['symbol']} am {fill_date_str} zu {entry_price}"
             )
 
-        else:
-            # Kein Fill heute
-            # Optional: Prüfen ob Limit zu weit weg -> Missed?
-            # Hier lassen wir es offen, Manager kümmert sich via Stale Cleanup.
-            return None
+        return None
 
     @override
     def manage_active_trade(
@@ -62,7 +58,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
     ) -> Optional[str]:
         """
         Management Logik.
-        df_history enthält alle Daten. Wir schneiden ab Entry Date (Fill Date).
+        df_history enthält alle Daten. Wir schneiden ab entry_date (das jetzt das Fill-Date ist).
         """
         entry_date_ts = pd.Timestamp(str(trade["entry_date"]).split(" ")[0])
 
@@ -76,26 +72,18 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
         # Trading Days Zählung:
         # Tag 0 = Fill Tag.
-        # Tag 1 = Erster Tag nach Fill.
         trading_days = len(df_since) - 1
-
         current_candle = df_since.iloc[-1]
 
-        # Preise
         entry_price = float(trade["entry_price"])
         atr = float(trade["atr_at_entry"])
         tp_price = entry_price + (0.8 * atr)
 
-        # High des Vortages für LOC (Limit on Close)
-        # Wenn trading_days == 0 (Fill Tag), gibt es keine "Vortages-Kerze" IM Trade.
-        # Wir müssen auf die Historie VOR dem Trade zugreifen.
-        # df_history enthält alles. current_candle ist df_history.iloc[-1]
-        # prev_day ist df_history.iloc[-2]
-
-        # Safety Check: Haben wir genug Historie?
+        # Safety Check
         if len(df_history) < 2:
             return None
 
+        # Previous Day High vom Gesamt-DF (für LOC Exit wichtig)
         prev_day_candle = df_history.iloc[-2]
         prev_day_high = float(prev_day_candle["high"])
 
@@ -104,15 +92,12 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
         # --- REGELWERK ---
 
-        # 1. Take Profit
-        # Erlaubt ab Tag 0 (Fill Tag), wenn High > TP (Intraday Fill & TP möglich)
+        # 1. Take Profit (ab Tag 0 möglich)
         if current_candle["high"] >= tp_price:
             exit_reason = "TAKE_PROFIT"
             exit_price = tp_price
 
-        # 2. LOC Check (Ab Tag 1 aktiv = Mindestens 1 Overnight)
-        # Wir wollen verhindern, dass der Trade am selben Tag via LOC geschlossen wird,
-        # wenn er gerade erst gefüllt wurde (außer er rennt direkt ins Ziel).
+        # 2. LOC Check (Ab Tag 1 aktiv)
         if not exit_reason and trading_days >= 1:
             if current_candle["close"] > prev_day_high:
                 exit_reason = "LOC_PROFIT"
@@ -124,9 +109,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
             exit_price = current_candle["close"]
 
         if exit_reason:
-            # Datum für DB
             exit_date_str = current_candle["date"].strftime("%Y-%m-%d")
-
             self._close_trade_in_db(
                 db, trade["id"], exit_reason, exit_price, exit_date=exit_date_str
             )
@@ -142,12 +125,10 @@ class DipBuyerStrategy(BaseTradeStrategy):
         status = trade["status"]
         symbol = trade["symbol"]
 
-        # --- A) Entry Order (CREATED -> Order für T+1) ---
+        # --- A) Entry Order (CREATED) ---
         if status == "CREATED":
             entry_price = float(trade["entry_price"])
-
-            # Vortages-High für LOC Exit Order (Falls am Fill-Tag schon relevant?)
-            # Hier nehmen wir das High der letzten bekannten Kerze (Signal-Tag)
+            # Fallback für Bracket-Exit (Signal-Tag High)
             prev_day_high = (
                 float(df_history.iloc[-1]["high"])
                 if not df_history.empty
@@ -157,9 +138,6 @@ class DipBuyerStrategy(BaseTradeStrategy):
             qty = max(1, int(budget / entry_price))
             db.update_trade_quantity(trade["id"], qty)
 
-            # Order Setup: Limit Entry + LOC Exit (Bracket)
-            # Hinweis: Manche Broker unterstützen LOC nicht als Bracket-Exit.
-            # Hier gehen wir davon aus, dass es geht oder die Engine es splittet.
             return Order(
                 id=f"{symbol}_DIP_ENTRY",
                 symbol=symbol,
@@ -173,18 +151,13 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
         # --- B) Management Order (ACTIVE) ---
         elif status == "ACTIVE":
-            # entry_date ist jetzt das echte Fill Date
             entry_date_ts = pd.Timestamp(str(trade["entry_date"]).split(" ")[0])
-
-            # Wie viele Tage sind wir schon im Trade?
             df_since = df_history[df_history["date"] >= entry_date_ts]
-            trading_days = len(df_since) - 1  # Tag 0 = Fill
+            trading_days = len(df_since) - 1
 
-            # Wir generieren Orders für MORGEN.
             next_trading_day_idx = trading_days + 1
-
             if next_trading_day_idx > 7:
-                return None  # Überfällig / TimeStop greift eh
+                return None
 
             entry_price = float(trade["entry_price"])
             atr = float(trade["atr_at_entry"])
@@ -198,14 +171,9 @@ class DipBuyerStrategy(BaseTradeStrategy):
             prev_day_high = round(float(df_history.iloc[-1]["high"]), 2)
 
             exits = []
-
-            # 1. Take Profit (Immer aktiv)
             exits.append(OrderLeg(action="SELL", type="LMT", price=tp_price, qty=qty))
 
-            # 2. LOC / Time Stop
-            # Ab Tag 1 (Overnight) LOC aktivieren
             if next_trading_day_idx >= 1:
-                # Am 7. Tag MOC (Market on Close) Exit erzwingen
                 if next_trading_day_idx >= 7:
                     exits.append(
                         OrderLeg(action="SELL", type="MOC", price=0.0, qty=qty)

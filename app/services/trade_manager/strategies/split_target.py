@@ -16,10 +16,6 @@ class SplitTargetStrategy(BaseTradeStrategy):
     - Signal Kerze: Tag 0 (Basis für Setup)
     - Entry: Stop Buy @ High der Signal Kerze
     - Stop Loss: Low der Signal Kerze (Initial)
-    - Risk (R): Entry - SL
-    - Take Profit 1: 50% @ 1R (Trade bleibt ACTIVE)
-    - Take Profit 3: 50% @ 3R (Trade schließt)
-    - Time Stop: 10 Tage nach Entry.
     """
 
     def _get_risk_params(
@@ -30,29 +26,28 @@ class SplitTargetStrategy(BaseTradeStrategy):
         Returns: (sl_price, tp1_price, tp3_price)
         """
         entry_price = float(trade["entry_price"])
-        entry_date_ts = pd.Timestamp(str(trade["entry_date"]).split(" ")[0])
 
-        # 1. Stop Loss ermitteln (Low der Signalkerze)
-        # Wir suchen die Zeile in der History, die dem entry_date entspricht
-        signal_candle = df_history[df_history["date"] == entry_date_ts]
+        # WICHTIG: Die Parameter basieren auf der SIGNAL-Kerze.
+        # Wenn der Trade gefüllt ist, ist entry_date != signal_date.
+        # Wir müssen also signal_date nutzen, um die Kerze zu finden.
+        target_date_val = trade.get("signal_date") or trade["entry_date"]
+        target_date_ts = pd.Timestamp(str(target_date_val).split(" ")[0])
+
+        # Wir suchen die Zeile in der History, die dem signal_date entspricht
+        signal_candle = df_history[df_history["date"] == target_date_ts]
 
         if not signal_candle.empty:
             sl_price = float(signal_candle.iloc[0]["low"])
         else:
-            # Fallback, falls History fehlt: 1% Risk
             logger.warning(
-                f"[{trade['symbol']}] Signalkerze ({entry_date_ts}) nicht in History gefunden! Nutze 1% Fallback."
+                f"[{trade['symbol']}] Signalkerze ({target_date_ts}) nicht in History gefunden! Nutze 1% Fallback."
             )
             sl_price = entry_price * 0.99
 
-        # Safety: Falls SL >= Entry (z.B. Datenfehler), erzwinge Mindestabstand
         if sl_price >= entry_price:
             sl_price = entry_price * 0.99
 
-        # 2. Risk berechnen (R)
         risk_per_share = entry_price - sl_price
-
-        # 3. Targets berechnen
         tp1_price = entry_price + risk_per_share  # 1R
         tp3_price = entry_price + (3 * risk_per_share)  # 3R
 
@@ -62,25 +57,38 @@ class SplitTargetStrategy(BaseTradeStrategy):
     def check_entry(
         self, trade: dict, candle: pd.Series, db: SignalDatabase
     ) -> Optional[str]:
-        # Nur prüfen, wenn Kerze NACH Entry Datum (Tag 0)
-        entry_date_ts = pd.Timestamp(str(trade["entry_date"]).split(" ")[0])
-        if candle["date"] < entry_date_ts:
+        # Nur prüfen, wenn Kerze NACH Signal Datum (T+1)
+        signal_date_str = trade.get("signal_date") or trade["entry_date"]
+        signal_date_ts = pd.Timestamp(str(signal_date_str).split(" ")[0])
+
+        if candle["date"] <= signal_date_ts:
             return None
 
         entry_price = float(trade["entry_price"])
 
         # STOP BUY LOGIK: High >= Entry
         if candle["high"] >= entry_price:
-            db.update_trade_status(trade["id"], "ACTIVE")
-            return f"✅ **FILLED (Stop Buy)**: {trade['symbol']} @ {entry_price} (Breakout)"
+            # DB Update: Fill Datum setzen
+            fill_date_str = candle["date"].strftime("%Y-%m-%d")
+            try:
+                with db._get_conn() as conn:
+                    conn.execute(
+                        "UPDATE active_trades SET status = 'ACTIVE', entry_date = ? WHERE id = ?",
+                        (fill_date_str, trade["id"]),
+                    )
+                    conn.commit()
+            except Exception as e:
+                logger.error(f"DB Update Error: {e}")
 
-        db.update_trade_status(trade["id"], "MISSED", "NO_FILL")
-        return f"❌ **MISSED**: {trade['symbol']} - Entry High nicht erreicht."
+            return f"✅ **FILLED (Stop Buy)**: {trade['symbol']} @ {entry_price} am {fill_date_str}"
+
+        return None
 
     @override
     def manage_active_trade(
         self, trade: dict, df_history: pd.DataFrame, db: SignalDatabase
     ) -> Optional[str]:
+        # Management ab Fill Date
         entry_date_ts = pd.Timestamp(str(trade["entry_date"]).split(" ")[0])
         df_since = df_history[df_history["date"] >= entry_date_ts].reset_index(
             drop=True
@@ -89,12 +97,11 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if df_since.empty:
             return None
 
-        # Zählweise: Tag 0 ist Signal, Tag 1 ist Entry-Tag.
-        # Time Stop zählt ab Tag 1.
+        # Zählweise: Tag 0 ist Fill Tag.
         trading_days = len(df_since) - 1
 
         current_candle = df_since.iloc[-1]
-        exit_date_str = current_candle["date"].strftime("%Y-%m-%d")  # Datum für DB
+        exit_date_str = current_candle["date"].strftime("%Y-%m-%d")
         trade_id = trade["id"]
         symbol = trade["symbol"]
 
@@ -198,22 +205,16 @@ class SplitTargetStrategy(BaseTradeStrategy):
             active_qty = max(1, current_qty // 2)
 
         if trade["status"] == "CREATED":
-            # --- SCHRITT 1: Initial Order ---
-            # Entry Stop Buy + Stop Loss (OTO: One-Triggers-Other)
-            # Take Profits werden hier NOCH NICHT gesendet.
-
             # Risk Based Quantity (100$ Risk)
             risk_budget = 100.0
             if risk_per_share > 0:
                 qty_total = int(risk_budget / risk_per_share)
             else:
                 qty_total = 1
-
             qty_total = max(2, qty_total)
             db.update_trade_quantity(trade["id"], qty_total)
 
             exits = [
-                # Nur Stop Loss für die initiale Order
                 OrderLeg(action="SELL", type="STP", price=sl_price, qty=None),
             ]
 
@@ -221,45 +222,32 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 id=f"{symbol}_SPLIT_INIT",
                 symbol=symbol,
                 qty=qty_total,
-                mode="BRACKET",  # Broker interpretiert dies als OTO (Entry -> Exits)
+                mode="BRACKET",
                 entry=OrderLeg(action="BUY", type="STP", price=entry_price),
                 exits=exits,
             )
 
         elif trade["status"] == "ACTIVE":
-            # --- SCHRITT 2: Active Management ---
-            # Order ist gefüllt. Jetzt senden wir die Take Profits und den SL nach.
-            # (OCO: One-Cancels-Other für die Exits)
-
             exits = []
 
             if not is_phase_2:
-                # Phase 1: SL + TP1 + TP3
                 qty_tp1 = active_qty // 2
                 qty_tp3 = active_qty - qty_tp1
 
-                # Stop Loss (Full remaining Qty)
                 exits.append(
                     OrderLeg(action="SELL", type="STP", price=sl_price, qty=active_qty)
                 )
-                # Take Profit 1 (50%)
                 exits.append(
                     OrderLeg(action="SELL", type="LMT", price=tp1_price, qty=qty_tp1)
                 )
-                # Take Profit 3 (Rest 50%)
                 exits.append(
                     OrderLeg(action="SELL", type="LMT", price=tp3_price, qty=qty_tp3)
                 )
-
             else:
-                # Phase 2: SL auf Break Even + TP3
                 be_sl = entry_price
-
-                # Stop Loss auf Entry (Break Even)
                 exits.append(
                     OrderLeg(action="SELL", type="STP", price=be_sl, qty=active_qty)
                 )
-                # Take Profit 3 (Restliche Position)
                 exits.append(
                     OrderLeg(action="SELL", type="LMT", price=tp3_price, qty=active_qty)
                 )
@@ -268,7 +256,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 id=f"{symbol}_SPLIT_MGMT",
                 symbol=symbol,
                 qty=active_qty,
-                mode="MANAGE",  # Keine Entry-Leg, nur Exits verwalten
+                mode="MANAGE",
                 entry=None,
                 exits=exits,
             )

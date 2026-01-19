@@ -17,14 +17,12 @@ class DipBuyerStrategy(BaseStrategy):
     name = "DipBuyer"
 
     # --- KONFIGURATION / KONSTANTEN ---
-    # Filter-Schwellenwerte als Klassen-Konstanten
-    MIN_VOLUME = 1_000_000  # Mindestvolumen (SMA 20)
-    MIN_PRICE = 5.0  # Mindestpreis in Währung
-    MAX_ATR_R3 = -1.0  # ATR R3 muss kleiner sein als dieser Wert (Überverkauft)
-    MIN_VOLA_RATIO = 0.03  # Mindest-Volatilität (ATR5 / Close)
-    MAX_IBS = 0.2  # IBS (Internal Bar Strength) muss kleiner sein als 0.2
+    MIN_VOLUME = 1_000_000
+    MIN_PRICE = 5.0
+    MAX_ATR_R3 = -1.0
+    MIN_VOLA_RATIO = 0.03
+    MAX_IBS = 0.2
 
-    # Indikator-Einstellungen (Optional, aber empfohlen für Konsistenz)
     SMA_TREND_WINDOW = 200
     VOL_SMA_WINDOW = 20
 
@@ -47,7 +45,6 @@ class DipBuyerStrategy(BaseStrategy):
         indicators = self._calculate_indicators(market_data)
 
         total_len = len(indicators["close"])
-        # Nutzung der Konstante für den SMA-Vorlauf
         start_idx = (
             max(self.SMA_TREND_WINDOW, total_len - days) if days > 0 else total_len - 1
         )
@@ -72,9 +69,11 @@ class DipBuyerStrategy(BaseStrategy):
 
     def _create_trades(self, results: list[dict[str, Any]]) -> None:
         for res in results:
+            # KORREKTUR: Übergabe des Signal-Datums (res["date"]).
+            # Die Datenbank berechnet entry_date (T+1) automatisch.
             self.signals_db.add_trade(
                 symbol=res["symbol"],
-                entry_date=res["date"],
+                signal_date=res["date"],  # <--- Wichtig: Signal Date!
                 entry_price=res["entry_limit"],
                 atr_at_entry=res["atr5"],
                 quantity=1,
@@ -114,22 +113,17 @@ class DipBuyerStrategy(BaseStrategy):
             data["volume"],
         )
 
-        # Nutzung der Konstanten für Fenstergrößen
         sma200 = close.rolling(window=self.SMA_TREND_WINDOW, min_periods=150).mean()
         vol_sma20 = volume.rolling(window=self.VOL_SMA_WINDOW).mean()
 
-        # RSI Calculation
         delta = close.diff()
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
-
         avg_gain = gain.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
         avg_loss = loss.ewm(alpha=1 / 14, min_periods=14, adjust=False).mean()
-
         rs = avg_gain / avg_loss
         rsi = 100 - (100 / (1 + rs))
 
-        # ATR Calculation
         prev_close = close.shift(1)
         tr_values = np.maximum.reduce(
             [
@@ -162,7 +156,6 @@ class DipBuyerStrategy(BaseStrategy):
         }
 
     def _apply_logic(self, ind: dict[str, Any], idx_pos: int) -> list[dict[str, Any]]:
-        # Daten für den aktuellen Zeitpunkt extrahieren
         i_vol_sma = ind["vol_sma20"].iloc[idx_pos]
         i_close = ind["close"].iloc[idx_pos]
         i_open = ind["open"].iloc[idx_pos]
@@ -173,7 +166,6 @@ class DipBuyerStrategy(BaseStrategy):
         i_atr5 = ind["atr5"].iloc[idx_pos]
         i_ibs = ind["ibs"].iloc[idx_pos]
 
-        # Vektorisierte Maske mit KLASSEN-KONSTANTEN (self.NAME)
         mask = (
             (i_vol_sma > self.MIN_VOLUME)
             & (i_close > self.MIN_PRICE)
