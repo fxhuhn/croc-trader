@@ -20,13 +20,8 @@ from .services.database import (
 )
 from .services.market_data import MarketDataWorker
 
-# IMPORT DER NEUEN STRATEGIE
-from .services.screener import (
-    DipBuyerStrategy,
-    ScreenerEngine,
-    TurnoverTimingStrategy,
-    WebhookFilterStrategy,
-)
+# KORREKTUR: Unbenutzte Strategie-Importe entfernt
+from .services.screener import ScreenerEngine
 from .services.strategy_engine import StrategyEngine
 from .services.telegram import TelegramBot
 from .services.trade_manager import TradeManager

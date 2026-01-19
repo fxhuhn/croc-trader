@@ -177,7 +177,7 @@ class TradeManager:
                 # Finden wo der Entry war (Execution Candle)
                 # Falls wir schon mitten drin sind, starten wir beim ersten Tag nach Entry
 
-                start_idx = 0
+                # KORREKTUR: Unused variable removed
                 if not future_candles.empty:
                     # Wir suchen den Index der ersten Kerze nach Entry Date
                     # Das ist future_candles.iloc[0]
