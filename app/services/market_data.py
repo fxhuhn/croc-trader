@@ -70,6 +70,7 @@ class MarketDatabase:
                 "DELETE FROM market_prices WHERE symbol = ? AND provider = ? AND timeframe = ?",
                 (symbol, provider, timeframe),
             )
+            conn.commit()
 
     def upsert_many(self, records: List[MarketRecord]) -> None:
         if not records:
@@ -83,6 +84,7 @@ class MarketDatabase:
         try:
             with self._get_conn() as conn:
                 conn.executemany(sql, records)
+                conn.commit()
         except sqlite3.Error as e:
             logger.error(f"DB Batch Insert Failed: {e}")
             raise
