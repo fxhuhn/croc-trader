@@ -29,7 +29,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         self.universe = ExchangeSymbol()
 
     def run(self, days: int = 0) -> int:
-        logger.info(f"[{self.name}] Starte Analyse...")
+        logger.info(f"[{self.name}] Starte Analyse (Strikte PDF-Logik)...")
 
         # Mehr Daten laden für den längeren SMA 150 (365 -> 400 Tage Puffer)
         if (data := self._load_market_data(days=400 + days)) is None:
@@ -44,8 +44,9 @@ class TurnoverTimingStrategy(BaseStrategy):
         date_str = target_ts.strftime("%Y-%m-%d")
         all_hits: list[dict[str, Any]] = []
 
+        # 1. ANPASSUNG: Russell 1000 statt DOW-30 gemäß PDF "Universum"
         universes = [
-            ("DOW-30", self.universe.dow_30),
+            ("RUSSELL-1000", self.universe.russell_1000),
             ("NASDAQ-100", self.universe.nasdaq_100),
             ("SP-500", self.universe.sp_500),
         ]
@@ -53,9 +54,11 @@ class TurnoverTimingStrategy(BaseStrategy):
         processed_symbols: set[str] = set()
 
         for idx_name, symbol_list in universes:
+            # 2. ANPASSUNG: Strikte Logik in _scan_universe (erst Top 20 Turnover, dann Trend)
             candidates = self._scan_universe(symbol_list, indicators, idx_pos, idx_name)
 
-            # Regel: Sortieren nach Turnover SMA (Descending)
+            # Ranking: Aus den verbleibenden Kandidaten die Top 4 nach Turnover wählen
+            # (Die Liste kommt bereits sortiert aus _scan_universe, zur Sicherheit sortieren wir nochmal)
             candidates.sort(key=lambda x: x["turnover_sma20"], reverse=True)
 
             # Top 4 auswählen
@@ -83,7 +86,7 @@ class TurnoverTimingStrategy(BaseStrategy):
             self.signals_db.save_screener_turnover_timing(all_hits)
             if days == 0:
                 self._send_telegram_report(
-                    "🔄 Turnover-Timing (SMA150)", date_str, all_hits
+                    "🔄 Turnover-Timing (Strict)", date_str, all_hits
                 )
 
         logger.info(f"[{self.name}] Fertig: {len(all_hits)} Top-Aktien identifiziert.")
@@ -123,7 +126,13 @@ class TurnoverTimingStrategy(BaseStrategy):
     def _scan_universe(
         self, symbol_list: list[str], ind: dict[str, Any], idx_pos: int, idx_name: str
     ) -> list[dict[str, Any]]:
-        candidates = []
+        """
+        Implementiert die strikte Logik gemäß PDF:
+        1. Turnover berechnen für alle.
+        2. Die Top 20 nach Turnover isolieren.
+        3. Nur diese 20 auf SMA150 prüfen.
+        """
+        raw_candidates = []
 
         # Effizientere Lookup-Struktur
         close_slice = ind["close"].iloc[idx_pos]
@@ -131,6 +140,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         turn_slice = ind["turnover_sma20"].iloc[idx_pos]
         atr3_slice = ind["atr3"].iloc[idx_pos]
 
+        # Schritt 1: Daten für alle Symbole sammeln
         for symbol in symbol_list:
             if symbol not in close_slice:
                 continue
@@ -144,21 +154,35 @@ class TurnoverTimingStrategy(BaseStrategy):
                 if pd.isna(close) or pd.isna(sma150) or pd.isna(turnover):
                     continue
 
-                # [cite_start]UPDATE: Filter auf SMA 150 (statt 100) [cite: 13, 15]
-                if close > sma150:
-                    candidates.append(
-                        {
-                            "symbol": symbol,
-                            "close": close,
-                            "atr3": atr3,
-                            "turnover_sma20": turnover,
-                            "source_index": idx_name,
-                        }
-                    )
+                # Wir speichern vorerst alle validen Datensätze
+                raw_candidates.append(
+                    {
+                        "symbol": symbol,
+                        "close": close,
+                        "sma150": sma150,
+                        "atr3": atr3,
+                        "turnover_sma20": turnover,
+                        "source_index": idx_name,
+                    }
+                )
             except Exception as e:
                 logger.debug(f"Fehler bei Symbol {symbol}: {e}")
 
-        return candidates
+        # Schritt 2: "Die 20 Aktien mit dem höchsten Turnover suchen"
+        # Sortieren nach Turnover Absteigend
+        raw_candidates.sort(key=lambda x: x["turnover_sma20"], reverse=True)
+
+        # Die Top 20 isolieren
+        top_20_turnover = raw_candidates[:20]
+
+        # Schritt 3: "Trendfilter: Diese Aktien müssen über ihrem 150-Tage Durchschnitt notieren"
+        final_candidates = []
+        for cand in top_20_turnover:
+            if cand["close"] > cand["sma150"]:
+                final_candidates.append(cand)
+
+        # Diese Liste geht zurück an run() und wird dort auf max 4 beschnitten
+        return final_candidates
 
     def _get_target_analysis_date(self) -> datetime.date:
         today = datetime.now().date()
