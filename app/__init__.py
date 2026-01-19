@@ -168,7 +168,7 @@ def create_app(config_object=settings):
     # B) Market Data Worker
     market_worker = MarketDataWorker(
         db_path=Path(db_stocks),
-        run_on_start=False,
+        run_on_start=True,
     )
     market_worker.start()
     app.extensions["market_worker"] = market_worker
