@@ -304,6 +304,15 @@ class SignalDatabase:
                 except sqlite3.OperationalError:
                     pass
 
+                # --- NEU: Migration für exit_date ---
+                try:
+                    conn.execute("ALTER TABLE active_trades ADD COLUMN exit_date TEXT")
+                    logger.info(
+                        "Migration: Spalte 'exit_date' zu Tabelle 'active_trades' hinzugefügt."
+                    )
+                except sqlite3.OperationalError:
+                    pass  # Existiert schon
+
                 conn.commit()
 
         except sqlite3.Error as e:
@@ -370,7 +379,7 @@ class SignalDatabase:
             conn.executemany(
                 "UPDATE signals SET exchange = ? WHERE symbol = ?", update_data
             )
-            conn.commit()
+            conn.commit()  # <--- FIX: Änderungen speichern!
             return conn.total_changes
 
     def save_screener_dip_buyer(self, results: List[dict]):

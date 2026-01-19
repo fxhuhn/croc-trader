@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+from datetime import datetime
 
 import pandas as pd
 from flask import Blueprint, current_app, render_template_string, request
@@ -80,6 +81,29 @@ def view_active_trades_dashboard() -> str:
         t_dict["pnl_val"] = None
         t_dict["pnl_pct"] = None
         # --- FIX END ---
+
+        # --- NEU: Haltedauer Berechnung ---
+        entry_str = t_dict.get("entry_date")
+        exit_str = t_dict.get("exit_date")
+        display_exit = exit_str
+        days_held = "-"
+
+        if not display_exit and t_dict.get("closed_at"):
+            # Backwards compatibility: closed_at format is "YYYY-MM-DD HH:MM:SS"
+            display_exit = str(t_dict["closed_at"]).split(" ")[0]
+
+        if entry_str and display_exit:
+            try:
+                d1 = datetime.strptime(str(entry_str).split(" ")[0], "%Y-%m-%d")
+                d2 = datetime.strptime(str(display_exit).split(" ")[0], "%Y-%m-%d")
+                delta = (d2 - d1).days
+                days_held = str(delta)
+            except Exception:
+                pass
+
+        t_dict["display_exit_date"] = display_exit or "-"
+        t_dict["holding_days"] = days_held
+        # --- END NEU ---
 
         status = str(t_dict.get("status", "")).upper()
 

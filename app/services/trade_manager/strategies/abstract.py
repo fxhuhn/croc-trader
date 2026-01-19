@@ -46,7 +46,12 @@ class BaseTradeStrategy(ABC):
         pass
 
     def _close_trade_in_db(
-        self, db: SignalDatabase, trade_id: int, reason: str, price: float
+        self,
+        db: SignalDatabase,
+        trade_id: int,
+        reason: str,
+        price: float,
+        exit_date: Optional[str] = None,
     ):
         """Hilfsmethode zum sauberen Schließen in der DB."""
         try:
@@ -57,10 +62,11 @@ class BaseTradeStrategy(ABC):
                     SET status = 'CLOSED',
                         exit_reason = ?,
                         exit_price = ?,
+                        exit_date = ?,
                         closed_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
-                    (reason, price, trade_id),
+                    (reason, price, exit_date, trade_id),
                 )
                 conn.commit()
         except Exception as e:

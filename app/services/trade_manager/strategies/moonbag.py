@@ -52,6 +52,7 @@ class MoonbagStrategy(BaseTradeStrategy):
             return None
 
         current_candle = df_since.iloc[-1]
+        exit_date_str = current_candle["date"].strftime("%Y-%m-%d")
 
         # --- 1. STOP LOSS PRÜFUNG ---
         # Wir brauchen das Low vom Setup-Tag als Stop Loss
@@ -62,7 +63,13 @@ class MoonbagStrategy(BaseTradeStrategy):
 
             # Hat das heutige Low den SL berührt/unterschritten?
             if current_candle["low"] <= stop_loss_price:
-                self._close_trade_in_db(db, trade["id"], "STOP_LOSS", stop_loss_price)
+                self._close_trade_in_db(
+                    db,
+                    trade["id"],
+                    "STOP_LOSS",
+                    stop_loss_price,
+                    exit_date=exit_date_str,
+                )
                 pct = round(
                     (stop_loss_price - float(trade["entry_price"]))
                     / float(trade["entry_price"])
@@ -78,7 +85,9 @@ class MoonbagStrategy(BaseTradeStrategy):
         # --- 2. TIME STOP PRÜFUNG ---
         if len(df_since) >= 7:
             exit_price = current_candle["close"]
-            self._close_trade_in_db(db, trade["id"], "TIME_STOP", exit_price)
+            self._close_trade_in_db(
+                db, trade["id"], "TIME_STOP", exit_price, exit_date=exit_date_str
+            )
             return f"⏰ **TIME STOP**: {symbol} wird geschlossen."
 
         return None

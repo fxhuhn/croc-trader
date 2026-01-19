@@ -94,6 +94,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
         trading_days = len(df_since) - 1
 
         current_candle = df_since.iloc[-1]
+        exit_date_str = current_candle["date"].strftime("%Y-%m-%d")  # Datum für DB
         trade_id = trade["id"]
         symbol = trade["symbol"]
 
@@ -119,7 +120,9 @@ class SplitTargetStrategy(BaseTradeStrategy):
 
             # 1. Stop Loss (Initial SL: Low der Signalkerze)
             if current_candle["low"] <= sl_price:
-                self._close_trade_in_db(db, trade_id, "STOP_LOSS", sl_price)
+                self._close_trade_in_db(
+                    db, trade_id, "STOP_LOSS", sl_price, exit_date=exit_date_str
+                )
                 return f"🛑 **STOP LOSS**: {symbol} @ {sl_price:.2f} (Signal Low unterschritten)"
 
             # 2. TP1 (1R)
@@ -137,13 +140,17 @@ class SplitTargetStrategy(BaseTradeStrategy):
             # 1. TP3 (3R)
             if current_candle["high"] >= tp3_price:
                 avg_exit_price = (tp1_locked_price + tp3_price) / 2
-                self._close_trade_in_db(db, trade_id, "TP1_TP3_WIN", avg_exit_price)
+                self._close_trade_in_db(
+                    db, trade_id, "TP1_TP3_WIN", avg_exit_price, exit_date=exit_date_str
+                )
                 return f"🚀 **TP3 HIT**: {symbol}. Blended Exit: {avg_exit_price:.2f}"
 
             # 2. Break Even Stop
             if current_candle["low"] <= be_sl:
                 avg_exit_price = (tp1_locked_price + be_sl) / 2
-                self._close_trade_in_db(db, trade_id, "TP1_BE_STOP", avg_exit_price)
+                self._close_trade_in_db(
+                    db, trade_id, "TP1_BE_STOP", avg_exit_price, exit_date=exit_date_str
+                )
                 return f"🛡️ **BE STOP**: {symbol} Rest ausgestoppt. Blended Exit: {avg_exit_price:.2f}"
 
         # Time Stop (10 Tage nach Entry)
@@ -156,7 +163,9 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 final_price = (tp1_locked_price + current_price) / 2
                 reason = "TIME_STOP_PARTIAL"
 
-            self._close_trade_in_db(db, trade_id, reason, final_price)
+            self._close_trade_in_db(
+                db, trade_id, reason, final_price, exit_date=exit_date_str
+            )
             return f"⏰ **TIME STOP**: {symbol} geschlossen nach 10 Tagen."
 
         return None

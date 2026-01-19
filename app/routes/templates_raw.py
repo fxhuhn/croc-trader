@@ -499,6 +499,7 @@ HTML_TEMPLATES = {
                     <tr>
                         <th>Entry Date</th>
                         <th>Exit Date</th>
+                        <th>Days</th>
                         <th>Symbol</th>
                         <th>Strategie</th>
                         <th>Status</th>
@@ -511,7 +512,8 @@ HTML_TEMPLATES = {
                     {% for row in history %}
                     <tr>
                         <td style="font-size: 0.9em; color: #555;">{{ row['entry_date'] }}</td>
-                        <td style="font-size: 0.9em; color: #555;">{{ row['closed_at'] or '-' }}</td>
+                        <td style="font-size: 0.9em; color: #555;">{{ row['display_exit_date'] }}</td>
+                        <td style="font-size: 0.9em; text-align: center;">{{ row['holding_days'] }}</td>
                         <td style="font-weight:bold;">{{ row['symbol'] }}</td>
                         <td>{{ row['strategy'] }}</td>
                         <td><span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span></td>
@@ -542,9 +544,9 @@ HTML_TEMPLATES = {
                 tr = table.getElementsByTagName("tr");
 
                 for (i = 1; i < tr.length; i++) {
-                    // Spalten Indices angepasst (Symbol=2, Strategie=3)
-                    var tdSymbol = tr[i].getElementsByTagName("td")[2];
-                    var tdStrat = tr[i].getElementsByTagName("td")[3];
+                    // Spalten Indices angepasst (Symbol=2, Strategie=3 -> jetzt durch Days verschoben auf Symbol=3, Strat=4)
+                    var tdSymbol = tr[i].getElementsByTagName("td")[3];
+                    var tdStrat = tr[i].getElementsByTagName("td")[4];
 
                     if (tdSymbol || tdStrat) {
                         var txtSymbol = tdSymbol.textContent || tdSymbol.innerText;

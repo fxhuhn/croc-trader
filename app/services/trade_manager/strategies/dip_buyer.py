@@ -93,7 +93,12 @@ class DipBuyerStrategy(BaseTradeStrategy):
             exit_price = current_candle["close"]
 
         if exit_reason:
-            self._close_trade_in_db(db, trade["id"], exit_reason, exit_price)
+            # Datum für die Datenbank
+            exit_date_str = current_candle["date"].strftime("%Y-%m-%d")
+
+            self._close_trade_in_db(
+                db, trade["id"], exit_reason, exit_price, exit_date=exit_date_str
+            )
             pct = round((exit_price - entry_price) / entry_price * 100, 2)
             return f"💰 **EXIT {trade['symbol']}**: {exit_reason} @ {exit_price:.2f} ({pct}%)"
 
