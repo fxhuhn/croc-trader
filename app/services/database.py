@@ -370,6 +370,7 @@ class SignalDatabase:
             conn.executemany(
                 "UPDATE signals SET exchange = ? WHERE symbol = ?", update_data
             )
+            conn.commit()
             return conn.total_changes
 
     def save_screener_dip_buyer(self, results: List[dict]):
