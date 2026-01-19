@@ -64,7 +64,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
     ) -> Optional[str]:
         # Nur prüfen, wenn Kerze NACH Entry Datum (Tag 0)
         entry_date_ts = pd.Timestamp(str(trade["entry_date"]).split(" ")[0])
-        if candle["date"] <= entry_date_ts:
+        if candle["date"] < entry_date_ts:
             return None
 
         entry_price = float(trade["entry_price"])
