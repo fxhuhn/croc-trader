@@ -362,10 +362,14 @@ class SignalDatabase:
         mapping_dict = mapper._mapping
         if not mapping_dict:
             return 0
+
         update_data = [(real, sym) for sym, real in mapping_dict.items()]
+
         with self._get_conn() as conn:
+            # Nur updaten, wenn aktuell 'BATS' drin steht
             conn.executemany(
-                "UPDATE signals SET exchange = ? WHERE symbol = ?", update_data
+                "UPDATE signals SET exchange = ? WHERE symbol = ? AND exchange = 'BATS'",
+                update_data,
             )
             conn.commit()
             return conn.total_changes
