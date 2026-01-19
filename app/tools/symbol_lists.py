@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import List, Optional
 
 import pandas as pd
@@ -13,65 +14,76 @@ class ExchangeSymbol:
     """
     Singleton class to fetch and cache stock symbols from Wikipedia.
     Uses dynamic table search to be robust against page layout changes.
+    Thread-safe implementation to prevent race conditions during initialization.
     """
 
     _instance: Optional["ExchangeSymbol"] = None
     _initialized: bool = False
+    _lock = threading.Lock()  # Lock für Thread-Safety
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
+            with cls._lock:
+                # Double-checked locking für die Instanz
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
-        # Singleton: Nur einmal initialisieren
+        # Schneller Check ohne Lock (Performance)
         if ExchangeSymbol._initialized:
             return
 
-        logger.info("Initializing ExchangeSymbol singleton...")
+        # Kritischer Abschnitt: Nur ein Thread darf initialisieren
+        with ExchangeSymbol._lock:
+            # Zweiter Check innerhalb des Locks (falls ein anderer Thread gerade fertig wurde)
+            if ExchangeSymbol._initialized:
+                return
 
-        self._sp_500: List[str] = []
-        self._nasdaq_100: List[str] = []
-        self._dow_30: List[str] = []
-        self._russell_1000: List[str] = []
+            logger.info("Initializing ExchangeSymbol singleton...")
 
-        # 1. S&P 500
-        self._sp_500 = self._fetch_from_wikipedia(
-            url="https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
-            search_columns=["Symbol", "Ticker"],
-            name="S&P 500",
-        )
+            self._sp_500: List[str] = []
+            self._nasdaq_100: List[str] = []
+            self._dow_30: List[str] = []
+            self._russell_1000: List[str] = []
 
-        # 2. NASDAQ-100
-        self._nasdaq_100 = self._fetch_from_wikipedia(
-            url="https://en.wikipedia.org/wiki/Nasdaq-100",
-            search_columns=["Ticker", "Symbol"],
-            name="NASDAQ-100",
-        )
+            # 1. S&P 500
+            self._sp_500 = self._fetch_from_wikipedia(
+                url="https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+                search_columns=["Symbol", "Ticker"],
+                name="S&P 500",
+            )
 
-        # 3. Dow Jones 30
-        self._dow_30 = self._fetch_from_wikipedia(
-            url="https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
-            search_columns=["Symbol", "Ticker"],
-            name="Dow Jones 30",
-        )
+            # 2. NASDAQ-100
+            self._nasdaq_100 = self._fetch_from_wikipedia(
+                url="https://en.wikipedia.org/wiki/Nasdaq-100",
+                search_columns=["Ticker", "Symbol"],
+                name="NASDAQ-100",
+            )
 
-        # 4. Russell 1000
-        # Wir suchen dynamisch nach der Tabelle mit 'Ticker' oder 'Symbol'
-        self._russell_1000 = self._fetch_from_wikipedia(
-            url="https://en.wikipedia.org/wiki/Russell_1000_Index",
-            search_columns=["Symbol", "Ticker", "Company"],
-            name="Russell 1000",
-        )
+            # 3. Dow Jones 30
+            self._dow_30 = self._fetch_from_wikipedia(
+                url="https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
+                search_columns=["Symbol", "Ticker"],
+                name="Dow Jones 30",
+            )
 
-        ExchangeSymbol._initialized = True
-        logger.info(
-            f"✓ ExchangeSymbol initialized: "
-            f"S&P 500={len(self._sp_500)}, "
-            f"NASDAQ-100={len(self._nasdaq_100)}, "
-            f"Dow 30={len(self._dow_30)}, "
-            f"Russell 1000={len(self._russell_1000)}"
-        )
+            # 4. Russell 1000
+            # Wir suchen dynamisch nach der Tabelle mit 'Ticker' oder 'Symbol'
+            self._russell_1000 = self._fetch_from_wikipedia(
+                url="https://en.wikipedia.org/wiki/Russell_1000_Index",
+                search_columns=["Symbol", "Ticker", "Company"],
+                name="Russell 1000",
+            )
+
+            ExchangeSymbol._initialized = True
+            logger.info(
+                f"✓ ExchangeSymbol initialized: "
+                f"S&P 500={len(self._sp_500)}, "
+                f"NASDAQ-100={len(self._nasdaq_100)}, "
+                f"Dow 30={len(self._dow_30)}, "
+                f"Russell 1000={len(self._russell_1000)}"
+            )
 
     def _fetch_from_wikipedia(
         self, url: str, search_columns: List[str], name: str
