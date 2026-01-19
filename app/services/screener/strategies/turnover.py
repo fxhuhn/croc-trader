@@ -31,7 +31,8 @@ class TurnoverTimingStrategy(BaseStrategy):
     def run(self, days: int = 0) -> int:
         logger.info(f"[{self.name}] Starte Analyse...")
 
-        if (data := self._load_market_data(days=365 + days)) is None:
+        # Mehr Daten laden für den längeren SMA 150 (365 -> 400 Tage Puffer)
+        if (data := self._load_market_data(days=400 + days)) is None:
             return 0
 
         indicators = self._calculate_indicators(data)
@@ -44,7 +45,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         all_hits: list[dict[str, Any]] = []
 
         universes = [
-            # ("DOW-30", self.universe.dow_30),
+            ("DOW-30", self.universe.dow_30),
             ("NASDAQ-100", self.universe.nasdaq_100),
             ("SP-500", self.universe.sp_500),
         ]
@@ -81,7 +82,9 @@ class TurnoverTimingStrategy(BaseStrategy):
         if all_hits:
             self.signals_db.save_screener_turnover_timing(all_hits)
             if days == 0:
-                self._send_telegram_report("🔄 Turnover-Timing", date_str, all_hits)
+                self._send_telegram_report(
+                    "🔄 Turnover-Timing (SMA150)", date_str, all_hits
+                )
 
         logger.info(f"[{self.name}] Fertig: {len(all_hits)} Top-Aktien identifiziert.")
         return len(all_hits)
@@ -113,7 +116,8 @@ class TurnoverTimingStrategy(BaseStrategy):
 
         else:
             total_len = len(close_df)
-            idx_pos = max(100, total_len - days)
+            # Puffer erhöhen
+            idx_pos = max(150, total_len - days)
             return close_df.index[idx_pos], idx_pos
 
     def _scan_universe(
@@ -123,7 +127,7 @@ class TurnoverTimingStrategy(BaseStrategy):
 
         # Effizientere Lookup-Struktur
         close_slice = ind["close"].iloc[idx_pos]
-        sma100_slice = ind["sma100"].iloc[idx_pos]
+        sma150_slice = ind["sma150"].iloc[idx_pos]
         turn_slice = ind["turnover_sma20"].iloc[idx_pos]
         atr3_slice = ind["atr3"].iloc[idx_pos]
 
@@ -133,14 +137,15 @@ class TurnoverTimingStrategy(BaseStrategy):
 
             try:
                 close = close_slice[symbol]
-                sma100 = sma100_slice[symbol]
+                sma150 = sma150_slice[symbol]
                 turnover = turn_slice[symbol]
                 atr3 = atr3_slice[symbol]
 
-                if pd.isna(close) or pd.isna(sma100) or pd.isna(turnover):
+                if pd.isna(close) or pd.isna(sma150) or pd.isna(turnover):
                     continue
 
-                if close > sma100:
+                # [cite_start]UPDATE: Filter auf SMA 150 (statt 100) [cite: 13, 15]
+                if close > sma150:
                     candidates.append(
                         {
                             "symbol": symbol,
@@ -190,9 +195,13 @@ class TurnoverTimingStrategy(BaseStrategy):
     def _calculate_indicators(self, data: dict[str, pd.DataFrame]) -> dict[str, Any]:
         close = data["close"]
 
-        sma100 = close.rolling(window=100, min_periods=80).mean()
+        # [cite_start]UPDATE: SMA 150 statt SMA 100 [cite: 13, 15]
+        sma150 = close.rolling(window=150, min_periods=120).mean()
+
+        # [cite_start]Turnover SMA 20 (Preis * Volumen) [cite: 15]
         turnover_sma20 = (close * data["volume"]).rolling(window=20).mean()
 
+        # [cite_start]ATR 3 (TradingView Style RMA 3 ~= EMA span 5) [cite: 17, 29]
         prev_close = close.shift(1)
         tr_values = np.maximum.reduce(
             [
@@ -209,7 +218,7 @@ class TurnoverTimingStrategy(BaseStrategy):
 
         return {
             "close": close,
-            "sma100": sma100,
+            "sma150": sma150,
             "turnover_sma20": turnover_sma20,
             "atr3": atr3,
         }
