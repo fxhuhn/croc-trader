@@ -3,7 +3,8 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from flask import Blueprint, Response, current_app, jsonify, request
+# 1. HIER 'abort' HINZUFÜGEN
+from flask import Blueprint, Response, abort, current_app, jsonify, request
 
 from app.models import CrocSignal
 
@@ -11,6 +12,29 @@ from .security import require_ip_whitelist
 
 logger = logging.getLogger(__name__)
 api_bp = Blueprint("api", __name__)
+
+# 2. HIER DIE LISTE DER ZU BLOCKENDEN DATEIEN DEFINIEREN
+BLOCKED_EXTENSIONS = (".php", ".aspx", ".jsp", ".cgi", ".env", ".git", ".htaccess")
+
+
+# 3. HIER DER 'TÜRSTEHER'-CODE
+@api_bp.before_request
+def block_script_kiddies():
+    """
+    Prüft vor jeder Anfrage in diesem Blueprint, ob nach Skripten
+    gesucht wird, und bricht sofort mit 404 ab.
+    """
+    path = request.path.lower()
+
+    # Check auf Dateiendungen
+    if path.endswith(BLOCKED_EXTENSIONS):
+        logger.warning(f"Blocked script scan: {path} from {request.remote_addr}")
+        abort(404)
+
+    # Check auf typische Wordpress/Admin Pfade
+    if "wp-admin" in path or "wp-login" in path or "php" in path:
+        logger.warning(f"Blocked WP scan: {path} from {request.remote_addr}")
+        abort(404)
 
 
 @api_bp.route("/health", methods=["GET"])
@@ -128,7 +152,6 @@ def trigger_trades_backfill() -> Response:
 @require_ip_whitelist
 def trigger_market_update() -> Response:
     """Stößt das reguläre Markt-Update (letzte 30 Tage) im Hintergrund an."""
-    # KORREKTUR: "market_worker" statt "market_data"
     worker = current_app.extensions.get("market_worker")
     if not worker:
         return jsonify({"status": "error", "message": "MarketDataWorker missing"}), 500
@@ -160,7 +183,6 @@ def reload_market_data() -> Response:
             {"status": "error", "message": "Missing 'symbols' list in body"}
         ), 400
 
-    # KORREKTUR: "market_worker" statt "market_data"
     worker = current_app.extensions.get("market_worker")
     if not worker:
         return jsonify({"status": "error", "message": "MarketDataWorker missing"}), 500
