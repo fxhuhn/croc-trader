@@ -113,6 +113,7 @@ class TradeManager:
 
                 df_hist = market_cache[symbol]
                 if df_hist.empty:
+                    logger.warning(f"Keine Marktdaten für Symbol gefunden: {symbol}")
                     stats["skipped_no_data"] += 1
                     continue
 
