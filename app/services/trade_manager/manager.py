@@ -66,7 +66,6 @@ class TradeManager:
                     )
 
                     # Migration: Bestehende Entry Dates als Signal Date setzen
-                    # (Annahme: Bisher war entry_date == signal_date)
                     conn.execute(
                         "UPDATE active_trades SET signal_date = entry_date WHERE signal_date IS NULL"
                     )
@@ -113,29 +112,38 @@ class TradeManager:
         }
         db = SignalDatabase(self.db_path)
 
-        # 1. Trades laden
+        # 1. Trades laden (FIX: Datum-Filter entfernt, da unzuverlässig bei Timezones)
         with db._get_conn() as conn:
+            # Debugging: Wie viele Trades gibt es überhaupt?
+            total_count = conn.execute("SELECT count(*) FROM active_trades").fetchone()[
+                0
+            ]
+            logger.info(f"DEBUG: Total Trades in DB: {total_count}")
+
             sql = """
                 SELECT * FROM active_trades
-                WHERE (status = 'CREATED' AND signal_date < date('now'))
-                   OR status = 'ACTIVE'
+                WHERE status IN ('CREATED', 'ACTIVE')
                 ORDER BY signal_date ASC
             """
             trades = [dict(row) for row in conn.execute(sql).fetchall()]
 
         if not trades:
-            logger.info("Keine Trades für Backfill gefunden.")
+            logger.info("Keine Trades für Backfill gefunden (Liste leer).")
             return stats
 
+        logger.info(f"Backfill: Verarbeite {len(trades)} Trades...")
         market_cache = {}
 
         for trade in trades:
             stats["processed"] += 1
             symbol = trade["symbol"]
 
-            # WICHTIG: Wir starten beim SIGNAL DATE, nicht beim Entry Date
-            # (da Entry Date bei CREATED oft noch hypothetisch ist)
+            # WICHTIG: Wir starten beim SIGNAL DATE (Fallback Entry Date)
             start_date_str = trade.get("signal_date") or trade["entry_date"]
+
+            if not start_date_str:
+                logger.warning(f"Trade {trade['id']} hat kein Datum. Skipping.")
+                continue
 
             try:
                 strat_impl = self._get_strategy(trade)
@@ -160,7 +168,7 @@ class TradeManager:
                     continue
 
                 # Simulation ab Signal-Tag starten
-                start_ts = pd.Timestamp(start_date_str)
+                start_ts = pd.Timestamp(str(start_date_str).split(" ")[0])
                 future_candles = df_hist[df_hist["date"] >= start_ts].sort_values(
                     "date"
                 )
@@ -182,8 +190,7 @@ class TradeManager:
                     # FALL A: Warten auf Entry (CREATED)
                     if current_status == "CREATED":
                         # Aufruf der Strategie-Logik
-                        # Die Strategie entscheidet, ob heute gefüllt wird.
-                        # WICHTIG: Die Strategie schreibt direkt in die DB und updated das Datum!
+                        # Die Strategie entscheidet, ob heute gefüllt wird (checkt T+1).
                         result_msg = strat_impl.check_entry(trade, current_candle, db)
 
                         if result_msg and "FILLED" in result_msg:
@@ -229,7 +236,6 @@ class TradeManager:
 
                             # Status-Update (z.B. TP1 Locked) -> Trade lokal aktualisieren
                             if "TP1" in mgmt_msg and "LOCKED" in mgmt_msg:
-                                # Exit Reason neu laden, da Strategie ihn in DB geschrieben hat
                                 with db._get_conn() as c:
                                     row = c.execute(
                                         "SELECT exit_reason FROM active_trades WHERE id=?",
