@@ -390,6 +390,21 @@ class MarketDataWorker:
 
     @staticmethod
     def _clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
+        # FIX: Handle MultiIndex (z.B. bei yfinance Single-Ticker Downloads in neueren Versionen)
+        if isinstance(df.columns, pd.MultiIndex):
+            found_level = False
+            # Wir suchen das Level, das 'Close' enthält
+            for i in range(df.columns.nlevels):
+                level_vals = df.columns.get_level_values(i)
+                if "Close" in level_vals or "close" in level_vals:
+                    df.columns = level_vals
+                    found_level = True
+                    break
+
+            if not found_level:
+                # Fallback: Level 0 nehmen
+                df.columns = df.columns.get_level_values(0)
+
         df.columns = df.columns.str.lower()
         # Plausibilitäts-Checks
         mask = (
