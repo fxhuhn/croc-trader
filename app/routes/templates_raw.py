@@ -182,7 +182,7 @@ HTML_TEMPLATES = {
     </head>
     <body>
         <h1>🔄 Turnover Timing Screener</h1>
-        <p>Top Aktien nach Turnover (SMA20) über SMA100 aus NDX, SPX, DOW.</p>
+        <p>Top Aktien nach Turnover (SMA20) über SMA150 aus NDX, SPX, Russell 1000.</p>
         <table>
             <thead>
                 <tr>
