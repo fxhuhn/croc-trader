@@ -39,7 +39,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if not signal_candle.empty:
             sl_price = float(signal_candle.iloc[0]["low"])
         else:
-            # Fallback, falls History fehlt (sollte nicht passieren): 1% Risk
+            # Fallback, falls History fehlt: 1% Risk
             logger.warning(
                 f"[{trade['symbol']}] Signalkerze ({entry_date_ts}) nicht in History gefunden! Nutze 1% Fallback."
             )
@@ -189,7 +189,9 @@ class SplitTargetStrategy(BaseTradeStrategy):
             active_qty = max(1, current_qty // 2)
 
         if trade["status"] == "CREATED":
-            # Initial Setup
+            # --- SCHRITT 1: Initial Order ---
+            # Entry Stop Buy + Stop Loss (OTO: One-Triggers-Other)
+            # Take Profits werden hier NOCH NICHT gesendet.
 
             # Risk Based Quantity (100$ Risk)
             risk_budget = 100.0
@@ -201,48 +203,54 @@ class SplitTargetStrategy(BaseTradeStrategy):
             qty_total = max(2, qty_total)
             db.update_trade_quantity(trade["id"], qty_total)
 
-            qty_tp1 = qty_total // 2
-            qty_tp3 = qty_total - qty_tp1
-
             exits = [
+                # Nur Stop Loss für die initiale Order
                 OrderLeg(action="SELL", type="STP", price=sl_price, qty=None),
-                OrderLeg(action="SELL", type="LMT", price=tp1_price, qty=qty_tp1),
-                OrderLeg(action="SELL", type="LMT", price=tp3_price, qty=qty_tp3),
             ]
 
             return Order(
                 id=f"{symbol}_SPLIT_INIT",
                 symbol=symbol,
                 qty=qty_total,
-                mode="BRACKET",
+                mode="BRACKET",  # Broker interpretiert dies als OTO (Entry -> Exits)
                 entry=OrderLeg(action="BUY", type="STP", price=entry_price),
                 exits=exits,
             )
 
         elif trade["status"] == "ACTIVE":
+            # --- SCHRITT 2: Active Management ---
+            # Order ist gefüllt. Jetzt senden wir die Take Profits und den SL nach.
+            # (OCO: One-Cancels-Other für die Exits)
+
             exits = []
 
             if not is_phase_2:
-                # Phase 1
+                # Phase 1: SL + TP1 + TP3
                 qty_tp1 = active_qty // 2
                 qty_tp3 = active_qty - qty_tp1
 
+                # Stop Loss (Full remaining Qty)
                 exits.append(
                     OrderLeg(action="SELL", type="STP", price=sl_price, qty=active_qty)
                 )
+                # Take Profit 1 (50%)
                 exits.append(
                     OrderLeg(action="SELL", type="LMT", price=tp1_price, qty=qty_tp1)
                 )
+                # Take Profit 3 (Rest 50%)
                 exits.append(
                     OrderLeg(action="SELL", type="LMT", price=tp3_price, qty=qty_tp3)
                 )
 
             else:
-                # Phase 2 (SL auf Entry)
+                # Phase 2: SL auf Break Even + TP3
                 be_sl = entry_price
+
+                # Stop Loss auf Entry (Break Even)
                 exits.append(
                     OrderLeg(action="SELL", type="STP", price=be_sl, qty=active_qty)
                 )
+                # Take Profit 3 (Restliche Position)
                 exits.append(
                     OrderLeg(action="SELL", type="LMT", price=tp3_price, qty=active_qty)
                 )
@@ -251,7 +259,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 id=f"{symbol}_SPLIT_MGMT",
                 symbol=symbol,
                 qty=active_qty,
-                mode="MANAGE",
+                mode="MANAGE",  # Keine Entry-Leg, nur Exits verwalten
                 entry=None,
                 exits=exits,
             )
