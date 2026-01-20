@@ -8,7 +8,6 @@ import pandas as pd
 
 from ....services.database import SignalDatabase
 from ....services.telegram import TelegramBot
-from ....tools.symbol_lists import ExchangeSymbol
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -84,25 +83,12 @@ class DipBuyerStrategy(BaseStrategy):
     def _load_market_data(self, days: int) -> dict[str, pd.DataFrame] | None:
         start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
 
-        # Filter: Nur S&P 500, Dow 30, Nasdaq 100 (Kein Russell 1000)
-        es = ExchangeSymbol()
-        allowed_symbols = set(es.sp_500 + es.dow_30 + es.nasdaq_100)
-
-        if not allowed_symbols:
-            logger.warning("Keine Symbole für S&P500/Dow30/Nasdaq100 gefunden.")
-            return None
-
-        # Build SQL safe string for IN clause
-        symbols_str = "', '".join(allowed_symbols)
-
         try:
             with sqlite3.connect(self.stocks_db_path) as conn:
                 query = (
                     f"SELECT date, symbol, open, high, low, close, volume "
                     f"FROM market_prices WHERE date >= '{start_date}' "
-                    f"AND timeframe = '1D' "
-                    f"AND symbol IN ('{symbols_str}') "
-                    f"ORDER BY date ASC"
+                    f"AND timeframe = '1D' ORDER BY date ASC"
                 )
                 df = pd.read_sql_query(query, conn)
         except Exception as e:
@@ -139,13 +125,11 @@ class DipBuyerStrategy(BaseStrategy):
         rsi = 100 - (100 / (1 + rs))
 
         prev_close = close.shift(1)
-
-        # FIX: Removed .fillna(0) to match reference script logic (NaN propagation)
         tr_values = np.maximum.reduce(
             [
                 (high - low).values,
-                (high - prev_close).abs().values,
-                (low - prev_close).abs().values,
+                (high - prev_close).abs().fillna(0).values,
+                (low - prev_close).abs().fillna(0).values,
             ]
         )
         atr5 = (
