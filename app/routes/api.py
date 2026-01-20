@@ -7,6 +7,7 @@ from typing import Any
 from flask import Blueprint, Response, abort, current_app, jsonify, request
 
 from app.models import CrocSignal
+from app.tools.symbol_lists import ExchangeSymbol
 
 from .security import require_ip_whitelist
 
@@ -208,3 +209,70 @@ def reload_market_data() -> Response:
 @api_bp.route("/portfolio", methods=["GET"])
 def get_portfolio() -> Response:
     return jsonify({"status": "ok"})
+
+
+@api_bp.route("/market/sync", methods=["POST"])
+@require_ip_whitelist
+def sync_market_gaps() -> Response:
+    """
+    Checks for missing stock data by comparing each symbol's last date
+    against the global maximum date in the database.
+    Triggers a full reload for any outdated or missing symbols.
+    """
+    worker = current_app.extensions.get("market_worker")
+    if not worker:
+        return jsonify({"status": "error", "message": "MarketDataWorker missing"}), 500
+
+    # 1. Get the current state of the database (Symbol -> (Date, Close))
+    last_entries = worker.db.get_all_last_entries_map(worker.PROVIDER, worker.TIMEFRAME)
+
+    if not last_entries:
+        return jsonify(
+            {"status": "error", "message": "No market data found in DB."}
+        ), 404
+
+    # 2. Determine the 'Target Date' (The most recent date found in the DB)
+    all_dates = [meta[0] for meta in last_entries.values()]
+    target_date = max(all_dates)
+
+    # 3. Compare all configured symbols against the target date
+    all_symbols = ExchangeSymbol().all
+    outdated_symbols = []
+    stock_status_map = {}
+
+    for symbol in all_symbols:
+        entry = last_entries.get(symbol)
+
+        if not entry:
+            # Case: Symbol is in config but completely missing from DB
+            stock_status_map[symbol] = "MISSING"
+            outdated_symbols.append(symbol)
+        else:
+            # Case: Symbol exists, check if date is behind
+            last_date = entry[0]
+            stock_status_map[symbol] = last_date
+
+            if last_date < target_date:
+                outdated_symbols.append(symbol)
+
+    # 4. Trigger background update for the outdated list
+    if outdated_symbols:
+        logger.info(f"Triggering gap-fill for {len(outdated_symbols)} symbols.")
+        worker.scheduler.add_job(
+            worker._perform_full_reload,
+            args=[outdated_symbols],
+            trigger="date",
+            run_date=datetime.now(),
+            id="manual_gap_fill",
+            replace_existing=True,
+        )
+
+    return jsonify(
+        {
+            "status": "queued" if outdated_symbols else "synced",
+            "target_max_date": target_date,
+            "outdated_count": len(outdated_symbols),
+            "triggered_symbols": outdated_symbols,
+            "all_stocks_status": stock_status_map,
+        }
+    )
