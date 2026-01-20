@@ -667,3 +667,25 @@ class SignalDatabase:
                 conn.commit()
         except:
             pass
+
+    def get_croc_trades_log(self, limit=100):
+        """Fetches historical log of Croc trades."""
+        with self._get_conn() as conn:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM trades_croc ORDER BY date DESC, created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            ]
+
+    def get_dip_trades_log(self, limit=100):
+        """Fetches historical log of DipBuyer trades."""
+        with self._get_conn() as conn:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM trades_dip_buyer ORDER BY date DESC, created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            ]

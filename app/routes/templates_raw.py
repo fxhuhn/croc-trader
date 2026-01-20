@@ -778,4 +778,123 @@ HTML_TEMPLATES = {
     </body>
     </html>
     """,
+    # In app/routes/templates_raw.py, add these keys to HTML_TEMPLATES:
+    "monitoring_croc": """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>🐊 Croc Trades Log</title>
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #f4f4f9; }
+            h1 { color: #27ae60; border-bottom: 2px solid #27ae60; padding-bottom: 10px; display: inline-block; }
+            table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+            th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; font-size: 0.9em; }
+            th { background-color: #2c3e50; color: white; text-transform: uppercase; font-size: 0.85em; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
+            tr:hover { background-color: #e2e6ea; }
+
+            .profit-pos { color: #27ae60; font-weight: bold; }
+            .profit-neg { color: #c0392b; font-weight: bold; }
+            .price { font-family: monospace; }
+            a.tv-link { text-decoration: none; color: #2c3e50; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <h1>🐊 Croc Strategy Monitor</h1>
+        <p>Historisches Log der Strategy-Updates (Limit: {{ limit }}).</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Datum</th><th>Symbol</th><th>Signal</th><th>Strategie</th>
+                    <th>Entry</th><th>Stop</th>
+                    <th>TP1</th><th>TP2</th><th>Close</th>
+                    <th>Risk R</th><th>PnL %</th><th>Exit Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in results %}
+                <tr>
+                    <td>{{ row['date'] }}</td>
+                    <td><a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" class="tv-link" target="_blank">{{ row['symbol'] }} ↗</a></td>
+                    <td>{{ row['signal'] }}</td>
+                    <td>{{ row['recommended_strategy'] }}</td>
+                    <td class="price">{{ row['entry'] }}</td>
+                    <td class="price">{{ row['stop'] }}</td>
+                    <td class="price" style="color:#7f8c8d;">{{ row['tp_1']|round(2) if row['tp_1'] else '-' }}</td>
+                    <td class="price" style="color:#7f8c8d;">{{ row['tp_2']|round(2) if row['tp_2'] else '-' }}</td>
+                    <td class="price">{{ row['close'] }}</td>
+                    <td>{{ row['risk_multiple'] }} R</td>
+                    <td>
+                        {% if row['pnl_percent'] is not none %}
+                        <span class="{{ 'profit-pos' if row['pnl_percent'] >= 0 else 'profit-neg' }}">
+                            {{ row['pnl_percent'] }}%
+                        </span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td style="font-size: 0.85em; color: #666;">{{ row['exit_reason'] or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """,
+    "monitoring_dip": """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>📉 DipBuyer Trades Log</title>
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #f4f4f9; }
+            h1 { color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 10px; display: inline-block; }
+            table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+            th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; font-size: 0.9em; }
+            th { background-color: #2c3e50; color: white; text-transform: uppercase; font-size: 0.85em; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
+            tr:hover { background-color: #e2e6ea; }
+
+            .profit-pos { color: #27ae60; font-weight: bold; }
+            .profit-neg { color: #c0392b; font-weight: bold; }
+            .price { font-family: monospace; }
+            a.tv-link { text-decoration: none; color: #2c3e50; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <h1>📉 DipBuyer Monitor</h1>
+        <p>Historisches Log der Dip-Trades (Limit: {{ limit }}).</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Datum</th><th>Symbol</th><th>Days Held</th>
+                    <th>Entry</th><th>TP Target</th><th>Threshold (LOC)</th>
+                    <th>Close</th><th>PnL %</th><th>Exit Reason</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in results %}
+                <tr>
+                    <td>{{ row['date'] }}</td>
+                    <td><a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" class="tv-link" target="_blank">{{ row['symbol'] }} ↗</a></td>
+                    <td style="text-align:center;">{{ row['days_held'] }}</td>
+                    <td class="price">{{ row['entry'] }}</td>
+                    <td class="price" style="color:#7f8c8d;">{{ row['tp_target']|round(2) }}</td>
+                    <td class="price" style="color:#7f8c8d;">{{ row['threshold_loc']|round(2) }}</td>
+                    <td class="price">{{ row['close'] }}</td>
+                    <td>
+                        {% if row['pnl_percent'] is not none %}
+                        <span class="{{ 'profit-pos' if row['pnl_percent'] >= 0 else 'profit-neg' }}">
+                            {{ row['pnl_percent'] }}%
+                        </span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td style="font-size: 0.85em; color: #666;">{{ row['exit_reason'] or '-' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </body>
+    </html>
+    """,
 }

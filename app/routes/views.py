@@ -235,3 +235,28 @@ def backtest_dip_buyer() -> str:
         return render_template_string(HTML_TEMPLATES["backtest_report"], data=results)
 
     return render_template_string(HTML_TEMPLATES["backtest_form"])
+
+
+# In app/routes/views.py
+
+
+@views_bp.route("/monitoring/croc", methods=["GET"])
+@require_ip_whitelist
+def view_monitoring_croc() -> str:
+    limit = request.args.get("limit", 100, type=int)
+    # Uses the new method added to SignalDatabase
+    results = _get_db().get_croc_trades_log(limit=limit)
+    return render_template_string(
+        HTML_TEMPLATES["monitoring_croc"], results=results, limit=limit
+    )
+
+
+@views_bp.route("/monitoring/dip-buyer", methods=["GET"])
+@require_ip_whitelist
+def view_monitoring_dip() -> str:
+    limit = request.args.get("limit", 100, type=int)
+    # Uses the new method added to SignalDatabase
+    results = _get_db().get_dip_trades_log(limit=limit)
+    return render_template_string(
+        HTML_TEMPLATES["monitoring_dip"], results=results, limit=limit
+    )
