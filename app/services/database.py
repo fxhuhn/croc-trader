@@ -577,7 +577,7 @@ class SignalDatabase:
                 logger.info(
                     f"Skipping new trade for {symbol} ({strategy}): Active trade already exists (ID: {active_trade[0]})."
                 )
-                return existing_trade_id_if_needed  # Or None
+                return active_trade[0]  # Or None
 
             # 3. Check if *this specific signal* was already added (Idempotency)
             existing = conn.execute(
