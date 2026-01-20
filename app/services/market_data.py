@@ -93,22 +93,31 @@ class MarketDatabase:
 class MarketDataWorker:
     PROVIDER = "yahoo"
     TIMEFRAME = "1D"
-    # Optimierung: Standard-Batch auf 100 erhöhen, bei Fehlern wird halbiert
     BATCH_SIZE = 100
-    # Parallelität begrenzen, um Yahoo Rate-Limits zu vermeiden
     MAX_WORKERS = 2
 
     def __init__(self, db_path: Path, run_on_start: bool = True) -> None:
         self.db = MarketDatabase(db_path)
         self.scheduler = BackgroundScheduler()
 
-        # Schedule: Täglich 17:00 NY Time
+        # Schedule 1: Regular Update (Last 30 days) - 17:00 NY Time
         self.scheduler.add_job(
             self.run_update_job,
             trigger=CronTrigger(
                 hour=17, minute=0, timezone=pytz.timezone("America/New_York")
             ),
             id="market_update_job",
+            replace_existing=True,
+        )
+
+        # Schedule 2: Gap Check & Repair - 02:00 European Time (Berlin)
+        # This checks for any stocks lagging behind and forces a full reload for them.
+        self.scheduler.add_job(
+            self.run_gap_check,
+            trigger=CronTrigger(
+                hour=2, minute=0, timezone=pytz.timezone("Europe/Berlin")
+            ),
+            id="market_gap_check_job",
             replace_existing=True,
         )
 
@@ -124,6 +133,69 @@ class MarketDataWorker:
         if not self.scheduler.running:
             self.scheduler.start()
             logger.info("Market Data Scheduler gestartet.")
+
+    def run_gap_check(self) -> Dict[str, Any]:
+        """
+        Checks all stocks against the latest available date in the DB.
+        Triggers a full reload for any missing or lagging symbols.
+        Returns a summary dictionary.
+        """
+        logger.info("Starting Daily Market Gap Check...")
+
+        last_entries = self.db.get_all_last_entries_map(self.PROVIDER, self.TIMEFRAME)
+
+        # If DB is empty, we can't determine a target date.
+        # (Alternatively, could default to yesterday, but let's assume at least some data exists)
+        if not last_entries:
+            logger.warning("Gap Check Skipped: No market data found in DB.")
+            return {"status": "skipped", "reason": "empty_db"}
+
+        # Determine the target date (max date in DB)
+        all_dates = [meta[0] for meta in last_entries.values()]
+        target_date = max(all_dates)
+
+        all_symbols = ExchangeSymbol().all
+        outdated_symbols = []
+        stock_status_map = {}
+
+        for symbol in all_symbols:
+            entry = last_entries.get(symbol)
+
+            if not entry:
+                # Symbol missing completely
+                stock_status_map[symbol] = "MISSING"
+                outdated_symbols.append(symbol)
+            else:
+                last_date = entry[0]
+                stock_status_map[symbol] = last_date
+
+                if last_date < target_date:
+                    outdated_symbols.append(symbol)
+
+        if outdated_symbols:
+            logger.info(
+                f"Gap Check: Found {len(outdated_symbols)} outdated symbols. Scheduling reload."
+            )
+
+            # Schedule the heavy reload job
+            self.scheduler.add_job(
+                self._perform_full_reload,
+                args=[outdated_symbols],
+                trigger="date",
+                run_date=datetime.now(),
+                id="auto_gap_fill_job",
+                replace_existing=True,
+            )
+        else:
+            logger.info("Gap Check: All symbols are up to date.")
+
+        return {
+            "status": "queued" if outdated_symbols else "synced",
+            "target_max_date": target_date,
+            "outdated_count": len(outdated_symbols),
+            "triggered_symbols": outdated_symbols,
+            "all_stocks_status": stock_status_map,
+        }
 
     def run_update_job(self) -> None:
         logger.info("Starte Market Data Update (High-Performance Mode)...")
@@ -147,10 +219,7 @@ class MarketDataWorker:
         processed_batches = 0
 
         # 3. Parallel Processing Pipeline
-        # ThreadPoolExecutor erlaubt es, den nächsten Batch zu laden,
-        # während der aktuelle in die DB geschrieben wird (IO-Overlapping).
         with ThreadPoolExecutor(max_workers=self.MAX_WORKERS) as executor:
-            # Wir mappen Future -> Batch-Index für Logging
             future_to_idx = {
                 executor.submit(self._download_batch_with_backoff, batch): i
                 for i, batch in enumerate(batches)
@@ -164,20 +233,16 @@ class MarketDataWorker:
                     if df_batch is None or df_batch.empty:
                         continue
 
-                    # CPU-Bound: Daten verarbeiten
                     records, splits = self._process_batch_data(df_batch, last_entries)
 
-                    # IO-Bound: DB Insert (sequentiell im Main Thread, was gut für SQLite ist)
                     if records:
                         self.db.upsert_many(records)
                         processed_records += len(records)
-                        # Speicher explizit freigeben
                         del records
 
                     split_candidates.update(splits)
                     processed_batches += 1
 
-                    # Kleines Progress-Log alle 5 Batches
                     if processed_batches % 5 == 0:
                         logger.info(
                             f"Progress: {processed_batches}/{len(batches)} Batches verarbeitet."
@@ -197,7 +262,6 @@ class MarketDataWorker:
             logger.warning(
                 f"Starte Full Reload für {len(split_candidates)} Symbole (Splits/Inkonsistenzen)."
             )
-            # Full Reloads machen wir sequentiell, da sie seltener sind und 'heavier'
             self._perform_full_reload(list(split_candidates))
 
         logger.info("Market Data Update vollständig abgeschlossen.")
@@ -205,18 +269,13 @@ class MarketDataWorker:
     def _download_batch_with_backoff(
         self, symbols: List[str]
     ) -> Optional[pd.DataFrame]:
-        """
-        Versucht Symbole zu laden. Bei Fehler wird die Liste halbiert (Divide & Conquer).
-        """
         if not symbols:
             return None
 
         try:
-            # yfinance nutzt intern bereits Threads.
-            # timeout hilft, hängende Verbindungen schneller zu kappen.
             df = yf.download(
                 tickers=" ".join(symbols),
-                period="1mo",  # 1 Monat Rückblick reicht für Daily Update & Split Check
+                period="1mo",
                 group_by="ticker",
                 auto_adjust=True,
                 threads=True,
@@ -226,12 +285,10 @@ class MarketDataWorker:
             return df
 
         except Exception as e:
-            # Fehlerfall
             if len(symbols) <= 1:
                 logger.error(f"Timeout/Fehler bei Einzelsymbol '{symbols[0]}': {e}")
                 return None
 
-            # Backoff: Batch halbieren
             mid = len(symbols) // 2
             left_chunk = symbols[:mid]
             right_chunk = symbols[mid:]
@@ -240,7 +297,6 @@ class MarketDataWorker:
                 f"Batch-Fehler bei {len(symbols)} Symbolen. Splitte in {len(left_chunk)} + {len(right_chunk)}."
             )
 
-            # Rekursiver Aufruf (sequentiell innerhalb des Threads, was okay ist)
             df_left = self._download_batch_with_backoff(left_chunk)
             df_right = self._download_batch_with_backoff(right_chunk)
 
@@ -254,7 +310,6 @@ class MarketDataWorker:
                 return None
 
             try:
-                # Zusammenfügen entlang der Spalten (axis=1)
                 return pd.concat(results, axis=1)
             except Exception as join_error:
                 logger.error(f"Fehler beim Mergen der Split-Batches: {join_error}")
@@ -263,61 +318,43 @@ class MarketDataWorker:
     def _process_batch_data(
         self, df_batch: pd.DataFrame, last_entries: LastEntryMap
     ) -> Tuple[List[MarketRecord], Set[str]]:
-        """
-        Wandelt yfinance DataFrame in DB-Records und identifiziert Splits.
-        """
         records: List[MarketRecord] = []
         splits: Set[str] = set()
 
         is_multi_index = isinstance(df_batch.columns, pd.MultiIndex)
 
-        # Ticker-Liste aus DF extrahieren
         if is_multi_index:
             tickers_in_df = df_batch.columns.get_level_values(0).unique().tolist()
         else:
-            # Fallback bei Einzel-Ticker Response (Struktur ist anders)
-            # Da yf.download mit group_by='ticker' aufgerufen wurde, ist dies selten,
-            # kann aber bei Batches passieren, wo nur 1 Ticker gültig war.
-            # Um die Logik sauber zu halten, nehmen wir an, der Caller weiß was er tut
-            # oder wir ignorieren Edge-Cases bei kaputten Batches.
-            # Einfachster Weg: DF hat direkt OHLCV Spalten -> Wir brauchen den Ticker Namen nicht aus Spalten.
-            # Wir überspringen diesen Fall hier der Einfachheit halber oder müssten den Ticker erraten.
             return [], set()
 
         for ticker in tickers_in_df:
             try:
-                # Performance: Slice nur einmal erstellen
                 df_ticker = df_batch[ticker]
             except KeyError:
                 continue
 
-            # Kopie ist wichtig, um Warnungen beim Filtern zu vermeiden
             df_ticker = self._clean_ohlcv(df_ticker.copy())
             if df_ticker.empty:
                 continue
 
-            # Check gegen DB State
             last_entry = last_entries.get(ticker)
 
             if last_entry:
                 last_date_str, last_close = last_entry
 
-                # Haben wir Daten für den Tag?
                 if last_date_str in df_ticker.index:
                     try:
                         matched_row = df_ticker.loc[last_date_str]
-                        # Falls Duplikate im Index
                         if isinstance(matched_row, pd.DataFrame):
                             matched_row = matched_row.iloc[-1]
 
                         new_close = float(matched_row["close"])
 
-                        # Split Erkennung (> 1% Abweichung am selben Tag)
                         if abs(new_close - last_close) / last_close > 0.01:
                             splits.add(ticker)
-                            continue  # Ticker komplett überspringen, kommt in Full Reload
+                            continue
 
-                        # Nur neuere Daten speichern
                         df_ticker = df_ticker[df_ticker.index > last_date_str]
 
                     except KeyError:
@@ -326,10 +363,7 @@ class MarketDataWorker:
             if df_ticker.empty:
                 continue
 
-            # Schnelle Iteration für DB Records
-            # itertuples ist schneller als iterrows
             for row in df_ticker.itertuples():
-                # row.Index ist der Timestamp
                 records.append(
                     {
                         "symbol": ticker,
@@ -347,10 +381,8 @@ class MarketDataWorker:
         return records, splits
 
     def _perform_full_reload(self, symbols: List[str]) -> None:
-        """
-        Lädt komplette Historie für Split-Kandidaten.
-        """
         start_date = "2020-01-01"
+        logger.info(f"Starting Full Reload for {len(symbols)} symbols...")
 
         for symbol in symbols:
             try:
@@ -385,17 +417,17 @@ class MarketDataWorker:
                     )
 
                 self.db.upsert_many(records)
-                logger.warning(f"Full Reload (Split korrigiert): {symbol}")
+                logger.info(f"Full Reload success: {symbol}")
 
             except Exception as e:
                 logger.error(f"Fehler bei Full Reload für {symbol}: {e}")
 
+        logger.info("Full Reload batch completed.")
+
     @staticmethod
     def _clean_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
-        # FIX: Handle MultiIndex (z.B. bei yfinance Single-Ticker Downloads in neueren Versionen)
         if isinstance(df.columns, pd.MultiIndex):
             found_level = False
-            # Wir suchen das Level, das 'Close' enthält
             for i in range(df.columns.nlevels):
                 level_vals = df.columns.get_level_values(i)
                 if "Close" in level_vals or "close" in level_vals:
@@ -404,11 +436,9 @@ class MarketDataWorker:
                     break
 
             if not found_level:
-                # Fallback: Level 0 nehmen
                 df.columns = df.columns.get_level_values(0)
 
         df.columns = df.columns.str.lower()
-        # Plausibilitäts-Checks
         mask = (
             (df["open"] > 0)
             & (df["high"] > 0)
