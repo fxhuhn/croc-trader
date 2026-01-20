@@ -3,9 +3,26 @@ from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
 OrderAction = Literal["BUY", "SELL"]
-OrderType = Literal["LMT", "MKT", "LOC", "STP", "MOC"]  # MOC hinzugefügt
+OrderType = Literal["LMT", "MKT", "LOC", "STP", "MOC"]
 TimeInForce = Literal["DAY", "GTC"]
 TradeStatus = Literal["CREATED", "ACTIVE", "CLOSED", "MISSED"]
+
+
+@dataclass
+class TradeParams:
+    """
+    General container for strategy-specific state parameters.
+    For DipBuyer:
+    - stop_loss: 0.0 (No hard stop)
+    - tp_1: The Fixed ATR Target
+    - extras['threshold_loc']: The Previous Day High (Dynamic limit)
+    """
+
+    stop_loss: float
+    tp_1: Optional[float] = None
+    tp_2: Optional[float] = None
+    tp_3: Optional[float] = None
+    extras: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -23,7 +40,6 @@ class Order:
     symbol: str
     qty: int
     mode: str
-    # Entry ist optional für reine Management-Orders (Active Trades)
     entry: Optional[OrderLeg] = None
     exits: List[OrderLeg] = field(default_factory=list)
     last_status: str = "PendingSubmit"

@@ -5,7 +5,7 @@ from typing import Optional
 import pandas as pd
 
 from ...database import SignalDatabase
-from ..types import Order
+from ..types import Order, TradeParams
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +17,15 @@ class BaseTradeStrategy(ABC):
 
     @abstractmethod
     def check_entry(
-        self, trade: dict, candle: pd.Series, db: SignalDatabase
+        self,
+        trade: dict,
+        candle: pd.Series,
+        df_history: pd.DataFrame,  # <--- NEW ARGUMENT
+        db: SignalDatabase,
     ) -> Optional[str]:
         """
-        Prüft für CREATED Trades, ob der Entry gefüllt wurde.
-        Gibt Log-String zurück oder None.
+        Prüft für CREATED Trades, ob der Entry gefüllt wurde
+        ODER ob das Setup invalidiert wurde (Preis < Stop Loss).
         """
         pass
 
@@ -41,7 +45,16 @@ class BaseTradeStrategy(ABC):
     ) -> Optional[Order]:
         """
         Erstellt die YAML-Order Struktur für den nächsten Tag.
-        Sowohl für Entry (CREATED) als auch Management (ACTIVE).
+        """
+        pass
+
+    @abstractmethod
+    def get_current_params(
+        self, trade: dict, df_history: pd.DataFrame, db: SignalDatabase
+    ) -> Optional[TradeParams]:
+        """
+        Berechnet die aktuellen Strategie-Parameter (Stop, Targets)
+        für das Logging.
         """
         pass
 
