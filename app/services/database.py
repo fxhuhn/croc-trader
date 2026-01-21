@@ -2,7 +2,7 @@ import logging
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -689,3 +689,35 @@ class SignalDatabase:
                     (limit,),
                 ).fetchall()
             ]
+
+    def save_screener_results(
+        self, table_name: str, results: list[dict[str, Any]]
+    ) -> None:
+        """
+        Generische Methode zum Speichern von Screener-Ergebnissen.
+        """
+        if not results:
+            return
+
+        keys = list(results[0].keys())
+        columns = ", ".join(keys)
+        placeholders = ", ".join(["?" for _ in keys])
+
+        sql = f"INSERT OR REPLACE INTO {table_name} ({columns}) VALUES ({placeholders})"
+        data_tuples = [tuple(row[k] for k in keys) for row in results]
+
+        # FIX: Direkt sqlite3.connect nutzen statt self.get_connection()
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.executemany(sql, data_tuples)
+                conn.commit()
+        except AttributeError:
+            # Fallback falls die Variable self.path heißt statt self.db_path
+            try:
+                with sqlite3.connect(self.path) as conn:
+                    conn.executemany(sql, data_tuples)
+                    conn.commit()
+            except Exception as e:
+                logger.error(f"DB Error saving to {table_name} (Fallback): {e}")
+        except Exception as e:
+            logger.error(f"DB Error saving to {table_name}: {e}")

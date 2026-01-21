@@ -1,23 +1,19 @@
 import logging
-import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
-from pathlib import Path
 from typing import override
 
 import numpy as np
 import pandas as pd
 
 from ....services.database import SignalDatabase
+from ....services.market_data_provider import MarketDataDict, MarketDataProvider
 from ....services.telegram import TelegramBot
 from ....tools.symbol_lists import ExchangeSymbol
 from ..types import DipBuyerResult
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
-
-# Type Alias
-type MarketDataDict = dict[str, pd.DataFrame]
 
 
 @dataclass(frozen=True)
@@ -37,21 +33,20 @@ class DipBuyerConfig:
 
 class DipBuyerStrategy(BaseStrategy[DipBuyerResult]):
     name: str = "DipBuyer"
+    table_name: str = "screener_dip_buyer"
 
     def __init__(
         self,
-        stocks_db_path: Path,
         signals_db: SignalDatabase,
+        data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
         config: DipBuyerConfig = DipBuyerConfig(),
     ) -> None:
-        super().__init__(signals_db, telegram_bot)
-        self.stocks_db_path = stocks_db_path
+        super().__init__(signals_db, data_provider, telegram_bot)
         self.cfg = config
 
         # Singleton Instanz abrufen
         exchange_data = ExchangeSymbol()
-
         self.dow_set = set(exchange_data.dow_30)
         self.sp500_set = set(exchange_data.sp_500)
         self.ndx_set = set(exchange_data.nasdaq_100)
@@ -66,10 +61,10 @@ class DipBuyerStrategy(BaseStrategy[DipBuyerResult]):
             f"[{self.name}] Starte Analyse ({mode}, Lookback: {lookback_days}d)..."
         )
 
-        # 1. Daten laden
-        market_data = self._load_market_data(days=lookback_days)
+        # 1. Daten via Provider laden
+        market_data = self.data_provider.get_all_daily_data(days=lookback_days)
         if not market_data:
-            logger.warning(f"[{self.name}] Keine Marktdaten gefunden.")
+            logger.warning(f"[{self.name}] Keine Marktdaten erhalten.")
             return 0
 
         # 2. Indikatoren berechnen
@@ -93,13 +88,14 @@ class DipBuyerStrategy(BaseStrategy[DipBuyerResult]):
             logger.info(f"[{self.name}] Keine Treffer.")
             return 0
 
-        # 4. Speichern & Reporting
+        # 4. Speichern (Generisch)
         results_as_dicts = [res.to_dict() for res in all_results]
-        self.signals_db.save_screener_dip_buyer(results_as_dicts)
+        self.signals_db.save_screener_results(self.table_name, results_as_dicts)
 
-        # Index-Analyse immer anzeigen (jetzt gruppiert nach Tag)
+        # Index-Analyse Loggen
         self._log_index_distribution(all_results)
 
+        # Telegram & Trades nur bei Daily Run
         if days == 0:
             self._create_active_trades(all_results)
             latest_date = all_results[-1].date
@@ -111,12 +107,10 @@ class DipBuyerStrategy(BaseStrategy[DipBuyerResult]):
     def _log_index_distribution(self, results: list[DipBuyerResult]) -> None:
         """Analysiert und loggt die Index-Zugehörigkeit pro Tag."""
 
-        # Gruppierung nach Datum
         by_date = defaultdict(list)
         for res in results:
             by_date[res.date].append(res)
 
-        # Sortierte Daten durchlaufen
         sorted_dates = sorted(by_date.keys())
 
         logger.info("=======================================")
@@ -154,10 +148,10 @@ class DipBuyerStrategy(BaseStrategy[DipBuyerResult]):
 
             unique_gems = sorted(list(set(stats["RUS_EXCLUSIVE"])))
             if unique_gems:
-                # Lange Listen umbrechen, damit Logs lesbar bleiben
                 gems_str = ", ".join(unique_gems)
-                if len(gems_str) > 100:
-                    gems_str = gems_str[:100] + "..."
+                # Kürzen bei zu vielen Treffern
+                if len(gems_str) > 120:
+                    gems_str = gems_str[:120] + "..."
                 logger.info(f"   💎 Hidden Gems: {gems_str}")
             else:
                 logger.info("   💎 Hidden Gems: -")
@@ -176,30 +170,9 @@ class DipBuyerStrategy(BaseStrategy[DipBuyerResult]):
             )
 
     def _load_market_data(self, days: int) -> MarketDataDict | None:
-        start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
-
-        try:
-            with sqlite3.connect(self.stocks_db_path) as conn:
-                query = """
-                    SELECT date, symbol, open, high, low, close, volume
-                    FROM market_prices
-                    WHERE date >= ? AND timeframe = '1D'
-                    ORDER BY date ASC
-                """
-                df = pd.read_sql_query(query, conn, params=(start_date,))
-        except sqlite3.Error as e:
-            logger.error(f"DB Fehler in {self.name}: {e}")
-            return None
-
-        if df.empty:
-            return None
-
-        df["date"] = pd.to_datetime(df["date"])
-
-        return {
-            col: df.pivot(index="date", columns="symbol", values=col)
-            for col in ["open", "high", "low", "close", "volume"]
-        }
+        # Fallback Methode, falls Provider nicht genutzt wird (Legacy Support)
+        # Aber im neuen Code nutzen wir self.data_provider.
+        return self.data_provider.get_all_daily_data(days)
 
     def _calculate_indicators(self, data: MarketDataDict) -> dict[str, pd.DataFrame]:
         close = data["close"]
@@ -217,7 +190,6 @@ class DipBuyerStrategy(BaseStrategy[DipBuyerResult]):
         tr = np.maximum(tr1, np.maximum(tr2, tr3))
 
         rma_span = (2 * self.cfg.ATR_WINDOW) - 1
-
         atr5 = (
             pd.DataFrame(tr, index=close.index, columns=close.columns)
             .ewm(span=rma_span, adjust=False)
