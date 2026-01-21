@@ -1,40 +1,20 @@
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
+from threading import Thread
 from typing import Any
 
 # 1. HIER 'abort' HINZUFÜGEN
-from flask import Blueprint, Response, abort, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 
 from app.models import CrocSignal
 
+from ..services.market_data import DataValidator, MarketDataService
 from .security import require_ip_whitelist
 
 logger = logging.getLogger(__name__)
 api_bp = Blueprint("api", __name__)
-
-# 2. HIER DIE LISTE DER ZU BLOCKENDEN DATEIEN DEFINIEREN
-BLOCKED_EXTENSIONS = (".php", ".aspx", ".jsp", ".cgi", ".env", ".git", ".htaccess")
-
-
-# 3. HIER DER 'TÜRSTEHER'-CODE
-@api_bp.before_request
-def block_script_kiddies():
-    """
-    Prüft vor jeder Anfrage in diesem Blueprint, ob nach Skripten
-    gesucht wird, und bricht sofort mit 404 ab.
-    """
-    path = request.path.lower()
-
-    # Check auf Dateiendungen
-    if path.endswith(BLOCKED_EXTENSIONS):
-        logger.warning(f"Blocked script scan: {path} from {request.remote_addr}")
-        abort(404)
-
-    # Check auf typische Wordpress/Admin Pfade
-    if "wp-admin" in path or "wp-login" in path or "php" in path:
-        logger.warning(f"Blocked WP scan: {path} from {request.remote_addr}")
-        abort(404)
 
 
 @api_bp.route("/health", methods=["GET"])
@@ -211,19 +191,63 @@ def get_portfolio() -> Response:
 
 
 @api_bp.route("/market/sync", methods=["POST"])
-@require_ip_whitelist
-def sync_market_gaps() -> Response:
+def sync_market_data():
     """
-    Manually triggers the Gap Check logic that runs automatically at 2:00 AM.
+    Manueller Trigger für Market Data Update.
+    Query Params:
+      - full=true (erzwingt Full Reload)
+      - check=true (führt nur Validierung aus)
     """
-    worker = current_app.extensions.get("market_worker")
-    if not worker:
-        return jsonify({"status": "error", "message": "MarketDataWorker missing"}), 500
+    full_reload = request.args.get("full", "false").lower() == "true"
+    only_check = request.args.get("check", "false").lower() == "true"
 
-    # Call the method directly (logic is now in the worker)
-    result = worker.run_gap_check()
+    # Pfad aus Config holen
+    conf = current_app.config["APP_CONFIG"]
+    db_path_str = conf.get_db_path("stocks")
 
-    if result.get("status") == "skipped":
-        return jsonify(result), 404
+    def _background_task():
+        try:
+            # Path Objekt erstellen
+            db_path = Path(db_path_str)
 
-    return jsonify(result)
+            service = MarketDataService(db_path)
+            validator = DataValidator(service)
+
+            if only_check:
+                logger.info("Manuelle Validierung gestartet...")
+                validator.run_logical_checks()
+                validator.run_spot_check(sample_size=50, lookback_days=10)
+                # Auch beim reinen Check prüfen wir auf Lücken
+                service.perform_gap_check()
+            else:
+                logger.info(f"Manueller Sync gestartet (Full={full_reload})...")
+
+                # 1. Update
+                service.update_market_data(full_reload=full_reload)
+
+                # 2. Validierung (Logik)
+                validator.run_logical_checks()
+
+                # 3. Gap Check als letzte Instanz (Lücken füllen)
+                logger.info("Führe abschließenden Gap-Check durch...")
+                service.perform_gap_check()
+
+                logger.info("Manueller Prozess vollständig beendet.")
+
+        except Exception as e:
+            logger.error(f"Fehler im manuellen Sync-Task: {e}", exc_info=True)
+
+    # Thread starten (Non-Blocking Response)
+    Thread(target=_background_task, daemon=True).start()
+
+    mode = (
+        "Validierung"
+        if only_check
+        else ("Full Reload" if full_reload else "Incremental Update")
+    )
+    return jsonify(
+        {
+            "status": "accepted",
+            "message": f"Task '{mode}' inkl. Gap-Check wurde im Hintergrund gestartet.",
+        }
+    ), 202

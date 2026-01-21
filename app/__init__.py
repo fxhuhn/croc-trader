@@ -18,7 +18,7 @@ from .services.backtester import DipBuyerBacktester  # <--- IMPORT FÜR BACKTEST
 from .services.database import (
     SignalDatabase,  # Wichtig für den direkten Zugriff beim Start
 )
-from .services.market_data import MarketDataWorker
+from .services.market_data import MarketDataScheduler
 
 # KORREKTUR: Unbenutzte Strategie-Importe entfernt
 from .services.screener import ScreenerEngine
@@ -166,12 +166,14 @@ def create_app(config_object=settings):
     app.extensions["telegram"] = telegram_service
 
     # B) Market Data Worker
-    market_worker = MarketDataWorker(
+    db_stocks = config_object.get_db_path("stocks")
+
+    market_scheduler = MarketDataScheduler(
         db_path=Path(db_stocks),
-        run_on_start=False,
+        run_on_start=False,  # Setze auf True, wenn beim Serverstart sofort ein Update laufen soll
     )
-    market_worker.start()
-    app.extensions["market_worker"] = market_worker
+    market_scheduler.start()
+    app.extensions["market_scheduler"] = market_scheduler
 
     # C) Webhook Worker
     worker = BackgroundWorker(
