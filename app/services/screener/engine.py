@@ -33,6 +33,7 @@ class ScreenerEngine:
             config = {"strategy_ranking": config}
 
         # Strategien registrieren
+        # Hinweis: DipBuyerStrategy Signatur muss mit deiner aktuellen Version übereinstimmen
         self.register_strategy(
             DipBuyerStrategy(stocks_db_path, self.signals_db, self.telegram)
         )
@@ -48,13 +49,26 @@ class ScreenerEngine:
         self.active_strategies.append(strategy)
         logger.debug(f"Strategie registriert: {strategy.name}")
 
-    def run_all(self, days: int = 0) -> dict[str, int]:
+    def run_all(
+        self, days: int = 0, strategy_filter: str | None = None
+    ) -> dict[str, int]:
+        """
+        Führt alle registrierten Strategien aus.
+
+        :param days: Anzahl der Tage für Backfill (0 = Heute/Live)
+        :param strategy_filter: Optionaler Name einer spezifischen Strategie, die ausgeführt werden soll.
+        """
         results = {}
         for strat in self.active_strategies:
+            # Wenn Filter aktiv ist und Name nicht übereinstimmt -> Skip
+            if strategy_filter and strat.name != strategy_filter:
+                continue
+
             try:
                 hits = strat.run(days=days)
                 results[strat.name] = hits
             except Exception as e:
                 logger.error(f"Fehler bei {strat.name}: {e}", exc_info=True)
                 results[strat.name] = 0
+
         return results
