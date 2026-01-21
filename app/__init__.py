@@ -278,7 +278,9 @@ def create_app(config_object=settings):
                 summary = report.get("summary", {})
                 comp = report.get("comparison", {})
                 if "error" in report:
-                    telegram_service.send(f"⚠️ Backtest Fehler: {report['error']}")
+                    telegram_service.send_message(
+                        f"⚠️ Backtest Fehler: {report['error']}"
+                    )
                 else:
                     msg = (
                         f"📊 **Wöchentlicher Backtest Report**\n"
@@ -290,7 +292,7 @@ def create_app(config_object=settings):
                         f"Historisch Ø: {comp.get('historical_avg')}%\n"
                         f"Status: {comp.get('status')}"
                     )
-                    telegram_service.send(msg)
+                    telegram_service.send_message(msg)
 
     app_scheduler.add_job(
         func=run_weekly_backtest,
@@ -308,7 +310,7 @@ def create_app(config_object=settings):
     app.register_blueprint(main_bp)
 
     if tele_conf.enabled:
-        telegram_service.send("🚀 **Croc-Trader System gestartet!**")
+        telegram_service.send_message("🚀 **Croc-Trader System gestartet!**")
         try:
             logging.info("Führe initialen Strategie-Check durch...")
             screener.run_all(days=3)
