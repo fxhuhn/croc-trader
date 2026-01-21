@@ -61,34 +61,39 @@ def ingest_webhook() -> Response:
 @api_bp.route("/screener/run", methods=["POST"])
 @require_ip_whitelist
 def trigger_screener() -> Response:
+    """
+    Manueller Trigger für den Screener.
+    Query Params:
+      - days: int (Default 0 = Heute, >0 = Backfill X Tage)
+      - strategy: str (Optional, um nur eine spezifische Strategie zu starten)
+    """
     try:
+        # Typsicheres Parsing der Argumente
         days = request.args.get("days", default=0, type=int)
-        clean = request.args.get("clean", default="false").lower() == "true"
+        target_strategy = request.args.get("strategy", type=str)
 
-        screener = current_app.extensions.get("screener_engine")
-        strategy_engine = current_app.extensions.get("strategy_engine")
+        screener_engine = current_app.extensions.get("screener_engine")
+        if not screener_engine:
+            # HTTP 503 Service Unavailable passt gut, wenn Engine fehlt
+            return jsonify({"error": "Screener Engine not initialized"}), 503
 
-        if not screener or not strategy_engine:
-            raise RuntimeError("Engines not initialized")
-
-        if clean:
-            screener.signals_db.clear_screener_webhook()
-            logger.info("Screener tables cleaned.")
-
-        screener_results = screener.run_all(days=days)
-        strategy_engine.run_daily_analysis(lookback_days=days if days > 0 else 1)
-
-        return jsonify(
-            {
-                "status": "success",
-                "message": "Run completed",
-                "screener_hits": screener_results,
-            }
+        logger.info(
+            f"API Trigger: Screener run requested (days={days}, strategy={target_strategy})"
         )
 
-    except Exception as e:
-        logger.error(f"Screener Run Failed: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": str(e)}), 500
+        # Ausführung
+        # Angenommen, screener_engine.run_all() gibt ein Dict mit Stats zurück
+        stats = screener_engine.run_all(days=days, strategy_filter=target_strategy)
+
+        return jsonify(
+            {"status": "success", "message": "Screener completed", "stats": stats}
+        ), 200
+
+    except ValueError as e:
+        return jsonify({"error": f"Invalid parameters: {str(e)}"}), 400
+    except Exception:
+        logger.exception("Unexpected error during screener run")
+        return jsonify({"error": "Internal Server Error"}), 500
 
 
 @api_bp.route("/orders/generate", methods=["POST"])
