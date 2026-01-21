@@ -8,11 +8,24 @@ from .templates_raw import HTML_TEMPLATES
 logger = logging.getLogger(__name__)
 errors_bp = Blueprint("errors", __name__)
 
+BLOCKED_EXTENSIONS = (".php", ".aspx", ".jsp", ".cgi", ".env", ".git", ".htaccess")
+
 
 @errors_bp.app_errorhandler(404)
 def page_not_found(e: Any) -> Any:
-    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-    logger.warning(f"404 Not Found: {request.method} {request.path} - IP: {client_ip}")
+    path = request.path.lower()
+
+    # Check: Ist es ein Script-Kiddie-Scan?
+    is_blocked = (
+        path.endswith(BLOCKED_EXTENSIONS) or "wp-admin" in path or "wp-login" in path
+    )
+
+    if not is_blocked:
+        # NUR loggen, wenn es KEIN geblockter Pfad ist
+        client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        logger.warning(
+            f"404 Not Found: {request.method} {request.path} - IP: {client_ip}"
+        )
 
     # API Clients erhalten JSON
     if (
@@ -23,6 +36,7 @@ def page_not_found(e: Any) -> Any:
             {"status": "error", "message": "Endpoint not found", "path": request.path}
         ), 404
 
+    # Normale 404 Seite
     return render_template_string(HTML_TEMPLATES["404"]), 404
 
 
