@@ -19,6 +19,7 @@ from .services.database import (
     SignalDatabase,  # Wichtig für den direkten Zugriff beim Start
 )
 from .services.market_data import MarketDataScheduler
+from .services.market_data_provider import MarketDataProvider
 
 # KORREKTUR: Unbenutzte Strategie-Importe entfernt
 from .services.screener import ScreenerEngine
@@ -193,12 +194,20 @@ def create_app(config_object=settings):
     csv_worker.start()
     app.extensions["csv_worker"] = csv_worker
 
-    # E) Screener Engine
-    # Hier wird die ScreenerEngine erstellt, die bereits intern (siehe screener.py) alle Strategien
-    # inklusive TurnoverTimingStrategy registriert (dank des Imports und der __init__ der Klasse).
+    # E) Market Data Provider Service (NEU)
+    # Dieser Service kümmert sich um das Laden und Cachen der Daten
+    data_provider = MarketDataProvider(db_path=Path(db_stocks))
+    # Wir speichern ihn nicht zwingend in extensions, da er via ScreenerEngine genutzt wird,
+    # aber es schadet nicht.
+    app.extensions["market_data_provider"] = data_provider
+
+    # F) Screener Engine
     screener = ScreenerEngine(
-        stocks_db_path=Path(db_stocks),
+        stocks_db_path=Path(
+            db_stocks
+        ),  # Wird ggf. noch für Legacy-Strategien gebraucht
         signals_db_path=Path(db_signals),
+        data_provider=data_provider,  # <--- Injected
         config=loaded_config,
         telegram_bot=telegram_service,
     )
