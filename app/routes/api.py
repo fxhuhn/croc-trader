@@ -52,6 +52,8 @@ def ingest_webhook() -> Response:
 
     except (TypeError, ValueError, json.JSONDecodeError) as e:
         logger.warning(f"Invalid Webhook Payload: {e}")
+        logger.warning(request.data)
+
         return jsonify({"status": "error", "message": str(e)}), 400
     except Exception as e:
         logger.error(f"Internal Webhook Error: {e}", exc_info=True)
