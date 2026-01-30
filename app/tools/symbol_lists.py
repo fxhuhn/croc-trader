@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import List, Optional
+from typing import Optional
 
 import pandas as pd
 
@@ -42,10 +42,10 @@ class ExchangeSymbol:
 
             logger.info("Initializing ExchangeSymbol singleton...")
 
-            self._sp_500: List[str] = []
-            self._nasdaq_100: List[str] = []
-            self._dow_30: List[str] = []
-            self._russell_1000: List[str] = []
+            self._sp_500: list[str] = []
+            self._nasdaq_100: list[str] = []
+            self._dow_30: list[str] = []
+            self._russell_1000: list[str] = []
 
             # 1. S&P 500
             self._sp_500 = self._fetch_from_wikipedia(
@@ -86,8 +86,8 @@ class ExchangeSymbol:
             )
 
     def _fetch_from_wikipedia(
-        self, url: str, search_columns: List[str], name: str
-    ) -> List[str]:
+        self, url: str, search_columns: list[str], name: str
+    ) -> list[str]:
         """
         Lädt alle Tabellen einer Wikipedia-Seite und sucht die richtige heraus,
         indem geprüft wird, ob eine der 'search_columns' existiert.
@@ -158,23 +158,33 @@ class ExchangeSymbol:
             return []
 
     @property
-    def sp_500(self) -> List[str]:
+    def sp_500(self) -> list[str]:
         return self._sp_500.copy()
 
     @property
-    def nasdaq_100(self) -> List[str]:
+    def nasdaq_100(self) -> list[str]:
         return self._nasdaq_100.copy()
 
     @property
-    def dow_30(self) -> List[str]:
+    def dow_30(self) -> list[str]:
         return self._dow_30.copy()
 
     @property
-    def russell_1000(self) -> List[str]:
+    def russell_1000(self) -> list[str]:
         return self._russell_1000.copy()
 
     @property
-    def all(self) -> List[str]:
+    def russell_1000_exclusive(self) -> list[str]:
+        """
+        Russell 1000 OHNE die Titel aus S&P 500, Nasdaq 100 und Dow 30.
+        Dient dazu, 'kleinere' Large Caps zu finden, die nicht in den Top-Indizes sind.
+        """
+        all_others = set(self._sp_500) | set(self._nasdaq_100) | set(self._dow_30)
+        rus_excl = set(self._russell_1000) - all_others
+        return sorted(list(rus_excl))
+
+    @property
+    def all(self) -> list[str]:
         combined = set(
             self._dow_30 + self._nasdaq_100 + self._sp_500 + self._russell_1000
         )

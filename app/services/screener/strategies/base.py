@@ -2,32 +2,32 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar, final
 
+from ....database.repositories.market_data_provider import MarketDataProvider
 from ....mapping import mapper
-from ....services.database import SignalDatabase
-from ....services.market_data_provider import MarketDataProvider
 from ....services.telegram import TelegramBot
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-
 class BaseStrategy(ABC, Generic[T]):
     name: str = "Base"
 
     def __init__(
         self,
-        signals_db: SignalDatabase,
-        data_provider: MarketDataProvider,  # <--- NEU
+        data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
     ) -> None:
-        self.signals_db = signals_db
-        self.data_provider = data_provider  # <--- NEU
+        """
+        Basis-Klasse für Strategien.
+        Entkoppelt von der Datenbank - Persistenz muss in der Subklasse definiert werden via DI.
+        """
+        self.data_provider = data_provider
         self.telegram_bot = telegram_bot
 
     @abstractmethod
     def run(self, days: int = 0) -> int:
-        raise NotImplementedError
+        raise NotImplementedError("Subclasses must implement this method")
 
     @final
     def _get_exchange(self, symbol: str) -> str:

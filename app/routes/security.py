@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 from flask import current_app, jsonify, request
 
@@ -18,6 +19,7 @@ def require_ip_whitelist(func: Callable[..., Any]) -> Callable[..., Any]:
             whitelist = security_conf.whitelist
             mode = security_conf.mode
         except AttributeError:
+            logger.warning("Security config not found. Allowing access.")   
             return func(*args, **kwargs)
 
         client_ip = request.remote_addr

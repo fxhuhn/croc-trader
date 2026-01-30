@@ -1,18 +1,19 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import pandas as pd
 
-from ...database import SignalDatabase
-from ..types import Order, TradeParams
+# NEU: Repository statt SignalDatabase
+from ....database.repositories.trade import TradeRepository
+from ....types import Order, TradeParams
 
 logger = logging.getLogger(__name__)
 
 
 class BaseTradeStrategy(ABC):
     """
-    Interface für alle Handelsstrategien im TradeManager.
+    Interface für alle Handelsstrategien.
+    Nutzt jetzt konsequent das TradeRepository.
     """
 
     @abstractmethod
@@ -20,67 +21,48 @@ class BaseTradeStrategy(ABC):
         self,
         trade: dict,
         candle: pd.Series,
-        df_history: pd.DataFrame,  # <--- NEW ARGUMENT
-        db: SignalDatabase,
-    ) -> Optional[str]:
+        df_history: pd.DataFrame,
+        repo: TradeRepository,  # <--- Geändert
+    ) -> str | None:
         """
-        Prüft für CREATED Trades, ob der Entry gefüllt wurde
-        ODER ob das Setup invalidiert wurde (Preis < Stop Loss).
+        Prüft für CREATED Trades, ob der Entry gefüllt wurde.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     @abstractmethod
     def manage_active_trade(
-        self, trade: dict, df_history: pd.DataFrame, db: SignalDatabase
-    ) -> Optional[str]:
+        self, 
+        trade: dict, 
+        df_history: pd.DataFrame, 
+        repo: TradeRepository # <--- Geändert
+    ) -> str | None:
         """
-        Verwaltet ACTIVE Trades (Exit-Prüfung, TimeStop).
-        Gibt Log-String zurück oder None.
+        Verwaltet ACTIVE Trades (Exit-Prüfung).
         """
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
+
 
     @abstractmethod
     def generate_orders(
-        self, trade: dict, df_history: pd.DataFrame, budget: float, db: SignalDatabase
-    ) -> Optional[Order]:
+        self, 
+        trade: dict, 
+        df_history: pd.DataFrame, 
+        budget: float, 
+        repo: TradeRepository # <--- Geändert
+    ) -> Order | None:
         """
-        Erstellt die YAML-Order Struktur für den nächsten Tag.
+        Erstellt Orders für den nächsten Tag.
         """
-        pass
+        raise NotImplementedError("Subclasses must implement this method")
 
     @abstractmethod
     def get_current_params(
-        self, trade: dict, df_history: pd.DataFrame, db: SignalDatabase
-    ) -> Optional[TradeParams]:
+        self, 
+        trade: dict, 
+        df_history: pd.DataFrame, 
+        repo: TradeRepository # <--- Geändert
+    ) -> TradeParams | None:
         """
-        Berechnet die aktuellen Strategie-Parameter (Stop, Targets)
-        für das Logging.
+        Berechnet Parameter für Logging/Anzeige.
         """
-        pass
-
-    def _close_trade_in_db(
-        self,
-        db: SignalDatabase,
-        trade_id: int,
-        reason: str,
-        price: float,
-        exit_date: Optional[str] = None,
-    ):
-        """Hilfsmethode zum sauberen Schließen in der DB."""
-        try:
-            with db._get_conn() as conn:
-                conn.execute(
-                    """
-                    UPDATE active_trades
-                    SET status = 'CLOSED',
-                        exit_reason = ?,
-                        exit_price = ?,
-                        exit_date = ?,
-                        closed_at = CURRENT_TIMESTAMP
-                    WHERE id = ?
-                    """,
-                    (reason, price, exit_date, trade_id),
-                )
-                conn.commit()
-        except Exception as e:
-            logger.error(f"DB Error beim Schließen von Trade {trade_id}: {e}")
+        raise NotImplementedError("Subclasses must implement this method")

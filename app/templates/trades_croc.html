@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid" style="max-width: 1600px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-success">🐊 Croc Active Trades</h1>
+        <div class="btn-group">
+            <a href="/trades" class="btn btn-outline-secondary">Alle Trades</a>
+            <a href="/screener/croc" class="btn btn-success">Zum Screener</a>
+            <a href="/" class="btn btn-secondary">Home</a>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card p-3 text-center shadow-sm">
+                <small class="text-muted text-uppercase fw-bold">Investiert</small>
+                <h3 class="fw-bold text-dark">{{ "%.0f"|format(summary.invested) }} $</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card p-3 text-center shadow-sm">
+                <small class="text-muted text-uppercase fw-bold">Offene Positionen</small>
+                <h3 class="fw-bold text-primary">{{ active_trades|length }}</h3>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card p-3 text-center shadow-sm">
+                <small class="text-muted text-uppercase fw-bold">Offener PnL</small>
+                <h3 class="fw-bold {% if summary.open_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    {{ "%+.2f"|format(summary.open_pnl) }} $
+                </h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0 mb-5">
+        <div class="card-header bg-success text-white fw-bold">
+            🚀 Laufende Positionen
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-light">
+                        <tr>
+                            <th>Entry Datum</th>
+                            <th>Symbol</th>
+                            <th>Signal</th>
+                            <th>Size</th>
+                            <th class="text-end">Entry</th>
+                            <th class="text-end">Aktuell</th>
+                            <th>Fortschritt (Ziel)</th>
+                            <th class="text-end">Target (TP3)</th>
+                            <th class="text-end">Stop Loss</th>
+                            <th class="text-end">PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in active_trades %}
+                        <tr>
+                            <td>{{ t.display_entry }}</td>
+                            <td>
+                                <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
+                                    class="tv-link fw-bold text-dark text-decoration-none" target="_blank">
+                                    {{ t.symbol }} ↗
+                                </a>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">
+                                    {{ t.ctx.original_signal or t.strategy }}
+                                </span>
+                            </td>
+                            <td>{{ t.current_size|int }}</td>
+
+                            <td class="text-end font-monospace">{{ "%.2f"|format(t.entry_price|float) }}</td>
+                            <td class="text-end font-monospace fw-bold">{{ "%.2f"|format(t.current_price|float) }}</td>
+
+                            <td style="min-width: 150px;">
+                                {% set target = t.current_target|float %}
+                                {% set entry = t.entry_price|float %}
+                                {% set current = t.current_price|float %}
+
+                                {% if target > entry %}
+                                {% set total_dist = target - entry %}
+                                {% set covered = current - entry %}
+                                {% set pct = (covered / total_dist) * 100 %}
+                                {% set pct = 0 if pct < 0 else pct %} {% set pct=100 if pct> 100 else pct %}
+
+                                    <div class="progress" style="height: 8px;">
+                                        <div class="progress-bar bg-success" role="progressbar"
+                                            style="width: {{ pct }}%"></div>
+                                    </div>
+                                    <div style="font-size: 0.7em;" class="text-muted text-center mt-1">
+                                        {{ "%.0f"|format(pct) }}% zum Ziel
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted small">-</span>
+                                    {% endif %}
+                            </td>
+
+                            <td class="text-end font-monospace text-success fw-bold">
+                                {{ "%.2f"|format(t.current_target|float) }}
+                            </td>
+
+                            <td class="text-end font-monospace text-danger">
+                                {{ "%.2f"|format(t.current_stop_loss|float) }}
+                            </td>
+
+                            <td class="text-end">
+                                <div
+                                    class="fw-bold {% if t.unrealized_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                    {{ "%+.2f"|format(t.unrealized_pnl) }} $
+                                </div>
+                                <small class="text-muted">{{ "%+.2f"|format(t.pnl_pct) }}%</small>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center py-4 text-muted">Keine aktiven Trades.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-secondary text-white fw-bold d-flex justify-content-between align-items-center">
+            <span>💰 Historie (Abgeschlossen)</span>
+        </div>
+
+        <div class="card-body bg-light border-bottom p-3">
+            <div class="row text-center">
+                <div class="col-md-4 border-end">
+                    <small class="text-muted text-uppercase">Anzahl Trades</small>
+                    <div class="fw-bold fs-5">{{ closed_summary.count }}</div>
+                </div>
+                <div class="col-md-4 border-end">
+                    <small class="text-muted text-uppercase">Gesamt PnL</small>
+                    <div
+                        class="fw-bold fs-5 {% if closed_summary.total_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ "%+.2f"|format(closed_summary.total_pnl) }} $
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <small class="text-muted text-uppercase">Ø PnL / Trade</small>
+                    <div
+                        class="fw-bold fs-5 {% if closed_summary.avg_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        {{ "%+.2f"|format(closed_summary.avg_pnl) }} $
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-light">
+                        <tr>
+                            <th>Entry</th>
+                            <th>Exit</th>
+                            <th>Symbol</th>
+                            <th>Signal</th>
+                            <th>Strategie (Exit)</th>
+                            <th>Size</th>
+                            <th class="text-end">Entry $</th>
+                            <th class="text-end">Exit $</th>
+                            <th class="text-end">PnL</th>
+                            <th>Grund</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in closed_trades %}
+                        <tr>
+                            <td>{{ t.display_entry }}</td>
+                            <td>{{ t.display_exit }}</td>
+                            <td class="fw-bold">{{ t.symbol }}</td>
+
+                            <td><small class="text-muted">{{ t.ctx.original_signal or '-' }}</small></td>
+                            <td><small>{{ t.ctx.match_rule.Exit if t.ctx.match_rule else 'Auto' }}</small></td>
+                            <td>{{ t.current_size|int }}</td>
+
+                            <td class="text-end font-monospace text-muted">{{ "%.2f"|format(t.entry_price|float) }}</td>
+                            <td class="text-end font-monospace">{{ "%.2f"|format(t.exit_price|float) }}</td>
+
+                            <td class="text-end">
+                                <div
+                                    class="fw-bold {% if t.realized_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+                                    {{ "%+.2f"|format(t.realized_pnl) }} $
+                                </div>
+                                <small class="text-muted">{{ "%+.2f"|format(t.pnl_pct) }}%</small>
+                            </td>
+
+                            <td>
+                                {% if "TARGET" in t.exit_reason %}
+                                <span class="badge bg-success">TARGET</span>
+                                {% elif "STOP" in t.exit_reason %}
+                                <span class="badge bg-danger">STOP LOSS</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ t.exit_reason }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="10" class="text-center py-4 text-muted">Keine Historie.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

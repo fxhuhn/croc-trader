@@ -1,7 +1,7 @@
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any
 
 from .mapping import mapper
 
@@ -27,15 +27,15 @@ class CrocSignal:
     setter: str
     welle: str
 
-    exchange: Optional[str] = None
-    full_symbol: Optional[str] = None
-    rsi: Optional[float] = None
-    sma_200: Optional[float] = None
-    sma_20: Optional[float] = None
-    wolke: Optional[str] = None
-    deluxe: Optional[str] = None
-    strategy_id: Optional[str] = None
-    reference: Optional[str] = None
+    exchange: str | None = None
+    full_symbol: str | None = None
+    rsi: float | None = None
+    sma_200: float | None = None
+    sma_20: float | None = None
+    wolke: str | None = None
+    deluxe: str | None = None
+    strategy_id: str | None = None
+    reference: str | None = None
     # Factory default sorgt für korrekten Zeitpunkt bei Instanziierung
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -77,7 +77,7 @@ class CrocSignal:
             ts_str = self.timestamp.strftime("%Y%m%d%H%M%S")
             self.reference = f"{self.symbol}_{ts_str}"
 
-    def to_db_row(self) -> Dict[str, Any]:
+    def to_db_row(self) -> dict[str, Any]:
         """Konvertiert das Objekt für die SQLite Speicherung."""
         d = asdict(self)
         # SQLite braucht ISO Strings für Datetime
@@ -103,11 +103,11 @@ class SignalStat:
     loss_rate: float
 
     # Optionale Felder (können leer sein laut CSV Beispiel)
-    wolke: Optional[str] = None
-    welle: Optional[str] = None
-    trend: Optional[str] = None
-    setter: Optional[str] = None
-    exchange: Optional[str] = None
+    wolke: str | None = None
+    welle: str | None = None
+    trend: str | None = None
+    setter: str | None = None
+    exchange: str | None = None
 
     # Metadaten
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

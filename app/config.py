@@ -3,7 +3,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import yaml
 from dotenv import load_dotenv
@@ -54,8 +54,8 @@ class DatabaseConfig:
     """Verwaltet Pfade zu Datenbanken und Datendateien."""
 
     base_folder: str = "data"
-    files: Dict[str, str] = field(default_factory=lambda: DEFAULT_DB_FILES.copy())
-    folders: Dict[str, str] = field(default_factory=lambda: DEFAULT_DB_FOLDERS.copy())
+    files: dict[str, str] = field(default_factory=lambda: DEFAULT_DB_FILES.copy())
+    folders: dict[str, str] = field(default_factory=lambda: DEFAULT_DB_FOLDERS.copy())
 
 
 @dataclass
@@ -81,7 +81,7 @@ class WebhookWorkerConfig:
 @dataclass
 class SecurityConfig:
     mode: str = "warning"
-    whitelist: List[str] = field(default_factory=list)
+    whitelist: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -108,7 +108,7 @@ class AppConfig:
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "AppConfig":
+    def from_dict(cls, data: dict[str, Any]) -> "AppConfig":
         """
         Wandelt ein Dictionary (aus YAML) rekursiv in Dataclasses um.
         Führt Smart-Merging durch, um fehlende Keys in alten Config-Files zu ergänzen.
@@ -234,7 +234,7 @@ class ConfigManager:
             return default_conf
 
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(CONFIG_FILE) as f:
                 data = yaml.safe_load(f) or {}
                 # Hier greift nun das Smart-Merging in from_dict
                 return AppConfig.from_dict(data)

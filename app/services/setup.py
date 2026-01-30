@@ -1,0 +1,126 @@
+import logging
+import yaml
+import pytz
+from pathlib import Path
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from ..database.session import DatabaseSession
+from ..database.repositories.market import MarketRepository
+from ..database.repositories.trade import TradeRepository
+from ..database.repositories.signal import SignalRepository
+
+from ..database.repositories.market_data_provider import MarketDataProvider
+from ..services.trade_manager import TradeManager
+from ..services.screener import ScreenerEngine
+from ..services.telegram import TelegramBot
+
+# Tasks importieren
+from ..tasks import run_daily_strategy_check, run_market_data_update, run_db_maintenance
+
+logger = logging.getLogger(__name__)
+
+def register_services(app, config):
+    """Initialisiert alle Services und hängt sie an app.extensions."""
+    
+    db_stocks = Path(config.get_db_path("stocks"))
+    db_signals = Path(config.get_db_path("signals"))
+
+    # 1. Telegram Service
+    tele_conf = config.app.telegram
+    telegram = TelegramBot(token=tele_conf.token, chat_id=tele_conf.chat_id, enabled=tele_conf.enabled)
+    app.extensions["telegram"] = telegram
+
+    # 2. Market Data Infrastructure (Read-Side)
+    stocks_session = DatabaseSession(str(db_stocks))
+    market_repo = MarketRepository(stocks_session)
+    
+    md_provider = MarketDataProvider(stocks_session) 
+    app.extensions["market_data_provider"] = md_provider
+
+    # 3. Signal & Trade Infrastructure (Write-Side)
+    signals_session = DatabaseSession(str(db_signals))
+    
+    # Repos erstellen
+    trade_repo = TradeRepository(signals_session)
+    signal_repo = SignalRepository(signals_session)
+    
+    # Init Schemas (Sicherstellen, dass Tabellen existieren)
+    trade_repo.init_schema()
+    signal_repo.init_schema()
+
+    # 4. Screener Config laden
+    yaml_path = config.get_strategy_path()
+    loaded_config = {}
+    if yaml_path.exists():
+        try:
+            with open(yaml_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            loaded_config = data if isinstance(data, dict) else {"strategy_ranking": data}
+            logging.info(f"Strategie-Config geladen.")
+        except Exception as e:
+            logging.error(f"Fehler beim Laden der Strategie-YAML: {e}")
+
+    # 5. Screener Engine (DI: Repos direkt übergeben)
+    screener = ScreenerEngine(
+        trade_repo=trade_repo,     # <--- WICHTIG: Repo statt Pfad/DB-Wrapper
+        signal_repo=signal_repo,   # <--- WICHTIG
+        data_provider=md_provider,
+        config=loaded_config,
+        telegram_bot=telegram
+    )
+    app.extensions["screener_engine"] = screener
+
+    # 6. Trade Manager
+    tm = TradeManager(
+        db_path=db_signals,
+        stocks_db_path=db_stocks,
+        telegram_bot=telegram
+    )
+    app.extensions["trade_manager"] = tm
+
+def configure_scheduler(app, config):
+    """Konfiguriert den Scheduler und die Jobs."""
+    scheduler = BackgroundScheduler()
+    db_stocks = Path(config.get_db_path("stocks"))
+    
+    # --- JOB 1: Marktdaten Update (Täglich 17:00 NY Time) ---
+    scheduler.add_job(
+        func=run_market_data_update,
+        args=[db_stocks],
+        trigger=CronTrigger(hour=17, minute=0, timezone=pytz.timezone("America/New_York")),
+        id="market_data_update",
+        replace_existing=True
+    )
+
+    # --- JOB 2: DB Maintenance (Sonntags 04:00) ---
+    scheduler.add_job(
+        func=run_db_maintenance,
+        args=[db_stocks],
+        trigger=CronTrigger(day_of_week="sun", hour=4),
+        id="db_maintenance",
+        replace_existing=True
+    )
+
+    # --- JOB 3: Trade Manager (Active Positions / Orders) ---
+    tm = app.extensions.get("trade_manager")
+    if tm:
+        scheduler.add_job(
+            func=tm.run_daily_process,
+            trigger=CronTrigger(day_of_week="mon-fri", hour=1, minute=0, timezone=pytz.timezone("America/New_York")),
+            id="trade_manager_process",
+            replace_existing=True
+        )
+
+    # --- JOB 4: Strategy Check (Screener) ---
+    scheduler.add_job(
+        func=run_daily_strategy_check,
+        args=[app], 
+        trigger=CronTrigger(day_of_week="mon-fri", hour=17, minute=30, timezone=pytz.timezone("America/New_York")),
+        id="strategy_check",
+        replace_existing=True
+    )
+
+    scheduler.start()
+    app.extensions["scheduler"] = scheduler
+    logger.info("Scheduler gestartet und Jobs geplant.")

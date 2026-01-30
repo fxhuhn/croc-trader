@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import pandas as pd
 import requests
@@ -19,14 +19,14 @@ class TelegramBot:
                 "Telegram Bot nicht vollständig konfiguriert (Token/ChatID fehlt)."
             )
 
-    def send(self, text: str, parse_mode: str = "Markdown") -> Optional[dict[str, Any]]:
+    def send(self, text: str, parse_mode: str = "Markdown") -> dict[str, Any] | None:
         logger.debug("old Telegram pattern.")
 
         return self.send_message(text, parse_mode)
 
     def send_message(
         self, text: str, parse_mode: str = "Markdown"
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Sendet eine Textnachricht, falls der Bot aktiviert ist."""
         if not self.enabled:
             logger.debug("Telegram Send skipped (disabled).")
@@ -57,7 +57,7 @@ class TelegramBot:
 
     def send_dataframe(
         self, df: pd.DataFrame, title: str = ""
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """Formatiert ein DataFrame als Code-Block Tabelle."""
         if not self.enabled:
             return None

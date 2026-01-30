@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid" style="max-width: 1600px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-success">🐊 Croc Signale (Pending)</h1>
+        <div class="btn-group">
+            <a href="/screener" class="btn btn-outline-secondary">Screener Übersicht</a>
+            <a href="/trades/croc" class="btn btn-success">Zu den Trades</a>
+            <a href="/" class="btn btn-secondary">Home</a>
+        </div>
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead class="bg-success text-white">
+                        <tr>
+                            <th>Datum</th>
+                            <th>Symbol</th>
+                            <th>Index</th>
+                            <th>Setup / Signal</th>
+                            <th>Score</th>
+                            <th>Entry (Stop)</th>
+                            <th>Stop Loss</th>
+                            <th>Risiko (1R)</th>
+                            <th>Target (TP3)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in results %}
+                        <tr>
+                            <td class="text-nowrap">{{ row.display_date }}</td>
+                            <td>
+                                <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}"
+                                    class="tv-link fw-bold text-dark text-decoration-none" target="_blank">
+                                    {{ row.symbol }} ↗
+                                </a>
+                            </td>
+                            <td><span class="badge bg-light text-dark border">{{ row.ctx.indices or '-' }}</span></td>
+
+                            <td>
+                                {% set rule = row.ctx.get('match_rule', {}) %}
+                                {% set signal_name = rule.get('Signal') or row.ctx.get('original_signal') or
+                                row.strategy %}
+                                <div class="fw-bold text-primary">{{ signal_name }}</div>
+                                <div style="font-size: 0.75rem;" class="text-muted">
+                                    {% if rule.get('EMA 20') %} EMA20: {{ rule['EMA 20'] }} {% endif %}
+                                    {% if rule.get('R_4W_Trend') %} | Trend: {{ rule['R_4W_Trend'] }}% {% endif %}
+                                </div>
+                            </td>
+
+                            <td>
+                                {% set score = row.setup_score | float %}
+                                <span
+                                    class="badge {% if score >= 700 %}bg-success{% elif score >= 500 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                                    {{ score }}
+                                </span>
+                            </td>
+
+                            <td class="font-monospace fw-bold text-primary">{{ "%.2f"|format(row.entry_price|float) }}
+                            </td>
+                            <td class="font-monospace text-danger">{{ "%.2f"|format(row.current_stop_loss|float) }}</td>
+
+                            <td>
+                                {% set risk = (row.entry_price|float - row.current_stop_loss|float) %}
+                                <span class="text-muted">{{ "%.2f"|format(risk) }} $</span>
+                            </td>
+
+                            <td class="font-monospace text-success">
+                                {% if row.current_target and row.current_target|float > 0 %}
+                                {{ "%.2f"|format(row.current_target|float) }}
+                                <br>
+                                {% set r_multiple = (row.current_target|float - row.entry_price|float) / risk if risk >
+                                0 else 0 %}
+                                <span class="badge bg-light text-success border border-success"
+                                    style="font-size: 0.7em">
+                                    {{ "%.1f"|format(r_multiple) }}R
+                                </span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center py-4 text-muted"> Keine offenen Signale gefunden.
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
