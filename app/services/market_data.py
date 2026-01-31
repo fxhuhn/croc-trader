@@ -118,7 +118,12 @@ class MarketDataService:
                     int(row.get("volume", 0)), "yahoo", "1D"
                 ))
 
-        if len(symbols) == 1: process(symbols[0], df)
+        if len(symbols) == 1: 
+            sym = symbols[0]
+            # Fix: YFinance with group_by='ticker' returns MultiIndex even for single symbol
+            if isinstance(df.columns, pd.MultiIndex) and sym in df.columns:
+                df = df[sym]
+            process(sym, df)
         else:
             for sym in symbols:
                 if sym in df.columns.get_level_values(0): process(sym, df[sym].copy())
