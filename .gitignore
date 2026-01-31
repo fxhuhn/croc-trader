@@ -5,6 +5,7 @@ __pycache__/
 .venv
 env/
 venv/
+alt_*.py
 
 # Environment Variables
 .env
