@@ -1,20 +1,51 @@
 import logging
+import logging.config
 
 # forwarded_allow_ips = "*"
 # accesslog = "-"
-# access_log_format = '%({x-real-ip}i)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"'
-
 
 class HealthCheckFilter(logging.Filter):
     def filter(self, record):
-        # Filtert Zeilen raus, die "GET /health" enthalten
         return "GET /health" not in record.getMessage()
 
+# Standardized Format matching app/__init__.py
+# Format: HH:MM:SS [LEVEL] name: message
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            "datefmt": "%H:%M:%S"
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "standard",
+            "stream": "ext://sys.stdout"
+        }
+    },
+    "loggers": {
+        "gunicorn.error": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False
+        },
+        "gunicorn.access": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False
+        }
+    }
+}
+
+# Apply immediately so Gunicorn picks it up
+logconfig_dict = LOGGING_CONFIG
 
 def on_starting(server):
     """
-    Diese Funktion wird von Gunicorn automatisch beim Start ausgeführt.
-    Wir hängen unseren Filter an den 'gunicorn.access' Logger.
+    Attach filters to loggers.
     """
-    access_logger = logging.getLogger("gunicorn.access")
-    access_logger.addFilter(HealthCheckFilter())
+    # Filter Health Checks from Access Log
+    logging.getLogger("gunicorn.access").addFilter(HealthCheckFilter())
