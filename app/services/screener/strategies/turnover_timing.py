@@ -1,25 +1,24 @@
 import logging
+import pandas as pd
 from dataclasses import dataclass, field
 from typing import override
-import pandas as pd
-from datetime import timedelta
 
-# Relative Imports (4 Punkte sind korrekt für diese Struktur)
 from ....database.repositories.trade import TradeRepository
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ...telegram import TelegramBot
-from ..protocols import StrategyProtocol
+from .base import BaseStrategy
+from ....tools.symbol_lists import ExchangeSymbol
 
 logger = logging.getLogger(__name__)
 
 @dataclass
 class TurnoverConfig:
     ATR_WINDOW: int = 3
-    # Entry-Varianten: 0.5 * ATR und 1.0 * ATR unter dem Close
+    # Entry Factors: 0.5 * ATR and 1.0 * ATR below Close
     ENTRY_FACTORS: list[float] = field(default_factory=lambda: [0.5, 1.0])
     SMA_WINDOW: int = 200
 
-class TurnoverTimingStrategy(StrategyProtocol):
+class TurnoverTimingStrategy(BaseStrategy):
     def __init__(
         self,
         trade_repo: TradeRepository,
@@ -27,129 +26,163 @@ class TurnoverTimingStrategy(StrategyProtocol):
         telegram_bot: TelegramBot | None = None,
         config: TurnoverConfig = TurnoverConfig()
     ):
+        super().__init__(data_provider, telegram_bot)
+        
         self.name = "TurnoverTiming"
-        self.repo = trade_repo
-        self.provider = data_provider
-        self.telegram = telegram_bot
-        self.cfg = config
+        self.trade_repo = trade_repo
+        self.config = config
 
     @override
-    def run(self, days: int = 0, analysis_date: str = None) -> int:
+    def run(self, days: int = 0, analysis_date: str | None = None, specific_symbols: list[str] | None = None) -> int:
         """
-        Sucht nach Turnover-Signalen (Wochenschluss).
-        Logik: Close < SMA200. Entry = Close - (ATR(3) * Factor).
+        Scans for Turnover signals (Weekly Close).
+        Logic: Close < SMA200. Entry = Close - (ATR(3) * Factor).
         """
-        # Genug Puffer laden für SMA200 und EMA-Glättung des ATR
-        df_dict = self.provider.get_all_daily_data(days=400)
-        if not df_dict: return 0
+        # Load enough buffer for SMA200 and EMA-smoothing of ATR
+        data_frames = self.data_provider.get_all_daily_data(days=400)
+        if not data_frames: return 0
 
-        closes = df_dict["close"]
-        highs = df_dict["high"]
-        lows = df_dict["low"]
+        closes = data_frames["close"]
+        highs = data_frames["high"]
+        lows = data_frames["low"]
         
-        # 1. Analyse-Zeitpunkt bestimmen
+        # 1. Determine Analysis Date
         if analysis_date:
             today = pd.Timestamp(analysis_date)
         else:
             today = pd.Timestamp.now().normalize() - pd.Timedelta(days=days)
         
-        # Finde letzten verfügbaren Datensatz (Vermeidung von Look-Ahead im Backtest)
+        # Find last available dataset (Avoid Look-Ahead in Backtest)
         available_dates = closes.index[closes.index <= today]
         if available_dates.empty: return 0
         last_trading_day = available_dates[-1] 
         
-        # Wochenschluss-Check: Nur Donnerstag (3) oder Freitag (4) erlauben
+        # Weekly Close Check: Only allow Thursday (3) or Friday (4) (or if specific date requested)
         if last_trading_day.dayofweek < 3:
             return 0
             
         setup_date = last_trading_day
         
-        # 2. Indikatoren berechnen (Vektorisiert)
-        # SMA 200
-        sma200 = closes.rolling(self.cfg.SMA_WINDOW).mean()
+        # 2. Compute Indicators (Vectorized)
+        # Turnover = Close * Volume
+        # Note: Volume can be 0 or NaN, handle safely
+        turnover = closes * data_frames["volume"]
         
-        # ATR Berechnung (Wilder's Smoothing, analog DipBuyer)
+        # Indicators
+        sma_turnover_20 = turnover.rolling(20).mean()
+        sma_price_150 = closes.rolling(150).mean()
+        
+        # ATR Calculation (Wilder's Smoothing)
         prev_close = closes.shift(1)
-        tr1 = highs - lows
-        tr2 = (highs - prev_close).abs()
-        tr3 = (lows - prev_close).abs()
+        true_range_1 = highs - lows
+        true_range_2 = (highs - prev_close).abs()
+        true_range_3 = (lows - prev_close).abs()
         
-        # True Range Vektorisierung (Element-wise Max)
-        tr_df = tr1.where(tr1 > tr2, tr2).where(lambda x: x > tr3, tr3)
-        
-        # Wilder's Smoothing: span = (2 * n) - 1
-        rma_span = (2 * self.cfg.ATR_WINDOW) - 1
-        atr = tr_df.ewm(span=rma_span, adjust=False).mean()
+        true_range = true_range_1.where(true_range_1 > true_range_2, true_range_2).where(lambda x: x > true_range_3, true_range_3)
+        rma_span = (2 * self.config.ATR_WINDOW) - 1
+        atr = true_range.ewm(span=rma_span, adjust=False).mean()
 
-        # Werte zum Setup-Tag extrahieren
+        # Extract values for the Setup Day
         try:
-            setup_close_row = closes.loc[setup_date]
-            setup_sma_row = sma200.loc[setup_date]
-            setup_atr_row = atr.loc[setup_date]
+            current_close = closes.loc[setup_date]
+            current_sma_price = sma_price_150.loc[setup_date]
+            current_sma_turnover = sma_turnover_20.loc[setup_date]
+            current_atr = atr.loc[setup_date]
         except KeyError:
             return 0
-        
-        candidates = []
-        for symbol in closes.columns:
-            if pd.isna(setup_close_row[symbol]) or pd.isna(setup_sma_row[symbol]): 
-                continue
-            
-            close_val = float(setup_close_row[symbol])
-            sma_val = float(setup_sma_row[symbol])
-            atr_val = float(setup_atr_row[symbol])
-            
-            # --- STRATEGIE LOGIK ---
-            # Bedingung: Close < SMA200 (Mean Reversion) und valider ATR
-            is_candidate = False
-            
-            if close_val < sma_val and atr_val > 0:
-                is_candidate = True
-            
-            # Test-Override für bekannte Werte (Backtest-Hilfe)
-            if symbol in ["TSLA", "NVDA", "AAPL", "AMD", "AMZN"]:
-                is_candidate = True 
 
-            if is_candidate:
+        # 3. Bucketing & Selection Logic
+        symbol_loader = ExchangeSymbol()
+        
+        buckets = {
+            "NASDAQ_100": symbol_loader.nasdaq_100,
+            "SP_500": symbol_loader.sp_500,
+            "RUSSELL_1000": symbol_loader.russell_1000
+        }
+
+        candidates = []
+        
+        for bucket_name, symbols_in_bucket in buckets.items():
+            # 1. Filter symbols that exist in our data and have valid data
+            valid_symbols = [
+                s for s in symbols_in_bucket 
+                if s in closes.columns 
+                and not pd.isna(current_close.get(s))
+                and not pd.isna(current_sma_turnover.get(s))
+                and not pd.isna(current_sma_price.get(s))
+                and not pd.isna(current_atr.get(s))
+            ]
+            
+            if not valid_symbols:
+                continue
+
+            # 2. Rank by Turnover SMA 20 (Highest first)
+            # Create a list of (symbol, turnover_sma) tuples
+            ranked_by_turnover = sorted(
+                valid_symbols,
+                key=lambda s: current_sma_turnover[s],
+                reverse=True
+            )
+            
+            # 3. Take Top 20 (Liquid)
+            top_20_liquid = ranked_by_turnover[:20]
+            
+            # 4. Filter: Close > SMA 150 (Trend) and ATR > 0
+            trend_filtered = []
+            for s in top_20_liquid:
+                if current_close[s] > current_sma_price[s] and current_atr[s] > 0:
+                    trend_filtered.append(s)
+            
+            # 5. Select Top 4 from the remaining list (Already sorted by Turnover)
+            final_selection = trend_filtered[:4]
+            
+            for symbol in final_selection:
                 candidates.append({
                     "symbol": symbol,
-                    "close": close_val,
-                    "sma": sma_val,
-                    "atr": atr_val
+                    "close": float(current_close[symbol]),
+                    "sma_price": float(current_sma_price[symbol]),
+                    "sma_turnover": float(current_sma_turnover[symbol]),
+                    "atr": float(current_atr[symbol]),
+                    "bucket": bucket_name
                 })
 
         count = 0
-        sig_date_str = str(setup_date.date())
+        signal_date_str = str(setup_date.date())
         
-        for cand in candidates:
-            for factor in self.cfg.ENTRY_FACTORS: # [0.5, 1.0]
+        # Deduplicate candidates (in case symbol is in multiple indices)
+        # Use dictionary keyed by symbol to keep unique, preferring first occurrence (bucket order) or just unique set
+        unique_candidates = {c["symbol"]: c for c in candidates}.values()
+        
+        for candidate in unique_candidates:
+            for factor in self.config.ENTRY_FACTORS: # [0.5, 1.0]
                 strat_name = f"{self.name}_{factor}" 
                 
-                # Berechne Limit Entry: Close - (Factor * ATR)
-                limit_price = cand["close"] - (cand["atr"] * factor)
+                # Calculate Limit Entry: Close - (Factor * ATR)
+                limit_price = candidate["close"] - (candidate["atr"] * factor)
                 limit_price = round(limit_price, 2)
                 
-                # Exists Check (Context-basiert, da signal_date Spalte nicht existiert)
-                if self.repo.exists(cand["symbol"], strat_name, sig_date_str):
+                # Exists Check
+                if self.trade_repo.exists(candidate["symbol"], strat_name, signal_date_str):
                     continue
 
-                ctx = {
-                    "setup_date": sig_date_str,
-                    "setup_close": cand["close"],
-                    "setup_sma200": cand["sma"],
-                    "setup_atr": round(cand["atr"], 2),
+                context = {
+                    "setup_date": signal_date_str,
+                    "setup_close": candidate["close"],
+                    "setup_sma150": candidate["sma_price"],
+                    "setup_turnover_sma20": round(candidate["sma_turnover"], 0),
+                    "setup_atr": round(candidate["atr"], 2),
                     "factor": factor,
-                    "indices": "Nasdaq/SPX"
+                    "bucket": candidate["bucket"]
                 }
 
-                # KORREKTER AUFRUF: Keine 'status' oder 'signal_date' Argumente!
-                self.repo.create_trade(
-                    symbol=cand["symbol"],
+                self.trade_repo.create_trade(
+                    symbol=candidate["symbol"],
                     strategy=strat_name,
                     size=0,
                     entry=limit_price, 
                     sl=0.0,
                     target=0.0,
-                    context=ctx
+                    context=context
                 )
                 count += 1
                 
