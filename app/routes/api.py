@@ -79,6 +79,45 @@ def trigger_screener() -> Response:
         logger.exception("Error during screener run")
         return jsonify({"error": str(e)}), 500
 
+@api_bp.route("/screener/dip-buyer", methods=["POST"])
+@require_ip_whitelist
+def analyze_dip_buyer() -> Response:
+    """Detailed debugging for DipBuyer strategy on a single symbol."""
+    try:
+        # User requested support for "?symbol=AAPL" via POST
+        symbol = request.args.get("symbol")
+        
+        # If not in args, check JSON body (standard API)
+        if not symbol:
+            try:
+                data = request.get_json(force=True, silent=True)
+                if data:
+                    symbol = data.get("symbol")
+            except Exception:
+                pass
+
+        if not symbol:
+             return jsonify({"status": "error", "message": "Symbol required (via query param or JSON)"}), 400
+
+        # Change: Use ScreenerEngine instead of TradeManager
+        # because the debuggable strategy instance lives in ScreenerEngine.
+        engine = current_app.extensions.get("screener_engine")
+        if not engine:
+            return jsonify({"status": "error", "message": "ScreenerEngine not initialized"}), 503
+            
+        strategy = engine.get_strategy("DipBuyer")
+        if not strategy:
+             return jsonify({"status": "error", "message": "DipBuyer strategy not found in Screener"}), 404
+             
+        # Run analysis
+        result = strategy.analyze_single_symbol(symbol)
+        
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.exception(f"Error analyzing symbol {symbol if 'symbol' in locals() else 'unknown'}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @api_bp.route("/orders/generate", methods=["POST"])
 @require_ip_whitelist
 def trigger_orders() -> Response:

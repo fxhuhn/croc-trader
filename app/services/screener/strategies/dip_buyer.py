@@ -2,7 +2,7 @@ import logging
 import pandas as pd
 from dataclasses import dataclass
 from datetime import datetime
-from typing import ClassVar, override
+from typing import ClassVar, override, Any
 
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
@@ -363,6 +363,87 @@ class DipBuyerStrategy(BaseStrategy):
             )
 
         return saved_count
+
+    def analyze_single_symbol(self, symbol: str) -> dict[str, Any]:
+        """
+        Debug method to analyze a single symbol step-by-step.
+        Returns detailed check results.
+        """
+        lookback = self.config.LOOKBACK_DAYS
+        
+        # 1. Fetch Data
+        df = self.data_provider.get_symbol_history(symbol, days=lookback)
+        if df.empty:
+            return {"symbol": symbol, "error": "No data found"}
+
+        # 2. Pivot to match _compute_indicators expectation (though it works with Series mostly if aligned)
+        # _compute_indicators expects DataFrames with columns as symbols.
+        # Here we have a single DF with columns Open/High/Low/Close. 
+        # We can simulate the dict structure or specific logic.
+        # Easiest: Create 1-column DFs.
+        # FIX: .values ensures we don't try to match RangeIndex with DateIndex (would result in NaNs)
+        closes = pd.DataFrame({symbol: df["close"].values}, index=df["date"])
+        highs = pd.DataFrame({symbol: df["high"].values}, index=df["date"])
+        lows = pd.DataFrame({symbol: df["low"].values}, index=df["date"])
+        volumes = pd.DataFrame({symbol: df["volume"].values}, index=df["date"])
+
+        # 3. Indicators
+        indicators = self._compute_indicators(closes, highs, lows, volumes)
+        
+        # Get last row (Current) and second to last (Previous)
+        if len(closes) < 2:
+            return {"symbol": symbol, "error": "Not enough data"}
+            
+        idx = -1
+        prev_idx = -2
+        
+        # Extract values
+        current_close = closes.iloc[idx][symbol]
+        current_open = df["open"].iloc[idx]
+        prev_close = closes.iloc[prev_idx][symbol]
+        prev_open = df["open"].iloc[prev_idx]
+        
+        sma200 = indicators["sma200"].iloc[idx][symbol]
+        volume_sma = indicators["volume_sma"].iloc[idx][symbol]
+        atr = indicators["atr"].iloc[idx][symbol]
+        atr_r3 = indicators["atr_r3"].iloc[idx][symbol]
+        ibs = indicators["ibs"].iloc[idx][symbol]
+        vola_ratio = indicators["vola_ratio"].iloc[idx][symbol]
+        
+        # 4. Run Checks
+        checks = {
+            "min_volume": bool(volume_sma > self.config.MIN_VOLUME),
+            "min_price": bool(current_close > self.config.MIN_PRICE),
+            "uptrend_sma200": bool(current_close > sma200),
+            "dip_atr_r3": bool(atr_r3 < self.config.MAX_ATR_R3),
+            "vola_ratio": bool(vola_ratio > self.config.MIN_VOLA_RATIO),
+            "low_ibs": bool(ibs < self.config.MAX_IBS),
+            "red_candle_today": bool(current_close < current_open),
+            "red_candle_yesterday": bool(prev_close < prev_open)
+        }
+        
+        passed = all(checks.values())
+        
+        # Safe extraction helper
+        def safe_val(val, default=0.0):
+            return default if pd.isna(val) else val
+
+        return {
+            "symbol": symbol,
+            "last_date": str(df["date"].iloc[idx].date()),
+            "data_valid": True,
+            "checks": checks,
+            "values": {
+                "close": round(safe_val(current_close), 2),
+                "sma200": round(safe_val(sma200), 2),
+                "volume_sma": int(safe_val(volume_sma, 0)),
+                "atr": round(safe_val(atr), 2),
+                "atr_r3": round(safe_val(atr_r3), 2),
+                "ibs": round(safe_val(ibs), 2),
+                "vola_ratio": round(safe_val(vola_ratio), 3)
+            },
+            "result": "PASS" if passed else "FAIL"
+        }
 
     def _get_index_membership(self, symbol: str) -> list[str]:
         """Identifies which major indices the symbol belongs to."""
