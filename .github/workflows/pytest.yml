@@ -39,7 +39,7 @@ jobs:
 
     - name: Run pytest
       run: |
-        pytest test/ -v --tb=short
+        python -m pytest test/ -v --tb=short
 
     - name: Run pytest with coverage
       if: matrix.python-version == '3.12'
