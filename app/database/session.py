@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 
 class DatabaseSession:
-    BUSY_TIMEOUT = 3000
+    BUSY_TIMEOUT = 30000  # Increased to 30s for high concurrency
     JOURNAL_MODE = "WAL"
     
     def __init__(self, db_path: str):
@@ -14,9 +14,10 @@ class DatabaseSession:
     def connect(self) -> Generator[sqlite3.Connection, None, None]:
         conn = sqlite3.connect(self.db_path)
 
-        # WAL Mode & Timeout für hohe Concurrency
+        # WAL Mode & Timeout & Performance optimizations
         conn.execute(f"PRAGMA busy_timeout = {self.BUSY_TIMEOUT};")
         conn.execute(f"PRAGMA journal_mode = {self.JOURNAL_MODE};")
+        conn.execute("PRAGMA synchronous = NORMAL;")  # Faster WAL writes
 
         conn.row_factory = sqlite3.Row
         try:
