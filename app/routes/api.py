@@ -37,6 +37,8 @@ def ingest_webhook() -> Response:
         payload: dict[str, Any] | None = request.get_json(silent=True, force=True)
 
         if not payload:
+            raw_data = request.get_data(as_text=True)
+            logger.warning(f"⚠️ Malformed Webhook Data: {raw_data}")
             return jsonify({"status": "error", "message": "Empty Payload or Invalid JSON"}), 400
 
         configuration = current_app.config.get("APP_CONFIG")
