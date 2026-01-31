@@ -1,4 +1,4 @@
-# app/routes/templates_raw.py
+# app/web/templates_raw.py
 
 HTML_TEMPLATES = {
     "webhook": """
@@ -55,845 +55,650 @@ HTML_TEMPLATES = {
     </body>
     </html>
     """,
+    
     "croc_setup": """
     <!DOCTYPE html>
     <html lang="de">
     <head>
         <meta charset="UTF-8">
-        <title>🐊 Croc Setup Screener</title>
+        <title>🐊 Croc Trades (Pending)</title>
         <style>
-            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background: #fdfdfd; }
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background: #f8f9fa; }
             h1 { color: #27ae60; border-bottom: 2px solid #27ae60; padding-bottom: 10px; display: inline-block; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.08); font-size: 0.9em; background: white; }
-            th, td { border: 1px solid #eee; padding: 12px 15px; text-align: left; }
-            th { background-color: #27ae60; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
-            tr:hover { background-color: #f0fdf4; }
-            .rank-badge { background: #333; color: #fff; padding: 3px 8px; border-radius: 10px; font-weight: bold; font-size: 0.85em; }
-            .r-val { color: #d35400; font-weight: bold; }
-            .strat-highlight { color: #2980b9; font-weight: bold; }
-            a.tv-link { text-decoration: none; color: #27ae60; font-weight: bold; display: inline-flex; align-items: center; }
-            a.tv-link:hover { text-decoration: underline; color: #1e8449; }
+            .container { max-width: 1400px; margin: 0 auto; }
+            table { border-collapse: collapse; width: 100%; background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border-radius: 8px; overflow: hidden; }
+            th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
+            th { background-color: #27ae60; color: white; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.5px; }
+            tr:hover { background-color: #f1f8e9; }
+            
+            .price { font-family: monospace; font-weight: bold; font-size: 1.1em; }
+            .score-high { color: #27ae60; font-weight: bold; }
+            .score-med { color: #f39c12; font-weight: bold; }
+            .score-low { color: #c0392b; font-weight: bold; }
+            
+            .badge { padding: 3px 8px; border-radius: 4px; font-size: 0.8em; font-weight: bold; }
+            .bg-idx { background: #e9ecef; color: #495057; }
+            
+            a.tv-link { text-decoration: none; color: #2c3e50; font-weight: bold; display: inline-flex; align-items: center; }
+            a.tv-link:hover { color: #27ae60; }
+            
+            .meta-info { font-size: 0.85em; color: #7f8c8d; }
         </style>
     </head>
     <body>
-        <h1>🐊 Croc Setup (Ranking 2026)</h1>
-        <p>Top Setups basierend auf EMA, RSI und Extra-Filtern der letzten 10 Tage.</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>Rank</th><th>Datum</th><th>Symbol</th><th>Signal</th>
-                    <th>R / Trade</th><th>Empf. Strategie</th><th>Close</th>
-                    <th>RSI</th><th>Dist EMA %</th><th>Auslöser (Filter)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results %}
-                    {% set exchange_prefix = (row['exchange'] ~ ':') if row['exchange'] and row['exchange'] != 'UNKNOWN' else '' %}
-                    {% set tv_interval = 'D' if row['timeframe'] == '1D' else row['timeframe'] %}
-                    {% set tv_url = "https://www.tradingview.com/chart/?symbol=" ~ exchange_prefix ~ row['symbol'] ~ "&interval=" ~ tv_interval %}
-                <tr>
-                    <td><span class="rank-badge">#{{ row['rank'] }}</span></td>
-                    <td>{{ row['date'] }}</td>
-                    <td><a href="{{ tv_url }}" class="tv-link" target="_blank">{{ row['symbol'] }} ↗</a></td>
-                    <td>{{ row['signal'] }}</td>
-                    <td class="r-val">{{ row['r_per_trade'] }}</td>
-                    <td class="strat-highlight">{{ row['recommended_strategy'] }}</td>
-                    <td>{{ row['close'] }}</td>
-                    <td>{{ row['rsi']|round(1) if row['rsi'] is not none else '-' }}</td>
-                    <td>{{ row['dist_ema'] ~ '%' if row['dist_ema'] is not none else '-' }}</td>
-                    <td style="font-style: italic; color: #666;">{{ row['match_filter'] }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="container">
+            <h1>🐊 Croc Signale (Pending)</h1>
+            <p>Aktuelle Setup-Kandidaten aus der Datenbank (Status: CREATED).</p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Datum</th>
+                        <th>Symbol</th>
+                        <th>Index</th>
+                        <th>Strategie</th>
+                        <th>Score</th>
+                        <th>Phase</th>
+                        <th>Entry (Stop Buy)</th>
+                        <th>Stop Loss</th>
+                        <th>Risiko</th>
+                        <th>TP1 / TP3</th>
+                        <th>Signal Info</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in results %}
+                    <tr>
+                        <td>{{ row['display_date'] }}</td>
+                        <td>
+                            <a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" class="tv-link" target="_blank">
+                                {{ row['symbol'] }} ↗
+                            </a>
+                        </td>
+                        <td><span class="badge bg-idx">{{ row['ctx'].get('indices', '-') }}</span></td>
+                        <td style="font-weight:bold; color:#2980b9;">{{ row['strategy'] }}</td>
+                        <td>
+                            {% set s = row['setup_score']|float %}
+                            <span class="{{ 'score-high' if s >= 7 else 'score-med' if s >= 4 else 'score-low' }}">
+                                {{ s }}
+                            </span>
+                        </td>
+                        <td class="meta-info">{{ row['market_phase'] }}</td>
+                        
+                        <td class="price" style="color: #27ae60;">{{ row['entry_price'] }}</td>
+                        <td class="price" style="color: #c0392b;">{{ row['current_stop_loss'] }}</td>
+                        
+                        {% set risk = (row['entry_price'] - row['current_stop_loss']) | round(2) %}
+                        <td style="font-size:0.9em;">
+                            {{ risk }} $ <br> 
+                            <span style="color:#999;">(1R)</span>
+                        </td>
+                        
+                        {% set match = row['ctx'].get('match_rule', {}) %}
+                        <td class="price" style="color: #2980b9;">
+                            {% if row['ctx'].get('tp1') %}
+                                {{ row['ctx']['tp1'] }} / {{ row['ctx']['tp3'] }}
+                            {% else %}
+                                <span style="font-size:0.8em; color:#999;">Auto (Split)</span>
+                            {% endif %}
+                        </td>
+                        
+                        <td class="meta-info">
+                            {{ row['ctx'].get('original_signal', '-') }}<br>
+                            {% if match.get('R_2026') %}R26: {{ match.get('R_2026') }}{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </body>
     </html>
     """,
+
     "dip_buyer": """
     <!DOCTYPE html>
     <html lang="de">
     <head>
         <meta charset="UTF-8">
-        <title>Screener Dip-Buyer Ergebnisse</title>
+        <title>📉 DipBuyer Signale</title>
         <style>
-            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; }
-            h1 { color: #2c3e50; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: 0.9em; }
-            th, td { border: 1px solid #ddd; padding: 12px 15px; text-align: left; }
-            th { background-color: #2980b9; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
-            tr:nth-child(even) { background-color: #f8f9fa; }
-            tr:hover { background-color: #e9ecef; }
-            a.tv-link { text-decoration: none; color: #2980b9; font-weight: bold; display: inline-flex; align-items: center; }
-            a.tv-link:hover { text-decoration: underline; color: #1a5276; }
-            .tv-icon { font-size: 0.8em; margin-left: 4px; color: #7f8c8d; }
-        </style>
-    </head>
-    <body>
-        <h1>📉 Dip-Buyer Screener Ergebnisse</h1>
-        <table>
-            <thead>
-                <tr>
-                    <th>Datum</th><th>Symbol</th><th>Exchange</th><th>Setup Score</th>
-                    <th>ATR R3</th><th>Entry Limit</th><th>ATR 5</th><th>Close</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results %}
-                    {% set exchange_prefix = (row['exchange'] ~ ':') if row['exchange'] and row['exchange'] != 'UNKNOWN' else '' %}
-                    {% set tv_interval = 'D' if row['timeframe'] == '1D' else row['timeframe'] %}
-                    {% set tv_url = "https://www.tradingview.com/chart/?symbol=" ~ exchange_prefix ~ row['symbol'] ~ "&interval=" ~ tv_interval %}
-                <tr>
-                    <td>{{ row['date'] }}</td>
-                    <td><a href="{{ tv_url }}" class="tv-link" target="_blank">{{ row['symbol'] }} <span class="tv-icon">↗</span></a></td>
-                    <td style="font-size: 0.8em; color: #666;">{{ row['exchange'] }}</td>
-                    <td>{{ row['setup_score'] }}</td>
-                    <td style="{{ 'color: green;' if row['atr_r3'] < -2 else '' }}">{{ row['atr_r3'] }}</td>
-                    <td><b>{{ row['entry_limit'] }}</b></td>
-                    <td>{{ row['atr5'] }}</td>
-                    <td>{{ row['close'] }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </body>
-    </html>
-    """,
-    "turnover": """
-    <!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <title>Turnover Timing Ergebnisse</title>
-        <style>
-            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #f9f9f9; }
-            h1 { color: #2c3e50; border-bottom: 3px solid #f39c12; display: inline-block; padding-bottom: 5px; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.1); font-size: 0.9em; background: white; }
-            th, td { border: 1px solid #ddd; padding: 12px 15px; text-align: left; }
-            th { background-color: #f39c12; color: white; text-transform: uppercase; letter-spacing: 0.5px; }
-            tr:nth-child(even) { background-color: #fcfcfc; }
-            tr:hover { background-color: #fff8e1; }
-            .index-badge { background: #eee; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-weight: bold; color: #555; }
-            .money { font-family: monospace; color: #27ae60; font-weight: bold; }
-            .entry-zone { color: #d35400; font-weight: bold; }
-            a.tv-link { text-decoration: none; color: #e67e22; font-weight: bold; }
-            a.tv-link:hover { text-decoration: underline; color: #d35400; }
-        </style>
-    </head>
-    <body>
-        <h1>🔄 Turnover Timing Screener</h1>
-        <p>Top Aktien nach Turnover (SMA20) über SMA150 aus NDX, SPX, Russell 1000.</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>Datum</th><th>Symbol</th><th>Index (Quelle)</th><th>Turnover SMA20 ($)</th>
-                    <th>Close</th><th>ATR(3)</th><th>Entry 1 (-0.5 ATR)</th><th>Entry 2 (-1.0 ATR)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results %}
-                    {% set exchange_prefix = (row['exchange'] ~ ':') if row['exchange'] and row['exchange'] != 'UNKNOWN' else '' %}
-                    {% set tv_url = "https://www.tradingview.com/chart/?symbol=" ~ exchange_prefix ~ row['symbol'] %}
-                <tr>
-                    <td>{{ row['date'] }}</td>
-                    <td><a href="{{ tv_url }}" class="tv-link" target="_blank">{{ row['symbol'] }} ↗</a></td>
-                    <td><span class="index-badge">{{ row['source_index'] }}</span></td>
-                    <td class="money">{{ "{:,.0f}".format(row['turnover_sma20']) }}</td>
-                    <td>{{ row['close'] }}</td>
-                    <td>{{ row['atr3'] }}</td>
-                    <td class="entry-zone">{{ row['entry_1'] }}</td>
-                    <td class="entry-zone">{{ row['entry_2'] }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </body>
-    </html>
-    """,
-    "strategy_trades": """
-    <!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <title>Strategy Trades Übersicht</title>
-        <style>
-            body { font-family: sans-serif; padding: 20px; }
-            table { border-collapse: collapse; width: 100%; box-shadow: 0 0 20px rgba(0,0,0,0.1); }
-            th, td { border: 1px solid #ddd; padding: 12px 15px; text-align: left; }
-            th { background-color: #8e44ad; color: white; }
-            tr:nth-child(even) { background-color: #f3f3f3; }
-            tr:hover { background-color: #f1f1f1; }
-            h1 { color: #333; }
-            .status-open { color: #27ae60; font-weight: bold; }
-            .status-created { color: #d35400; font-weight: bold; }
-            .status-closed { color: #7f8c8d; }
-        </style>
-    </head>
-    <body>
-        <h1>💼 Strategy Trades (Historie)</h1>
-        <table>
-            <thead>
-                <tr>
-                    <th>Entry Date</th><th>Strategy</th><th>Symbol</th><th>Status</th>
-                    <th>Entry Price</th><th>Quantity</th><th>ATR @ Entry</th><th>Exit Reason</th><th>Closed At</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results %}
-                <tr>
-                    <td>{{ row['entry_date'] }}</td>
-                    <td>{{ row['strategy'] }}</td>
-                    <td><b>{{ row['symbol'] }}</b></td>
-                    <td class="status-{{ row['status']|lower }}">{{ row['status'] }}</td>
-                    <td>{{ row['entry_price'] }}</td>
-                    <td>{{ row['quantity'] }}</td>
-                    <td>{{ row['atr_at_entry'] }}</td>
-                    <td>{{ row['exit_reason'] or '-' }}</td>
-                    <td>{{ row['closed_at'] or '-' }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </body>
-    </html>
-    """,
-    "active_trades_raw": """
-    <!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <title>DB: Active Trades</title>
-        <style>
-            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #f4f4f9; }
-            h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; display: inline-block; }
-            table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-            th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; font-size: 0.9em; }
-            th { background-color: #34495e; color: white; text-transform: uppercase; font-size: 0.85em; }
-            tr:nth-child(even) { background-color: #f8f9fa; }
-            tr:hover { background-color: #e2e6ea; }
-            .status-created { color: #d35400; font-weight: bold; }
-            .status-active { color: #27ae60; font-weight: bold; }
-            .status-closed { color: #7f8c8d; }
-            .status-missed { color: #c0392b; text-decoration: line-through; }
-        </style>
-    </head>
-    <body>
-        <h1>🗃️ Tabelle: active_trades</h1>
-        <p>Inhalt der Datenbank (Limit: {{ limit }}), sortiert nach <b>Entry Date (DESC)</b>.</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th><th>Symbol</th><th>Entry Date</th><th>Strategy</th><th>Status</th>
-                    <th>Entry Price</th><th>ATR</th><th>Qty</th><th>Exit Reason</th>
-                    <th>Closed At</th><th>Created At</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results %}
-                <tr>
-                    <td>{{ row['id'] }}</td>
-                    <td><b>{{ row['symbol'] }}</b></td>
-                    <td>{{ row['entry_date'] }}</td>
-                    <td>{{ row['strategy'] }}</td>
-                    <td class="status-{{ row['status']|lower }}">{{ row['status'] }}</td>
-                    <td>{{ row['entry_price'] }}</td>
-                    <td>{{ row['atr_at_entry'] }}</td>
-                    <td>{{ row['quantity'] }}</td>
-                    <td>{{ row['exit_reason'] or '' }}</td>
-                    <td>{{ row['closed_at'] or '' }}</td>
-                    <td style="color: #999; font-size: 0.8em;">{{ row['created_at'] }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </body>
-    </html>
-    """,
-    "active_trades_dashboard": """
-    <!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <title>Portfolio Dashboard</title>
-        <style>
-            body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 20px; background-color: #f0f2f5; color: #333; }
-
-            /* Header & Layout */
-            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-            h1 { margin: 0; color: #2c3e50; font-size: 1.8rem; }
-            .badge-count { background: #3498db; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.6em; vertical-align: middle; }
-
-            /* Sections */
-            .section { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); padding: 20px; margin-bottom: 25px; }
-            .section-title { font-size: 1.1rem; font-weight: bold; color: #7f8c8d; margin-bottom: 15px; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; }
-
-            /* Tables */
-            table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background: #f0f2f5; }
+            h1 { color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 10px; display: inline-block; }
+            .container { max-width: 1200px; margin: 0 auto; }
+            table { border-collapse: collapse; width: 100%; background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border-radius: 8px; overflow: hidden; }
             th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #eee; }
-            th { background-color: #fafafa; color: #7f8c8d; text-transform: uppercase; font-size: 0.8em; letter-spacing: 0.5px; }
-            tr:hover { background-color: #f9f9f9; }
-
-            /* Status Badges */
-            .status-badge { padding: 4px 8px; border-radius: 4px; font-weight: bold; font-size: 0.85em; text-transform: uppercase; }
-            .st-active { background-color: #e8f8f5; color: #27ae60; border: 1px solid #27ae60; }
-            .st-created { background-color: #fef5e7; color: #d35400; border: 1px solid #d35400; }
-            .st-closed { background-color: #f2f3f4; color: #7f8c8d; }
-            .st-missed { background-color: #fdedec; color: #c0392b; text-decoration: line-through; }
-
-            /* Helper Classes */
-            .price { font-family: monospace; font-weight: bold; }
-            .profit-pos { color: #27ae60; font-weight: bold; }
-            .profit-neg { color: #c0392b; font-weight: bold; }
-
-            /* Search Input */
-            #searchInput { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 250px; font-size: 0.9em; }
-
-            /* No Data */
-            .empty-state { text-align: center; padding: 20px; color: #999; font-style: italic; }
+            th { background-color: #2980b9; color: white; text-transform: uppercase; font-size: 0.85em; letter-spacing: 0.5px; }
+            tr:hover { background-color: #eaf2f8; }
+            
+            .price { font-family: monospace; font-weight: bold; font-size: 1.1em; }
+            .limit-buy { color: #27ae60; font-weight: bold; }
+            .limit-loc { color: #d35400; font-weight: bold; }
+            
+            a.tv-link { text-decoration: none; color: #2c3e50; font-weight: bold; display: inline-flex; align-items: center; }
+            a.tv-link:hover { color: #2980b9; }
+            
+            .atr-badge { background: #eee; color: #555; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+            .badge-idx { background: #d6eaf8; color: #2471a3; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; }
         </style>
     </head>
     <body>
-        <div class="header">
-            <h1>🐊 Portfolio Dashboard</h1>
-            <div>
-                <a href="/screener/webhook" style="margin-right: 15px; text-decoration: none; color: #3498db;">Zu den Screenern →</a>
-            </div>
-        </div>
-
-        {% if stats %}
-        <div class="section">
-            <div class="section-title">📊 Performance nach Strategie</div>
-            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                {% for s in stats %}
-                <div style="flex: 1; min-width: 200px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; padding: 15px;">
-                    <div style="font-weight: bold; color: #2c3e50; font-size: 1.1em; margin-bottom: 5px;">
-                        {{ s.name }}
-                    </div>
-                    <div style="display: flex; justify-content: space-between; font-size: 0.9em; color: #666;">
-                        <span>Trades: <b>{{ s.count }}</b></span>
-                        <span>Win Rate: <b>{{ s.win_rate }}%</b></span>
-                    </div>
-                    <div style="margin-top: 8px; font-size: 1.2em; font-weight: bold; color: {{ 'green' if s.avg_return > 0 else 'red' }};">
-                        Ø {{ s.avg_return }}%
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <div class="section">
-            <div class="section-title">
-                🚀 Laufende Positionen (Active) <span class="badge-count">{{ active_trades|length }}</span>
-            </div>
-
-            {% if active_trades %}
+        <div class="container">
+            <h1>📉 DipBuyer Signale (Pending)</h1>
+            <p>Limit-Order Kandidaten für den nächsten Handelstag.</p>
+            
             <table>
                 <thead>
                     <tr>
+                        <th>Datum</th>
                         <th>Symbol</th>
-                        <th>Strategie</th>
-                        <th>Entry Date</th>
-                        <th>Status</th>
-                        <th>Entry Price</th>
-                        <th>Last Close</th>
-                        <th>Qty</th>
-                        <th>Invest</th>
-                        <th>PnL ($)</th>
-                        <th>PnL (%)</th>
+                        <th>Index</th>
+                        <th>Entry (Limit)</th>
+                        <th>LOC</th>
+                        <th>Score</th>
+                        <th>Close</th>
+                        <th>ATR (5)</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for row in active_trades %}
+                    {% for row in results %}
                     <tr>
+                        <td>{{ row['display_date'] }}</td>
                         <td>
-                            <a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" target="_blank" style="text-decoration:none; color:#2c3e50; font-weight:bold;">
+                            <a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" class="tv-link" target="_blank">
                                 {{ row['symbol'] }} ↗
                             </a>
                         </td>
-                        <td>{{ row['strategy'] }}</td>
-                        <td>{{ row['entry_date'] }}</td>
-                        <td>
-                            <span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span>
+                        <td><span class="badge-idx">{{ row['ctx'].get('indices', '-') }}</span></td>
+                        <td class="price limit-buy">{{ "%.2f"|format(row['entry_price']) if row['entry_price'] else '-' }} $</td>
+                        <td class="price limit-loc">
+                            {% if row['ctx'].get('threshold_loc') %}
+                                {{ "%.2f"|format(row['ctx']['threshold_loc']) }}
+                            {% else %}-{% endif %}
                         </td>
-                        <td class="price">{{ row['entry_price'] }}</td>
-                        <td class="price">{{ row['current_price'] or '-' }}</td>
-                        <td>{{ row['quantity'] }}</td>
-                        <td class="price">{{ (row['entry_price'] * row['quantity']) | round(0) }}</td>
-                        <td>
-                           {% if row['pnl_val'] is not none %}
-                             <span class="{{ 'profit-pos' if row['pnl_val'] >= 0 else 'profit-neg' }}">
-                               {{ row['pnl_val']|round(2) }} $
-                             </span>
-                           {% else %} - {% endif %}
-                        </td>
-                        <td>
-                           {% if row['pnl_pct'] is not none %}
-                             <span class="{{ 'profit-pos' if row['pnl_pct'] >= 0 else 'profit-neg' }}">
-                               {{ row['pnl_pct']|round(2) }} %
-                             </span>
-                           {% else %} - {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-                <div class="empty-state">Keine aktiven Positionen.</div>
-            {% endif %}
-        </div>
-
-        <div class="section">
-            <div class="section-title">
-                🆕 Neue Signale (Created/Pending) <span class="badge-count">{{ new_trades|length }}</span>
-            </div>
-
-            {% if new_trades %}
-            <table>
-                <thead>
-                    <tr>
-                        <th>Symbol</th>
-                        <th>Strategie</th>
-                        <th>Entry Date</th>
-                        <th>Status</th>
-                        <th>Limit / Stop</th>
-                        <th>Setup Info</th>
-                        <th>Qty (Plan)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in new_trades %}
-                    <tr>
-                        <td>
-                            <a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" target="_blank" style="text-decoration:none; color:#2c3e50; font-weight:bold;">
-                                {{ row['symbol'] }} ↗
-                            </a>
-                        </td>
-                        <td>{{ row['strategy'] }}</td>
-                        <td>{{ row['entry_date'] }}</td>
-                        <td>
-                            <span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span>
-                        </td>
-                        <td class="price">{{ row['entry_price'] }}</td>
-                        <td style="font-size: 0.85em; color: #666;">
-                           ATR: {{ row['atr_at_entry'] }}
-                        </td>
-                        <td>{{ row['quantity'] }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-                <div class="empty-state">Keine neuen Signale in der Pipeline.</div>
-            {% endif %}
-        </div>
-
-        <div class="section">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom: 2px solid #f0f2f5; padding-bottom: 10px; margin-bottom: 15px;">
-                <div class="section-title" style="margin:0; border:none;">📚 Historie (Letzte {{ limit }})</div>
-                <input type="text" id="searchInput" onkeyup="filterHistory()" placeholder="Suche Symbol, Strategie...">
-            </div>
-
-            <table id="historyTable">
-                <thead>
-                    <tr>
-                        <th>Entry Date</th>
-                        <th>Exit Date</th>
-                        <th>Days</th>
-                        <th>Symbol</th>
-                        <th>Strategie</th>
-                        <th>Status</th>
-                        <th>Entry</th>
-                        <th>Exit</th>
-                        <th>Ergebnis</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in history %}
-                    <tr>
-                        <td style="font-size: 0.9em; color: #555;">{{ row['entry_date'] }}</td>
-                        <td style="font-size: 0.9em; color: #555;">{{ row['display_exit_date'] }}</td>
-                        <td style="font-size: 0.9em; text-align: center;">{{ row['holding_days'] }}</td>
-                        <td style="font-weight:bold;">{{ row['symbol'] }}</td>
-                        <td>{{ row['strategy'] }}</td>
-                        <td><span class="status-badge st-{{ row['status']|lower }}">{{ row['status'] }}</span></td>
-                        <td class="price">{{ row['entry_price'] }}</td>
-                        <td class="price">{{ row['exit_price'] or '-' }}</td>
-                        <td>
-                           {% if row['status'] == 'CLOSED' and row['exit_price'] %}
-                               {% set pct = ((row['exit_price'] - row['entry_price']) / row['entry_price'] * 100) | round(2) %}
-                               <span class="{{ 'profit-pos' if pct > 0 else 'profit-neg' }}">
-                                   {{ pct }}% <small>({{ row['exit_reason'] }})</small>
-                               </span>
-                           {% else %}
-                               <span style="color:#ccc;">{{ row['exit_reason'] or '-' }}</span>
-                           {% endif %}
-                        </td>
+                        <td><b>{{ row['setup_score'] }}</b></td>
+                        <td class="price" style="color:#777;">{{ "%.2f"|format(row['ctx'].get('close')) if row['ctx'].get('close') else '-' }}</td>
+                        <td><span class="atr-badge">{{ row['ctx'].get('atr5', '-') }}</span></td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-
-        <script>
-            function filterHistory() {
-                var input, filter, table, tr, td, i, txtValue;
-                input = document.getElementById("searchInput");
-                filter = input.value.toUpperCase();
-                table = document.getElementById("historyTable");
-                tr = table.getElementsByTagName("tr");
-
-                for (i = 1; i < tr.length; i++) {
-                    // Spalten Indices angepasst (Symbol=2, Strategie=3 -> jetzt durch Days verschoben auf Symbol=3, Strat=4)
-                    var tdSymbol = tr[i].getElementsByTagName("td")[3];
-                    var tdStrat = tr[i].getElementsByTagName("td")[4];
-
-                    if (tdSymbol || tdStrat) {
-                        var txtSymbol = tdSymbol.textContent || tdSymbol.innerText;
-                        var txtStrat = tdStrat.textContent || tdStrat.innerText;
-
-                        if (txtSymbol.toUpperCase().indexOf(filter) > -1 || txtStrat.toUpperCase().indexOf(filter) > -1) {
-                            tr[i].style.display = "";
-                        } else {
-                            tr[i].style.display = "none";
-                        }
-                    }
-                }
-            }
-        </script>
     </body>
     </html>
     """,
-    "backtest_form": """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Dip-Buyer Backtest</title>
-            <style>
-                body { font-family: 'Segoe UI', sans-serif; padding: 40px; text-align: center; background: #f4f7f6; color: #333; }
-                h1 { color: #2c3e50; }
-                .container { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: inline-block; }
-                input[type="text"] { padding: 12px; font-size: 16px; border: 1px solid #ddd; border-radius: 5px; width: 250px; margin-right: 10px; }
-                button { padding: 12px 25px; font-size: 16px; background: #2980b9; color: white; border: none; border-radius: 5px; cursor: pointer; transition: background 0.3s; }
-                button:hover { background: #3498db; }
-                p { color: #7f8c8d; margin-bottom: 30px; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div style="font-size: 60px;">📉</div>
-                <h1>Dip-Buyer Strategie Analyse</h1>
-                <p>Backtest über die Jahre 2023, 2024, 2025 bis heute.</p>
-                <form method="POST">
-                    <input type="text" name="debug_symbol" placeholder="Debug Symbol (z.B. APP) optional">
-                    <button type="submit">Backtest starten 🚀</button>
-                </form>
-                <br>
-                <small style="color: #999;">Lasse das Feld leer für einen kompletten Lauf ohne Detail-Logs.</small>
-            </div>
-        </body>
-        </html>
-    """,
-    "backtest_report": """
+
+    # --- CROC TRADES ---
+    "trades_croc": """
     <!DOCTYPE html>
     <html lang="de">
     <head>
         <meta charset="UTF-8">
-        <title>Backtest Report</title>
+        <title>🐊 Croc Trades (Active/Closed)</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <style>
-            body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f4f7f6; color: #333; max-width: 1200px; margin: 0 auto; }
-            h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-            .section-title { font-size: 1.1em; color: #7f8c8d; margin-top: 30px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; }
-            .card { background: white; padding: 25px; margin-bottom: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-            .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
-            .metric-box { text-align: center; padding: 15px; border: 1px solid #eee; border-radius: 8px; background: #fafafa; }
-            .metric-box span.val { display: block; font-size: 2em; font-weight: bold; color: #2980b9; margin-bottom: 5px; }
-            .metric-box span.lbl { font-size: 0.9em; color: #7f8c8d; }
-            .metric-box.bad .val { color: #c0392b; }
-            table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
-            th, td { padding: 10px; text-align: center; border-bottom: 1px solid #eee; }
-            th { background: #ecf0f1; color: #555; }
-            .pos-high { background-color: #27ae60; color: white; }
-            .pos-med { background-color: #2ecc71; color: white; }
-            .pos-low { background-color: #a9dfbf; }
-            .neg-low { background-color: #f5b7b1; }
-            .neg-med { background-color: #e74c3c; color: white; }
-            .neg-high { background-color: #c0392b; color: white; }
-            .neutral { background-color: #fff; color: #eee; }
-            .trades-table th { text-align: left; }
-            .trades-table td { text-align: left; }
-            .pos-text { color: #27ae60; font-weight: bold; }
-            .neg-text { color: #c0392b; font-weight: bold; }
-            .btn { display: inline-block; padding: 10px 20px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; margin-top: 20px; }
-            .btn:hover { background: #2980b9; }
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background: #f8f9fa; }
+            h1 { color: #27ae60; margin: 0; display: inline-block; border-bottom: 2px solid #27ae60; padding-bottom: 10px; }
+            h2 { color: #555; margin-top: 40px; margin-bottom: 15px; font-size: 1.4em; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+            .container-fluid { max-width: 1600px; }
+            
+            .card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+            .card-header { background-color: #2c3e50; color: white; font-weight: 600; padding: 12px 20px; }
+            
+            table { margin-bottom: 0 !important; }
+            th { background-color: #f8f9fa; color: #7f8c8d; text-transform: uppercase; font-size: 0.85em; font-weight: 600; letter-spacing: 0.5px; border-bottom: 2px solid #eee; vertical-align: middle; }
+            td { vertical-align: middle; font-size: 0.95rem; }
+            
+            .price { font-family: 'Consolas', monospace; font-weight: 600; }
+            .pos { color: #27ae60 !important; font-weight: bold; }
+            .neg { color: #c0392b !important; font-weight: bold; }
+            .pct { font-size: 0.85em; color: #666; font-weight: normal; }
+            
+            .badge-signal { background-color: #e8f6f3; color: #16a085; border: 1px solid #1abc9c; font-weight: normal; }
+            .badge-strat { background-color: #f0f2f5; color: #555; border: 1px solid #dcdcdc; font-weight: normal; font-size: 0.8em; }
+            
+            a.tv-link { text-decoration: none; color: #2c3e50; font-weight: bold; }
+            a.tv-link:hover { color: #27ae60; }
+            
+            .text-muted-small { font-size: 0.85em; color: #999; }
+            
+            .blink { animation: blinker 1.5s linear infinite; color: #e74c3c !important; }
+            @keyframes blinker { 50% { opacity: 0.5; } }
+            
+            .progress-container { width: 100px; height: 6px; background: #eee; border-radius: 3px; overflow:hidden; margin-top: 4px; }
+            .progress-bar { height: 100%; background: linear-gradient(90deg, #e74c3c 0%, #f39c12 50%, #27ae60 100%); }
+            .progress-marker { height: 100%; width: 4px; background: black; position: relative; top: -6px; }
         </style>
     </head>
     <body>
-        <h1>📉 Dip-Buyer Backtest Report</h1>
+    <div class="container-fluid">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h1>🐊 Croc Strategy Dashboard</h1>
+            </div>
+            <div>
+                <a href="/screener/croc" class="btn btn-outline-success me-2">Zu den Signalen</a>
+                <a href="/" class="btn btn-secondary">Home</a>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-white text-center p-3">
+                    <small class="text-muted">Investiertes Kapital</small>
+                    <h3 class="mb-0">{{ "{:,.0f}".format(summary['invested']) }} $</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-white text-center p-3">
+                    <small class="text-muted">Offener PnL</small>
+                    <h3 class="mb-0 {{ 'pos' if summary['open_pnl'] >= 0 else 'neg' }}">
+                        {{ "%+.2f"|format(summary['open_pnl']) }} $
+                    </h3>
+                </div>
+            </div>
+        </div>
+
         <div class="card">
-            <div style="display: flex; justify-content: space-between;">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <span>🚀 Aktive Positionen ({{ active_trades|length }})</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-striped mb-0">
+                        <thead>
+                            <tr>
+                                <th>Entry Date</th>
+                                <th>Symbol</th>
+                                <th>Signal</th>
+                                <th>Exit-Strategy</th>
+                                <th class="text-end">Size</th>
+                                <th class="text-end">Entry $</th>
+                                <th class="text-end">Aktuell / Target</th>
+                                <th class="text-end">SL $</th>
+                                <th class="text-end">Open PnL</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in active_trades %}
+                            <tr>
+                                <td>{{ t['entry_date'].split(' ')[0] if t['entry_date'] else '-' }}</td>
+                                <td>
+                                    <a href="https://www.tradingview.com/chart/?symbol={{ t['symbol'] }}" class="tv-link" target="_blank">
+                                        {{ t['symbol'] }} ↗
+                                    </a>
+                                </td>
+                                <td>
+                                    <span class="badge badge-signal">{{ t['ctx'].get('original_signal', '-') }}</span>
+                                </td>
+                                <td>
+                                    <span class="badge badge-strat">{{ t['strategy'] }}</span>
+                                </td>
+                                <td class="text-end">{{ t['current_size']|int }}</td>
+                                <td class="text-end price">{{ "%.2f"|format(t['entry_price'] or 0) }}</td>
+                                
+                                <td class="text-end price">
+                                    {{ "%.2f"|format(t['current_price'] or 0) }}
+                                    <div class="progress-container" title="Position relative to SL/TP">
+                                        <div class="progress-bar" style="width: {{ t['progress'] }}%;"></div>
+                                    </div>
+                                    <small class="text-muted">TP: 
+                                        {% if t['ctx'].get('tp3') %}{{ "%.1f"|format(t['ctx']['tp3']) }}
+                                        {% elif t['ctx'].get('target_price') %}{{ "%.1f"|format(t['ctx']['target_price']) }}
+                                        {% else %} - {% endif %}
+                                    </small>
+                                </td>
+                                
+                                <td class="text-end price {{ 'text-danger fw-bold blink' if t['is_critical'] else 'text-danger' }}">
+                                    {{ "%.2f"|format(t['current_stop_loss'] or 0) }}
+                                </td>
+                                <td class="text-end">
+                                    <span class="{{ 'pos' if t['unrealized_pnl'] >= 0 else 'neg' }}">{{ "%+.2f"|format(t['unrealized_pnl']) }} $</span>
+                                    <br><span class="pct">({{ "%+.2f"|format(t['pnl_pct']) }}%)</span>
+                                </td>
+                                <td>
+                                    {% if t['ctx'].get('is_phase_2') %}
+                                        <span class="badge bg-success">Risk Free (Phase 2)</span>
+                                    {% else %}
+                                        <span class="badge bg-primary">Running (Phase 1)</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="10" class="text-center py-4 text-muted">Keine offenen Positionen</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                💰 Abgeschlossene Trades (Letzte {{ closed_trades|length }})
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover table-sm mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th>Entry</th>
+                                <th>Exit</th>
+                                <th>Symbol</th>
+                                <th>Signal</th>
+                                <th>Strategy</th>
+                                <th class="text-end">Entry $</th>
+                                <th class="text-end">Exit $</th>
+                                <th class="text-end">PnL $</th>
+                                <th>Grund</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in closed_trades %}
+                            <tr>
+                                <td class="text-muted-small">{{ t['entry_date'].split(' ')[0] if t['entry_date'] else '-' }}</td>
+                                <td>{{ t['exit_date'].split(' ')[0] if t['exit_date'] else '-' }}</td>
+                                <td class="fw-bold">
+                                    <a href="https://www.tradingview.com/chart/?symbol={{ t['symbol'] }}" class="tv-link" target="_blank" style="color:#333;">
+                                        {{ t['symbol'] }}
+                                    </a>
+                                </td>
+                                <td><span class="badge badge-signal">{{ t['ctx'].get('original_signal', '-') }}</span></td>
+                                <td class="text-muted-small">{{ t['strategy'] }}</td>
+                                <td class="text-end price text-muted">{{ "%.2f"|format(t['entry_price'] or 0) }}</td>
+                                <td class="text-end price">{{ "%.2f"|format(t['exit_price'] or 0) }}</td>
+                                <td class="text-end">
+                                    {% set pnl = t['realized_pnl']|float %}
+                                    <span class="{{ 'pos' if pnl >= 0 else 'neg' }}">
+                                        {{ "%+.2f"|format(pnl) }} $
+                                    </span>
+                                </td>
+                                <td>
+                                    {% set reason = t['exit_reason'] or '-' %}
+                                    {% if pnl > 0 %}
+                                        <span class="badge bg-success">{{ reason }}</span>
+                                    {% elif pnl < 0 %}
+                                        <span class="badge bg-danger">{{ reason }}</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">{{ reason }}</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="text-center py-4 text-muted">Keine Historie vorhanden</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    </body>
+    </html>
+    """,
+
+    "trades_dip_buyer": """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>📉 DipBuyer Dashboard</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background: #f0f2f5; }
+            h1 { color: #2980b9; margin: 0; }
+            h2 { color: #555; margin-top: 30px; border-bottom: 1px solid #ddd; padding-bottom: 5px; font-size: 1.4em; }
+            .container { max-width: 1400px; margin: 0 auto; }
+            
+            table { width: 100%; border-collapse: collapse; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-top: 10px; border-radius: 6px; overflow: hidden; }
+            th, td { padding: 10px 15px; text-align: left; border-bottom: 1px solid #eee; font-size: 0.9em; }
+            th { background-color: #2980b9; color: white; text-transform: uppercase; font-size: 0.85em; }
+            tr:hover { background-color: #eaf2f8; }
+            
+            .price { font-family: monospace; font-weight: bold; }
+            .pos { color: #27ae60 !important; font-weight: bold; }
+            .neg { color: #c0392b !important; font-weight: bold; }
+            .pct { font-size: 0.85em; color: #666; font-weight: normal; }
+            .badge-loc { background-color: #eee; color: #555; border: 1px solid #ccc; }
+        </style>
+    </head>
+    <body>
+        <div class="container-fluid" style="max-width: 1400px;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>📉 DipBuyer Trades</h1>
                 <div>
-                    <b>Zeitraum:</b> {{ data.data_universe.first_record }} bis {{ data.data_universe.last_record }}<br>
-                    <b>Symbole:</b> {{ data.data_universe.total_symbols }}
-                </div>
-                <div style="text-align: right;">
-                    <b>Total Signale:</b> {{ data.metrics.total_signals }}<br>
-                    <b>Ausgeführt:</b> {{ data.metrics.total_trades }} (Fill-Rate: {{ data.metrics.fill_rate }}%)
+                    <a href="/screener/dip-buyer" class="btn btn-outline-primary me-2">Zu den Signalen</a>
+                    <a href="/" class="btn btn-secondary">Home</a>
                 </div>
             </div>
-        </div>
 
-        <div class="card">
-            <div class="section-title">Performance</div>
-            <div class="grid-4">
-                <div class="metric-box">
-                    <span class="val">{{ data.metrics.profit_factor }}</span>
-                    <span class="lbl">Profit Factor</span>
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-white text-center p-3">
+                        <small class="text-muted">Investiertes Kapital</small>
+                        <h3 class="mb-0">{{ "{:,.0f}".format(summary['invested']) }} $</h3>
+                    </div>
                 </div>
-                <div class="metric-box">
-                    <span class="val">{{ data.metrics.win_rate }}%</span>
-                    <span class="lbl">Win Rate</span>
-                </div>
-                <div class="metric-box">
-                    <span class="val">{{ data.metrics.avg_return_pct }}%</span>
-                    <span class="lbl">Ø Return / Trade</span>
-                </div>
-                <div class="metric-box bad">
-                    <span class="val">{{ data.metrics.max_drawdown }}%</span>
-                    <span class="lbl">Max Drawdown</span>
+                <div class="col-md-3">
+                    <div class="card bg-white text-center p-3">
+                        <small class="text-muted">Offener PnL</small>
+                        <h3 class="mb-0 {{ 'pos' if summary['open_pnl'] >= 0 else 'neg' }}">
+                            {{ "%+.2f"|format(summary['open_pnl']) }} $
+                        </h3>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="grid-4">
             <div class="card">
-                <div class="section-title">Exit Gründe</div>
-                <table style="margin-top: 10px;">
-                    {% for reason, count in data.metrics.exit_reasons.items() %}
-                    <tr>
-                        <td style="text-align: left;">{{ reason }}</td>
-                        <td style="text-align: right;"><b>{{ count }}</b></td>
+                <div class="card-header">🚀 Aktive Positionen ({{ active_trades|length }})</div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th>Entry Datum</th><th>Symbol</th><th>Größe</th><th>Tage</th>
+                                <th class="text-end">Entry $</th><th class="text-end">Aktuell $</th>
+                                <th class="text-end">LOC</th><th class="text-end">Ziel (TP)</th><th class="text-end">Open PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in active_trades %}
+                            <tr>
+                                <td>{{ t['entry_date'] }}</td>
+                                <td>
+                                    <a href="https://www.tradingview.com/chart/?symbol={{ t['symbol'] }}" class="tv-link" target="_blank">
+                                        {{ t['symbol'] }} ↗
+                                    </a>
+                                </td>
+                                <td>{{ t['current_size']|int }}</td>
+                                <td>{{ t['days_held'] }}</td>
+                                <td class="text-end price">{{ "%.2f"|format(t['entry_price']) }}</td>
+                                <td class="text-end price">{{ "%.2f"|format(t['current_price'] or 0) }}</td>
+                                <td class="text-end">
+                                    {% if t['ctx'].get('threshold_loc') %}
+                                        <span class="badge badge-loc">< {{ "%.2f"|format(t['ctx']['threshold_loc']) }}</span>
+                                    {% else %} - {% endif %}
+                                </td>
+                                <td class="text-end price text-success">{{ "%.2f"|format(t['current_target']) if t['current_target'] else '-' }}</td>
+                                <td class="text-end">
+                                    <span class="{{ 'pos' if t['unrealized_pnl'] >= 0 else 'neg' }}">
+                                        {{ "%+.2f"|format(t['unrealized_pnl']) }} $
+                                    </span>
+                                    <br><span class="pct">({{ "%+.2f"|format(t['pnl_pct']) }}%)</span>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="text-center text-muted py-3">Keine offenen Positionen</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header bg-secondary text-white">🏁 Abgeschlossene Trades (Letzte {{ closed_trades|length }})</div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th>Entry</th><th>Exit</th><th>Symbol</th><th>Tage</th>
+                                <th class="text-end">Entry $</th><th class="text-end">Exit $</th><th class="text-end">PnL</th><th>Grund</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in closed_trades %}
+                            <tr>
+                                <td>{{ t['display_entry'] }}</td>
+                                <td>{{ t['display_exit'] }}</td>
+                                <td><b>{{ t['symbol'] }}</b></td>
+                                <td>{{ t['days_held'] }}</td>
+                                <td class="text-end price text-muted">{{ "%.2f"|format(t['entry_price']) }}</td>
+                                <td class="text-end price">{{ "%.2f"|format(t['exit_price']) }}</td>
+                                <td class="text-end">
+                                    <span class="{{ 'pos' if t['realized_pnl'] >= 0 else 'neg' }}">
+                                        {{ "%+.2f"|format(t['realized_pnl']) }} $
+                                    </span>
+                                    <br><span class="pct">({{ "%+.2f"|format(t['pnl_pct']) }}%)</span>
+                                </td>
+                                <td><span class="badge bg-light text-dark">{{ t['exit_reason'] }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """,
+
+    # --- NEW: TURNOVER TRADES DASHBOARD ---
+    "trades_turnover": """
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+        <meta charset="UTF-8">
+        <title>Turnover Timing Trades</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f8f9fa; }
+            .card-header { font-weight: bold; }
+            .pos { color: #27ae60; font-weight: bold; }
+            .neg { color: #c0392b; font-weight: bold; }
+            .price { font-family: monospace; }
+            .pct { font-size: 0.85em; color: #666; font-weight: normal; }
+            .badge-strat { background-color: #e9ecef; color: #495057; border: 1px solid #ced4da; }
+            
+            /* Gruppierung der Trades */
+            .group-start td { border-top: 3px solid #dfe6ed !important; }
+        </style>
+    </head>
+    <body>
+    <div class="container-fluid" style="max-width: 1600px;">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Turnover Timing Dashboard</h1>
+            <a href="/" class="btn btn-secondary">Home</a>
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-white text-center p-3">
+                    <small class="text-muted">Investiertes Kapital</small>
+                    <h3 class="mb-0">{{ "{:,.0f}".format(summary['invested']) }} $</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-white text-center p-3">
+                    <small class="text-muted">Offener PnL</small>
+                    <h3 class="mb-0 {{ 'pos' if summary['open_pnl'] >= 0 else 'neg' }}">
+                        {{ "%+.2f"|format(summary['open_pnl']) }} $
+                    </h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">🚀 Laufende Trades ({{ active_trades|length }})</div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Entry</th><th>Symbol</th><th>Strategie</th><th>Size</th>
+                            <th>Entry $</th><th>Aktuell $</th><th>Open PnL</th>
+                            <th>Setup (Fri)</th><th>Tage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for t in active_trades %}
+                    <tr class="{{ 'group-start' if loop.index > 1 and (t['entry_date'] != active_trades[loop.index0 - 1]['entry_date'] or t['symbol'] != active_trades[loop.index0 - 1]['symbol']) }}">
+                        <td>{{ t['display_entry'] }}</td>
+                        <td><b>{{ t['symbol'] }}</b></td>
+                        <td><span class="badge badge-strat">{{ t['strategy'] }}</span></td>
+                        <td>{{ t['current_size']|int }}</td>
+                        <td class="price">{{ "%.2f"|format(t['entry_price']) }}</td>
+                        <td class="price">{{ "%.2f"|format(t['current_price'] or 0) }}</td>
+                        <td>
+                            <span class="{{ 'pos' if t['unrealized_pnl'] >= 0 else 'neg' }}">
+                                {{ "%+.2f"|format(t['unrealized_pnl']) }} $
+                            </span>
+                            <br><span class="pct">({{ "%+.2f"|format(t['pnl_pct']) }}%)</span>
+                        </td>
+                        <td>
+                            {% if t['ctx'].get('setup_candle_green') %}
+                                <span class="badge bg-success">Grün</span>
+                            {% else %}
+                                <span class="badge bg-danger">Rot</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ t['days_held'] }}</td>
                     </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-center text-muted py-3">Keine laufenden Trades</td></tr>
                     {% endfor %}
+                    </tbody>
                 </table>
             </div>
-            <div class="card">
-                <div class="section-title">Aktueller Monat ({{ data.comparison.current_month_name }})</div>
-                <div style="text-align: center; margin-top: 15px;">
-                    <span style="font-size: 2.5em; font-weight: bold; color: #2c3e50;">{{ data.comparison.current_perf }}%</span>
-                    <br>
-                    <span style="color: #7f8c8d;">Ø Historisch: {{ data.comparison.historical_avg }}%</span><br>
-                    <span style="font-weight: bold; color: {{ 'green' if data.comparison.status == 'BETTER' else 'red' }}">{{ data.comparison.status }}</span>
-                </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-secondary text-white">🏁 Abgeschlossene Trades (Letzte {{ closed_trades|length }})</div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Entry</th><th>Exit</th><th>Symbol</th><th>Strategie</th>
+                            <th>Size</th><th>Entry $</th><th>Exit $</th><th>PnL</th>
+                            <th>Grund</th><th>Tage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for t in closed_trades %}
+                    <tr class="{{ 'group-start' if loop.index > 1 and (t['exit_date'] != closed_trades[loop.index0 - 1]['exit_date'] or t['symbol'] != closed_trades[loop.index0 - 1]['symbol']) }}">
+                        <td>{{ t['display_entry'] }}</td>
+                        <td>{{ t['display_exit'] }}</td>
+                        <td><b>{{ t['symbol'] }}</b></td>
+                        <td><span class="badge badge-strat">{{ t['strategy'] }}</span></td>
+                        <td>{{ t['current_size']|int }}</td>
+                        <td class="price">{{ "%.2f"|format(t['entry_price']) }}</td>
+                        <td class="price">{{ "%.2f"|format(t['exit_price']) }}</td>
+                        <td>
+                            <span class="{{ 'pos' if t['realized_pnl'] >= 0 else 'neg' }}">
+                                {{ "%+.2f"|format(t['realized_pnl']) }} $
+                            </span>
+                            <br><span class="pct">({{ "%+.2f"|format(t['pnl_pct']) }}%)</span>
+                        </td>
+                        <td>{{ t['exit_reason'] }}</td>
+                        <td>{{ t['days_held'] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="10" class="text-center text-muted py-3">Keine Historie</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
             </div>
         </div>
-
-        <div class="card">
-            <div class="section-title">Monatliche Returns (%)</div>
-            <table class="heatmap" style="margin-top: 15px;">
-                <thead>
-                    <tr><th>Jahr</th>{% for m in range(1, 13) %}<th>{{ m }}</th>{% endfor %}</tr>
-                </thead>
-                <tbody>
-                    {% for year in data.years %}
-                    <tr>
-                        <td><b>{{ year }}</b></td>
-                        {% for m in range(1, 13) %}
-                            {% set val = data.monthly_matrix.get(year, {}).get(m, 0) %}
-                            {% set count = data.monthly_counts.get(year, {}).get(m, 0) %}
-                            {% set cls = 'neutral' %}
-                            {% if count > 0 %}
-                                {% if val > 5 %}{% set cls = 'pos-high' %}{% elif val > 2 %}{% set cls = 'pos-med' %}{% elif val > 0 %}{% set cls = 'pos-low' %}{% elif val < -5 %}{% set cls = 'neg-high' %}{% elif val < -2 %}{% set cls = 'neg-med' %}{% elif val < 0 %}{% set cls = 'neg-low' %}{% endif %}
-                            {% endif %}
-                            <td class="{{ cls }}">
-                                {% if count > 0 %}{{ val }}%<br><small>({{ count }})</small>{% else %} - {% endif %}
-                            </td>
-                        {% endfor %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        <div class="card">
-            <div class="section-title">Letzte 20 Trades</div>
-            <table class="trades-table" style="margin-top: 15px;">
-                <thead>
-                    <tr><th>Datum</th><th>Symbol</th><th>Entry</th><th>Exit</th><th>Return</th><th>Grund</th></tr>
-                </thead>
-                <tbody>
-                    {% for t in data.recent_trades %}
-                    <tr>
-                        <td>{{ t.date }}</td><td><b>{{ t.symbol }}</b></td><td>{{ t.entry }}</td><td>{{ t.exit }}</td>
-                        <td class="{{ t.class }}">{{ t.pct }}</td><td>{{ t.reason }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-
-        <div style="text-align: center; margin-bottom: 40px;">
-            <a href="/backtest/dip-buyer" class="btn">Neuer Backtest</a>
-        </div>
-    </body>
-    </html>
-    """,
-    "404": """
-    <!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <title>404 - Nicht gefunden</title>
-        <style>
-            body { font-family: sans-serif; text-align: center; padding: 50px; color: #333; }
-            h1 { font-size: 50px; color: #e74c3c; margin-bottom: 10px; }
-            p { font-size: 18px; color: #666; }
-            a { color: #2980b9; text-decoration: none; font-weight: bold; }
-            .croc { font-size: 80px; }
-        </style>
-    </head>
-    <body>
-        <div class="croc">🐊❓</div>
-        <h1>404</h1>
-        <p>Hoppla! Diese Seite existiert nicht im Croc-Trader Universum.</p>
-        <p>Vielleicht wolltest du zu den <a href="/screener/webhook">Screener Ergebnissen</a>?</p>
-    </body>
-    </html>
-    """,
-    "500": """
-    <!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <title>500 - Server Fehler</title>
-        <style>
-            body { font-family: sans-serif; text-align: center; padding: 50px; color: #333; }
-            h1 { font-size: 50px; color: #c0392b; margin-bottom: 10px; }
-            p { font-size: 18px; color: #666; }
-        </style>
-    </head>
-    <body>
-        <h1>500 - Server Fehler</h1>
-        <p>Der Croc-Trader hat sich verschluckt. Check die Logs!</p>
-    </body>
-    </html>
-    """,
-    # In app/routes/templates_raw.py, add these keys to HTML_TEMPLATES:
-    "monitoring_croc": """
-    <!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <title>🐊 Croc Trades Log</title>
-        <style>
-            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #f4f4f9; }
-            h1 { color: #27ae60; border-bottom: 2px solid #27ae60; padding-bottom: 10px; display: inline-block; }
-            table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-            th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; font-size: 0.9em; }
-            th { background-color: #2c3e50; color: white; text-transform: uppercase; font-size: 0.85em; }
-            tr:nth-child(even) { background-color: #f8f9fa; }
-            tr:hover { background-color: #e2e6ea; }
-
-            .profit-pos { color: #27ae60; font-weight: bold; }
-            .profit-neg { color: #c0392b; font-weight: bold; }
-            .price { font-family: monospace; }
-            a.tv-link { text-decoration: none; color: #2c3e50; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <h1>🐊 Croc Strategy Monitor</h1>
-        <p>Historisches Log der Strategy-Updates (Limit: {{ limit }}).</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>Datum</th><th>Symbol</th><th>Signal</th><th>Strategie</th>
-                    <th>Entry</th><th>Stop</th>
-                    <th>TP1</th><th>TP2</th><th>Close</th>
-                    <th>Risk R</th><th>PnL %</th><th>Exit Reason</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results %}
-                <tr>
-                    <td>{{ row['date'] }}</td>
-                    <td><a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" class="tv-link" target="_blank">{{ row['symbol'] }} ↗</a></td>
-                    <td>{{ row['signal'] }}</td>
-                    <td>{{ row['recommended_strategy'] }}</td>
-                    <td class="price">{{ row['entry'] }}</td>
-                    <td class="price">{{ row['stop'] }}</td>
-                    <td class="price" style="color:#7f8c8d;">{{ row['tp_1']|round(2) if row['tp_1'] else '-' }}</td>
-                    <td class="price" style="color:#7f8c8d;">{{ row['tp_2']|round(2) if row['tp_2'] else '-' }}</td>
-                    <td class="price">{{ row['close'] }}</td>
-                    <td>{{ row['risk_multiple'] }} R</td>
-                    <td>
-                        {% if row['pnl_percent'] is not none %}
-                        <span class="{{ 'profit-pos' if row['pnl_percent'] >= 0 else 'profit-neg' }}">
-                            {{ row['pnl_percent'] }}%
-                        </span>
-                        {% else %}-{% endif %}
-                    </td>
-                    <td style="font-size: 0.85em; color: #666;">{{ row['exit_reason'] or '-' }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </body>
-    </html>
-    """,
-    "monitoring_dip": """
-    <!DOCTYPE html>
-    <html lang="de">
-    <head>
-        <meta charset="UTF-8">
-        <title>📉 DipBuyer Trades Log</title>
-        <style>
-            body { font-family: 'Segoe UI', sans-serif; padding: 20px; color: #333; background-color: #f4f4f9; }
-            h1 { color: #2980b9; border-bottom: 2px solid #2980b9; padding-bottom: 10px; display: inline-block; }
-            table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-            th, td { border: 1px solid #ddd; padding: 10px 12px; text-align: left; font-size: 0.9em; }
-            th { background-color: #2c3e50; color: white; text-transform: uppercase; font-size: 0.85em; }
-            tr:nth-child(even) { background-color: #f8f9fa; }
-            tr:hover { background-color: #e2e6ea; }
-
-            .profit-pos { color: #27ae60; font-weight: bold; }
-            .profit-neg { color: #c0392b; font-weight: bold; }
-            .price { font-family: monospace; }
-            a.tv-link { text-decoration: none; color: #2c3e50; font-weight: bold; }
-        </style>
-    </head>
-    <body>
-        <h1>📉 DipBuyer Monitor</h1>
-        <p>Historisches Log der Dip-Trades (Limit: {{ limit }}).</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>Datum</th><th>Symbol</th><th>Days Held</th>
-                    <th>Entry</th><th>TP Target</th><th>Threshold (LOC)</th>
-                    <th>Close</th><th>PnL %</th><th>Exit Reason</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results %}
-                <tr>
-                    <td>{{ row['date'] }}</td>
-                    <td><a href="https://www.tradingview.com/chart/?symbol={{ row['symbol'] }}" class="tv-link" target="_blank">{{ row['symbol'] }} ↗</a></td>
-                    <td style="text-align:center;">{{ row['days_held'] }}</td>
-                    <td class="price">{{ row['entry'] }}</td>
-                    <td class="price" style="color:#7f8c8d;">{{ row['tp_target']|round(2) }}</td>
-                    <td class="price" style="color:#7f8c8d;">{{ row['threshold_loc']|round(2) }}</td>
-                    <td class="price">{{ row['close'] }}</td>
-                    <td>
-                        {% if row['pnl_percent'] is not none %}
-                        <span class="{{ 'profit-pos' if row['pnl_percent'] >= 0 else 'profit-neg' }}">
-                            {{ row['pnl_percent'] }}%
-                        </span>
-                        {% else %}-{% endif %}
-                    </td>
-                    <td style="font-size: 0.85em; color: #666;">{{ row['exit_reason'] or '-' }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    </div>
     </body>
     </html>
     """,
