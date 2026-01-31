@@ -1,18 +1,14 @@
 import json
-from collections import Counter
 import logging
-import threading
-from typing import List, Optional
+from collections import Counter
 
-import pandas as pd
+import requests
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-
-import requests
 
 def load_tickers_from_github() -> dict[str, set[str]]:
     """
@@ -27,14 +23,13 @@ def load_tickers_from_github() -> dict[str, set[str]]:
         "amex": f"{base_url}/amex/amex_tickers.json",
     }
 
-    all_symbols = Counter()
     exchange_lists = {}
 
     logger.info("Lade Ticker-Listen...")
 
     for exchange, url in exchanges.items():
         try:
-            response = requests.get(url)
+            response = requests.get(url, timeout=15)
             response.raise_for_status()
             tickers = json.loads(response.text)
             exchange_lists[exchange] = set(tickers)

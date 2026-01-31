@@ -21,7 +21,8 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         raw = trade.get("signal_context")
         try:
             return json.loads(raw) if isinstance(raw, str) else (raw or {})
-        except: return {}
+        except Exception:
+            return {}
 
     @override
     def get_current_params(self, trade: dict, df_history: pd.DataFrame = None, repo = None) -> TradeParams:

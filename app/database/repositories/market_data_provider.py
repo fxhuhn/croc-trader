@@ -75,7 +75,7 @@ class MarketDataProvider:
         """Lädt OHLCV Historie für ein Symbol ohne Pivot."""
         # Da BaseRepository SQL erlaubt (Layer-Grenze), ist das hier ok.
         with self.session.connect() as conn:
-            end_date = pd.Timestamp.now().strftime("%Y-%m-%d")
+            # end_date not used in query
             start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
             
             df = pd.read_sql_query(

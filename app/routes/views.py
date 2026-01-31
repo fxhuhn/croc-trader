@@ -43,7 +43,8 @@ def prepare_view_model(trades, market_repo: MarketRepository):
         try:
             raw = t.get("signal_context")
             t["ctx"] = json.loads(raw) if isinstance(raw, str) and raw else (raw or {})
-        except: t["ctx"] = {}
+        except Exception:
+            t["ctx"] = {}
 
         # 2. Datum formatieren
         entry_date = t.get("entry_date")
@@ -187,7 +188,7 @@ def view_screener_dip_buyer() -> str:
         try:
             raw = item.get("signal_context") or item.get("ctx")
             item["ctx"] = json.loads(raw) if isinstance(raw, str) and raw else (raw or {})
-        except: 
+        except Exception:
             item["ctx"] = {}
         processed_results.append(item)
         

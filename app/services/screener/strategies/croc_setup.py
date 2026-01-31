@@ -60,12 +60,17 @@ class CrocSetupStrategy(BaseStrategy):
 
     def _get_indices_string(self, symbol: str) -> str:
         indices = []
-        if symbol in self.exchange_symbols.sp_500: indices.append("SPX")
-        if symbol in self.exchange_symbols.nasdaq_100: indices.append("NDX")
-        if symbol in self.exchange_symbols.dow_30: indices.append("DOW")
+        if symbol in self.exchange_symbols.sp_500:
+            indices.append("SPX")
+        if symbol in self.exchange_symbols.nasdaq_100:
+            indices.append("NDX")
+        if symbol in self.exchange_symbols.dow_30:
+            indices.append("DOW")
         if symbol in self.exchange_symbols.russell_1000: 
-            if "SPX" not in indices: indices.append("RUS_EXCL")
-            else: indices.append("RUS")
+            if "SPX" not in indices:
+                indices.append("RUS_EXCL")
+            else:
+                indices.append("RUS")
         return ",".join(indices) if indices else "-"
 
     def run(self, days: int = 0, analysis_date: str | None = None, specific_symbols: list[str] | None = None) -> int:
@@ -203,12 +208,18 @@ class CrocSetupStrategy(BaseStrategy):
         # --- A) EMA / SMA Logic ---
         if "ema" in key_lower or "sma" in key_lower:
             match condition_string:
-                case "< -10%":      return val < -10.0
-                case "-10 to -3%":  return -10.0 <= val <= -3.0
-                case "-3 to 0%":    return -3.0 <= val <= 0.0
-                case "0 to 3%":     return 0.0 <= val <= 3.0
-                case "3 to 10%":    return 3.0 <= val <= 10.0
-                case "> 10%":       return val > 10.0
+                case "< -10%":
+                    return val < -10.0
+                case "-10 to -3%":
+                    return -10.0 <= val <= -3.0
+                case "-3 to 0%":
+                    return -3.0 <= val <= 0.0
+                case "0 to 3%":
+                    return 0.0 <= val <= 3.0
+                case "3 to 10%":
+                    return 3.0 <= val <= 10.0
+                case "> 10%":
+                    return val > 10.0
                 case _:
                     logger.error(f"❌ Unknown EMA Condition: '{condition_string}' in '{context_key}'")
                     return False
@@ -217,18 +228,28 @@ class CrocSetupStrategy(BaseStrategy):
         if "rsi" in key_lower:
             match condition_string:
                 # Exact Matches (with brackets)
-                case "Oversold (<30)":  return val < 30.0
-                case "Weak (30-45)":    return 30.0 <= val < 45.0
-                case "Neutral (45-55)": return 45.0 <= val <= 55.0
-                case "Strong (55-70)":  return 55.0 < val <= 70.0
-                case "Overbought (>70)":return val > 70.0
+                case "Oversold (<30)":
+                    return val < 30.0
+                case "Weak (30-45)":
+                    return 30.0 <= val < 45.0
+                case "Neutral (45-55)":
+                    return 45.0 <= val <= 55.0
+                case "Strong (55-70)":
+                    return 55.0 < val <= 70.0
+                case "Overbought (>70)":
+                    return val > 70.0
                 
                 # Fallback for pure text labels (if YAML varies)
-                case "Oversold":        return val < 30.0
-                case "Weak":            return 30.0 <= val < 45.0
-                case "Neutral":         return 45.0 <= val <= 55.0
-                case "Strong":          return 55.0 < val <= 70.0
-                case "Overbought":      return val > 70.0
+                case "Oversold":
+                    return val < 30.0
+                case "Weak":
+                    return 30.0 <= val < 45.0
+                case "Neutral":
+                    return 45.0 <= val <= 55.0
+                case "Strong":
+                    return 55.0 < val <= 70.0
+                case "Overbought":
+                    return val > 70.0
 
                 case _:
                     logger.error(f"❌ Unknown RSI Condition: '{condition_string}' in '{context_key}'")

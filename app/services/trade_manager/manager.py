@@ -4,7 +4,7 @@ from datetime import datetime
 import re
 
 
-import pandas as pd
+
 
 from ...types import TradeStatus
 from ...database.repositories.trade import TradeRepository
@@ -143,7 +143,7 @@ class TradeManager:
 
         try:
             # FIX: Data Loading jetzt IM try-Block
-            created_at = trade.get('created_at', datetime.now().strftime("%Y-%m-%d")).split(" ")[0]
+            # trade.get('created_at') unused
             # Puffer: Laden ab 10 Tage vor Signal
             df_hist = self.market_repo.get_symbol_history_raw(symbol, start_date="2024-01-01") 
             if df_hist.empty: return

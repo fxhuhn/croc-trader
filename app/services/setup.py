@@ -33,7 +33,7 @@ def register_services(app, config):
 
     # 2. Market Data Infrastructure (Read-Side)
     stocks_session = DatabaseSession(str(db_stocks))
-    market_repo = MarketRepository(stocks_session)
+    # market_repo unused here
     
     md_provider = MarketDataProvider(stocks_session) 
     app.extensions["market_data_provider"] = md_provider
@@ -57,7 +57,7 @@ def register_services(app, config):
             with open(yaml_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
             loaded_config = data if isinstance(data, dict) else {"strategy_ranking": data}
-            logging.info(f"Strategie-Config geladen.")
+            logging.info("Strategie-Config geladen.")
         except Exception as e:
             logging.error(f"Fehler beim Laden der Strategie-YAML: {e}")
 
@@ -97,7 +97,7 @@ def configure_scheduler(app, config):
     scheduler.add_job(
         func=run_db_maintenance,
         args=[db_stocks],
-        trigger=CronTrigger(day_of_week="sun", hour=4),
+        trigger=CronTrigger(day_of_week="sun", hour=4, timezone=pytz.timezone("Europe/Berlin")),
         id="db_maintenance",
         replace_existing=True
     )
@@ -107,7 +107,7 @@ def configure_scheduler(app, config):
     if tm:
         scheduler.add_job(
             func=tm.run_daily_process,
-            trigger=CronTrigger(day_of_week="mon-fri", hour=1, minute=0, timezone=pytz.timezone("America/New_York")),
+            trigger=CronTrigger(day_of_week="mon-fri", hour=7, minute=0, timezone=pytz.timezone("Europe/Berlin")),
             id="trade_manager_process",
             replace_existing=True
         )
@@ -116,7 +116,7 @@ def configure_scheduler(app, config):
     scheduler.add_job(
         func=run_daily_strategy_check,
         args=[app], 
-        trigger=CronTrigger(day_of_week="mon-fri", hour=17, minute=30, timezone=pytz.timezone("America/New_York")),
+        trigger=CronTrigger(day_of_week="mon-sat", hour=6, minute=30, timezone=pytz.timezone("Europe/Berlin")),
         id="strategy_check",
         replace_existing=True
     )
