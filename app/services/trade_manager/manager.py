@@ -123,8 +123,8 @@ class TradeManager:
             
             if result:
                 logger.info(f"Trade Update {symbol}: {result}")
-                if self.telegram:
-                    self.telegram.send_message(f"🔄 **Trade Update**\n{result}")
+                #if self.telegram:
+                #    self.telegram.send_message(f"🔄 **Trade Update**\n{result}")
             
             # Update current price für Dashboard
             if not df_hist.empty:
