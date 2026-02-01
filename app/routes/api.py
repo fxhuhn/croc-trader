@@ -118,6 +118,45 @@ def analyze_dip_buyer() -> Response:
         logger.exception(f"Error analyzing symbol {symbol if 'symbol' in locals() else 'unknown'}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@api_bp.route("/screener/turnover", methods=["POST"])
+@require_ip_whitelist
+def analyze_turnover() -> Response:
+    """Detailed debugging for TurnoverTiming strategy on a single symbol."""
+    try:
+        # Support Query Param and JSON
+        symbol = request.args.get("symbol")
+        
+        if not symbol:
+            try:
+                data = request.get_json(force=True, silent=True)
+                if data:
+                    symbol = data.get("symbol")
+            except Exception:
+                pass
+
+        if not symbol:
+             return jsonify({"status": "error", "message": "Symbol required"}), 400
+
+        # FORCE UPPERCASE as requested by user
+        symbol = str(symbol).upper().strip()
+
+        engine = current_app.extensions.get("screener_engine")
+        if not engine:
+            return jsonify({"status": "error", "message": "ScreenerEngine not initialized"}), 503
+            
+        strategy = engine.get_strategy("TurnoverTiming")
+        if not strategy:
+             return jsonify({"status": "error", "message": "TurnoverTiming strategy not found in Screener"}), 404
+             
+        # Run analysis
+        result = strategy.analyze_single_symbol(symbol)
+        
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.exception(f"Error analyzing turnover symbol {symbol if 'symbol' in locals() else 'unknown'}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @api_bp.route("/orders/generate", methods=["POST"])
 @require_ip_whitelist
 def trigger_orders() -> Response:

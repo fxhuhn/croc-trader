@@ -187,3 +187,70 @@ class TurnoverTimingStrategy(BaseStrategy):
                 count += 1
                 
         return count
+
+    def analyze_single_symbol(self, symbol: str) -> dict[str, any]:
+        """
+        Debug method to analyze a single symbol.
+        Note: Ranking (Top 20 / Top 4) cannot be fully verified in isolation
+        as it depends on other stocks. This checks absolute criteria only.
+        """
+        days = 400
+        df = self.data_provider.get_symbol_history(symbol, days=days)
+        if df.empty:
+            return {"symbol": symbol, "error": "No data found"}
+
+        # Safe extraction helper
+        def safe_val(val, default=0.0):
+            return default if pd.isna(val) else val
+
+        try:
+             # FIX: Use values to avoid index mismatch
+            closes = pd.Series(df["close"].values, index=df["date"])
+            highs = pd.Series(df["high"].values, index=df["date"])
+            lows = pd.Series(df["low"].values, index=df["date"])
+            volumes = pd.Series(df["volume"].values, index=df["date"])
+        except Exception as e:
+             return {"symbol": symbol, "error": f"Data Frame Error: {str(e)}"}
+
+        if len(closes) < 200:
+             return {"symbol": symbol, "error": f"Not enough data (Found {len(closes)}, Need 200+)"}
+
+        # Indicators
+        turnover = closes * volumes
+        sma_turnover_20 = turnover.rolling(20).mean()
+        sma_price_150 = closes.rolling(150).mean()
+
+        # ATR (3)
+        prev_close = closes.shift(1)
+        tr1 = highs - lows
+        tr2 = (highs - prev_close).abs()
+        tr3 = (lows - prev_close).abs()
+        tr = tr1.where(tr1 > tr2, tr2).where(lambda x: x > tr3, tr3)
+        atr = tr.ewm(span=(2 * self.config.ATR_WINDOW) - 1, adjust=False).mean()
+
+        # Last Values
+        idx = -1
+        current_close = closes.iloc[idx]
+        current_sma150 = sma_price_150.iloc[idx]
+        current_turnover_sma = sma_turnover_20.iloc[idx]
+        current_atr = atr.iloc[idx]
+        
+        # Check
+        uptrend = bool(current_close > current_sma150)
+        
+        return {
+            "symbol": symbol,
+            "last_date": str(df["date"].iloc[idx].date()),
+            "data_valid": True,
+            "checks": {
+                "uptrend_sma150": uptrend,
+                "data_sufficient": True
+            },
+            "values": {
+                "close": round(safe_val(current_close), 2),
+                "sma150": round(safe_val(current_sma150), 2),
+                "turnover_sma20": int(safe_val(current_turnover_sma, 0)),
+                "atr": round(safe_val(current_atr), 2)
+            },
+            "note": "Rank logic (Top 20) requires full market scan."
+        }
