@@ -47,6 +47,19 @@
                                 row.strategy %}
                                 <!-- Clean setup name (remove Croc_) -->
                                 <div class="fw-bold text-primary">{{ signal_name.replace('Croc_', '') }}</div>
+
+                                <!-- Display Filter Criteria -->
+                                <div class="small mt-1">
+                                    {% for key, val in rule.items() %}
+                                    {% if key not in ['Signal', 'Exit', 'Score', 'Status', 'R_Hist', 'Risk_95',
+                                    'R_2026', 'R_4W_Trend', 'Avg_Days', 'TimeExit'] %}
+                                    <span class="badge bg-light text-secondary border fw-normal"
+                                        title="{{ key }}: {{ val }}">
+                                        {{ key }}: {{ val }}
+                                    </span>
+                                    {% endif %}
+                                    {% endfor %}
+                                </div>
                             </td>
 
                             <td>
