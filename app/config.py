@@ -18,10 +18,7 @@ CONFIG_FILE = (
 # Standard aus Ihrem Code war:
 CONFIG_FILE = BASE_DIR / "settings.yaml"
 
-# Logger Setup
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Logger Setup (No basicConfig side-effect)
 logger = logging.getLogger("Config")
 
 load_dotenv()
