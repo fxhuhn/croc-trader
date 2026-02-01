@@ -1,6 +1,4 @@
-import json
 import logging
-from pathlib import Path
 from threading import Thread
 from typing import Any
 
@@ -8,7 +6,8 @@ from flask import Blueprint, Response, current_app, jsonify, request
 
 from ..database.repositories.signal import SignalRepository
 from ..database.session import DatabaseSession
-from ..services.market_data import DataValidator, MarketDataService
+from ..services.market.updater import MarketDataUpdater
+from ..services.market.quality import MarketQualityService
 
 # Import aus der separaten security.py (im gleichen Ordner)
 from .security import require_ip_whitelist
@@ -93,8 +92,8 @@ def analyze_dip_buyer() -> Response:
                 data = request.get_json(force=True, silent=True)
                 if data:
                     symbol = data.get("symbol")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to parse JSON body for symbol: {e}")
 
         if not symbol:
              return jsonify({"status": "error", "message": "Symbol required (via query param or JSON)"}), 400
@@ -131,8 +130,8 @@ def analyze_turnover() -> Response:
                 data = request.get_json(force=True, silent=True)
                 if data:
                     symbol = data.get("symbol")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to parse JSON body for symbol: {e}")
 
         if not symbol:
              return jsonify({"status": "error", "message": "Symbol required"}), 400
@@ -161,7 +160,8 @@ def analyze_turnover() -> Response:
 @require_ip_whitelist
 def trigger_orders() -> Response:
     tm = current_app.extensions.get("trade_manager")
-    if not tm: return jsonify({"status": "error", "message": "TradeManager missing"}), 500
+    if not tm:
+        return jsonify({"status": "error", "message": "TradeManager missing"}), 500
     try:
         tm.run_daily_process()
         return jsonify({"status": "success"})
@@ -173,7 +173,8 @@ def trigger_orders() -> Response:
 def trigger_trades_backfill() -> Response:
     """Trigger für Backfill/Retry von Trades."""
     tm = current_app.extensions.get("trade_manager")
-    if not tm: return jsonify({"status": "error", "message": "TradeManager missing"}), 500
+    if not tm:
+        return jsonify({"status": "error", "message": "TradeManager missing"}), 500
     try:
         # Wir nutzen run_daily_process, da dies auch CREATED trades verarbeitet
         tm.run_daily_process()
@@ -188,15 +189,20 @@ def trigger_trades_backfill() -> Response:
 def sync_market_data() -> Response:
     full = request.args.get("full", "false").lower() == "true"
     conf = current_app.config.get("APP_CONFIG")
-    if not conf: return jsonify({"status": "error"}), 500
+    if not conf:
+        return jsonify({"status": "error"}), 500
     
     db_path = conf.get_db_path("stocks")
 
     def _task():
         try:
-            svc = MarketDataService(Path(db_path))
-            svc.update_market_data(full_reload=full)
-            svc.perform_gap_check()
+            session = DatabaseSession(str(db_path))
+            updater = MarketDataUpdater(session)
+            
+            updater.run_update(full_reload=full)
+            
+            quality = MarketQualityService(updater)
+            quality.perform_gap_check()
         except Exception as e:
             logger.error(f"Sync Error: {e}")
 
@@ -208,15 +214,17 @@ def sync_market_data() -> Response:
 def reload_market_data() -> Response:
     """Manueller Reload Trigger."""
     conf = current_app.config.get("APP_CONFIG")
-    if not conf: return jsonify({"status": "error"}), 500
+    if not conf:
+        return jsonify({"status": "error"}), 500
     
     db_path = conf.get_db_path("stocks")
     
     def _task():
         try:
-            svc = MarketDataService(Path(db_path))
             logger.info("Manueller Full-Reload via API gestartet...")
-            svc.update_market_data(full_reload=True)
+            session = DatabaseSession(str(db_path))
+            updater = MarketDataUpdater(session)
+            updater.run_update(full_reload=True)
         except Exception as e:
             logger.error(f"Reload Error: {e}")
 
