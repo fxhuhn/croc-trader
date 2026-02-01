@@ -702,4 +702,45 @@ HTML_TEMPLATES = {
     </body>
     </html>
     """,
+    "404": """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>404 Not Found</title>
+        <style>
+            body { font-family: sans-serif; text-align: center; padding: 50px; color: #333; }
+            h1 { font-size: 50px; margin-bottom: 10px; }
+            p { font-size: 20px; color: #666; }
+            a { color: #2980b9; text-decoration: none; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <h1>404</h1>
+        <p>Page not found.</p>
+        <p><a href="/">Go Home</a></p>
+    </body>
+    </html>
+    """,
+
+    "500": """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>500 Internal Error</title>
+        <style>
+            body { font-family: sans-serif; text-align: center; padding: 50px; color: #333; }
+            h1 { font-size: 50px; margin-bottom: 10px; color: #c0392b; }
+            p { font-size: 20px; color: #666; }
+            a { color: #2980b9; text-decoration: none; font-weight: bold; }
+        </style>
+    </head>
+    <body>
+        <h1>500</h1>
+        <p>Internal Server Error.</p>
+        <p><a href="/">Go Home</a></p>
+    </body>
+    </html>
+    """
 }
