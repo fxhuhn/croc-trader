@@ -168,6 +168,12 @@ class SignalRepository(BaseRepository):
         rows = self.fetch_all(sql, tuple(params))
         return [dict(row) for row in rows]
 
+    def get_latest_signal_date(self) -> str | None:
+        """Returns the iso-date (YYYY-MM-DD) of the latest signal."""
+        sql = "SELECT date(timestamp) as d FROM view_signals_enriched ORDER BY timestamp DESC LIMIT 1"
+        row = self.fetch_one(sql)
+        return row["d"] if row else None
+
     def get_trade_candidates(self, strategy_prefix: str, limit: int = 100) -> list[dict]:
         """
         Holt potenzielle Trades (Status 'CREATED') aus der 'trades' Tabelle.
