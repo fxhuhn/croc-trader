@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta
 
 from app.database.repositories.market import MarketRepository
+from app.database.repositories.trade import TradeRepository
 from app.database.session import DatabaseSession
 from app.models import MarketPrice
 from app.services.market.provider import YahooDataProvider, require_lock
@@ -24,6 +25,7 @@ class MarketDataUpdater:
     def __init__(self, session_factory: DatabaseSession):
         self.session = session_factory
         self.repo = MarketRepository(self.session)
+        self.trade_repo = TradeRepository(self.session)
         self.provider = YahooDataProvider()
         
         # Ensure schema exists
@@ -79,9 +81,11 @@ class MarketDataUpdater:
         if specific:
             candidates = set(specific)
         else:
-            # Combine known DB symbols + Exchange Lists
+            # Combine known DB symbols + Exchange Lists + Traded Symbols
             candidates = set(ExchangeSymbol().all).union(
                 set(self.repo.get_all_known_symbols())
+            ).union(
+                set(self.trade_repo.get_all_traded_symbols())
             )
             
         # Filter Ignored

@@ -98,7 +98,10 @@ class TradeRepository(BaseRepository):
         #logger.info(f"[REPO] get_by_status({status}) found {len(rows)} trades.")
         # ---------------------
 
-        return [dict(r) for r in rows]
+    def get_all_traded_symbols(self) -> list[str]:
+        """Returns a list of all distinct symbols ever traded."""
+        rows = self.fetch_all("SELECT DISTINCT symbol FROM trades")
+        return [r["symbol"] for r in rows if r["symbol"]]
 
     def create_trade(self, symbol: str, strategy: str, size: float, 
                      entry: float, sl: float, target: float, context: dict) -> int:
