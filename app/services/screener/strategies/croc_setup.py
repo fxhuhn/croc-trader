@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+import pandas as pd
 
 from ....config import settings
 from ....tools.symbol_lists import ExchangeSymbol
