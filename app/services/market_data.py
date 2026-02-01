@@ -80,14 +80,34 @@ class MarketDataService:
 
     def perform_gap_check(self) -> None:
         logger.info("Führe Gap-Check durch...")
-        thresh = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+        
+        # 1. Check auf lückenhafte Aktualität (Data Gap am Ende)
+        thresh_recency = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+        
+        # 2. Check auf fehlende Historie (Data Gap am Anfang)
+        # Wenn die Daten erst NACH diesem Datum starten (z.B. nur letzte 30 Tage), erzwinge Full Reload.
+        thresh_history = (datetime.now() - timedelta(days=300)).strftime("%Y-%m-%d")
+
         try:
-            outdated = self.repo.get_outdated_symbols(thresh)
-            if outdated:
-                logger.warning(f"Repariere {len(outdated)} veraltete Symbole.")
-                self.update_market_data(full_reload=True, specific_symbols=outdated)
+            outdated = self.repo.get_outdated_symbols(thresh_recency)
+            shallow = self.repo.get_symbols_with_missing_history(thresh_history)
+            
+            repair_candidates = set(outdated) | set(shallow)      
+            
+            if repair_candidates:
+                logger.warning(f"Repair Check: {len(outdated)} outdated, {len(shallow)} shallow history.")
+                logger.warning(f"Starte Repair für {len(repair_candidates)} Symbole.")
+                self.update_market_data(full_reload=True, specific_symbols=list(repair_candidates))
+                
+                # Check for Persistent Issues (Still shallow after Full Reload?)
+                if shallow:
+                    still_shallow = self.repo.get_symbols_with_missing_history(thresh_history)
+                    persistent = set(shallow) & set(still_shallow)
+                    for s in persistent:
+                        logger.info(f"ℹ️ Symbol {s} ist nach Update weiterhin unvollständig (< {thresh_history}). Vermutlich IPO / neues Listing.")
             else:
-                logger.info("Gap Check: Alles aktuell.")
+                logger.info("Gap Check: Alles aktuell und Historie ausreichend.")
+                
         except Exception as e:
             logger.error(f"Gap Check Error: {e}")
 

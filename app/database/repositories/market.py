@@ -57,6 +57,16 @@ class MarketRepository(BaseRepository):
         rows = self.fetch_all(sql, (provider, reference_date))
         return [row['symbol'] for row in rows]
 
+    def get_symbols_with_missing_history(self, cutoff_date: str) -> list[str]:
+        """Findet Symbole, deren Historie erst NACH dem cutoff_date beginnt (zu wenig Daten)."""
+        sql = """
+            SELECT symbol FROM market_prices
+            WHERE symbol NOT IN (SELECT symbol FROM ignored_symbols)
+            GROUP BY symbol HAVING MIN(date) > ?
+        """
+        rows = self.fetch_all(sql, (cutoff_date,))
+        return [row['symbol'] for row in rows]
+
     # --- Data Access Logic (Single Value) ---
     def get_latest_price(self, symbol: str) -> float | None:
         return self.fetch_val("SELECT close FROM market_prices WHERE symbol = ? AND timeframe = '1D' ORDER BY date DESC LIMIT 1", (symbol,))
