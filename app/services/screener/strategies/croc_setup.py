@@ -106,6 +106,10 @@ class CrocSetupStrategy(BaseStrategy):
             flat_row = dict(row) # Copy
             flat_row.update(signal_data)
             
+            # Normalize keys to lower-case for robust matching
+            # This ensures 'Deluxe' in JSON matches 'deluxe' in YAML-logic
+            flat_row = {k.lower(): v for k, v in flat_row.items()}
+            
             # 2. Enrich Data (Compute SMA Distances)
             self._compute_sma_distances(flat_row)
             
@@ -194,7 +198,11 @@ class CrocSetupStrategy(BaseStrategy):
 
                 # 3. Existence Check
                 if db_key not in row:
-                    continue 
+                    # Strict Filter: If rule requires a parameter (e.g. 'Deluxe')
+                    # and the data does NOT have it, the rule fails.
+                    logger.debug(f"Filter Fail: {row.get('symbol')} missing '{db_key}' (Rule: {signal_name})")
+                    passed = False
+                    break 
 
                 market_value = row[db_key]
                 
