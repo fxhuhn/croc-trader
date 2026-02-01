@@ -115,21 +115,22 @@ class SignalRepository(BaseRepository):
                 LEFT JOIN exchange_mappings m ON s.symbol = m.symbol
             """, conn=conn)
 
-    def save_signal(self, data: dict) -> int:
+    def save_signal(self, data: dict[str, Any]) -> int:
         """Speichert Raw Webhook Data in 'croc'."""
         symbol = data.get('symbol') or data.get('ticker', 'UNKNOWN')
-        tf = data.get('timeframe')
-        sig_name = data.get('signal') or data.get('strategy')
+        timeframe = data.get('timeframe')
+        signal_name = data.get('signal') or data.get('strategy')
         exchange = data.get('exchange')
+        timestamp = data.get('timestamp') or data.get('date')
         
         # Auch hier: INSERT OR IGNORE verhindert Crashes bei doppelten Webhooks
         sql = """
-            INSERT OR IGNORE INTO croc (symbol, timeframe, signal, exchange, data)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT OR IGNORE INTO croc (symbol, timeframe, signal, timestamp, exchange, data)
+            VALUES (?, ?, ?, ?, ?, ?)
         """
         
         cursor = self.execute(sql, (
-            symbol, tf, sig_name, exchange, json.dumps(data)
+            symbol, timeframe, signal_name, timestamp, exchange, json.dumps(data)
         ))
         return cursor.lastrowid
 
