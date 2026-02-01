@@ -20,11 +20,12 @@
                             <th>Datum</th>
                             <th>Symbol</th>
                             <th>Index</th>
-                            <th>Setup / Signal</th>
+                            <th>Setup</th>
                             <th>Score</th>
+                            <th>4W Trend</th>
                             <th>Entry (Stop)</th>
                             <th>Stop Loss</th>
-                            <th>Risiko (1R)</th>
+                            <th>Risiko</th>
                             <th>Target (TP3)</th>
                         </tr>
                     </thead>
@@ -44,11 +45,8 @@
                                 {% set rule = row.ctx.get('match_rule', {}) %}
                                 {% set signal_name = rule.get('Signal') or row.ctx.get('original_signal') or
                                 row.strategy %}
-                                <div class="fw-bold text-primary">{{ signal_name }}</div>
-                                <div style="font-size: 0.75rem;" class="text-muted">
-                                    {% if rule.get('EMA 20') %} EMA20: {{ rule['EMA 20'] }} {% endif %}
-                                    {% if rule.get('R_4W_Trend') %} | Trend: {{ rule['R_4W_Trend'] }}% {% endif %}
-                                </div>
+                                <!-- Clean setup name (remove Croc_) -->
+                                <div class="fw-bold text-primary">{{ signal_name.replace('Croc_', '') }}</div>
                             </td>
 
                             <td>
@@ -59,7 +57,17 @@
                                 </span>
                             </td>
 
-                            <td class="font-monospace fw-bold text-primary">{{ "%.2f"|format(row.entry_price|float) }}
+                            <!-- New Trend Column -->
+                            <td>
+                                {% if rule.get('R_4W_Trend') %}
+                                <span class="text-muted">{{ rule['R_4W_Trend'] }}%</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+
+
+                            <td class="font-monospace text-primary">{{ "%.2f"|format(row.entry_price|float) }}
                             </td>
                             <td class="font-monospace text-danger">{{ "%.2f"|format(row.current_stop_loss|float) }}</td>
 
@@ -71,13 +79,6 @@
                             <td class="font-monospace text-success">
                                 {% if row.current_target and row.current_target|float > 0 %}
                                 {{ "%.2f"|format(row.current_target|float) }}
-                                <br>
-                                {% set r_multiple = (row.current_target|float - row.entry_price|float) / risk if risk >
-                                0 else 0 %}
-                                <span class="badge bg-light text-success border border-success"
-                                    style="font-size: 0.7em">
-                                    {{ "%.1f"|format(r_multiple) }}R
-                                </span>
                                 {% else %}
                                 <span class="text-muted">-</span>
                                 {% endif %}
@@ -85,7 +86,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="9" class="text-center py-4 text-muted"> Keine offenen Signale gefunden.
+                            <td colspan="10" class="text-center py-4 text-muted"> Keine offenen Signale gefunden.
                             </td>
                         </tr>
                         {% endfor %}

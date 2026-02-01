@@ -1,9 +1,7 @@
 import logging
 from typing import Any
 
-from flask import Blueprint, jsonify, render_template_string, request
-
-from .templates_raw import HTML_TEMPLATES
+from flask import Blueprint, jsonify, render_template, request
 
 logger = logging.getLogger(__name__)
 errors_bp = Blueprint("errors", __name__)
@@ -27,6 +25,7 @@ def page_not_found(e: Any) -> Any:
             f"404 Not Found: {request.method} {request.path} - IP: {client_ip}"
         )
 
+    # Normale 404 Seite
     # API Clients erhalten JSON
     if (
         request.path.startswith(("/webhook", "/screener", "/orders", "/api"))
@@ -36,8 +35,7 @@ def page_not_found(e: Any) -> Any:
             {"status": "error", "message": "Endpoint not found", "path": request.path}
         ), 404
 
-    # Normale 404 Seite
-    return render_template_string(HTML_TEMPLATES["404"]), 404
+    return render_template("404.html"), 404
 
 
 @errors_bp.app_errorhandler(500)
@@ -49,4 +47,4 @@ def internal_server_error(e: Any) -> Any:
             {"status": "error", "message": "Internal Server Error", "detail": str(e)}
         ), 500
 
-    return render_template_string(HTML_TEMPLATES["500"]), 500
+    return render_template("500.html"), 500
