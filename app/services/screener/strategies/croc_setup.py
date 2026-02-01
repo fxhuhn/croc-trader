@@ -87,6 +87,8 @@ class CrocSetupStrategy(BaseStrategy):
             return 0
 
         hits = 0
+        report_rows = []
+
         for row in signals:
             # 1. Unpack & Merge Data
             try:
@@ -104,10 +106,23 @@ class CrocSetupStrategy(BaseStrategy):
             best_match = self._find_best_match(flat_row)
             
             if best_match:
-                self._create_trade_from_signal(flat_row, best_match)
-                hits += 1
+                trade_info = self._create_trade_from_signal(flat_row, best_match)
+                if trade_info:
+                    hits += 1
+                    report_rows.append(trade_info)
                 
         logger.info(f"🐊 [{self.name}] {hits} Trades created from signals.")
+        
+        # Telegram Report
+        if self.telegram_bot and report_rows:
+            date_str = analysis_date or "LIVE"
+            df = pd.DataFrame(report_rows)
+            # Reorder
+            df = df[["symbol", "signal", "score", "entry", "stop", "tp"]]
+            df.columns = ["Symbol", "Signal", "Score", "Entry", "Stop", "TP"]
+            
+            self._send_telegram_report(f"Croc Signals", date_str, df)
+
         return hits
 
     def _compute_sma_distances(self, row: dict[str, Any]) -> None:
@@ -257,7 +272,7 @@ class CrocSetupStrategy(BaseStrategy):
 
         return False
 
-    def _create_trade_from_signal(self, row: dict[str, Any], match: dict[str, Any]) -> None:
+    def _create_trade_from_signal(self, row: dict[str, Any], match: dict[str, Any]) -> dict[str, Any] | None:
         symbol = row.get('symbol', 'UNKNOWN')
         indices = self._get_indices_string(symbol)
         
@@ -318,3 +333,12 @@ class CrocSetupStrategy(BaseStrategy):
             target=target_price,
             context=context
         )
+        
+        return {
+            "symbol": symbol,
+            "signal": str(row.get('signal', '-')),
+            "score": round(float(match.get("Score", 0)), 1),
+            "entry": round(entry_price, 2),
+            "stop": round(sl_price, 2),
+            "tp": round(target_price, 2)
+        }

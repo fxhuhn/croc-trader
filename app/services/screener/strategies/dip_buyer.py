@@ -342,9 +342,11 @@ class DipBuyerStrategy(BaseStrategy):
                 created_trades.append(
                     {
                         "symbol": symbol,
-                        "date": date_str,
-                        "close": row["close"],
-                        "score": row["setup_score"],
+                        "entry": round(entry_price, 2),
+                        "LOC": round(high_next_target, 2),
+                        "score": round(row["setup_score"], 2),
+                        "close": round(row["close"], 2),
+                        "atr": round(row["atr"], 2)
                     }
                 )
 
@@ -358,8 +360,13 @@ class DipBuyerStrategy(BaseStrategy):
                 if date_str != datetime.now().strftime("%Y-%m-%d")
                 else "LIVE"
             )
+            df = pd.DataFrame(created_trades)
+            # User Keys: symbol, entry, LOC, score, Close, ATR
+            # keys are already set in created_trades dict, just need to capitalize headers if needed
+            df.columns = ["Symbol", "Entry", "LOC", "Score", "Close", "ATR"]
+            
             self._send_telegram_report(
-                f"{self.name} ({prefix})", date_str, created_trades
+                f"{self.name} ({prefix})", date_str, df
             )
 
         return saved_count

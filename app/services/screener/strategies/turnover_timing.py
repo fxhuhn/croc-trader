@@ -186,6 +186,29 @@ class TurnoverTimingStrategy(BaseStrategy):
                 )
                 count += 1
                 
+        # Telegram Report
+        if self.telegram_bot and unique_candidates:
+            report_rows = []
+            for cand in unique_candidates:
+                # Calculate Entries
+                # Factor 0.5
+                e1 = cand["close"] - (cand["atr"] * 0.5)
+                # Factor 1.0
+                e2 = cand["close"] - (cand["atr"] * 1.0)
+                
+                report_rows.append({
+                    "symbol": cand["symbol"],
+                    "e1": round(e1, 2),
+                    "e2": round(e2, 2),
+                    "close": round(cand["close"], 2),
+                    "atr": round(cand["atr"], 2)
+                })
+            
+            if report_rows:
+                df = pd.DataFrame(report_rows)
+                df.columns = ["Symbol", "Entry 1", "Entry 2", "Close", "ATR"]
+                self._send_telegram_report(f"Turnover Signals", str(setup_date.date()), df)
+
         return count
 
     def analyze_single_symbol(self, symbol: str) -> dict[str, any]:

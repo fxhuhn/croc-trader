@@ -2,6 +2,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Generic, TypeVar, final
 
+import pandas as pd
+
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....mapping import mapper
 from ....services.telegram import TelegramBot
@@ -35,22 +37,10 @@ class BaseStrategy(ABC, Generic[T]):
 
     @final
     def _send_telegram_report(
-        self, title: str, date: str, results: list[dict[str, Any]]
+        self, title: str, date: str, data: pd.DataFrame
     ) -> None:
-        if not self.telegram_bot or not results:
+        if not self.telegram_bot or data.empty:
             return
 
-        msg_lines = [f"🔎 **{title}** ({date})"]
-
-        for i, r in enumerate(results[:10]):
-            score_info = r.get("score") or r.get("setup_score") or r.get("rank") or "-"
-            price = r.get("close", 0.0)
-            symbol = r.get("symbol", "N/A")
-
-            line = f"{i + 1}. {symbol} | {price} | Score: {score_info}"
-            msg_lines.append(line)
-
-        if len(results) > 10:
-            msg_lines.append(f"\n... und {len(results) - 10} weitere Treffer.")
-
-        self.telegram_bot.send_message("\n".join(msg_lines))
+        full_title = f"🔎 {title} ({date})"
+        self.telegram_bot.send_dataframe(data, title=full_title)
