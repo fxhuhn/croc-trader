@@ -131,8 +131,24 @@ class MarketRepository(BaseRepository):
                 df["date"] = pd.to_datetime(df["date"]) # FIX: Type Conversion
             return df
 
-    def save_bulk_prices(self, records: list[tuple]):
+    def save_bulk_prices(self, records: list):
+        """
+        Saves a list of MarketPrice objects (or tuples for backward compat).
+        """
         if not records: return
+        
+        # Prepare Data
+        # Check if first item is an object (MarketPrice) or tuple
+        first = records[0]
+        data_to_insert = []
+        
+        if hasattr(first, "to_db_row"):
+            # It's a MarketPrice object
+            data_to_insert = [r.to_db_row() for r in records]
+        else:
+            # It's likely already a tuple (Legacy support)
+            data_to_insert = records
+
         sql = "INSERT OR REPLACE INTO market_prices (symbol, date, open, high, low, close, volume, provider, timeframe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         with self.session.connect() as conn:
-            conn.executemany(sql, records)
+            conn.executemany(sql, data_to_insert)

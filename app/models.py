@@ -136,3 +136,63 @@ class SignalStat:
         d.pop("win_rate", None)
         d.pop("loss_rate", None)
         return d
+
+
+@dataclass(frozen=True)
+class MarketPrice:
+    """
+    Immutable representation of a daily price bar.
+    Strictly typed and validated upon creation via factory.
+    """
+    symbol: str
+    date: str  # YYYY-MM-DD
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+    provider: str = "yahoo"
+    timeframe: str = "1D"
+
+    @classmethod
+    def from_yahoo(cls, symbol: str, row: dict[str, Any]) -> "MarketPrice":
+        """
+        Factory method to create a MarketPrice from a Yahoo row dictionary.
+        Validation logic (e.g., non-negative prices) implies here.
+        """
+        # Close must be valid, others can be 0 if missing.
+        c = float(row.get("close", 0.0))
+        if c < 0:
+            raise ValueError(f"Negative close price for {symbol}")
+
+        # Ensure date format is correct (Yahoo often gives Timestamp)
+        d_val = row.get("date")
+        if hasattr(d_val, "strftime"):
+             d_str = d_val.strftime("%Y-%m-%d")
+        else:
+            # Fallback for string or index-based date passed as column
+            d_str = str(d_val) if d_val else datetime.now().strftime("%Y-%m-%d")
+
+        return cls(
+            symbol=symbol,
+            date=d_str,
+            open=float(row.get("open", 0.0)),
+            high=float(row.get("high", 0.0)),
+            low=float(row.get("low", 0.0)),
+            close=c,
+            volume=int(row.get("volume", 0)),
+        )
+
+    def to_db_row(self) -> tuple:
+        """Optimized for executemany (tuple based)."""
+        return (
+            self.symbol,
+            self.date,
+            self.open,
+            self.high,
+            self.low,
+            self.close,
+            self.volume,
+            self.provider,
+            self.timeframe,
+        )

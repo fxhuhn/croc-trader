@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
-from .services.market_data import MarketDataService, DataValidator
+from .services.market.updater import MarketDataUpdater
+from .services.market.quality import MarketQualityService
+from .database.session import DatabaseSession
 
 logger = logging.getLogger(__name__)
 
@@ -29,21 +31,21 @@ def run_market_data_update(db_path: Path):
     """
     logger.info("⏰ Scheduler: Starte Marktdaten-Update...")
     try:
-        # Service instanziieren (nutzt intern eigene Session)
-        svc = MarketDataService(db_path)
+        # Session Factory
+        session_factory = DatabaseSession(str(db_path))
         
-        # 1. Update
-        svc.update_market_data(full_reload=False)
+        # 1. Updater Init
+        updater = MarketDataUpdater(session_factory)
         
-        # 2. Validierung
-        val = DataValidator(svc)
-        val.run_checks() # Simple Checks
+        # 2. Run Update
+        updater.run_update(full_reload=False)
         
-        # 3. Gap Check
-        svc.perform_gap_check()
+        # 3. Quality & Gap Check
+        quality = MarketQualityService(updater)
+        quality.perform_gap_check()
         
     except Exception as e:
-        logger.error(f"Fehler im Marktdaten-Update: {e}")
+        logger.error(f"Fehler im Marktdaten-Update: {e}", exc_info=True)
 
 def run_db_maintenance(db_path: Path):
     """
@@ -51,10 +53,12 @@ def run_db_maintenance(db_path: Path):
     """
     logger.info("⏰ Scheduler: Starte DB Maintenance...")
     try:
-        svc = MarketDataService(db_path)
-        # SQLite Optimierung
-        svc.repo.execute("VACUUM")
-        svc.repo.execute("ANALYZE")
+        session_factory = DatabaseSession(str(db_path))
+        # Nutze Repo oder direkte Session
+        with session_factory.connect() as conn:
+            conn.execute("VACUUM")
+            conn.execute("ANALYZE")
+        
         logger.info("DB Maintenance fertig.")
     except Exception as e:
         logger.error(f"Maintenance Error: {e}")
