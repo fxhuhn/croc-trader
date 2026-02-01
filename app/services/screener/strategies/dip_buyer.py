@@ -91,20 +91,36 @@ class DipBuyerStrategy(BaseStrategy):
         Returns:
             int: Number of trades created.
         """
-        # 1. Determine Analysis Date and Data Window
-        try:
-            target_date, lookback = self._get_analysis_parameters(analysis_date)
-        except ValueError as error:
-            logger.error(f"[{self.name}] Invalid parameters: {error}")
-            return 0
+        # 1. Determine Lookback (Date is determined AFTER loading data if not provided)
+        lookback = self.config.LOOKBACK_DAYS
+        target_date = None
+        
+        if analysis_date:
+            try:
+                target_date = pd.Timestamp(analysis_date)
+                days_diff = (pd.Timestamp.now() - target_date).days
+                if days_diff > (lookback - 250):
+                    lookback = days_diff + 250
+            except ValueError:
+                logger.error(f"Invalid analysis date: {analysis_date}")
+                return 0
 
         # 2. Load Data
         data = self.data_provider.get_all_daily_data(days=lookback)
         if not data or "close" not in data or data["close"].empty:
             logger.warning(f"[{self.name}] No market data available.")
             return 0
+            
+        # 3. Auto-Detect Date if needed
+        closes = data["close"]
+        if target_date is None:
+            # Use the very last date in the dataframe (Max Date in DB)
+            target_date = closes.index[-1]
+            logger.info(f"[{self.name}] Auto-detected analysis date: {target_date.date()}")
+        elif target_date not in closes.index:
+             pass
 
-        # 3. Calculate Indicators & Filters
+        # 4. Calculate Indicators & Filters
         signals_dataframe = self._calculate_signals(data, target_date)
         if signals_dataframe.empty:
             logger.info(f"[{self.name}] No signals found for {target_date.date()}.")
