@@ -75,6 +75,12 @@ class CrocSetupStrategy(BaseStrategy):
         return ",".join(indices) if indices else "-"
 
     def run(self, days: int = 0, analysis_date: str | None = None, specific_symbols: list[str] | None = None) -> int:
+        # Auto-detect date if not provided and no specific lookback requested
+        if not analysis_date and days == 0:
+            analysis_date = self.signal_repo.get_latest_signal_date()
+            if analysis_date:
+                logger.info(f"[{self.name}] Auto-detected analysis date: {analysis_date}")
+
         try:
             signals = self.signal_repo.get_signals_by_date(
                 analysis_date=analysis_date, 
