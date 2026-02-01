@@ -155,7 +155,7 @@ class TradeManager:
             
             if result:
                 logger.info(f"Entry Check {symbol}: {result}")
-                if "FILLED" in result and self.telegram:
-                    self.telegram.send_message(f"✅ **Entry Executed**\n{result}")
+                #if "FILLED" in result and self.telegram:
+                #    self.telegram.send_message(f"✅ **Entry Executed**\n{result}")
         except Exception as e:
             logger.error(f"Fehler bei Entry Check {symbol}: {e}", exc_info=True)
