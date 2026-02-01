@@ -1,6 +1,8 @@
 import json
 import logging
 
+from typing import Any
+
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
