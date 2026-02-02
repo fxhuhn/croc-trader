@@ -163,8 +163,11 @@ def trigger_orders() -> Response:
     if not tm:
         return jsonify({"status": "error", "message": "TradeManager missing"}), 500
     try:
-        tm.run_daily_process()
-        return jsonify({"status": "success"})
+        file_path = tm.generate_daily_orders()
+        if file_path:
+            return jsonify({"status": "success", "file": file_path}), 201
+        else:
+            return jsonify({"status": "success", "message": "No orders generated"}), 200
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
