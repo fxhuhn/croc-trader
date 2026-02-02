@@ -94,9 +94,7 @@ class TradeRepository(BaseRepository):
             s_val = status.value if isinstance(status, Enum) else status
             rows = self.fetch_all("SELECT * FROM trades WHERE status = ?", (s_val,))
         
-        # --- DEBUG LOGGING ---
-        #logger.info(f"[REPO] get_by_status({status}) found {len(rows)} trades.")
-        # ---------------------
+        return [dict(r) for r in rows]
 
     def get_all_traded_symbols(self) -> list[str]:
         """Returns a list of all distinct symbols ever traded."""
