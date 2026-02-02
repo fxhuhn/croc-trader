@@ -193,11 +193,14 @@ def sync_market_data() -> Response:
         return jsonify({"status": "error"}), 500
     
     db_path = conf.get_db_path("stocks")
+    signals_db_path = conf.get_db_path("signals")
 
     def _task():
         try:
             session = DatabaseSession(str(db_path))
-            updater = MarketDataUpdater(session)
+            signals_session = DatabaseSession(str(signals_db_path))
+            
+            updater = MarketDataUpdater(session, signals_session)
             
             updater.run_update(full_reload=full)
             
@@ -218,12 +221,15 @@ def reload_market_data() -> Response:
         return jsonify({"status": "error"}), 500
     
     db_path = conf.get_db_path("stocks")
+    signals_db_path = conf.get_db_path("signals")
     
     def _task():
         try:
             logger.info("Manueller Full-Reload via API gestartet...")
             session = DatabaseSession(str(db_path))
-            updater = MarketDataUpdater(session)
+            signals_session = DatabaseSession(str(signals_db_path))
+            
+            updater = MarketDataUpdater(session, signals_session)
             updater.run_update(full_reload=True)
         except Exception as e:
             logger.error(f"Reload Error: {e}")

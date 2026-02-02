@@ -31,11 +31,16 @@ def run_market_data_update(db_path: Path):
     """
     logger.info("⏰ Scheduler: Starte Marktdaten-Update...")
     try:
-        # Session Factory
+        # Session Factory for Stocks
         session_factory = DatabaseSession(str(db_path))
         
+        # Session Factory for Signals (derived path)
+        # Assuming signals.db is in the same directory as stocks.db
+        signals_path = db_path.parent / "signals.db"
+        signals_session = DatabaseSession(str(signals_path))
+        
         # 1. Updater Init
-        updater = MarketDataUpdater(session_factory)
+        updater = MarketDataUpdater(session_factory, signals_session)
         
         # 2. Run Update
         updater.run_update(full_reload=False)

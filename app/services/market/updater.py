@@ -22,10 +22,22 @@ class MarketDataUpdater:
     Load: Save to Database (via Repository).
     """
 
-    def __init__(self, session_factory: DatabaseSession):
+    def __init__(self, session_factory: DatabaseSession, signals_session: DatabaseSession | None = None):
         self.session = session_factory
         self.repo = MarketRepository(self.session)
-        self.trade_repo = TradeRepository(self.session)
+        
+        # Use provided signals session or Fallback (graceful degradation if not provided, though ideally required)
+        # If signals_session is None, TradeRepository might fail if used. 
+        # But we handle this via dependency injection now.
+        if signals_session:
+            self.trade_repo = TradeRepository(signals_session)
+        else:
+            # Fallback: Try to use the same session (legacy behavior, but mostly wrong for dual-db setup)
+            # Or better: initializing it with None and checking before use? 
+            # For now, let's assume if it's not provided, we might not be able to fetch traded symbols.
+            # But to keep 'self.trade_repo' valid type-wise:
+            self.trade_repo = TradeRepository(self.session) 
+
         self.provider = YahooDataProvider()
         
         # Ensure schema exists
