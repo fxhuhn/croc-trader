@@ -37,23 +37,48 @@
                         <tr>
                             <th>Datum</th>
                             <th>Symbol</th>
-                            <th>Strategie</th>
-                            <th>Setup Close</th>
-                            <th>Entry Trigger</th>
+                            <th>Index</th>
+                            <th>Entry Limit (1.0)</th>
+                            <th>Entry Limit (0.5)</th>
+                            <th>Close</th>
+                            <th>ATR</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in results %}
                         <tr>
                             <td>{{ row.display_date }}</td>
-                            <td><b>{{ row.symbol }}</b></td>
-                            <td>{{ row.strategy }}</td>
-                            <td class="price">{{ "%.2f"|format(row.entry_price) }}</td>
-                            <td>OPEN (Next Day)</td>
+                            <td>
+                                <b>
+                                    <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
+                                        style="text-decoration: none; color: inherit;">
+                                        {{ row.symbol }} ↗
+                                    </a>
+                                </b>
+                            </td>
+                            <td><span class="badge bg-light text-dark border">{{ row.bucket }}</span></td>
+                            <!-- Entry 1.0 -->
+                            <td class="price">
+                                {% if row.entry_1_0 %}
+                                {{ "%.2f"|format(row.entry_1_0) }}
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <!-- Entry 0.5 -->
+                            <td class="price">
+                                {% if row.entry_0_5 %}
+                                {{ "%.2f"|format(row.entry_0_5) }}
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="price">{{ "%.2f"|format(row.close) }}</td>
+                            <td>{{ "%.2f"|format(row.atr) }}</td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="5" class="text-center py-4 text-muted">Keine aktuellen Signale</td>
+                            <td colspan="7" class="text-center py-4 text-muted">Keine aktuellen Signale</td>
                         </tr>
                         {% endfor %}
                     </tbody>

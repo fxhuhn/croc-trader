@@ -198,8 +198,57 @@ def view_screener_dip_buyer() -> str:
 def view_screener_turnover() -> str:
     limit = request.args.get("limit", 200, type=int)
     repo = _get_repo()
+    # 1. Fetch Raw Candidates (e.g. NVDA_0.5, NVDA_1.0)
     results = repo.get_trade_candidates("TurnoverTiming", limit=limit)
-    return render_template("screener_turnover.html", results=results)
+    
+    # 2. Aggregation Logic
+    aggregated = {}
+    
+    for row in results:
+        symbol = row["symbol"]
+        
+        # Ensure base structure
+        if symbol not in aggregated:
+            aggregated[symbol] = {
+                "symbol": symbol,
+                "display_date": row["display_date"],
+                "entry_0_5": None,
+                "entry_1_0": None,
+                "close": 0.0,
+                "atr": 0.0
+            }
+            
+        # Parse Context (where setup data lives)
+        try:
+            # Already parsed in get_trade_candidates? Check repo code.
+            # get_trade_candidates calls "r['ctx'] = ctx", so we can use row['ctx']
+            ctx = row.get("ctx", {})
+            
+            # Extract common metrics (should be same for both variants)
+            aggregated[symbol]["close"] = float(ctx.get("setup_close", 0))
+            aggregated[symbol]["atr"] = float(ctx.get("setup_atr", 0))
+            
+            # Extract Index (Bucket)
+            raw_bucket = ctx.get("bucket", "UNKNOWN")
+            # Nice formatting: NASDAQ_100 -> NASDAQ 100
+            aggregated[symbol]["bucket"] = raw_bucket.replace("_", " ") if raw_bucket else "-"
+            
+            # Identify variant based on strategy name pattern "TurnoverTiming_0.5"
+            strat_name = row["strategy"]
+            entry_price = float(row.get("entry_price") or 0)
+            
+            if "_0.5" in strat_name:
+                aggregated[symbol]["entry_0_5"] = entry_price
+            elif "_1.0" in strat_name:
+                aggregated[symbol]["entry_1_0"] = entry_price
+                
+        except Exception as e:
+            logger.warning(f"Error Aggregating Turnover {symbol}: {e}")
+
+    # Convert dict to list for template
+    final_list = list(aggregated.values())
+    
+    return render_template("screener_turnover.html", results=final_list)
 
 
 # 3. Trades Details
