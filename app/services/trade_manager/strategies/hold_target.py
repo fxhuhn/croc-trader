@@ -4,7 +4,7 @@ from typing import override, final, Optional
 
 import pandas as pd
 
-from ....types import TradeStatus, TradeParams, EntryReason, ExitReason, Order, TradeData
+from ....types import TradeStatus, TradeParams, EntryReason, ExitReason, Order, OrderLeg, TradeData
 from ....database.repositories.trade import TradeRepository
 from .abstract import BaseTradeStrategy
 
@@ -153,7 +153,86 @@ class HoldTargetStrategy(BaseTradeStrategy):
         budget: float,
         repository: TradeRepository
     ) -> Order | None:
-        return None
+        """
+        Erstellt ein Order-Objekt für den IBKR-Export.
+        Logik: Stop Buy (Breakout) + Bracket (Stop Loss, optional Target).
+        """
+        symbol = trade.get('symbol', 'UNKNOWN')
+        entry_price = float(trade.get('entry_price') or 0.0)
+        stop_loss = float(trade.get('current_stop_loss') or 0.0)
+        
+        if entry_price <= 0:
+            logger.warning(f"[{symbol}] Cannot generate order: Invalid Entry Price {entry_price}")
+            return None
+
+        # 1. Quantity Calculation
+        # Check explicit size first
+        db_size = float(trade.get('initial_size') or 0.0)
+        
+        if db_size > 0:
+            qty = int(db_size)
+        elif stop_loss > 0 and entry_price > stop_loss:
+            # Risk Based Calculation
+            risk_amount = float(trade.get('risk_amount') or 100.0)
+            risk_per_share = entry_price - stop_loss
+            qty = int(risk_amount / risk_per_share)
+            logger.info(f"[{symbol}] Calculated Qty via Risk ({risk_amount}): {qty} (Risk/Share: {risk_per_share:.2f})")
+        else:
+            logger.warning(f"[{symbol}] Cannot allow Order Gen: Unknown Size and invalid SL/Risk setup.")
+            return None
+
+        if qty <= 0:
+            logger.warning(f"[{symbol}] Calculated Quantity is 0.")
+            return None
+
+        # 2. Entry: STOP BUY
+        entry_leg = OrderLeg(
+            action="BUY",
+            type="STP",
+            price=entry_price,
+            # qty handled by parent
+            tif="DAY"
+        )
+        
+        exits = []
+        
+        # Exit 1: Stop Loss (Mandatory for this strategy)
+        if stop_loss > 0:
+            exits.append(OrderLeg(
+                action="SELL",
+                type="STP",
+                price=stop_loss,
+                qty=qty,
+                tif="GTC"
+            ))
+        else:
+            logger.warning(f"[{symbol}] Order Gen without Stop Loss? Unsafe for HoldTarget.")
+            # We proceed ONLY if Target is there? No, Strategy requires SL.
+            return None
+
+        # Exit 2: Target (Optional)
+        target_price = float(trade.get('current_target') or 0.0)
+        if target_price > 0:
+            exits.append(OrderLeg(
+                action="SELL",
+                type="LMT",
+                price=target_price,
+                qty=qty,
+                tif="GTC"
+            ))
+
+        # 3. Assemble
+        order_id = f"{symbol}_{self.name}"
+        
+        return Order(
+            id=order_id,
+            symbol=symbol,
+            qty=qty,
+            mode="BRACKET",
+            entry=entry_leg,
+            exits=exits,
+            last_status="CREATED"
+        )
 
     # --- Private Execution Helpers ---
 

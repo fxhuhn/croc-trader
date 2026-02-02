@@ -159,3 +159,75 @@ class TradeManager:
                 #    self.telegram.send_message(f"✅ **Entry Executed**\n{result}")
         except Exception as e:
             logger.error(f"Fehler bei Entry Check {symbol}: {e}", exc_info=True)
+
+    def generate_daily_orders(self) -> str | None:
+        """
+        Generiert die Daily Orders für alle CREATED Trades aller Strategien.
+        Speichert das Ergebnis als YAML.
+        """
+        import yaml
+        from dataclasses import asdict
+
+        logger.info("Generiere Daily Orders...")
+        
+        # 1. Hole alle CREATED Trades
+        # (Wir holen alle, Strategien filtern selbst oder generieren Orders wenn passend)
+        created_trades = self.trade_repo.get_by_status(TradeStatus.CREATED)
+        
+        orders = []
+        
+        for trade in created_trades:
+            symbol = trade['symbol']
+            strat_name = trade['strategy']
+            strategy = self._get_strategy(strat_name)
+            
+            if not strategy:
+                logger.warning(f"Keine Strategie für Trade {symbol} ({strat_name})")
+                continue
+                
+            try:
+                # Load History (Efficiency: Only needed if strat uses it for generation logic, usually not for basic Order file)
+                # But abstract signature demands it.
+                # Assuming empty DataFrame is handled or needed.
+                # Let's load minimal history just in case.
+                df_hist = self.market_repo.get_symbol_history_raw(symbol, start_date="2024-01-01") 
+                
+                # Default Budget (Can be overridden by user/config later)
+                budget = 2000.0
+                
+                order = strategy.generate_orders(trade, df_hist, budget, self.trade_repo)
+                
+                if order:
+                    # Clean None values (e.g. qty in Entry Leg)
+                    order_dict = asdict(order)
+                    
+                    def clean_nones(d):
+                        if isinstance(d, dict):
+                            return {k: clean_nones(v) for k, v in d.items() if v is not None}
+                        if isinstance(d, list):
+                            return [clean_nones(v) for v in d]
+                        return d
+                        
+                    cleaned_order = clean_nones(order_dict)
+                    orders.append(cleaned_order)
+                    logger.info(f"Order generiert: {symbol}")
+                    
+            except Exception as e:
+                logger.error(f"Fehler bei Order Generierung {symbol}: {e}", exc_info=True)
+
+        if not orders:
+            logger.info("Keine Orders zu generieren.")
+            return None
+
+        # 2. Serialize to YAML
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        filename = f"orders_{date_str}.yaml"
+        output_dir = Path("data/orders")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        file_path = output_dir / filename
+        
+        with open(file_path, "w") as f:
+            yaml.dump(orders, f, sort_keys=False, default_flow_style=False)
+            
+        logger.info(f"Orders gespeichert: {file_path}")
+        return str(file_path)

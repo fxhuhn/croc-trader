@@ -5,7 +5,7 @@ from datetime import date
 
 import pandas as pd
 
-from ....types import TradeStatus, TradeParams, Order, ExitReason, TradeData
+from ....types import TradeStatus, TradeParams, Order, OrderLeg, ExitReason, TradeData
 from ....database.repositories.trade import TradeRepository
 from .abstract import BaseTradeStrategy
 
@@ -127,8 +127,74 @@ class DipBuyerStrategy(BaseTradeStrategy):
         budget: float, 
         repository: TradeRepository
     ) -> Order | None:
-        # Nicht implementiert für diese Strategie
-        return None
+        """
+        Erstellt ein Order-Objekt für den IBKR-Export.
+        Logik: Limit Buy + Bracket (Take Profit, Stop Loss).
+        """
+        symbol = trade.get('symbol', 'UNKNOWN')
+        entry_price = float(trade.get('entry_price') or 0.0)
+        
+        if entry_price <= 0:
+            logger.warning(f"[{symbol}] Cannot generate order: Invalid Entry Price {entry_price}")
+            return None
+
+        # 1. Quantity Calculation
+        # Check if DB already has a fixed size (initial_size)
+        db_size = float(trade.get('initial_size') or 0.0)
+        
+        if db_size > 0:
+            qty = int(db_size)
+        else:
+            # Fallback: Calculate from Budget
+            trade_budget = trade.get('budget')
+            if trade_budget:
+                budget_to_use = float(trade_budget)
+            else:
+                budget_to_use = self.DEFAULT_BUDGET
+                logger.warning(f"[{symbol}] Using DEFAULT_BUDGET ({self.DEFAULT_BUDGET}) for Order Generation.")
+
+            qty = int(budget_to_use / entry_price)
+        
+        if qty <= 0:
+            logger.warning(f"[{symbol}] Calculated Quantity is 0 (Size: {db_size}, Price: {entry_price}).")
+            return None
+
+        # 2. Construct Order Legs
+        # Entry: BUY LMT DAY
+        entry_leg = OrderLeg(
+            action="BUY",
+            type="LMT",
+            price=entry_price,
+            # qty is redundant in Entry Leg (covered by Parent Order)
+            tif="DAY"
+        )
+        
+        exits = []
+        
+        # Exit 1: Take Profit (Target) -> LOC (Limit On Close) per User Request example
+        target_price = float(trade.get('current_target') or 0.0)
+        if target_price > 0:
+            exits.append(OrderLeg(
+                action="SELL",
+                type="LOC", # User specific requirement
+                price=target_price,
+                qty=qty, # Exit full position
+                tif="DAY"
+            ))
+
+        # 3. Assemble Order
+        # ID is composition of Symbol + Strategy Name
+        order_id = f"{symbol}_{self.name}" 
+        
+        return Order(
+            id=order_id,
+            symbol=symbol,
+            qty=qty,
+            mode="BRACKET",
+            entry=entry_leg,
+            exits=exits,
+            last_status="CREATED"
+        )
 
     # --- Private Helper Methods (Clean Code) ---
 
@@ -159,9 +225,9 @@ class DipBuyerStrategy(BaseTradeStrategy):
             return True
 
     def _handle_expired_order(self, trade: dict, candle: pd.Series, repository: TradeRepository) -> None:
-        """Setzt den Trade auf CLOSED/EXPIRED."""
+        """Setzt den Trade auf MISSED (Order Expired)."""
         repository.update_trade(trade['id'], {
-            "status": TradeStatus.INVALID,
+            "status": TradeStatus.MISSED,
             "exit_reason": ExitReason.EXPIRED,
             "exit_date": str(candle['date']),
             "realized_pnl": 0.0
