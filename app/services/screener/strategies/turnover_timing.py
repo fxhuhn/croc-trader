@@ -149,9 +149,19 @@ class TurnoverTimingStrategy(BaseStrategy):
         count = 0
         signal_date_str = str(setup_date.date())
         
-        # Deduplicate candidates (in case symbol is in multiple indices)
-        # Use dictionary keyed by symbol to keep unique, preferring first occurrence (bucket order) or just unique set
-        unique_candidates = {c["symbol"]: c for c in candidates}.values()
+        # Deduplicate candidates and merge buckets
+        merged_candidates = {}
+        for c in candidates:
+            sym = c["symbol"]
+            if sym not in merged_candidates:
+                merged_candidates[sym] = c
+            else:
+                # Append bucket if not already present
+                existing_buckets = merged_candidates[sym]["bucket"].split(", ")
+                if c["bucket"] not in existing_buckets:
+                    merged_candidates[sym]["bucket"] += f", {c['bucket']}"
+        
+        unique_candidates = merged_candidates.values()
         
         for candidate in unique_candidates:
             for factor in self.config.ENTRY_FACTORS: # [0.5, 1.0]
