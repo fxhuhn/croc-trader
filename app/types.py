@@ -9,8 +9,8 @@ class TradeStatus(StrEnum):
     CREATED = "CREATED"
     ACTIVE = "ACTIVE"
     CLOSED = "CLOSED"
-    MISSED = "MISSED"
-    INVALID = "INVALID"
+    MISSED = "MISSED"   # Entry not filled (Limit not reached)
+    INVALID = "INVALID" # Setup invalidated before entry (e.g. Stop Validation)
 
 class ExitReason(StrEnum):
     # Profit Exits
