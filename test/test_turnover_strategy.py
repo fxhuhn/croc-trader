@@ -197,7 +197,7 @@ def test_exit_two_green_candles(strategy, mock_trade_repo, history_df):
     # Assert
     assert "EXIT" in result
     payload = mock_trade_repo.update_trade.call_args[0][1]
-    assert payload["exit_reason"] == ExitReason.MANUAL # Currently mapped to MANUAL in code
+    assert payload["exit_reason"] == ExitReason.TAKE_PROFIT # Currently mapped to MANUAL in code
     assert payload["exit_price"] == 105.0 # Today's Open
 
 def test_exit_holds_mixed_candles(strategy, mock_trade_repo, history_df):

@@ -87,11 +87,14 @@ def create_market_data_for_ranking(length=300):
     # High/Low for ATR
     df_high = df_close + 5
     df_low = df_close - 5
-    
+    df_open = df_close - 2 # Arbitrary Open
+
+
     data = {
         "close": df_close,
         "high": df_high,
         "low": df_low,
+        "open": df_open,
         "volume": df_volume
     }
     return data, symbols
