@@ -370,3 +370,46 @@ def view_trades_turnover() -> str:
         summary=summary,
         closed_summary=closed_summary
     )
+
+@views_bp.route("/backtest", methods=["GET"])
+def view_backtest_dashboard() -> str:
+    """Displays the Backtest Dashboard."""
+    # Paths
+    bt_db = str(_get_db_path("backtest").parent / "backtest.db")
+    mkt_db = str(_get_db_path("stocks"))
+    
+    # 1. Analytics
+    from ..services.backtester.analytics import BacktestAnalytics
+    from ..services.backtester.charts import generate_backtest_charts, generate_profit_factor_gauge, generate_win_rate_gauge, generate_sqn_gauge
+    
+    analytics = BacktestAnalytics(bt_db, mkt_db)
+    metrics = analytics.run_analysis()
+    
+    # 2. Charts
+    df_equity = analytics.get_equity_curve()
+    chart_eq, chart_dd = generate_backtest_charts(df_equity)
+    
+    # Gauge for Profit Factor
+    chart_pf = generate_profit_factor_gauge(metrics.profit_factor)
+    
+    # Gauge for Win Rate
+    chart_wr = generate_win_rate_gauge(metrics.win_rate * 100)
+    
+    # Gauge for SQN
+    chart_sqn = generate_sqn_gauge(metrics.sqn)
+    
+    # 3. Trade Lists (Recent, Top, Worst)
+    trade_lists = analytics.get_trade_lists()
+    
+    return render_template(
+        "backtest_dashboard.html",
+        metrics=metrics,
+        chart_equity=chart_eq,
+        chart_drawdown=chart_dd,
+        chart_pf=chart_pf,
+        chart_wr=chart_wr,
+        chart_sqn=chart_sqn,
+        recent_trades=trade_lists['recent'],
+        top_trades=trade_lists['top'],
+        worst_trades=trade_lists['worst']
+    )
