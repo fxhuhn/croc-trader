@@ -46,6 +46,7 @@ class ExchangeSymbol:
             self._nasdaq_100: list[str] = []
             self._dow_30: list[str] = []
             self._russell_1000: list[str] = []
+            self._special_symbols: list[str] = ["SPY", "QQQ", "SXRV", "DIA"]
 
             # 1. S&P 500
             self._sp_500 = self._fetch_from_wikipedia(
@@ -82,7 +83,8 @@ class ExchangeSymbol:
                 f"S&P 500={len(self._sp_500)}, "
                 f"NASDAQ-100={len(self._nasdaq_100)}, "
                 f"Dow 30={len(self._dow_30)}, "
-                f"Russell 1000={len(self._russell_1000)}"
+                f"Russell 1000={len(self._russell_1000)}, "
+                f"Special={len(self._special_symbols)}"
             )
 
     def _fetch_from_wikipedia(
@@ -174,6 +176,10 @@ class ExchangeSymbol:
         return self._russell_1000.copy()
 
     @property
+    def special_symbols(self) -> list[str]:
+        return self._special_symbols.copy()
+
+    @property
     def russell_1000_exclusive(self) -> list[str]:
         """
         Russell 1000 OHNE die Titel aus S&P 500, Nasdaq 100 und Dow 30.
@@ -186,7 +192,7 @@ class ExchangeSymbol:
     @property
     def all(self) -> list[str]:
         combined = set(
-            self._dow_30 + self._nasdaq_100 + self._sp_500 + self._russell_1000
+            self._dow_30 + self._nasdaq_100 + self._sp_500 + self._russell_1000 + self._special_symbols
         )
         return sorted(list(combined))
 
