@@ -192,8 +192,8 @@ class TradeManager:
                 # Let's load minimal history just in case.
                 df_hist = self.market_repo.get_symbol_history_raw(symbol, start_date="2024-01-01") 
                 
-                # Default Budget (Can be overridden by user/config later)
-                budget = 2000.0
+                # Default Budget from Trade Record (set by Portfolio Manager)
+                budget = float(trade.get('budget') or 2000.0) # Fallback to 2000 if PM failed or missed
                 
                 order = strategy.generate_orders(trade, df_hist, budget, self.trade_repo)
                 
