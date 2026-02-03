@@ -46,7 +46,7 @@ class ExchangeSymbol:
             self._nasdaq_100: list[str] = []
             self._dow_30: list[str] = []
             self._russell_1000: list[str] = []
-            self._special_symbols: list[str] = ["SPY", "QQQ", "SXRV", "DIA"]
+            self._special_symbols: list[str] = ["SPY", "QQQ", "SXRV.DE", "DIA"]
 
             # 1. S&P 500
             self._sp_500 = self._fetch_from_wikipedia(
