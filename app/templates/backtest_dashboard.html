@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Backtest Dashboard</title>
+    <!-- Tailwind CSS (CDN for simplicity) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 min-h-screen text-gray-900">
+
+    <!-- Navbar -->
+    <nav class="bg-white border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <span class="text-xl font-bold text-gray-900">🐊 Croc Trader <span
+                                class="text-blue-600">Backtest</span></span>
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    <a href="/"
+                        class="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Header -->
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Strategy Performance</h1>
+            <p class="text-gray-500 mt-1">Dip Buyer Strategy (2025-01-01 to 2025-??-??)</p>
+        </header>
+
+        <!-- KPI Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+
+            <!-- Net Profit -->
+            <article class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
+                <p class="text-sm font-medium text-gray-400 uppercase tracking-wider">Net Profit</p>
+                <div class="mt-2 flex items-baseline">
+                    <span
+                        class="text-4xl font-light {{ 'text-emerald-600' if metrics.net_profit >= 0 else 'text-rose-600' }}">
+                        ${{ "{:,.2f}".format(metrics.net_profit) }}
+                    </span>
+                    <span class="ml-2 text-sm text-gray-400 font-light">
+                        ({{ "{:.1f}%".format(metrics.strategy_return * 100) }})
+                    </span>
+                </div>
+                <div class="mt-1 text-xs text-gray-400 font-light">
+                    {{ metrics.total_trades }} Trades • Avg: ${{ "{:,.2f}".format(metrics.expectancy) }}
+                </div>
+            </article>
+
+            <!-- Win Rate -->
+            <article class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60 flex flex-col items-center">
+                <p class="text-sm font-medium text-gray-400 uppercase tracking-wider w-full text-left">Win Rate</p>
+                <div class="w-full -mt-4">
+                    {{ chart_wr | safe }}
+                </div>
+            </article>
+
+            <!-- Profit Factor -->
+            <article class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60 flex flex-col items-center">
+                <p class="text-sm font-medium text-gray-400 uppercase tracking-wider w-full text-left">Profit Factor</p>
+                <div class="w-full -mt-4">
+                    {{ chart_pf | safe }}
+                </div>
+            </article>
+
+            <!-- System Quality -->
+            <article class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60 flex flex-col items-center">
+                <div class="flex justify-between w-full mb-0">
+                    <p class="text-sm font-medium text-gray-400 uppercase tracking-wider">System Quality (SQN)</p>
+                </div>
+                <div class="w-full -mt-4">
+                    {{ chart_sqn | safe }}
+                </div>
+                <div class="text-xs text-gray-400 mt-0 font-light">
+                    Safe Kelly: {{ "{:.2f}".format(metrics.kelly_safe) }}
+                </div>
+            </article>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+
+            <!-- Equity Curve (Main) -->
+            <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
+                <h3 class="text-lg font-medium text-gray-800 mb-4">Equity Curve</h3>
+                <div class="w-full">
+                    {{ chart_equity | safe }}
+                </div>
+            </div>
+
+            <!-- Drawdown (Side) -->
+            <div class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
+                <h3 class="text-lg font-medium text-gray-800 mb-4">Drawdown</h3>
+                <div class="w-full">
+                    {{ chart_drawdown | safe }}
+                </div>
+                <div class="mt-4 pt-4 border-t border-gray-50">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-sm text-gray-400">Max Drawdown</span>
+                        <span class="font-medium text-rose-500">{{ "{:.1f}%".format(metrics.max_drawdown * 100)
+                            }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-gray-400">Expectancy</span>
+                        <span class="font-medium text-gray-800">${{ "{:,.2f}".format(metrics.expectancy) }}</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Trade Lists Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+            <!-- Recent Trades -->
+            <section class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60 lg:col-span-2">
+                <h3 class="text-lg font-medium text-gray-800 mb-4">Recent Trades (Last 20)</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-gray-50/50 text-gray-400 uppercase tracking-wider text-xs font-medium">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Symbol</th>
+                                <th class="px-4 py-3 text-left">Entry</th>
+                                <th class="px-4 py-3 text-left">Exit</th>
+                                <th class="px-4 py-3 text-right">PnL</th>
+                                <th class="px-4 py-3 text-left">Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                            {% for trade in recent_trades %}
+                            <tr class="hover:bg-gray-50/50 transition-colors">
+                                <td class="px-4 py-4 font-medium text-gray-700">{{ trade.symbol }}</td>
+                                <td class="px-4 py-4 text-gray-500 font-light">{{ trade.entry_date }}</td>
+                                <td class="px-4 py-4 text-gray-500 font-light">{{ trade.exit_date }}</td>
+                                <td
+                                    class="px-4 py-4 text-right font-medium {{ 'text-emerald-600' if trade.realized_pnl >= 0 else 'text-rose-500' }}">
+                                    ${{ "{:,.2f}".format(trade.realized_pnl) }}
+                                </td>
+                                <td class="px-4 py-4">
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                        {{ trade.exit_reason }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Top 10 Wins -->
+            <section class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
+                <h3 class="text-lg font-medium text-emerald-600 mb-4">Top 10 Wins</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-emerald-50/50 text-emerald-600 uppercase tracking-wider text-xs font-medium">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Symbol</th>
+                                <th class="px-4 py-3 text-right">PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                            {% for trade in top_trades %}
+                            <tr class="hover:bg-gray-50/50 transition-colors">
+                                <td class="px-4 py-4 font-medium text-gray-700">{{ trade.symbol }}</td>
+                                <td class="px-4 py-4 text-right font-medium text-emerald-600">
+                                    +${{ "{:,.2f}".format(trade.realized_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Worst 10 Losses -->
+            <section class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
+                <h3 class="text-lg font-medium text-rose-500 mb-4">Worst 10 Losses</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-rose-50/50 text-rose-500 uppercase tracking-wider text-xs font-medium">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Symbol</th>
+                                <th class="px-4 py-3 text-right">PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-50">
+                            {% for trade in worst_trades %}
+                            <tr class="hover:bg-gray-50/50 transition-colors">
+                                <td class="px-4 py-4 font-medium text-gray-700">{{ trade.symbol }}</td>
+                                <td class="px-4 py-4 text-right font-medium text-rose-500">
+                                    ${{ "{:,.2f}".format(trade.realized_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+        </div>
+
+    </main>
+
+</body>
+
+</html>
