@@ -178,6 +178,7 @@ class TurnoverTimingStrategy(BaseStrategy):
                 context = {
                     "setup_date": signal_date_str,
                     "setup_close": candidate["close"],
+                    "setup_candle_green": bool(candidate["close"] > data_frames["open"].loc[setup_date][candidate["symbol"]]),
                     "setup_sma150": candidate["sma_price"],
                     "setup_turnover_sma20": round(candidate["sma_turnover"], 0),
                     "setup_atr": round(candidate["atr"], 2),
