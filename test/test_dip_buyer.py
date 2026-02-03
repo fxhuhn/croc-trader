@@ -102,7 +102,7 @@ def test_entry_no_fill_high_above_limit(strategy, mock_repo, base_trade):
     
     mock_repo.update_trade.assert_called_once()
     args, _ = mock_repo.update_trade.call_args
-    assert args[1]['status'] == TradeStatus.INVALID
+    assert args[1]['status'] == TradeStatus.MISSED
 
 # --- LIMIT ON CLOSE (LOC) TESTS ---
 
