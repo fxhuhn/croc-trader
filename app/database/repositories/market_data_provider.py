@@ -107,3 +107,16 @@ class MarketDataProvider:
             for sym, grp in df.groupby("symbol"):
                 res[sym] = grp
         return res
+
+    def get_available_dates(self, start_date: str, end_date: str) -> list[pd.Timestamp]:
+        """Holt eine Liste aller verfügbaren Handelstage im Zeitraum (Fallback für fehlendes SPY)."""
+        with self.session.connect() as conn:
+            query = """
+                SELECT DISTINCT date 
+                FROM market_prices 
+                WHERE date >= ? AND date <= ? AND timeframe='1D' 
+                ORDER BY date ASC
+            """
+            rows = conn.execute(query, (start_date, end_date)).fetchall()
+            
+        return [pd.Timestamp(r[0]) for r in rows]
