@@ -11,6 +11,7 @@ class TradeStatus(StrEnum):
     CLOSED = "CLOSED"
     MISSED = "MISSED"   # Entry not filled (Limit not reached)
     INVALID = "INVALID" # Setup invalidated before entry (e.g. Stop Validation)
+    SKIPPED = "SKIPPED" # Rejected by Portfolio Manager
 
 class ExitReason(StrEnum):
     # Profit Exits
