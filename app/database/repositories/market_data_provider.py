@@ -53,6 +53,54 @@ class MarketDataProvider:
             logger.warning("[MarketData] Keine Daten gefunden.")
             return None
 
+        return self._pivot_data(df)
+
+    def get_universe_daily_data(self, symbols: list[str], days: int) -> MarketDataDict | None:
+        """
+        Lädt Daten nur für eine spezifische Liste von Symbolen (Pre-Filtering).
+        Nutzt Chunking, um SQLite Parameter-Limits einzuhalten.
+        """
+        if not symbols:
+            return None
+
+        start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
+        logger.info(f"[MarketData] Lade Universe-Daten ({len(symbols)} Symbole, {days}d)...")
+        
+        all_dfs = []
+        chunk_size = 500 # Safe limit for SQLite variables
+        
+        try:
+            with self.session.connect() as conn:
+                for i in range(0, len(symbols), chunk_size):
+                    chunk = symbols[i : i + chunk_size]
+                    placeholders = ",".join("?" for _ in chunk)
+                    query = f"""
+                        SELECT date, symbol, open, high, low, close, volume
+                        FROM market_prices
+                        WHERE symbol IN ({placeholders})
+                          AND date >= ? 
+                          AND timeframe = '1D'
+                        ORDER BY date ASC
+                    """
+                    # Params: symbols + start_date
+                    params = tuple(chunk) + (start_date,)
+                    chunk_df = pd.read_sql_query(query, conn, params=params)
+                    if not chunk_df.empty:
+                         all_dfs.append(chunk_df)
+                         
+        except Exception as e:
+            logger.error(f"[MarketData] Universe Fetch Fehler: {e}")
+            return None
+            
+        if not all_dfs:
+            logger.warning("[MarketData] Keine Daten für Universe gefunden.")
+            return None
+            
+        full_df = pd.concat(all_dfs, ignore_index=True)
+        return self._pivot_data(full_df)
+
+    def _pivot_data(self, df: pd.DataFrame) -> MarketDataDict:
+        """Helper to pivot raw dataframe into MarketDataDict structure."""
         # Datentyp-Konvertierung
         df["date"] = pd.to_datetime(df["date"])
 
