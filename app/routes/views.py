@@ -2,6 +2,8 @@ import json
 import logging
 from pathlib import Path
 import pandas as pd
+import plotly.graph_objects as go
+import plotly.io as pio
 
 from flask import Blueprint, current_app, render_template, request
 
@@ -130,17 +132,133 @@ def get_portfolio_summary(active_trades):
 def view_screener_overview() -> str:
     return render_template("screener.html")
 
+def generate_sparkline(dates: list, prices: list, is_up: bool) -> str:
+    """Generates a minimalistic sparkline chart (Spline, No Axes)."""
+    color = '#10b981' if is_up else '#ef4444' # Emerald-500 or Rose-500
+    fill_color = 'rgba(16, 185, 129, 0.1)' if is_up else 'rgba(239, 68, 68, 0.1)'
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=dates,
+        y=prices,
+        mode='lines',
+        line=dict(color=color, width=2, shape='spline', smoothing=1.3),
+        fill='tozeroy',
+        fillcolor=fill_color,
+        hoverinfo='skip'
+    ))
+
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)',
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
+        showlegend=False,
+        height=50,
+        width=120
+    )
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'displayModeBar': False})
+
+def generate_donut_chart(labels: list, values: list, colors: list) -> str:
+    """Generates a clean donut chart for strategy allocation."""
+    fig = go.Figure(data=[go.Pie(
+        labels=labels,
+        values=values,
+        hole=0.8,
+        textinfo='none',
+        hoverinfo='label+percent+value',
+        marker=dict(colors=colors),
+        sort=False
+    )])
+
+    fig.update_layout(
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor='rgba(0,0,0,0)',
+        showlegend=False,
+        height=180,
+    )
+    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'displayModeBar': False})
+
 @views_bp.route("/trades", methods=["GET"])
 def view_trades_overview() -> str:
     trade_repo = _get_trade_repo()
     market_repo = _get_market_repo()
     
-    # Alle aktiven Trades laden für die Gesamtübersicht
+    # 1. Fetch Active Trades
     active = trade_repo.get_by_status([TradeStatus.ACTIVE])
-    prepare_view_model(active, market_repo)
-    summary = get_portfolio_summary(active)
+    prepare_view_model(active, market_repo) # Calculates PnL, Price etc.
     
-    return render_template("trades.html", active_trades=active, summary=summary)
+    # 2. Portfolio Metrics
+    total_invested = sum((float(t.get("entry_price") or 0) * float(t.get("current_size") or 0)) for t in active)
+    total_open_pnl = sum(t.get("unrealized_pnl", 0) for t in active)
+    active_count = len(active)
+    
+    # 3. Strategy Allocation & Performance
+    strategy_stats = {}
+    
+    for t in active:
+        strat = t.get("strategy", "Unknown")
+        # Normalize strategy names if needed (e.g. remove versions)
+        if "Croc" in strat: label = "Croc Setup"
+        elif "DipBuyer" in strat: label = "Dip Buyer"
+        elif "Turnover" in strat: label = "Turnover"
+        else: label = strat
+        
+        if label not in strategy_stats:
+            strategy_stats[label] = {"count": 0, "pnl": 0.0, "invested": 0.0}
+            
+        strategy_stats[label]["count"] += 1
+        strategy_stats[label]["pnl"] += t.get("unrealized_pnl", 0)
+        entry = float(t.get("entry_price") or 0)
+        size = float(t.get("current_size") or 0)
+        strategy_stats[label]["invested"] += (entry * size)
+
+    # Prepare Data for Donut Chart
+    alloc_labels = list(strategy_stats.keys())
+    alloc_values = [d["invested"] for d in strategy_stats.values()]
+    # Custom colors: Blue, Purple, Orange, Slate...
+    palette = ['#2563eb', '#8b5cf6', '#f97316', '#64748b'] 
+    
+    donut_html = generate_donut_chart(alloc_labels, alloc_values, palette)
+    
+    # 4. Generate Sparklines for Active Trades
+    # Get history for all active symbols (last 14 days)
+    today = pd.Timestamp.now()
+    start_date = (today - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
+    symbols = [t["symbol"] for t in active]
+    
+    history_df = market_repo.get_batch_history_raw(symbols, start_date, today.strftime("%Y-%m-%d"))
+    
+    for t in active:
+        sym = t["symbol"]
+        # Filter df for symbol
+        rows = history_df[history_df["symbol"] == sym].sort_values("date")
+        if not rows.empty:
+            dates = rows["date"].tolist()
+            prices = rows["close"].tolist()
+            
+            # Trend determination (simple)
+            is_up = prices[-1] >= prices[0] if prices else True
+            if t.get("unrealized_pnl", 0) < 0: is_up = False # Visual match with PnL
+            
+            t["sparkline"] = generate_sparkline(dates, prices, is_up)
+        else:
+            t["sparkline"] = ""
+
+    summary = {
+        "invested": total_invested,
+        "open_pnl": total_open_pnl,
+        "count": active_count
+    }
+    
+    return render_template(
+        "trades.html", 
+        active_trades=active, 
+        summary=summary,
+        strategy_stats=strategy_stats,
+        donut_html=donut_html
+    )
 
 
 # 2. Screener Details
@@ -401,9 +519,13 @@ def view_backtest_dashboard() -> str:
     # 3. Trade Lists (Recent, Top, Worst)
     trade_lists = analytics.get_trade_lists()
     
+    # 4. Strategy Breakdown
+    strategy_metrics = analytics.run_strategy_analysis()
+    
     return render_template(
         "backtest_dashboard.html",
         metrics=metrics,
+        strategy_metrics=strategy_metrics,
         chart_equity=chart_eq,
         chart_drawdown=chart_dd,
         chart_pf=chart_pf,
