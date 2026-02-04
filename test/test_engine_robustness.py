@@ -93,7 +93,7 @@ def test_engine_handles_screener_crash_gracefully(MockScreenerStrats, mock_depen
     engine = BacktestEngine("2025-01-01", "2025-01-01", market, repo, console)
     
     # Mock Screener to raise Error
-    engine.screener.run.side_effect = Exception("Boom")
+    engine.screeners[0].run.side_effect = Exception("Boom")
     
     # Act
     # Should not raise

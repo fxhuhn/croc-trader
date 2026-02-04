@@ -123,7 +123,7 @@ def test_ranking_and_selection(MockExchangeSymbol, strategy, mock_provider, mock
     data, all_symbols = create_market_data_for_ranking()
     
     # Mock Provider
-    mock_provider.get_all_daily_data.return_value = data
+    mock_provider.get_universe_daily_data.return_value = data
     
     # Mock Repository (None exist yet)
     mock_repo.exists.return_value = False
@@ -163,7 +163,7 @@ def test_deduplication(MockExchangeSymbol, strategy, mock_provider, mock_repo):
     top1 = "TOP_1"
     
     # Mock Provider
-    mock_provider.get_all_daily_data.return_value = data
+    mock_provider.get_universe_daily_data.return_value = data
     mock_repo.exists.return_value = False # First time check
     
     # Put TOP_1 in BOTH NASDAQ and SP500
@@ -184,7 +184,7 @@ def test_deduplication(MockExchangeSymbol, strategy, mock_provider, mock_repo):
 
 def test_run_skips_bad_day(strategy, mock_provider):
     data, _ = create_market_data_for_ranking()
-    mock_provider.get_all_daily_data.return_value = data
+    mock_provider.get_universe_daily_data.return_value = data
     
     # Monday
     count = strategy.run(analysis_date="2025-01-27") 
