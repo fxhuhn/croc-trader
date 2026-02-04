@@ -130,7 +130,20 @@ def get_portfolio_summary(active_trades):
 # 1. Landing Pages (Übersichten)
 @views_bp.route("/screener", methods=["GET"])
 def view_screener_overview() -> str:
-    return render_template("screener.html")
+    repo = _get_repo()
+    
+    # Signale zählen (wir laden die Liste und nehmen die Länge, 
+    # für EOD/geringe Datenmengen ist das performant genug)
+    count_croc = len(repo.get_trade_candidates("Croc", limit=100))
+    count_dip = len(repo.get_trade_candidates("DipBuyer", limit=100))
+    count_turnover = len(repo.get_trade_candidates("TurnoverTiming", limit=100))
+    
+    return render_template(
+        "screener.html",
+        count_croc=count_croc,
+        count_dip=count_dip,
+        count_turnover=count_turnover
+    )
 
 def generate_sparkline(dates: list, prices: list, is_up: bool) -> str:
     """Generates a minimalistic sparkline chart (Spline, No Axes)."""
