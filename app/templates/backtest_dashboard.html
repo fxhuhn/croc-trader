@@ -9,119 +9,193 @@
     <!-- Plotly.js -->
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
 
         body {
             font-family: 'Inter', sans-serif;
         }
+
+        /* Custom Shadow for Premium SaaS Look (v4) */
+        .shadow-saas {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.03), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+            border: none;
+        }
     </style>
 </head>
 
-<body class="bg-gray-50 min-h-screen text-gray-900">
+<body class="bg-slate-50 min-h-screen text-slate-900">
 
     <!-- Navbar -->
-    <nav class="bg-white border-b border-gray-200">
+    <nav class="bg-white/80 backdrop-blur-sm border-b border-slate-100/50 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex">
                     <div class="flex-shrink-0 flex items-center">
-                        <span class="text-xl font-bold text-gray-900">🐊 Croc Trader <span
-                                class="text-blue-600">Backtest</span></span>
+                        <span class="text-xl font-semibold text-slate-900">🐊 Croc Trader <span
+                                class="text-blue-500 font-light">Backtest</span></span>
                     </div>
                 </div>
                 <div class="flex items-center">
                     <a href="/"
-                        class="text-gray-500 hover:text-gray-700 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                        class="text-slate-500 hover:text-slate-700 px-3 py-2 rounded-md text-sm font-light">Dashboard</a>
                 </div>
             </div>
         </div>
     </nav>
 
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
         <!-- Header -->
-        <header class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-900">Strategy Performance</h1>
-            <p class="text-gray-500 mt-1">Dip Buyer Strategy (2025-01-01 to 2025-??-??)</p>
+        <header class="mb-10">
+            <h1 class="text-3xl font-light text-slate-900">Strategy Performance</h1>
+            <p class="text-slate-400 mt-1 font-light">Dip Buyer Strategy (2025-01-01 to 2025-??-??)</p>
         </header>
 
         <!-- KPI Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
 
             <!-- Net Profit -->
-            <article class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
-                <p class="text-sm font-medium text-gray-400 uppercase tracking-wider">Net Profit</p>
-                <div class="mt-2 flex items-baseline">
-                    <span
-                        class="text-4xl font-light {{ 'text-emerald-600' if metrics.net_profit >= 0 else 'text-rose-600' }}">
-                        ${{ "{:,.2f}".format(metrics.net_profit) }}
-                    </span>
-                    <span class="ml-2 text-sm text-gray-400 font-light">
+            <article
+                class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center text-center h-56">
+                <div class="flex-grow flex flex-col justify-center items-center">
+                    <div class="flex items-baseline justify-center">
+                        <span class="text-[#94a3b8] font-light mr-1" style="font-size: 0.65em;">$</span>
+                        <span
+                            class="text-5xl font-light {{ 'text-emerald-500' if metrics.net_profit >= 0 else 'text-rose-500' }}">
+                            {{ "{:,.2f}".format(metrics.net_profit) }}
+                        </span>
+                    </div>
+                    <div class="mt-2 text-xl text-[#94a3b8] font-light" style="font-size: 0.65em;">
                         ({{ "{:.1f}%".format(metrics.strategy_return * 100) }})
-                    </span>
+                    </div>
+                    <div class="mt-1 text-xs text-slate-400 font-light">
+                        {{ metrics.total_trades }} Trades • Avg: ${{ "{:,.2f}".format(metrics.expectancy) }}
+                    </div>
                 </div>
-                <div class="mt-1 text-xs text-gray-400 font-light">
-                    {{ metrics.total_trades }} Trades • Avg: ${{ "{:,.2f}".format(metrics.expectancy) }}
-                </div>
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mt-auto">Net Profit</p>
             </article>
 
             <!-- Win Rate -->
-            <article class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60 flex flex-col items-center">
-                <p class="text-sm font-medium text-gray-400 uppercase tracking-wider w-full text-left">Win Rate</p>
-                <div class="w-full -mt-4">
+            <article class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center h-56">
+                <div class="w-full flex-grow flex items-center justify-center -mt-4">
                     {{ chart_wr | safe }}
                 </div>
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mt-auto">Win Rate</p>
             </article>
 
             <!-- Profit Factor -->
-            <article class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60 flex flex-col items-center">
-                <p class="text-sm font-medium text-gray-400 uppercase tracking-wider w-full text-left">Profit Factor</p>
-                <div class="w-full -mt-4">
+            <article class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center h-56">
+                <div class="w-full flex-grow flex items-center justify-center -mt-4">
                     {{ chart_pf | safe }}
+                </div>
+                <div class="flex flex-col items-center mt-auto relative group">
+                    <div class="flex items-center cursor-help">
+                        <p
+                            class="text-xs font-medium text-slate-400 uppercase tracking-widest border-b border-dotted border-slate-300">
+                            Profit Factor</p>
+                    </div>
+
+                    <!-- Tooltip -->
+                    <div
+                        class="absolute bottom-full mb-2 w-56 p-3 bg-slate-800 text-slate-200 text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 text-left">
+                        <div class="font-semibold text-white mb-1 border-b border-slate-700 pb-1">Performance Legend
+                        </div>
+                        <div class="space-y-1">
+                            <div class="flex justify-between"><span class="text-rose-400">&lt; 1.0</span>
+                                <span>Losing</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-amber-400">1.0 - 1.5</span>
+                                <span>Marginal</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-emerald-400">1.5 - 2.0</span>
+                                <span>Good</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-blue-400">2.0 - 5.0</span>
+                                <span>Excellent</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-fuchsia-400">&gt; 5.0</span>
+                                <span>Suspicious</span>
+                            </div>
+                        </div>
+                        <!-- Arrow -->
+                        <div
+                            class="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800">
+                        </div>
+                    </div>
                 </div>
             </article>
 
             <!-- System Quality -->
-            <article class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60 flex flex-col items-center">
-                <div class="flex justify-between w-full mb-0">
-                    <p class="text-sm font-medium text-gray-400 uppercase tracking-wider">System Quality (SQN)</p>
-                </div>
-                <div class="w-full -mt-4">
+            <!-- System Quality -->
+            <article class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center h-56">
+                <div class="w-full flex-grow flex flex-col items-center justify-center -mt-4 relative group">
                     {{ chart_sqn | safe }}
+                    <div class="text-[10px] text-slate-300 font-light -mt-2">
+                        Safe Kelly: {{ "{:.2f}".format(metrics.kelly_safe) }}
+                    </div>
                 </div>
-                <div class="text-xs text-gray-400 mt-0 font-light">
-                    Safe Kelly: {{ "{:.2f}".format(metrics.kelly_safe) }}
+                <div class="flex flex-col items-center mt-auto relative group">
+                    <div class="flex items-center cursor-help">
+                        <p
+                            class="text-xs font-medium text-slate-400 uppercase tracking-widest border-b border-dotted border-slate-300">
+                            System Quality (SQN)</p>
+                    </div>
+
+                    <!-- Tooltip -->
+                    <div
+                        class="absolute bottom-full mb-2 w-48 p-3 bg-slate-800 text-slate-200 text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 text-left">
+                        <div class="font-semibold text-white mb-1 border-b border-slate-700 pb-1">Van Tharp Scale</div>
+                        <div class="space-y-1">
+                            <div class="flex justify-between"><span class="text-rose-400">&lt; 1.7</span>
+                                <span>Weak</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-amber-400">1.7 - 2.0</span>
+                                <span>Average</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-emerald-400">2.0 - 3.0</span>
+                                <span>Good</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-blue-400">3.0 - 5.0</span>
+                                <span>Excellent</span>
+                            </div>
+                        </div>
+                        <!-- Arrow -->
+                        <div
+                            class="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-800">
+                        </div>
+                    </div>
                 </div>
             </article>
         </div>
 
         <!-- Charts Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
 
             <!-- Equity Curve (Main) -->
-            <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
-                <h3 class="text-lg font-medium text-gray-800 mb-4">Equity Curve</h3>
+            <div class="lg:col-span-2 bg-white rounded-2xl p-8 shadow-saas">
+                <h3 class="text-lg font-light text-slate-800 mb-6">Equity Curve</h3>
                 <div class="w-full">
                     {{ chart_equity | safe }}
                 </div>
             </div>
 
             <!-- Drawdown (Side) -->
-            <div class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
-                <h3 class="text-lg font-medium text-gray-800 mb-4">Drawdown</h3>
+            <div class="bg-white rounded-2xl p-8 shadow-saas">
+                <h3 class="text-lg font-light text-slate-800 mb-6">Drawdown</h3>
                 <div class="w-full">
                     {{ chart_drawdown | safe }}
                 </div>
-                <div class="mt-4 pt-4 border-t border-gray-50">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-sm text-gray-400">Max Drawdown</span>
-                        <span class="font-medium text-rose-500">{{ "{:.1f}%".format(metrics.max_drawdown * 100)
+                <div class="mt-8 pt-6 border-t border-slate-50">
+                    <div class="flex justify-between items-center mb-4">
+                        <span class="text-sm text-slate-400 font-light">Max Drawdown</span>
+                        <span class="font-normal text-rose-500 text-lg">{{ "{:.1f}%".format(metrics.max_drawdown * 100)
                             }}</span>
                     </div>
                     <div class="flex justify-between items-center">
-                        <span class="text-sm text-gray-400">Expectancy</span>
-                        <span class="font-medium text-gray-800">${{ "{:,.2f}".format(metrics.expectancy) }}</span>
+                        <span class="text-sm text-slate-400 font-light">Expectancy</span>
+                        <span class="font-normal text-slate-700 text-lg">${{ "{:,.2f}".format(metrics.expectancy)
+                            }}</span>
                     </div>
                 </div>
             </div>
@@ -132,32 +206,34 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
             <!-- Recent Trades -->
-            <section class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60 lg:col-span-2">
-                <h3 class="text-lg font-medium text-gray-800 mb-4">Recent Trades (Last 20)</h3>
+            <section class="bg-white rounded-2xl p-8 shadow-saas lg:col-span-2">
+                <h3 class="text-lg font-light text-slate-800 mb-6">Recent Trades (Last 20)</h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-sm">
-                        <thead class="bg-gray-50/50 text-gray-400 uppercase tracking-wider text-xs font-medium">
+                        <thead class="bg-slate-50/50 text-slate-400 uppercase tracking-widest text-xs font-medium">
                             <tr>
-                                <th class="px-4 py-3 text-left">Symbol</th>
-                                <th class="px-4 py-3 text-left">Entry</th>
-                                <th class="px-4 py-3 text-left">Exit</th>
-                                <th class="px-4 py-3 text-right">PnL</th>
-                                <th class="px-4 py-3 text-left">Reason</th>
+                                <th class="px-6 py-4 text-left font-medium">Symbol</th>
+                                <th class="px-6 py-4 text-left font-medium">Entry</th>
+                                <th class="px-6 py-4 text-left font-medium">Exit</th>
+                                <th class="px-6 py-4 text-right font-medium">PnL</th>
+                                <th class="px-6 py-4 text-left font-medium">Reason</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-50">
+                        <tbody class="divide-y divide-slate-50">
                             {% for trade in recent_trades %}
-                            <tr class="hover:bg-gray-50/50 transition-colors">
-                                <td class="px-4 py-4 font-medium text-gray-700">{{ trade.symbol }}</td>
-                                <td class="px-4 py-4 text-gray-500 font-light">{{ trade.entry_date }}</td>
-                                <td class="px-4 py-4 text-gray-500 font-light">{{ trade.exit_date }}</td>
+                            <tr class="hover:bg-slate-50/80 transition-colors group">
                                 <td
-                                    class="px-4 py-4 text-right font-medium {{ 'text-emerald-600' if trade.realized_pnl >= 0 else 'text-rose-500' }}">
+                                    class="px-6 py-8 font-normal text-slate-700 group-hover:text-blue-600 transition-colors">
+                                    {{ trade.symbol }}</td>
+                                <td class="px-6 py-8 text-slate-500 font-light">{{ trade.entry_date }}</td>
+                                <td class="px-6 py-8 text-slate-500 font-light">{{ trade.exit_date }}</td>
+                                <td
+                                    class="px-6 py-8 text-right font-light {{ 'text-emerald-500' if trade.realized_pnl >= 0 else 'text-rose-500' }}">
                                     ${{ "{:,.2f}".format(trade.realized_pnl) }}
                                 </td>
-                                <td class="px-4 py-4">
+                                <td class="px-6 py-5">
                                     <span
-                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                                        class="inline-flex items-center px-3 py-1 rounded-full text-xs font-normal bg-slate-100 text-slate-500">
                                         {{ trade.exit_reason }}
                                     </span>
                                 </td>
@@ -169,21 +245,22 @@
             </section>
 
             <!-- Top 10 Wins -->
-            <section class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
-                <h3 class="text-lg font-medium text-emerald-600 mb-4">Top 10 Wins</h3>
+            <section class="bg-white rounded-2xl p-8 shadow-saas">
+                <h3 class="text-lg font-light text-emerald-600 mb-6">Top 10 Wins</h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-sm">
-                        <thead class="bg-emerald-50/50 text-emerald-600 uppercase tracking-wider text-xs font-medium">
+                        <thead
+                            class="bg-emerald-50/30 text-emerald-600/80 uppercase tracking-widest text-xs font-medium">
                             <tr>
-                                <th class="px-4 py-3 text-left">Symbol</th>
-                                <th class="px-4 py-3 text-right">PnL</th>
+                                <th class="px-6 py-4 text-left font-medium">Symbol</th>
+                                <th class="px-6 py-4 text-right font-medium">PnL</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-50">
+                        <tbody class="divide-y divide-slate-50">
                             {% for trade in top_trades %}
-                            <tr class="hover:bg-gray-50/50 transition-colors">
-                                <td class="px-4 py-4 font-medium text-gray-700">{{ trade.symbol }}</td>
-                                <td class="px-4 py-4 text-right font-medium text-emerald-600">
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-5 font-normal text-slate-700">{{ trade.symbol }}</td>
+                                <td class="px-6 py-5 text-right font-medium text-emerald-500">
                                     +${{ "{:,.2f}".format(trade.realized_pnl) }}
                                 </td>
                             </tr>
@@ -194,21 +271,21 @@
             </section>
 
             <!-- Worst 10 Losses -->
-            <section class="bg-white rounded-2xl p-6 shadow-xl shadow-slate-200/60">
-                <h3 class="text-lg font-medium text-rose-500 mb-4">Worst 10 Losses</h3>
+            <section class="bg-white rounded-2xl p-8 shadow-saas">
+                <h3 class="text-lg font-light text-rose-500 mb-6">Worst 10 Losses</h3>
                 <div class="overflow-x-auto">
                     <table class="min-w-full text-sm">
-                        <thead class="bg-rose-50/50 text-rose-500 uppercase tracking-wider text-xs font-medium">
+                        <thead class="bg-rose-50/30 text-rose-500/80 uppercase tracking-widest text-xs font-medium">
                             <tr>
-                                <th class="px-4 py-3 text-left">Symbol</th>
-                                <th class="px-4 py-3 text-right">PnL</th>
+                                <th class="px-6 py-4 text-left font-medium">Symbol</th>
+                                <th class="px-6 py-4 text-right font-medium">PnL</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-50">
+                        <tbody class="divide-y divide-slate-50">
                             {% for trade in worst_trades %}
-                            <tr class="hover:bg-gray-50/50 transition-colors">
-                                <td class="px-4 py-4 font-medium text-gray-700">{{ trade.symbol }}</td>
-                                <td class="px-4 py-4 text-right font-medium text-rose-500">
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-5 font-normal text-slate-700">{{ trade.symbol }}</td>
+                                <td class="px-6 py-5 text-right font-medium text-rose-500">
                                     ${{ "{:,.2f}".format(trade.realized_pnl) }}
                                 </td>
                             </tr>
