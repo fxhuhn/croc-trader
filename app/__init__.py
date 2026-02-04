@@ -28,16 +28,18 @@ def create_app(config_object=settings):
 
     # 2. Logging Setup
     log_file_path = config_object.get_log_path()
+    log_level = config_object.app.logging.level.upper()
+    
     LOGGING_CONFIG = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {"standard": {"format": "%(asctime)s [%(levelname)s] %(name)s: %(message)s", "datefmt": "%H:%M:%S"}},
         "handlers": {
-            "console": {"class": "logging.StreamHandler", "level": "INFO", "formatter": "standard"},
-            "file": {"class": "logging.handlers.TimedRotatingFileHandler", "filename": log_file_path, "when": "midnight", "interval": 1, "backupCount": 5, "encoding": "utf-8", "level": "INFO", "formatter": "standard"},
+            "console": {"class": "logging.StreamHandler", "level": log_level, "formatter": "standard"},
+            "file": {"class": "logging.handlers.TimedRotatingFileHandler", "filename": log_file_path, "when": "midnight", "interval": 1, "backupCount": 5, "encoding": "utf-8", "level": log_level, "formatter": "standard"},
         },
         "loggers": {
-            "": {"handlers": ["console", "file"], "level": "INFO", "propagate": True},
+            "": {"handlers": ["console", "file"], "level": log_level, "propagate": True},
             "apscheduler": {"level": "WARNING"},
             "werkzeug": {"level": "WARNING"},
             "urllib3": {"level": "WARNING"},

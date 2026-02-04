@@ -58,6 +58,14 @@ class CrocSetupStrategy(BaseStrategy):
         except Exception as error:
             logger.error(f"YAML Error at {self.config_path}: {error}")
             return []
+        else:
+            if isinstance(data, list):
+                logger.info(f"✅ Loaded {len(data)} rules from {self.config_path}")
+                return data
+            
+            rules = data.get("ranking_2026", [])
+            logger.info(f"✅ Loaded {len(rules)} rules from {self.config_path} (Key: ranking_2026)")
+            return rules
 
     def _get_indices_string(self, symbol: str) -> str:
         indices = []
@@ -158,6 +166,7 @@ class CrocSetupStrategy(BaseStrategy):
                 row['dist_sma_200'] = 0.0
         except (ValueError, TypeError):
             # Fail gracefully on bad data, just don't add the fields
+            logger.debug(f"⚠️ [{row.get('symbol')}] SMA Calc Failed. Data: SMA20={row.get('sma_20')}, SMA200={row.get('sma_200')}")
             pass
 
     def _find_best_match(self, row: dict[str, Any]) -> dict[str, Any] | None:
@@ -166,9 +175,12 @@ class CrocSetupStrategy(BaseStrategy):
         Ignores fields that are not present in the data.
         """
         signal_name = row.get("signal")
+        symbol = row.get("symbol", "UNKNOWN")
         candidates = [r for r in self.ranking_rules if r.get("Signal") == signal_name]
         
-        if not candidates: return None
+        if not candidates: 
+            # Only log trace if we really expected something (optional)
+            return None
 
         best_match = None
         best_score = -999.0
@@ -200,7 +212,7 @@ class CrocSetupStrategy(BaseStrategy):
                 if db_key not in row:
                     # Strict Filter: If rule requires a parameter (e.g. 'Deluxe')
                     # and the data does NOT have it, the rule fails.
-                    logger.debug(f"Filter Fail: {row.get('symbol')} missing '{db_key}' (Rule: {signal_name})")
+                    logger.debug(f"🔍 [{symbol}] Filter Filter: Missing '{db_key}' (Req by: {signal_name})")
                     passed = False
                     break 
 
@@ -208,11 +220,13 @@ class CrocSetupStrategy(BaseStrategy):
                 
                 # 4. Condition Check (Match/Case)
                 if not self._check_condition(market_value, condition_value, yaml_key):
+                    logger.debug(f"❌ [{symbol}] Condition Fail: '{yaml_key}' Expect: '{condition_value}' Actual: '{market_value}'")
                     passed = False
                     break
             
             if passed:
                 score = float(rule.get("Score", 0.0))
+                # logger.debug(f"✅ [{symbol}] MATCH! Rule Score: {score}")
                 if best_match is None or score > best_score:
                     best_match = rule
                     best_score = score
