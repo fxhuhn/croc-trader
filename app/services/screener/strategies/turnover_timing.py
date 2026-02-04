@@ -38,8 +38,31 @@ class TurnoverTimingStrategy(BaseStrategy):
         Scans for Turnover signals (Weekly Close).
         Logic: Close < SMA200. Entry = Close - (ATR(3) * Factor).
         """
-        # Load enough buffer for SMA200 and EMA-smoothing of ATR
-        data_frames = self.data_provider.get_all_daily_data(days=400)
+        # 0. Adjust Lookback for Backtesting
+        lookback = 400
+        if analysis_date:
+             target_dt = pd.Timestamp(analysis_date)
+             days_diff = (pd.Timestamp.now() - target_dt).days
+             if days_diff > (lookback - 100):
+                 lookback = days_diff + 250 # Buffer
+                 
+        # 0. Compile Universe (Pre-Filtering)
+        symbol_loader = ExchangeSymbol()
+        buckets = {
+            "NASDAQ_100": symbol_loader.nasdaq_100,
+            "SP_500": symbol_loader.sp_500,
+            "RUSSELL_1000": symbol_loader.russell_1000
+        }
+        all_symbols = set()
+        for s_list in buckets.values():
+            all_symbols.update(s_list)
+        
+        target_universe = list(all_symbols)
+        if specific_symbols:
+            target_universe = list(set(target_universe) & set(specific_symbols))
+
+        # Load Data (Optimized)
+        data_frames = self.data_provider.get_universe_daily_data(target_universe, days=lookback)
         if not data_frames: return 0
 
         closes = data_frames["close"]
@@ -53,6 +76,9 @@ class TurnoverTimingStrategy(BaseStrategy):
             today = pd.Timestamp.now().normalize() - pd.Timedelta(days=days)
         
         # Find last available dataset (Avoid Look-Ahead in Backtest)
+        # Ensure we have data
+        if closes.empty: return 0
+        
         available_dates = closes.index[closes.index <= today]
         if available_dates.empty: return 0
         last_trading_day = available_dates[-1] 
@@ -62,6 +88,7 @@ class TurnoverTimingStrategy(BaseStrategy):
             return 0
             
         setup_date = last_trading_day
+        # logger.info(f"[{self.name}] Analyzing {setup_date.date()} (Weekday {last_trading_day.dayofweek})...")
         
         # 2. Compute Indicators (Vectorized)
         # Turnover = Close * Volume
@@ -92,14 +119,8 @@ class TurnoverTimingStrategy(BaseStrategy):
             return 0
 
         # 3. Bucketing & Selection Logic
-        symbol_loader = ExchangeSymbol()
+        # (buckets dict is already defined above, reuse)
         
-        buckets = {
-            "NASDAQ_100": symbol_loader.nasdaq_100,
-            "SP_500": symbol_loader.sp_500,
-            "RUSSELL_1000": symbol_loader.russell_1000
-        }
-
         candidates = []
         
         for bucket_name, symbols_in_bucket in buckets.items():
