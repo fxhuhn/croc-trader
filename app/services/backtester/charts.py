@@ -4,13 +4,13 @@ import pandas as pd
 from typing import Tuple, List, Dict, Optional
 
 # --- Palette ---
-COLOR_BLUE = "#3b82f6"   # Excellent / Branding
-COLOR_GREEN = "#10b981"  # Good
-COLOR_AMBER = "#f59e0b"  # OK
-COLOR_RED = "#ef4444"    # Worse
-COLOR_MUTE = "#64748b"   # Text Muted
-COLOR_DARK = "#1e293b"   # Text Dark
-COLOR_TRACK = "#f1f5f9"  # Gauge Track
+# Constants
+COLOR_RED = "#ef4444"
+COLOR_AMBER = "#f59e0b"
+COLOR_GREEN = "#10b981" # Emerald
+COLOR_BLUE = "#3b82f6"
+COLOR_TRACK = "#f1f5f9" # Light gray track
+COLOR_DARK = "#0f172a" 
 
 def _generate_minimal_gauge(
         value: float, 
@@ -21,62 +21,71 @@ def _generate_minimal_gauge(
         thresholds: Optional[List[float]] = None
     ) -> str:
     """
-    Unified helper to generate minimalist semi-circular gauges.
-    Features: Light Track, Single Color Bar, Rounded (Fake) look, Thin White Thresholds.
+    Advanced Gauge v4: 
+    - Full-length Light Slate track (#f1f5f9)
+    - Active Layer Overlay
+    - 1px White Separators at thresholds using 'white steps'
+    - Thinner stroke (thickness 0.17)
     """
     
-    # 1. Base Gauge
+    # We will build the track using snippets of gray, separated by gaps.
+    track_color = COLOR_TRACK
+    gap_size = (max_val - min_val) * 0.008 # 0.8% gap for refined visibility
+    
+    current_start = min_val
+    sorted_thresholds = sorted(thresholds) if thresholds else []
+    
+    track_steps = []
+    
+    # Force background to white (implicit), so gaps in 'steps' appear white
+    
+    if not sorted_thresholds:
+         track_steps.append({'range': [min_val, max_val], 'color': track_color})
+    else:
+        for th in sorted_thresholds:
+            # Segment up to threshold minus half gap
+            end_segment = th - (gap_size / 2)
+            if end_segment > current_start:
+                track_steps.append({'range': [current_start, end_segment], 'color': track_color})
+            
+            # Start next segment after gap
+            current_start = th + (gap_size / 2)
+            
+        # Final segment
+        if current_start < max_val:
+            track_steps.append({'range': [current_start, max_val], 'color': track_color})
+            
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = value,
         number = {
-            "font": {"size": 40, "color": COLOR_DARK, "family": "Inter, sans-serif", "weight": 300},
+            "font": {"size": 34, "color": COLOR_DARK, "family": "Inter, sans-serif", "weight": 300},
             "suffix": suffix,
             "valueformat": ".2f" if not suffix else ".1f"
         },
         domain = {'x': [0, 1], 'y': [0, 1]},
         gauge = {
-            'axis': {'range': [min_val, max_val], 'visible': False}, # Hide ticks
-            'bar': {'color': bar_color, 'thickness': 0.25},
-            'bgcolor': COLOR_TRACK,
+            'axis': {
+                'range': [min_val, max_val], 
+                'visible': False, 
+                'tickmode': 'array',
+                'tickvals': []
+            },
+            'bar': {'color': bar_color, 'thickness': 0.17}, # Thinner stroke (15% reduction)
+            'bgcolor': "white", 
             'borderwidth': 0,
             'shape': "angular",
-            
-            # Thresholds as thin white lines (Simulated via steps if strictly needed, 
-            # but standard axis ticks are better if we want lines. 
-            # However, prompt asks for "Thin White Thresholds". 
-            # Plotly `threshold` is a single line. 
-            # We can use `steps` for the track, but since we want a UNIFIED track color, 
-            # we just let bgcolor do the work.
-            # To actually show white lines at specific points, we can use the axis tick marks hack.
-            # But simpler: just use the single main threshold as requested in previous steps?
-            # User request: "Separators: ... place thin white lines at specific thresholds".
-            # Plotly doesn't allow multiple 'threshold' lines easily.
-            # We will rely on the clean look without distracting lines for now 
-            # unless we overlay shapes (too complex for string return).
-            # The previous implementation used colored steps. 
-            # CURRENT REQUEST: "Unified Light Gray Track". 
-            # So we remove colored steps.
-            'steps': [
-                 {'range': [min_val, max_val], 'color': COLOR_TRACK}
-            ],
-            
-            # Show current value as a white tip? Or just the bar.
-            # We keep the 'threshold' indicator for the current value if useful, but user said "Active Bar fills".
+            'steps': track_steps, 
             'threshold': {
-                'line': {'color': "white", 'width': 2},
-                'thickness': 0.75,
+                'line': {'color': "white", 'width': 0}, 
+                'thickness': 0,
                 'value': value 
             }
         }
     ))
     
-    # 2. Add White Separator Lines via Axis Ticks (Invisible axis but visible ticks?)
-    # Plotly Gauge Axis is tricky. 
-    # Workaround: Use the 'thresholds' arg to determine color logic, but we don't draw lines.
-    
     fig.update_layout(
-        margin=dict(l=20, r=20, t=20, b=20),
+        margin=dict(l=25, r=25, t=25, b=25),
         paper_bgcolor='rgba(0,0,0,0)',
         height=150,
         font={'family': "Inter, sans-serif"}
@@ -84,11 +93,11 @@ def _generate_minimal_gauge(
     
     return fig.to_html(full_html=False, include_plotlyjs=False, config={'displayModeBar': False})
 
+
 def generate_backtest_charts(df: pd.DataFrame) -> Tuple[str, str]:
     """
-    Generates Equity Curve and Drawdown charts using Plotly.
-    Style: Smooth lines, Gradient Fills, Minimal Grid.
-    Returns: (equity_chart_html, drawdown_chart_html)
+    Generates Equity Curve and Drawdown charts.
+    Style: Spline, Gradient-like Fill (15% -> 0%), Minimal Grid.
     """
     if df.empty:
         return "<div>No Data</div>", "<div>No Data</div>"
@@ -107,9 +116,8 @@ def generate_backtest_charts(df: pd.DataFrame) -> Tuple[str, str]:
         name='Equity',
         line=dict(color=COLOR_BLUE, width=2, shape='spline', smoothing=1.3),
         fill='tozeroy', 
-        # Gradient simulation: Plotly doesn't support linear-gradient in Scatter easily.
-        # We use a solid low-opacity fill as standard SaaS practice.
-        fillcolor='rgba(59, 130, 246, 0.1)' 
+        # Gradient: User wants 15% opacity. 
+        fillcolor='rgba(59, 130, 246, 0.15)' 
     ))
     
     fig_eq.update_layout(
@@ -117,9 +125,10 @@ def generate_backtest_charts(df: pd.DataFrame) -> Tuple[str, str]:
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         height=300,
-        font=dict(family="Inter, sans-serif", color=COLOR_MUTE),
+        font=dict(family="Inter, sans-serif", color="#94a3b8"),
         xaxis=dict(showgrid=False, zeroline=False),
-        yaxis=dict(showgrid=True, gridcolor='#f1f5f9', zeroline=False, gridwidth=1),
+        # Horizontal Grid: #f1f5f9, 1px width
+        yaxis=dict(showgrid=True, gridcolor='#f1f5f9', zeroline=False, gridwidth=1), 
         hovermode="x unified",
         showlegend=False
     )
@@ -134,7 +143,7 @@ def generate_backtest_charts(df: pd.DataFrame) -> Tuple[str, str]:
         name='Drawdown',
         line=dict(color=COLOR_RED, width=1, shape='spline', smoothing=1.3),
         fill='tozeroy',
-        fillcolor='rgba(239, 68, 68, 0.05)'
+        fillcolor='rgba(239, 68, 68, 0.1)' # Ultra light fill
     ))
     
     fig_dd.update_layout(
@@ -142,9 +151,9 @@ def generate_backtest_charts(df: pd.DataFrame) -> Tuple[str, str]:
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
         height=200,
-        font=dict(family="Inter, sans-serif", color=COLOR_MUTE),
+        font=dict(family="Inter, sans-serif", color="#94a3b8"),
         xaxis=dict(showgrid=False, zeroline=False),
-        yaxis=dict(showgrid=True, gridcolor='#f1f5f9', zeroline=False, gridwidth=1),
+        yaxis=dict(showgrid=True, gridcolor='rgba(241, 245, 249, 0.5)', zeroline=False, gridwidth=1),
         hovermode="x unified",
         showlegend=False
     )
@@ -155,25 +164,23 @@ def generate_backtest_charts(df: pd.DataFrame) -> Tuple[str, str]:
     return html_eq, html_dd
 
 def generate_profit_factor_gauge(value: float) -> str:
-    # Logic: <1 Red, 1-1.5 Amber, 1.5-2 Green, >2 Blue
+    # Logic: <1 Red, 1-1.5 Amber, 1.5-2 Emerald (Green), >2 Blue
     if value < 1.0: color = COLOR_RED
     elif value < 1.5: color = COLOR_AMBER
     elif value < 2.0: color = COLOR_GREEN
     else: color = COLOR_BLUE
     
-    return _generate_minimal_gauge(value, 0, 5.0, color, "")
+    # Thresholds: 1.0, 1.5, 2.0
+    return _generate_minimal_gauge(value, 0, 5.0, color, "", thresholds=[1.0, 1.5, 2.0])
 
 def generate_win_rate_gauge(value_pct: float) -> str:
-    # Logic: <30 Red, 30-40 Orange, 40-60 Amber, 60-75 Green, >75 Blue
-    if value_pct < 30.0: color = COLOR_RED
-    elif value_pct < 40.0: color = "#f97316" # Orange
+    # Logic: <35 Red, 35-60 Amber, >60 Blue (Matches SQN visual)
+    if value_pct < 35.0: color = COLOR_RED
     elif value_pct < 60.0: color = COLOR_AMBER
-    elif value_pct < 75.0: color = COLOR_GREEN
     else: color = COLOR_BLUE
     
-    # Using 35 size for suffix fit is handled in generating? 
-    # Helper uses 40. WinRate usually fits unless >100.
-    return _generate_minimal_gauge(value_pct, 0, 100, color, "%")
+    # Thresholds: 35, 60 (Removed 75 to merge top buckets)
+    return _generate_minimal_gauge(value_pct, 0, 100, color, "%", thresholds=[35.0, 60.0])
 
 def generate_sqn_gauge(value: float) -> str:
     # Logic: <1.7 Red, 1.7-2 Amber, 2-3 Green, >3 Blue
@@ -182,4 +189,5 @@ def generate_sqn_gauge(value: float) -> str:
     elif value < 3.0: color = COLOR_GREEN
     else: color = COLOR_BLUE
     
-    return _generate_minimal_gauge(value, 0, 6.0, color, "")
+    # Thresholds: 1.7, 2.0, 3.0
+    return _generate_minimal_gauge(value, 0, 6.0, color, "", thresholds=[1.7, 2.0, 3.0])
