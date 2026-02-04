@@ -181,6 +181,108 @@ class BacktestAnalytics:
             kelly_safe=kelly_metrics['safe']
         )
 
+    def run_strategy_analysis(self, initial_capital: float = 100_000.0) -> dict[str, BacktestMetrics]:
+        """
+        Computes metrics for each strategy found in the trades table.
+        Returns a dict: { 'DipBuyer': Metrics(...), 'TurnoverTiming': Metrics(...) }
+        """
+        con = duckdb.connect(database=':memory:')
+        try:
+             con.sql("INSTALL sqlite; LOAD sqlite;")
+        except: pass
+        
+        con.sql(f"ATTACH '{self.backtest_db}' AS bt (TYPE SQLITE);")
+        
+        # Get unique strategies
+        try:
+            strategies = con.sql("SELECT DISTINCT strategy FROM bt.trades WHERE status='CLOSED'").fetchall()
+            strategies = [row[0] for row in strategies if row[0]]
+        except Exception:
+            return {}
+            
+        results = {}
+        for strategy in strategies:
+            # We filter by strategy
+            trades_df = con.sql(f"""
+                SELECT 
+                    realized_pnl, 
+                    entry_price, 
+                    exit_price,
+                    initial_size,
+                    (realized_pnl / (initial_size * entry_price)) as ret_pct
+                FROM bt.trades 
+                WHERE status = 'CLOSED' AND strategy = '{strategy}'
+            """).df()
+            
+            if trades_df.empty:
+                results[strategy] = self._empty_metrics()
+                continue
+                
+            results[strategy] = self._compute_df_metrics(trades_df, initial_capital)
+            
+        con.close()
+        return results
+
+    def _compute_df_metrics(self, trades_df: pd.DataFrame, initial_capital: float) -> BacktestMetrics:
+        """Helper to compute metrics from a DF (reused logic)."""
+        total_trades = len(trades_df)
+        wins = trades_df[trades_df['realized_pnl'] > 0]
+        losses = trades_df[trades_df['realized_pnl'] <= 0]
+        
+        win_rate = len(wins) / total_trades if total_trades > 0 else 0
+        gross_win = wins['realized_pnl'].sum()
+        gross_loss = abs(losses['realized_pnl'].sum())
+        
+        profit_factor = gross_win / gross_loss if gross_loss > 0 else 999.0
+        net_profit = trades_df['realized_pnl'].sum()
+        
+        avg_win = wins['realized_pnl'].mean() if not wins.empty else 0
+        avg_loss = losses['realized_pnl'].mean() if not losses.empty else 0
+        
+        expectancy = trades_df['realized_pnl'].mean()
+        
+        std_dev = trades_df['realized_pnl'].std()
+        sqn = (total_trades ** 0.5) * (expectancy / std_dev) if std_dev > 0 else 0
+        
+        # Kelly
+        r_ratio = (avg_win / abs(avg_loss)) if avg_loss != 0 else 0
+        kelly = win_rate - ((1 - win_rate) / r_ratio) if r_ratio > 0 else 0
+        
+        # Drawdown
+        trades_df = trades_df.copy() # Ensure copy
+        trades_df['equity'] = initial_capital + trades_df['realized_pnl'].cumsum()
+        trades_df['peak'] = trades_df['equity'].cummax()
+        trades_df['drawdown_pct'] = (trades_df['equity'] - trades_df['peak']) / trades_df['peak']
+        max_drawdown = trades_df['drawdown_pct'].min()
+        
+        # Safe Kelly
+        kelly_metrics = self._calculate_safe_kelly(trades_df, iterations=2000) # Lower iterations for speed
+        
+        # Efficiency (Skip per strategy for now or implement similarly if needed)
+        avg_mae, avg_mfe = 0.0, 0.0
+        
+        return BacktestMetrics(
+            total_trades=total_trades,
+            win_rate=win_rate,
+            profit_factor=profit_factor,
+            net_profit=net_profit,
+            max_drawdown=max_drawdown,
+            sharpe_ratio=0.0, 
+            kelly_criterion=kelly,
+            expectancy=expectancy,
+            sqn=sqn,
+            avg_win=avg_win,
+            avg_loss=avg_loss,
+            avg_mae=avg_mae,
+            avg_mfe=avg_mfe,
+            risk_of_ruin=0.0, 
+            benchmark_return=0.0, 
+            strategy_return=net_profit / initial_capital,
+            kelly_mean=kelly_metrics['mean'],
+            kelly_std=kelly_metrics['std'],
+            kelly_safe=kelly_metrics['safe']
+        )
+
     def _calc_benchmark_return(self, con) -> float:
         """Calculates SPY return for the period found in trades."""
         # Find Date Range of trades
@@ -271,19 +373,19 @@ class BacktestAnalytics:
             
             # 1. Recent (Last 20)
             recent = fetch("""
-                SELECT symbol, entry_date, exit_date, entry_price, exit_price, realized_pnl, exit_reason
+                SELECT symbol, strategy, entry_date, exit_date, entry_price, exit_price, realized_pnl, exit_reason
                 FROM bt.trades WHERE status='CLOSED' ORDER BY exit_date DESC LIMIT 20
             """)
             
             # 2. Top 10 Wins
             top = fetch("""
-                SELECT symbol, entry_date, exit_date, entry_price, exit_price, realized_pnl, exit_reason
+                SELECT symbol, strategy, entry_date, exit_date, entry_price, exit_price, realized_pnl, exit_reason
                 FROM bt.trades WHERE status='CLOSED' ORDER BY realized_pnl DESC LIMIT 10
             """)
             
             # 3. Worst 10 Losses
             worst = fetch("""
-                SELECT symbol, entry_date, exit_date, entry_price, exit_price, realized_pnl, exit_reason
+                SELECT symbol, strategy, entry_date, exit_date, entry_price, exit_price, realized_pnl, exit_reason
                 FROM bt.trades WHERE status='CLOSED' ORDER BY realized_pnl ASC LIMIT 10
             """)
             

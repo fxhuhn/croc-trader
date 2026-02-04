@@ -12,8 +12,14 @@ from rich.table import Table
 
 from ...database.repositories.trade import TradeRepository
 from ...database.repositories.market_data_provider import MarketDataProvider
+
+# Strategies
 from ...services.screener.strategies.dip_buyer import DipBuyerStrategy
 from ...services.trade_manager.strategies.dip_buyer import DipBuyerStrategy as TradeManagerDipBuyer
+
+from ...services.screener.strategies.turnover_timing import TurnoverTimingStrategy
+from ...services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy as TradeManagerTurnover
+
 from ...types import TradeStatus
 
 logger = logging.getLogger(__name__)
@@ -38,13 +44,22 @@ class BacktestEngine:
         self.trade_repo = trade_repo
         self.console = console or Console()
         
-        # Strategies
-        # Note: We instantiate them with the TEST TradeRepository
-        self.screener = DipBuyerStrategy(
-            trade_repo=self.trade_repo, 
-            data_provider=self.market
-        )
-        self.trade_manager_strategy = TradeManagerDipBuyer()
+        # --- Strategy Registry ---
+        # 1. Screeners (Run every evening)
+        self.screeners = [
+            DipBuyerStrategy(trade_repo=self.trade_repo, data_provider=self.market),
+            TurnoverTimingStrategy(trade_repo=self.trade_repo, data_provider=self.market)
+        ]
+        
+        # 2. Trade Managers (Run every morning / intraday)
+        # Mapping: partial strategy name -> manager instance
+        # "DipBuyer" -> DipBuyerManager
+        # "TurnoverTiming" -> TurnoverManager
+        # "TurnoverTiming_0.5" -> TurnoverManager
+        self.trade_managers = {
+            "DipBuyer": TradeManagerDipBuyer(),
+            "TurnoverTiming": TradeManagerTurnover()
+        }
         
         self.market_dates: list[pd.Timestamp] = []
         
@@ -122,57 +137,41 @@ class BacktestEngine:
                 self._run_screener(sim_date)
 
     def _run_screener(self, date_obj: pd.Timestamp):
-        """Runs the screener strategy for the given date."""
-        try:
-            date_str = date_obj.strftime("%Y-%m-%d")
-            # DipBuyer Strategy internally calls data_provider.get_all_daily_data
-            # We must ensure logic only sees data up to date_obj.
-            # However, DipBuyerStrategy.run takes an `analysis_date`.
-            # Internal logic:
-            #   target_date = analysis_date
-            #   index_location = closes.index.get_loc(target_date)
-            #   current = closes.iloc[index_location]
-            # So as long as we pass the correct date, it picks the correct row from the full DB.
-            # It DOES NOT peek forward because it selects by index.
-            
-            self.screener.run(analysis_date=date_str)
-            
-        except Exception as e:
-            logger.error(f"Screener Error {date_obj.date()}: {e}")
+        """Runs all registered screeners for the given date."""
+        date_str = date_obj.strftime("%Y-%m-%d")
+        
+        for screener in self.screeners:
+            try:
+                # DipBuyer/Turnover strategies take analysis_date
+                # They determine lookback internally or via config
+                screener.run(analysis_date=date_str)
+            except Exception as e:
+                logger.error(f"Screener {screener.name} Error {date_obj.date()}: {e}")
+
+    def _get_manager_for_strategy(self, strategy_name: str):
+        """Dispatches to the correct manager based on strategy name prefix."""
+        for key, manager in self.trade_managers.items():
+            if strategy_name.startswith(key):
+                return manager
+        return None
 
     def _run_trade_manager_entries(self, current_date: pd.Timestamp):
         """Checks if CREATED trades get filled."""
         created = self.trade_repo.get_by_status(TradeStatus.CREATED)
         for trade in created:
-            # Load history FOR THIS SYMBOL up to Today
+            # Dispatch
+            strategy_name = trade['strategy']
+            manager = self._get_manager_for_strategy(strategy_name)
+            if not manager:
+                logger.warning(f"No manager found for strategy: {strategy_name}")
+                continue
+            
             symbol = trade['symbol']
             
-            # Optimization: We need Open/High/Low for Today to check fill.
-            # And potentially Yesterday for validity check.
-            
+            # Load history FOR THIS SYMBOL up to Today
             # We fetch history up to current_date
-            # IMPORTANT: We need to ensure we don't accidentally fetch Future if DB has it.
-            # market_provider methods usually filter by day if requested?
-            # get_symbol_history(days=...) fetches last N days from "now".
-            # We need explicit range.
             
-            # self.market is MarketDataProvider (Repository wrapper usually)
-            # We iterate repo directly to get strict slicing
-            
-            # Using market_repo directly from provider if available
-            # MarketDataProvider wraps MarketRepository.
-            
-            # We need to add a specialized method to MarketDataProvider or access repo directly?
-            # BaseStrategy hass self.data_provider.
-            # Engine has self.market.
-            
-            # Let's rely on MarketRepository.get_symbol_history_raw which BacktestEngine can access 
-            # if we expose the repo or add a method.
-            # DipBuyerStrategy is passed `data_provider`.
-            
-            # Quick fix: The `MarketDataProvider` has `get_symbol_history` which returns dataframe.
-            # We can slice it manually.
-            
+            # Optimization: Fetch simpler if we can, but get_symbol_history is fine
             df_hist_full = self.market.get_symbol_history(symbol, days=2000) 
             if df_hist_full.empty: continue
             
@@ -183,23 +182,16 @@ class BacktestEngine:
             df_slice = df_hist_full[df_hist_full.index <= current_date]
             if df_slice.empty: continue
             
-            # Check if today is actually in the slice (it should be if market was open)
+            # Check if today is actually in the slice
             if df_slice.index[-1] != current_date:
-                # Market closed for this symbol today?
                 continue
                 
+            # Prepare candle
             candle = df_slice.iloc[-1]
-            # Convert Index Date to Column Date for TM logic compatibility if needed
-            # TM Strategy expects `candle['date']` ?
-            # Let's check TradeManager logic. `check_entry`: `str(candle['date'])`
-            # `market.get_symbol_history` returns index as datetime, but maybe col 'date' exists?
-            # Usually users sets index.
-            
-            # Helper to ensure 'date' column exists for access
             candle_series = candle.copy()
             candle_series['date'] = current_date
             
-            self.trade_manager_strategy.check_entry(
+            manager.check_entry(
                 trade, 
                 candle_series, 
                 df_slice.reset_index(), 
@@ -210,6 +202,12 @@ class BacktestEngine:
         """Checks exits for ACTIVE trades."""
         active = self.trade_repo.get_by_status(TradeStatus.ACTIVE)
         for trade in active:
+            # Dispatch
+            strategy_name = trade['strategy']
+            manager = self._get_manager_for_strategy(strategy_name)
+            if not manager:
+                continue
+
             symbol = trade['symbol']
             
             df_hist_full = self.market.get_symbol_history(symbol, days=2000)
@@ -223,9 +221,7 @@ class BacktestEngine:
             
             if df_slice.index[-1] != current_date: continue
             
-            # Logic
-            # Logic
-            self.trade_manager_strategy.manage_active_trade(
+            manager.manage_active_trade(
                 trade, 
                 df_slice.reset_index(), 
                 self.trade_repo

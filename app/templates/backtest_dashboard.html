@@ -169,6 +169,75 @@
             </article>
         </div>
 
+        <!-- Strategy Breakdown Section -->
+        {% if strategy_metrics %}
+        <section class="bg-white rounded-2xl p-8 shadow-saas mb-10 overflow-hidden">
+            <h3 class="text-lg font-light text-slate-800 mb-6">Strategy Breakdown</h3>
+            <div class="overflow-x-auto">
+                <table class="min-w-full text-sm">
+                    <thead class="bg-slate-50/50 text-slate-400 uppercase tracking-widest text-xs font-medium">
+                        <tr>
+                            <th class="px-6 py-4 text-left font-medium">Metric</th>
+                            {% for strategy_name in strategy_metrics.keys() %}
+                            <th class="px-6 py-4 text-left font-medium">{{ strategy_name }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        <!-- Helper macro or manual rows -->
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="px-6 py-4 font-normal text-slate-700">Total Trades</td>
+                            {% for m in strategy_metrics.values() %}
+                            <td class="px-6 py-4 font-light text-slate-500">{{ m.total_trades }}</td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="px-6 py-4 font-normal text-slate-700">Win Rate</td>
+                            {% for m in strategy_metrics.values() %}
+                            <td class="px-6 py-4 font-light text-slate-500">{{ "{:.1f}%".format(m.win_rate * 100) }}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="px-6 py-4 font-normal text-slate-700">Profit Factor</td>
+                            {% for m in strategy_metrics.values() %}
+                            <td class="px-6 py-4 font-light text-slate-500">{{ "{:.2f}".format(m.profit_factor) }}</td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="px-6 py-4 font-normal text-slate-700">Net Profit</td>
+                            {% for m in strategy_metrics.values() %}
+                            <td
+                                class="px-6 py-4 font-medium {{ 'text-emerald-500' if m.net_profit >= 0 else 'text-rose-500' }}">
+                                ${{ "{:,.2f}".format(m.net_profit) }}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="px-6 py-4 font-normal text-slate-700">Expectancy</td>
+                            {% for m in strategy_metrics.values() %}
+                            <td class="px-6 py-4 font-light text-slate-500">${{ "{:.2f}".format(m.expectancy) }}</td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="px-6 py-4 font-normal text-slate-700">Max Drawdown</td>
+                            {% for m in strategy_metrics.values() %}
+                            <td class="px-6 py-4 font-light text-slate-500">{{ "{:.1f}%".format(m.max_drawdown * 100) }}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="hover:bg-slate-50/50">
+                            <td class="px-6 py-4 font-normal text-slate-700">SQN</td>
+                            {% for m in strategy_metrics.values() %}
+                            <td class="px-6 py-4 font-light text-slate-500">{{ "{:.2f}".format(m.sqn) }}</td>
+                            {% endfor %}
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
         <!-- Charts Section -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
 

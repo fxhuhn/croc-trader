@@ -113,6 +113,37 @@ def main():
             f"Strategy: [green]{metrics.strategy_return*100:.1f}%[/green] vs SPY: [yellow]{metrics.benchmark_return*100:.1f}%[/yellow]", 
             title="Benchmark Comparison"
         ))
+
+        # 6. Strategy Breakdown
+        strategy_metrics = analytics.run_strategy_analysis()
+        if strategy_metrics:
+            console.print("\n[bold blue]--- Strategy Breakdown ---[/bold blue]")
+            
+            # Create a comparison table
+            comp_table = Table(title="Strategy Comparison")
+            comp_table.add_column("Metric", style="cyan")
+            
+            for strat_name in strategy_metrics.keys():
+                comp_table.add_column(strat_name, style="magenta")
+                
+            # Define metrics to show
+            rows = [
+                ("Total Trades", lambda m: str(m.total_trades)),
+                ("Win Rate", lambda m: f"{m.win_rate*100:.1f}%"),
+                ("Profit Factor", lambda m: f"{m.profit_factor:.2f}"),
+                ("Net Profit", lambda m: f"${m.net_profit:,.2f}"),
+                ("Kelly (Safe)", lambda m: f"{m.kelly_safe:.2f}"),
+                ("SQN", lambda m: f"{m.sqn:.2f}"),
+                ("Max Drawdown", lambda m: f"{m.max_drawdown*100:.1f}%"),
+            ]
+            
+            for label, accessor in rows:
+                row_values = [label]
+                for m in strategy_metrics.values():
+                    row_values.append(accessor(m))
+                comp_table.add_row(*row_values)
+                
+            console.print(comp_table)
         
         # Robustness
         if mc_results:
