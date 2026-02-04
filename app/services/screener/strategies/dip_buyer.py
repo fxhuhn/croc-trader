@@ -105,10 +105,25 @@ class DipBuyerStrategy(BaseStrategy):
                 logger.error(f"Invalid analysis date: {analysis_date}")
                 return 0
 
-        # 2. Load Data
-        data = self.data_provider.get_all_daily_data(days=lookback)
+        # 2. Determine Universe & Load Data
+        # Strategy: Determine target symbols BEFORE fetching data (Pre-Filtering)
+        self._initialize_symbol_sets()
+        valid_universe = self._dow_set | self._sp500_set | self._ndx_set
+        
+        target_symbols: list[str] = []
+        if specific_symbols:
+            # Intersection of request and universe
+            target_symbols = list(set(specific_symbols) & valid_universe)
+            if not target_symbols:
+                logger.warning(f"[{self.name}] No valid symbols found in specific request (must be in indices).")
+                return 0
+        else:
+             target_symbols = list(valid_universe)
+
+        data = self.data_provider.get_universe_daily_data(target_symbols, days=lookback)
+        
         if not data or "close" not in data or data["close"].empty:
-            logger.warning(f"[{self.name}] No market data available.")
+            logger.warning(f"[{self.name}] No market data available for universe.")
             return 0
             
         # 3. Auto-Detect Date if needed
@@ -126,13 +141,7 @@ class DipBuyerStrategy(BaseStrategy):
             logger.info(f"[{self.name}] No signals found for {target_date.date()}.")
             return 0
 
-        # 4. Filter by specific symbols if requested
-        if specific_symbols:
-            allowed = set(specific_symbols)
-            signals_dataframe = signals_dataframe[signals_dataframe.index.isin(allowed)]
-            logger.info(f"[{self.name}] Specific filter active. Hits: {len(signals_dataframe)}")
-        else:
-            logger.info(f"[{self.name}] Total market hits: {len(signals_dataframe)}")
+        logger.info(f"[{self.name}] Total signals: {len(signals_dataframe)}")
 
         if signals_dataframe.empty:
             return 0
@@ -176,22 +185,17 @@ class DipBuyerStrategy(BaseStrategy):
                 logger.error(f"Analysis date {target_date} is before start of data.")
                 return pd.DataFrame()
 
-        # --- Index Filtering ---
-        # Only consider symbols in DOW30, SPX, or NDX
-        valid_universe = self._dow_set | self._sp500_set | self._ndx_set
-        available_symbols = set(closes.columns)
-        target_symbols = list(valid_universe & available_symbols)
+        # Data is already pre-filtered by Symbol Universe.
+        # We just need to align columns.
         
-        if not target_symbols:
-            logger.warning(f"[{self.name}] No symbols from major indices found in data.")
-            return pd.DataFrame()
-            
-        # Filter raw dataframes to target set for processing
-        closes = closes[target_symbols]
-        highs = data["high"][target_symbols]
-        lows = data["low"][target_symbols]
-        opens = data["open"][target_symbols]
-        volumes = data["volume"][target_symbols]
+        # FIX: Clean the Index (Remove holidays where all US stocks are NaN)
+        # This prevents NaN propagation in rolling windows for strict rules
+        valid_idx = closes.dropna(how="all").index
+        closes = closes.loc[valid_idx]
+        highs = data["high"].loc[valid_idx]
+        lows = data["low"].loc[valid_idx]
+        opens = data["open"].loc[valid_idx]
+        volumes = data["volume"].loc[valid_idx]
 
         try:
             # Map target_date to integer location
@@ -434,6 +438,10 @@ class DipBuyerStrategy(BaseStrategy):
         vola_ratio = indicators["vola_ratio"].iloc[idx][symbol]
         
         # 4. Run Checks
+        # Ensure sets are loaded for index check
+        self._initialize_symbol_sets()
+        indices = self._get_index_membership(symbol)
+        
         checks = {
             "min_volume": bool(volume_sma > self.config.MIN_VOLUME),
             "min_price": bool(current_close > self.config.MIN_PRICE),
@@ -442,7 +450,8 @@ class DipBuyerStrategy(BaseStrategy):
             "vola_ratio": bool(vola_ratio > self.config.MIN_VOLA_RATIO),
             "low_ibs": bool(ibs < self.config.MAX_IBS),
             "red_candle_today": bool(current_close < current_open),
-            "red_candle_yesterday": bool(prev_close < prev_open)
+            "red_candle_yesterday": bool(prev_close < prev_open),
+            "in_universe": bool(len(indices) > 0)
         }
         
         passed = all(checks.values())
@@ -450,9 +459,10 @@ class DipBuyerStrategy(BaseStrategy):
         # Safe extraction helper
         def safe_val(val, default=0.0):
             return default if pd.isna(val) else val
-
+            
         return {
             "symbol": symbol,
+            "indices": indices, # SHOW THE BUCKETS
             "last_date": str(df["date"].iloc[idx].date()),
             "data_valid": True,
             "checks": checks,
