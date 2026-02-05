@@ -77,7 +77,7 @@
         </div>
 
         <!-- Strategy Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
 
             <!-- Card 1: Croc Setup -->
             <div
@@ -167,7 +167,7 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
                             stroke="currentColor" class="w-8 h-8">
                             <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" />
+                                d="M9 9L15 3M15 3L21 9M15 3L15 15C15 18.3137 12.3137 21 9 21C5.68629 21 3 18.3137 3 15L3 12" />
                         </svg>
                     </div>
                 </div>
@@ -191,6 +191,45 @@
                 </div>
 
                 <a href="/screener/turnover"
+                    class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto">
+                    Signale anzeigen
+                </a>
+            </div>
+
+            <!-- Card 4: Two Percent -->
+            <div
+                class="bg-white rounded-xl shadow-saas p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg group flex flex-col h-full relative">
+                <div class="flex justify-center mb-6">
+                    <!-- Icon: percent-badge -->
+                    <div
+                        class="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center transition-colors duration-300 group-hover:bg-blue-50 group-hover:text-blue-600 text-slate-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                            stroke="currentColor" class="w-8 h-8">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                d="M9 14.25l6-6m4.5 3a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 4.5c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008v-.015z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="text-center flex-grow">
+                    <h3 class="text-xl font-bold text-slate-900 mb-3">Two Percent</h3>
+                    <p class="text-slate-500 text-sm leading-relaxed mb-6">
+                        Intraday Mean-Reversion bei extremen Bewegungen.
+                    </p>
+
+                    <!-- Status Line -->
+                    <div class="flex items-center justify-center space-x-2 mb-8">
+                        {% if count_twopercent > 0 %}
+                        <span class="h-2.5 w-2.5 bg-emerald-500 rounded-full"></span>
+                        <span class="text-sm font-medium text-slate-700">{{ count_twopercent }} Signale</span>
+                        {% else %}
+                        <span class="h-2.5 w-2.5 bg-slate-300 rounded-full"></span>
+                        <span class="text-sm font-medium text-slate-400">0 Signale</span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <a href="/screener/twopercent"
                     class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto">
                     Signale anzeigen
                 </a>

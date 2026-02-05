@@ -121,6 +121,7 @@
                     {% if "Croc" in name %} {% set link_url = '/trades/croc' %}
                     {% elif "Dip" in name %} {% set link_url = '/trades/dip-buyer' %}
                     {% elif "Turnover" in name %} {% set link_url = '/trades/turnover' %}
+                    {% elif "Percent" in name %} {% set link_url = '/trades/twopercent' %}
                     {% endif %}
 
                     <a href="{{ link_url }}"
@@ -142,6 +143,12 @@
                                     <path fill-rule="evenodd"
                                         d="M12 13a1 1 0 100 2h5a1 1 0 001-1V9a1 1 0 10-2 0v2.586l-4.293-4.293a1 1 0 00-1.414 0L8 9.586 4.293 5.879a1 1 0 00-1.414 1.414l5 5a1 1 0 001.414 0L11 9.414 14.586 13H12z"
                                         clip-rule="evenodd" />
+                                </svg>
+                                {% elif "Percent" in name %}
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+                                    stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M9 14.25l6-6m4.5 3a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 4.5c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008v-.015z" />
                                 </svg>
                                 {% else %}
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"

@@ -137,12 +137,14 @@ def view_screener_overview() -> str:
     count_croc = len(repo.get_trade_candidates("Croc", limit=100))
     count_dip = len(repo.get_trade_candidates("DipBuyer", limit=100))
     count_turnover = len(repo.get_trade_candidates("TurnoverTiming", limit=100))
+    count_twopercent = len(repo.get_trade_candidates("TwoPercentStrategy", limit=100))
     
     return render_template(
         "screener.html",
         count_croc=count_croc,
         count_dip=count_dip,
-        count_turnover=count_turnover
+        count_turnover=count_turnover,
+        count_twopercent=count_twopercent
     )
 
 def generate_sparkline(dates: list, prices: list, is_up: bool) -> str:
@@ -216,6 +218,7 @@ def view_trades_overview() -> str:
         if "Croc" in strat: label = "Croc Setup"
         elif "DipBuyer" in strat: label = "Dip Buyer"
         elif "Turnover" in strat: label = "Turnover"
+        elif "two_percent" in strat: label = "Two Percent"
         else: label = strat
         
         if label not in strategy_stats:
@@ -496,6 +499,73 @@ def view_trades_turnover() -> str:
 
     return render_template(
         "trades_turnover.html", 
+        active_trades=active, 
+        closed_trades=closed[:limit],
+        summary=summary,
+        closed_summary=closed_summary
+    )
+
+@views_bp.route("/screener/twopercent", methods=["GET"])
+def view_screener_twopercent() -> str:
+    limit = request.args.get("limit", 50, type=int)
+    repo = _get_repo()
+    results = repo.get_trade_candidates("TwoPercentStrategy", limit=limit)
+    
+    # Context Processing
+    processed = []
+    for row in results:
+        item = dict(row)
+        try:
+             # Raw Context
+            raw = item.get("signal_context") or item.get("ctx")
+            item["ctx"] = json.loads(raw) if isinstance(raw, str) and raw else (raw or {})
+            
+            # Display Date
+            if item["ctx"].get("date"):
+                item["display_date"] = item["ctx"]["date"]
+                
+            processed.append(item)
+        except Exception:
+            item["ctx"] = {}
+            processed.append(item)
+            
+    return render_template("screener_twopercent.html", results=processed)
+
+@views_bp.route("/trades/twopercent", methods=["GET"])
+def view_trades_twopercent() -> str:
+    limit = request.args.get("limit", 100, type=int)
+    trade_repo = _get_trade_repo()
+    market_repo = _get_market_repo()
+    
+    # Filter for 'two_percent_strategy'
+    # Note: Strategy Key in DB is 'two_percent_strategy'
+    all_active = trade_repo.get_by_status([TradeStatus.ACTIVE])
+    all_closed = trade_repo.get_by_status([TradeStatus.CLOSED])
+    
+    active = [t for t in all_active if "two_percent" in t['strategy']]
+    closed = [t for t in all_closed if "two_percent" in t['strategy']]
+    
+    # Sort
+    active.sort(key=lambda x: x.get("entry_date") or "", reverse=True)
+    closed.sort(key=lambda x: x.get("exit_date") or "", reverse=True)
+    
+    prepare_view_model(active, market_repo)
+    prepare_view_model(closed, market_repo)
+    
+    summary = get_portfolio_summary(active)
+    
+    total_closed_pnl = sum(float(t.get("realized_pnl") or 0) for t in closed)
+    closed_count = len(closed)
+    avg_pnl = total_closed_pnl / closed_count if closed_count > 0 else 0
+
+    closed_summary = {
+        "total_pnl": total_closed_pnl,
+        "count": closed_count,
+        "avg_pnl": avg_pnl
+    }
+    
+    return render_template(
+        "trades_twopercent.html", 
         active_trades=active, 
         closed_trades=closed[:limit],
         summary=summary,
