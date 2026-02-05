@@ -16,7 +16,7 @@ from ..services.screener import ScreenerEngine
 from ..services.telegram import TelegramBot
 
 # Tasks importieren
-from ..tasks import run_daily_strategy_check, run_market_data_update, run_db_maintenance
+from ..tasks import run_daily_strategy_check, run_market_data_update, run_db_maintenance, run_db_backup
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,16 @@ def configure_scheduler(app, config):
         args=[app], 
         trigger=CronTrigger(day_of_week="mon-sat", hour=6, minute=30, timezone=pytz.timezone("Europe/Berlin")),
         id="strategy_check",
+        replace_existing=True
+    )
+
+    # --- JOB 5: Daily Backup (Signals DB) ---
+    db_signals = Path(config.get_db_path("signals"))
+    scheduler.add_job(
+        func=run_db_backup,
+        args=[db_signals],
+        trigger=CronTrigger(hour=1, minute=0, timezone=pytz.timezone("Europe/Berlin")),
+        id="daily_backup_signals",
         replace_existing=True
     )
 
