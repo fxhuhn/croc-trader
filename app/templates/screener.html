@@ -20,37 +20,132 @@
                     },
                     boxShadow: {
                         'saas': '0 4px 20px rgba(0, 0, 0, 0.05)',
+                        'saas-hover': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
                     }
                 }
             }
         }
     </script>
 
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
+    <style type="text/tailwindcss">
+        @layer components {
+            .glass-nav {
+                @apply bg-white/80 backdrop-blur-md border-b border-slate-200/60;
+            }
+            
+            .screener-card {
+                @apply bg-white rounded-xl shadow-saas p-4 md:p-8 transition-all duration-300 flex flex-col h-full relative;
+            }
+
+            .screener-card:hover {
+                @apply -translate-y-1 shadow-saas-hover;
+            }
+
+            .card-content-wrapper {
+                @apply flex flex-row md:flex-col justify-center md:justify-start items-center md:items-stretch mb-4 md:mb-0 flex-grow;
+            }
+
+            .strategy-icon-box {
+                @apply h-10 w-10 md:h-16 md:w-16 bg-slate-50 rounded-full flex items-center justify-center transition-colors duration-300 text-slate-400 flex-shrink-0 mr-4 md:mr-0 md:mb-6 md:self-center;
+            }
+
+            /* Group Hover Logic for Icon Box */
+            .group:hover .strategy-icon-box {
+                @apply bg-blue-50 text-blue-600;
+            }
+
+            .strategy-info {
+                @apply text-left md:text-center flex-grow-0 md:flex-grow;
+            }
+
+            .strategy-title {
+                @apply text-xl font-bold text-slate-900 mb-1 md:mb-3;
+            }
+
+            .strategy-desc {
+                @apply text-slate-500 text-sm leading-relaxed mb-6 hidden md:block;
+            }
+
+            .btn-primary {
+                @apply block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto;
+            }
+
+            .status-line {
+                @apply flex items-center justify-start md:justify-center space-x-2 mb-0 md:mb-8;
+            }
+
+            .dot-active {
+                @apply h-2.5 w-2.5 bg-emerald-500 rounded-full;
+            }
+
+            .dot-inactive {
+                @apply h-2.5 w-2.5 bg-slate-300 rounded-full;
+            }
+
+            .text-status {
+                @apply text-sm font-medium;
+            }
+            
+            .text-active {
+                @apply text-slate-700;
+            }
+            
+            .text-inactive {
+                @apply text-slate-400;
+            }
         }
 
-        .glass-nav {
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+        /* SVG Sprite Hide Class */
+        .svg-sprite-hidden {
+            position: absolute;
+            width: 0;
+            height: 0;
+            overflow: hidden;
         }
     </style>
 </head>
 
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
 
+    <!-- SVG Sprite System -->
+    <svg class="svg-sprite-hidden" aria-hidden="true">
+        <defs>
+            <!-- Check / Arrow Up -->
+            <symbol id="icon-arrow-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4.5 10.5 12 3m0 0 7.5 7.5M12 3v18" />
+            </symbol>
+
+            <!-- Trending Up -->
+            <symbol id="icon-trending-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path
+                    d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
+            </symbol>
+
+            <!-- U-Turn Up -->
+            <symbol id="icon-uturn-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 9L15 3M15 3L21 9M15 3L15 15C15 18.3137 12.3137 21 9 21C5.68629 21 3 18.3137 3 15L3 12" />
+            </symbol>
+
+            <!-- Percent Badge -->
+            <symbol id="icon-percent-badge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path
+                    d="M8.99044 14.9934L14.9903 8.99282M20.9899 11.994C20.9899 13.2624 20.3603 14.3838 19.3966 15.0625C19.598 16.2238 19.2503 17.4618 18.3537 18.3586C17.457 19.2554 16.2192 19.603 15.058 19.4016C14.3793 20.3653 13.2582 20.9949 11.9901 20.9949C10.7219 20.9949 9.60083 20.3654 8.92216 19.4017C7.7608 19.6034 6.52272 19.2557 5.62589 18.3588C4.72906 17.4618 4.38145 16.2236 4.58306 15.0622C3.61963 14.3834 2.99023 13.2622 2.99023 11.994C2.99023 10.7258 3.61968 9.60457 4.58318 8.92582C4.38168 7.76442 4.7293 6.52634 5.62605 5.62949C6.52282 4.73262 7.76077 4.38496 8.92206 4.5865C9.60071 3.62277 10.7219 2.99316 11.9901 2.99316C13.2582 2.99316 14.3793 3.62272 15.058 4.58638C16.2193 4.38474 17.4574 4.73239 18.3542 5.62932C19.251 6.52624 19.5987 7.76443 19.3971 8.92591C20.3605 9.60467 20.9899 10.7258 20.9899 11.994ZM9.74042 9.74289H9.74792V9.75039H9.74042V9.74289ZM10.1154 9.74289C10.1154 9.95002 9.94752 10.1179 9.74042 10.1179C9.53332 10.1179 9.36543 9.95002 9.36543 9.74289C9.36543 9.53576 9.53332 9.36785 9.74042 9.36785C9.94752 9.36785 10.1154 9.53576 10.1154 9.74289ZM14.2403 14.2433H14.2478V14.2508H14.2403V14.2433ZM14.6153 14.2433C14.6153 14.4504 14.4474 14.6184 14.2403 14.6184C14.0332 14.6184 13.8653 14.4504 13.8653 14.2433C13.8653 14.0362 14.0332 13.8683 14.2403 13.8683C14.4474 13.8683 14.6153 14.0362 14.6153 14.2433Z" />
+            </symbol>
+        </defs>
+    </svg>
+
     <!-- Navigation Bar -->
     <nav class="glass-nav fixed top-0 w-full z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex h-16 items-center">
-
                 <!-- Branding -->
                 <div class="flex-shrink-0 flex items-center">
                     <span class="text-xl font-medium text-slate-900 tracking-tight">Screener</span>
                 </div>
-
                 <!-- Links -->
                 <div class="ml-10 flex space-x-4">
                     <a href="/"
@@ -71,7 +166,7 @@
 
         <div class="mb-12 text-center sm:text-left">
             <h1 class="text-4xl font-light text-slate-900 tracking-tight mb-3">Signal Screener</h1>
-            <p class="text-lg text-slate-500 max-w-2xl font-light">
+            <p class="text-lg text-slate-500 max-w-2xl font-light hidden md:block">
                 Entdecken Sie aktuelle Handelsmöglichkeiten basierend auf unseren quantitativen Strategien.
             </p>
         </div>
@@ -80,160 +175,112 @@
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
 
             <!-- Card 1: Croc Setup -->
-            <div
-                class="bg-white rounded-xl shadow-saas p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg group flex flex-col h-full relative">
-                <div class="flex justify-center mb-6">
-                    <!-- Icon: arrow-up -->
-                    <div
-                        class="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center transition-colors duration-300 group-hover:bg-blue-50 group-hover:text-blue-600 text-slate-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="w-8 h-8">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M4.5 10.5 12 3m0 0 7.5 7.5M12 3v18" />
+            <article class="screener-card group">
+                <div class="card-content-wrapper">
+                    <div class="strategy-icon-box">
+                        <svg class="w-5 h-5 md:w-8 md:h-8" aria-hidden="true" fill="none">
+                            <use href="#icon-arrow-up"></use>
                         </svg>
                     </div>
-                </div>
-
-                <div class="text-center flex-grow">
-                    <h3 class="text-xl font-bold text-slate-900 mb-3">Croc Setup</h3>
-                    <p class="text-slate-500 text-sm leading-relaxed mb-6">
-                        Trendfolge-Signale basierend auf Wochen- und Tageschart-Momentum.
-                    </p>
-
-                    <!-- Status Line -->
-                    <div class="flex items-center justify-center space-x-2 mb-8">
-                        {% if count_croc > 0 %}
-                        <span class="h-2.5 w-2.5 bg-emerald-500 rounded-full"></span>
-                        <span class="text-sm font-medium text-slate-700">{{ count_croc }} Signale</span>
-                        {% else %}
-                        <span class="h-2.5 w-2.5 bg-slate-300 rounded-full"></span>
-                        <span class="text-sm font-medium text-slate-400">0 Signale</span>
-                        {% endif %}
+                    <div class="strategy-info">
+                        <h3 class="strategy-title">Croc Setup</h3>
+                        <p class="strategy-desc">
+                            Trendfolge-Signale basierend auf Wochen- und Tageschart-Momentum.
+                        </p>
+                        <div class="status-line">
+                            {% if count_croc > 0 %}
+                            <span class="dot-active"></span>
+                            <span class="text-status text-active">{{ count_croc }} Signale</span>
+                            {% else %}
+                            <span class="dot-inactive"></span>
+                            <span class="text-status text-inactive">0 Signale</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
-
-                <a href="/screener/croc"
-                    class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto">
-                    Signale anzeigen
-                </a>
-            </div>
+                <a href="/screener/croc" class="btn-primary">Signale anzeigen</a>
+            </article>
 
             <!-- Card 2: Dip Buyer -->
-            <div
-                class="bg-white rounded-xl shadow-saas p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg group flex flex-col h-full relative">
-                <div class="flex justify-center mb-6">
-                    <!-- Icon: arrow-trending-up -->
-                    <div
-                        class="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center transition-colors duration-300 group-hover:bg-blue-50 group-hover:text-blue-600 text-slate-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="w-8 h-8">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M2.25 18 9 11.25l4.306 4.306a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
+            <article class="screener-card group">
+                <div class="card-content-wrapper">
+                    <div class="strategy-icon-box">
+                        <svg class="w-5 h-5 md:w-8 md:h-8" aria-hidden="true" fill="none">
+                            <use href="#icon-trending-up"></use>
                         </svg>
                     </div>
-                </div>
-
-                <div class="text-center flex-grow">
-                    <h3 class="text-xl font-bold text-slate-900 mb-3">Dip Buyer</h3>
-                    <p class="text-slate-500 text-sm leading-relaxed mb-6">
-                        Kurzfristige Mean-Reversion Setups für Indizes.
-                    </p>
-
-                    <!-- Status Line -->
-                    <div class="flex items-center justify-center space-x-2 mb-8">
-                        {% if count_dip > 0 %}
-                        <span class="h-2.5 w-2.5 bg-emerald-500 rounded-full"></span>
-                        <span class="text-sm font-medium text-slate-700">{{ count_dip }} Signale</span>
-                        {% else %}
-                        <span class="h-2.5 w-2.5 bg-slate-300 rounded-full"></span>
-                        <span class="text-sm font-medium text-slate-400">0 Signale</span>
-                        {% endif %}
+                    <div class="strategy-info">
+                        <h3 class="strategy-title">Dip Buyer</h3>
+                        <p class="strategy-desc">
+                            Kurzfristige Mean-Reversion Setups für Indizes.
+                        </p>
+                        <div class="status-line">
+                            {% if count_dip > 0 %}
+                            <span class="dot-active"></span>
+                            <span class="text-status text-active">{{ count_dip }} Signale</span>
+                            {% else %}
+                            <span class="dot-inactive"></span>
+                            <span class="text-status text-inactive">0 Signale</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
-
-                <a href="/screener/dip-buyer"
-                    class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto">
-                    Signale anzeigen
-                </a>
-            </div>
+                <a href="/screener/dip-buyer" class="btn-primary">Signale anzeigen</a>
+            </article>
 
             <!-- Card 3: Turnover Timing -->
-            <div
-                class="bg-white rounded-xl shadow-saas p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg group flex flex-col h-full relative">
-                <div class="flex justify-center mb-6">
-                    <!-- Icon: arrow-uturn-up -->
-                    <div
-                        class="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center transition-colors duration-300 group-hover:bg-blue-50 group-hover:text-blue-600 text-slate-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="w-8 h-8">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M9 9L15 3M15 3L21 9M15 3L15 15C15 18.3137 12.3137 21 9 21C5.68629 21 3 18.3137 3 15L3 12" />
+            <article class="screener-card group">
+                <div class="card-content-wrapper">
+                    <div class="strategy-icon-box">
+                        <svg class="w-5 h-5 md:w-8 md:h-8" aria-hidden="true" fill="none">
+                            <use href="#icon-uturn-up"></use>
                         </svg>
                     </div>
-                </div>
-
-                <div class="text-center flex-grow">
-                    <h3 class="text-xl font-bold text-slate-900 mb-3">Turnover Timing</h3>
-                    <p class="text-slate-500 text-sm leading-relaxed mb-6">
-                        Saisonale Effekte zum Monatsende und Rebalancing.
-                    </p>
-
-                    <!-- Status Line -->
-                    <div class="flex items-center justify-center space-x-2 mb-8">
-                        {% if count_turnover > 0 %}
-                        <span class="h-2.5 w-2.5 bg-emerald-500 rounded-full"></span>
-                        <span class="text-sm font-medium text-slate-700">{{ count_turnover }} Signale</span>
-                        {% else %}
-                        <span class="h-2.5 w-2.5 bg-slate-300 rounded-full"></span>
-                        <span class="text-sm font-medium text-slate-400">0 Signale</span>
-                        {% endif %}
+                    <div class="strategy-info">
+                        <h3 class="strategy-title">Turnover Timing</h3>
+                        <p class="strategy-desc">
+                            Saisonale Effekte zum Monatsende und Rebalancing.
+                        </p>
+                        <div class="status-line">
+                            {% if count_turnover > 0 %}
+                            <span class="dot-active"></span>
+                            <span class="text-status text-active">{{ count_turnover }} Signale</span>
+                            {% else %}
+                            <span class="dot-inactive"></span>
+                            <span class="text-status text-inactive">0 Signale</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
-
-                <a href="/screener/turnover"
-                    class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto">
-                    Signale anzeigen
-                </a>
-            </div>
+                <a href="/screener/turnover" class="btn-primary">Signale anzeigen</a>
+            </article>
 
             <!-- Card 4: Two Percent -->
-            <div
-                class="bg-white rounded-xl shadow-saas p-8 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg group flex flex-col h-full relative">
-                <div class="flex justify-center mb-6">
-                    <!-- Icon: percent-badge -->
-                    <div
-                        class="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center transition-colors duration-300 group-hover:bg-blue-50 group-hover:text-blue-600 text-slate-400">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
-                            stroke="currentColor" class="w-8 h-8">
-                            <path stroke-linecap="round" stroke-linejoin="round"
-                                d="M9 14.25l6-6m4.5 3a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 4.5c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008v-.015z" />
+            <article class="screener-card group">
+                <div class="card-content-wrapper">
+                    <div class="strategy-icon-box">
+                        <svg class="w-5 h-5 md:w-8 md:h-8" aria-hidden="true" fill="none">
+                            <use href="#icon-percent-badge"></use>
                         </svg>
                     </div>
-                </div>
-
-                <div class="text-center flex-grow">
-                    <h3 class="text-xl font-bold text-slate-900 mb-3">Two Percent</h3>
-                    <p class="text-slate-500 text-sm leading-relaxed mb-6">
-                        Intraday Mean-Reversion bei extremen Bewegungen.
-                    </p>
-
-                    <!-- Status Line -->
-                    <div class="flex items-center justify-center space-x-2 mb-8">
-                        {% if count_twopercent > 0 %}
-                        <span class="h-2.5 w-2.5 bg-emerald-500 rounded-full"></span>
-                        <span class="text-sm font-medium text-slate-700">{{ count_twopercent }} Signale</span>
-                        {% else %}
-                        <span class="h-2.5 w-2.5 bg-slate-300 rounded-full"></span>
-                        <span class="text-sm font-medium text-slate-400">0 Signale</span>
-                        {% endif %}
+                    <div class="strategy-info">
+                        <h3 class="strategy-title">Two Percent</h3>
+                        <p class="strategy-desc">
+                            Intraday Mean-Reversion bei extremen Bewegungen.
+                        </p>
+                        <div class="status-line">
+                            {% if count_twopercent > 0 %}
+                            <span class="dot-active"></span>
+                            <span class="text-status text-active">{{ count_twopercent }} Signale</span>
+                            {% else %}
+                            <span class="dot-inactive"></span>
+                            <span class="text-status text-inactive">0 Signale</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
-
-                <a href="/screener/twopercent"
-                    class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto">
-                    Signale anzeigen
-                </a>
-            </div>
+                <a href="/screener/twopercent" class="btn-primary">Signale anzeigen</a>
+            </article>
 
         </div>
     </main>
