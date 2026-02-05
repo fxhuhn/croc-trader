@@ -101,6 +101,8 @@ class CrocSetupStrategy(BaseStrategy):
         if not signals:
             return 0
 
+        logger.info(f"[{self.name}] Total signals: {len(signals)}")
+
         hits = 0
         report_rows = []
 
@@ -179,7 +181,7 @@ class CrocSetupStrategy(BaseStrategy):
         candidates = [r for r in self.ranking_rules if r.get("Signal") == signal_name]
         
         if not candidates: 
-            # Only log trace if we really expected something (optional)
+            logger.info(f"ℹ️ [{symbol}] No ranking rules found for signal '{signal_name}'")
             return None
 
         best_match = None
@@ -212,7 +214,7 @@ class CrocSetupStrategy(BaseStrategy):
                 if db_key not in row:
                     # Strict Filter: If rule requires a parameter (e.g. 'Deluxe')
                     # and the data does NOT have it, the rule fails.
-                    logger.debug(f"🔍 [{symbol}] Filter Filter: Missing '{db_key}' (Req by: {signal_name})")
+                    logger.info(f"🔍 [{symbol}] Filter Filter: Missing '{db_key}' (Req by: {signal_name})")
                     passed = False
                     break 
 
@@ -220,7 +222,7 @@ class CrocSetupStrategy(BaseStrategy):
                 
                 # 4. Condition Check (Match/Case)
                 if not self._check_condition(market_value, condition_value, yaml_key):
-                    logger.debug(f"❌ [{symbol}] Condition Fail: '{yaml_key}' Expect: '{condition_value}' Actual: '{market_value}'")
+                    logger.info(f"❌ [{symbol}] Condition Fail: '{yaml_key}' Expect: '{condition_value}' Actual: '{market_value}'")
                     passed = False
                     break
             
