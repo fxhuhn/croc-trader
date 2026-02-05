@@ -74,15 +74,28 @@ class ScreenerEngine:
         results = {}
 
         # Cache leeren für frischen Run
+        # Cache leeren für frischen Run
         if days == 0:
             self.data_provider.clear_cache()
+            
+            # --- DATE SYNC ---
+            # Ermittle das globale Datum anhand der Marktdaten (Source of Truth)
+            # Das verhindert, dass Strategien unterschiedliche Tage (z.B. Intraday vs EOD) analysieren.
+            global_date = self.data_provider.get_latest_date()
+            if global_date:
+                logger.info(f"[ScreenerEngine] Global Analysis Date detected: {global_date}")
+            else:
+                logger.warning("[ScreenerEngine] Could not detect global date from market data.")
+
+        else:
+            global_date = None
 
         for strat in self.active_strategies:
             if strategy_filter and strat.name != strategy_filter:
                 continue
 
             try:
-                hits = strat.run(days=days)
+                hits = strat.run(days=days, analysis_date=global_date)
                 results[strat.name] = hits
             except Exception as e:
                 logger.error(f"Fehler bei {strat.name}: {e}", exc_info=True)
