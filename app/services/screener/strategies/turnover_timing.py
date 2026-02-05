@@ -47,12 +47,12 @@ class TurnoverTimingStrategy(BaseStrategy):
         Logic: Close < SMA200. Entry = Close - (ATR(3) * Factor).
         """
         # 0. Adjust Lookback for Backtesting
-        lookback = 400
+        lookback = 800
         if analysis_date:
-            target_dt = pd.Timestamp(analysis_date)
-            days_diff = (pd.Timestamp.now() - target_dt).days
-            if days_diff > (lookback - 100):
-                lookback = days_diff + 250  # Buffer
+             target_dt = pd.Timestamp(analysis_date)
+             days_diff = (pd.Timestamp.now() - target_dt).days
+             if days_diff > (lookback - 100):
+                 lookback = days_diff + 500 # Buffer
 
         # 0. Compile Universe (Pre-Filtering)
         symbol_loader = ExchangeSymbol()
@@ -75,6 +75,24 @@ class TurnoverTimingStrategy(BaseStrategy):
         )
         if not data_frames:
             return 0
+
+        # Data Cleaning: Remove days where > 80% of universe is NaN (e.g. Holidays with partial data)
+        # This fixes strict rolling window failures caused by sparse data rows.
+        raw_closes = data_frames["close"]
+        valid_counts = raw_closes.notna().sum(axis=1)
+        universe_size = raw_closes.shape[1]
+        
+        # Keep days where at least 20% of universe traded (generous filter for major holidays)
+        valid_days_mask = (valid_counts / universe_size) > 0.2
+        
+        # Log dropped days for verification
+        dropped_days = raw_closes.index[~valid_days_mask]
+        if not dropped_days.empty:
+            logger.warning(f"[{self.name}] Dropped {len(dropped_days)} sparse data days (Holidays/Bad Data): {dropped_days.tolist()}")
+            
+        # Apply mask to all frames
+        for key in data_frames:
+             data_frames[key] = data_frames[key].loc[valid_days_mask]
 
         closes = data_frames["close"]
         highs = data_frames["high"]
