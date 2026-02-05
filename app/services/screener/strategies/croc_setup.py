@@ -244,7 +244,10 @@ class CrocSetupStrategy(BaseStrategy):
             val = float(market_val)
         except (ValueError, TypeError):
             # Fallback for non-numbers
-            return str(market_val).lower() == str(condition_str).lower()
+            # Normalize strings strictly (remove spaces, lowercase) and compare
+            val_str = str(market_val).lower().replace(" ", "")
+            cond_str = str(condition_str).lower().replace(" ", "")
+            return val_str == cond_str
 
         condition_string = str(condition_str).strip()
         key_lower = context_key.lower()
