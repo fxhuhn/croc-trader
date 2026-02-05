@@ -234,3 +234,19 @@ class MarketDataProvider:
             rows = conn.execute(query, (start_date, end_date)).fetchall()
             
         return [pd.Timestamp(r[0]) for r in rows]
+
+    def get_latest_date(self) -> str | None:
+        """
+        Gibt das Datum des letzten verfügbaren Datensatzes zurück (Timeframe '1D').
+        Dient als 'Global Analysis Date' für den Screener.
+        """
+        try:
+            with self.session.connect() as conn:
+                query = "SELECT MAX(date) FROM market_prices WHERE timeframe='1D'"
+                row = conn.execute(query).fetchone()
+                if row and row[0]:
+                    # Schneide Zeitstempel ab falls vorhanden "2026-02-04 00:00:00" -> "2026-02-04"
+                    return str(row[0]).split(" ")[0]
+        except Exception as e:
+            logger.error(f"[MarketData] Konnte aktuellstes Datum nicht ermitteln: {e}")
+        return None
