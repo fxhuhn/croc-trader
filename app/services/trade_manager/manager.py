@@ -16,6 +16,7 @@ from ...services.telegram import TelegramBot
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.hold_target import HoldTargetStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
+from .strategies.two_percent_strategy import TwoPercentStrategyManager
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +45,10 @@ class TradeManager:
             "croc_holdtp3": HoldTargetStrategy(),
             "crocholdtp3": HoldTargetStrategy(),
             "croc_tp3": HoldTargetStrategy(),
-            "holdtarget": HoldTargetStrategy() 
+            "holdtarget": HoldTargetStrategy(),
+            # SXRV Two Percent
+            "two_percent_strategy": TwoPercentStrategyManager(),
+            "twopercent": TwoPercentStrategyManager()
         }
         
         logger.info(f"TradeManager init. Registered Strategies: {list(self.strategies.keys())}")

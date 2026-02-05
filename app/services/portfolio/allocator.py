@@ -78,7 +78,20 @@ class PortfolioAllocator:
                 risk_amount=0.0,
                 reason=f"Turnover Fixed Budget ({BUDGET_DIP_BUYER})"
             )
+
+        # 4. Two Percent Strategy (Fixed Budget)
+        if "two_percent" in strategy_name or "twopercent" in strategy_name:
+             size = int(BUDGET_DIP_BUYER / entry_price)
+             if size < 1:
+                 return AllocationResult(0, 0.0, 0.0, "Price > Budget")
+                 
+             return AllocationResult(
+                size=size,
+                budget_used=BUDGET_DIP_BUYER,
+                risk_amount=0.0,
+                reason=f"TwoPercent Fixed Budget ({BUDGET_DIP_BUYER})"
+            )
             
-        # 4. Default / Fallback
+        # 5. Default / Fallback
         logger.warning(f"[{symbol}] Unknown Strategy for Allocation: {strategy_name}")
         return AllocationResult(0, 0.0, 0.0, "Unknown Strategy")
