@@ -20,15 +20,45 @@ class MarketDataProvider:
     def __init__(self, session: DatabaseSession) -> None:
         # Wir speichern die Session, nicht mehr den Pfad
         self.session = session
+        self._in_memory_cache: MarketDataDict | None = None
+        self._cache_lookback = 0
+
+    def preload_all_data(self, days: int = 1000) -> None:
+        """
+        Loads ALL market data into memory for high-speed access.
+        Critical for backtesting performance.
+        """
+        logger.info(f"[MarketData] Preloading ALL data into memory (Lines: {days}d)...")
+        # Reuse existing logic but store it
+        # We assume universe is all symbols in DB or we fetch all.
+        try:
+             start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
+             with self.session.connect() as conn:
+                 # Fetch EVERYTHING
+                 query = "SELECT date, symbol, open, high, low, close, volume FROM market_prices WHERE date >= ? AND timeframe='1D' ORDER BY date ASC"
+                 df = pd.read_sql_query(query, conn, params=(start_date,))
+                 
+             if not df.empty:
+                 self._in_memory_cache = self._pivot_data(df)
+                 self._cache_lookback = days
+                 logger.info(f"[MarketData] Cache Warm! Loaded {len(df)} rows.")
+             else:
+                 logger.warning("[MarketData] Preload returned empty.")
+        except Exception as e:
+            logger.error(f"[MarketData] Preload Failed: {e}")
 
     @lru_cache(maxsize=4)
     def get_all_daily_data(self, days: int) -> MarketDataDict | None:
         """
         Lädt OHLCV Daten für alle Symbole und pivotiert sie.
         Das Ergebnis wird gecacht (LRU).
-
+        
         :param days: Anzahl der Tage für den Lookback (z.B. 400).
         """
+        # Check explicit memory cache first
+        if self._in_memory_cache and days <= self._cache_lookback:
+            return self._in_memory_cache
+
         start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
         logger.info(f"[MarketData] Lade Daten aus DB (Lookback: {days}d)...")
 
@@ -58,10 +88,22 @@ class MarketDataProvider:
     def get_universe_daily_data(self, symbols: list[str], days: int) -> MarketDataDict | None:
         """
         Lädt Daten nur für eine spezifische Liste von Symbolen (Pre-Filtering).
-        Nutzt Chunking, um SQLite Parameter-Limits einzuhalten.
+        Nutzt Memory Cache wenn verfügbar.
         """
         if not symbols:
             return None
+
+        # 1. Try Memory Cache
+        if self._in_memory_cache and days <= self._cache_lookback:
+            # Filter the pivoted cache for requested symbols
+            filtered = {}
+            for col, df in self._in_memory_cache.items():
+                available_cols = [s for s in symbols if s in df.columns]
+                if available_cols:
+                    filtered[col] = df[available_cols] # Slice columns
+                else:
+                     filtered[col] = pd.DataFrame(index=df.index)
+            return filtered
 
         start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
         logger.info(f"[MarketData] Lade Universe-Daten ({len(symbols)} Symbole, {days}d)...")
@@ -111,16 +153,40 @@ class MarketDataProvider:
             for col in ["open", "high", "low", "close", "volume"]
         }
 
-        logger.info(f"[MarketData] Daten geladen und pivotisiert ({len(df)} Zeilen).")
+        # logger.info(f"[MarketData] Daten geladen und pivotisiert ({len(df)} Zeilen).")
         return pivoted_data
 
     def clear_cache(self) -> None:
         """Leert den internen LRU Cache (z.B. nach einem DB-Update)."""
         self.get_all_daily_data.cache_clear()
+        self._in_memory_cache = None
         logger.info("[MarketData] Cache geleert.")
 
     def get_symbol_history(self, symbol: str, days: int = 400) -> pd.DataFrame:
-        """Lädt OHLCV Historie für ein Symbol ohne Pivot."""
+        """Lädt OHLCV Historie für ein Symbol ohne Pivot. Nutzt Cache wenn möglich."""
+        # 1. Try Memory Cache
+        if self._in_memory_cache and days <= self._cache_lookback:
+            # Reconstruct DataFrame from Pivoted Data
+            try:
+                data = {}
+                # Start date filter
+                cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
+                
+                has_data = False
+                for col in ["open", "high", "low", "close", "volume"]:
+                    if symbol in self._in_memory_cache[col].columns:
+                         series = self._in_memory_cache[col][symbol]
+                         data[col] = series[series.index >= cutoff]
+                         has_data = True
+                
+                if has_data:
+                    df = pd.DataFrame(data)
+                    df.index.name = "date"
+                    return df.reset_index()
+            except Exception as e:
+                logger.warning(f"Failed to extract {symbol} from cache: {e}")
+                # Fallback to DB
+        
         # Da BaseRepository SQL erlaubt (Layer-Grenze), ist das hier ok.
         with self.session.connect() as conn:
             # end_date not used in query
