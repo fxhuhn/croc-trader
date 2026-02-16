@@ -53,10 +53,10 @@
                                     </a>
                                 </b>
                             </td>
-                            <td class="price">{{ "%.2f"|format(row.ctx.get('setup_close')|float) }}</td>
+                            <td class="price">{{ "%.2f"|format(row.context.get('setup_close')|float) }}</td>
                             <!-- Entry Limit -->
                             <td class="price fw-bold text-success">
-                                {{ "%.2f"|format(row.ctx.get('limit_entry')|float) }}
+                                {{ "%.2f"|format(row.context.get('limit_entry')|float) }}
                             </td>
                         </tr>
                         {% else %}

@@ -1,14 +1,14 @@
 import logging
 import pandas as pd
 from dataclasses import dataclass
-from datetime import datetime
-from typing import ClassVar, override, Any
+from typing import ClassVar, override, TypedDict
 
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
 from ....tools.symbol_lists import ExchangeSymbol
 from .base import BaseStrategy
+from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +27,43 @@ class DipBuyerConfig:
     SMA_TREND_WINDOW: int = 200
 
     # 3. Logic Thresholds
-    MIN_VOLA_RATIO: float = 0.03  # ATR must be > 3% of Price
+    MIN_VOLATILITY_RATIO: float = 0.03  # ATR must be > 3% of Price
     MAX_IBS: float = 0.2          # Close in bottom 20% of High-Low range
-    MAX_ATR_R3: float = -1.0      # 3-Day drop > 1 ATR (negative value)
+    MAX_ATR_RATIO_3DAY: float = -1.0      # 3-Day drop > 1 ATR (negative value)
+
+    # 4. Exit Parameters
+    EXIT_TP_FACTOR: float = 0.8    # Target = Entry + (ATR * EXIT_TP_FACTOR)
 
     # Data Fetching
     LOOKBACK_DAYS: int = 600
+
+
+class DipBuyerMarketState(TypedDict):
+    """Represents the market state for a single symbol at a specific point in time."""
+    close: float
+    open: float
+    high: float
+    high_next_target: float | None # Optional, for future use or verification
+    volume: float
+    sma200: float
+    volume_sma: float
+    atr: float
+    atr_ratio_3day: float
+    ibs: float
+    volatility_ratio: float
+    setup_score: float
+
+
+class SymbolAnalysisResult(TypedDict):
+    """Return type for single symbol analysis debugging."""
+    symbol: str
+    indices: list[str]
+    last_date: str
+    data_valid: bool
+    checks: dict[str, bool]
+    values: dict[str, float]
+    result: str
+    error: str | None
 
 
 class DipBuyerStrategy(BaseStrategy):
@@ -45,22 +76,22 @@ class DipBuyerStrategy(BaseStrategy):
     3. Setup: Close near daily low (Low IBS)
     """
 
-    name: str = "DipBuyer"
+    name: str = str(Strategies.DipBuyer)
 
-    # Pre-calculated set mappings for index lookup usually static per run
-    _dow_set: ClassVar[set[str]] = set()
-    _sp500_set: ClassVar[set[str]] = set()
-    _ndx_set: ClassVar[set[str]] = set()
+    # Pre-calculated set mappings for index lookup (Instance variables for thread safety)
+    _dow_set: set[str] | frozenset[str] = frozenset()
+    _sp500_set: set[str] | frozenset[str] = frozenset()
+    _ndx_set: set[str] | frozenset[str] = frozenset()
 
     def __init__(
         self,
-        trade_repo: TradeRepository,
+        trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
         config: DipBuyerConfig | None = None,
     ) -> None:
         super().__init__(data_provider, telegram_bot)
-        self.trade_repo = trade_repo
+        self.trade_repository = trade_repository
         self.config = config or DipBuyerConfig()
 
         self._initialize_symbol_sets()
@@ -69,9 +100,9 @@ class DipBuyerStrategy(BaseStrategy):
         """Initializes index membership sets if not already loaded."""
         if not self._dow_set:
             exchange_symbols = ExchangeSymbol()
-            DipBuyerStrategy._dow_set = set(exchange_symbols.dow_30)
-            DipBuyerStrategy._sp500_set = set(exchange_symbols.sp_500)
-            DipBuyerStrategy._ndx_set = set(exchange_symbols.nasdaq_100)
+            self._dow_set = frozenset(exchange_symbols.dow_30)
+            self._sp500_set = frozenset(exchange_symbols.sp_500)
+            self._ndx_set = frozenset(exchange_symbols.nasdaq_100)
 
     @override
     def run(
@@ -91,105 +122,117 @@ class DipBuyerStrategy(BaseStrategy):
         Returns:
             int: Number of trades created.
         """
-        # 1. Determine Lookback (Date is determined AFTER loading data if not provided)
+        # 1. Determine Lookback
         lookback = self.config.LOOKBACK_DAYS
-        target_date = None
-        
-        if analysis_date:
-            try:
-                target_date = pd.Timestamp(analysis_date)
-                days_diff = (pd.Timestamp.now() - target_date).days
-                if days_diff > (lookback - 250):
-                    lookback = days_diff + 250
-            except ValueError:
-                logger.error(f"Invalid analysis date: {analysis_date}")
-                return 0
 
-        # 2. Determine Universe & Load Data
-        # Strategy: Determine target symbols BEFORE fetching data (Pre-Filtering)
+        # 2. Determine Universe
         self._initialize_symbol_sets()
         valid_universe = self._dow_set | self._sp500_set | self._ndx_set
-        
+
         target_symbols: list[str] = []
         if specific_symbols:
-            # Intersection of request and universe
             target_symbols = list(set(specific_symbols) & valid_universe)
             if not target_symbols:
-                logger.warning(f"[{self.name}] No valid symbols found in specific request (must be in indices).")
+                logger.warning(
+                    f"[{self.name}] No valid symbols found in request (must be in indices)."
+                )
                 return 0
         else:
-             target_symbols = list(valid_universe)
+            target_symbols = list(valid_universe)
 
+        # 3. Load Data
         data = self.data_provider.get_universe_daily_data(target_symbols, days=lookback)
-        
+
         if not data or "close" not in data or data["close"].empty:
             logger.warning(f"[{self.name}] No market data available for universe.")
             return 0
-            
-        # 3. Auto-Detect Date if needed
-        closes = data["close"]
+
+        # 4. Resolve Date
+        target_date = self._resolve_target_date(data["close"], analysis_date)
         if target_date is None:
-            # Use the very last date in the dataframe (Max Date in DB)
-            target_date = closes.index[-1]
-            logger.info(f"[{self.name}] Auto-detected analysis date: {target_date.date()}")
-        elif target_date not in closes.index:
-             pass
+            return 0
 
-        # 4. Calculate Indicators & Filters
+        # 5. Execute Pipeline
+        return self._execute_screening_pipeline(data, target_date)
+
+    def _resolve_target_date(
+        self,
+        closes: pd.DataFrame,
+        analysis_date: str | None
+    ) -> pd.Timestamp | None:
+        """Resolves the correct analysis date based on data availability."""
+        if analysis_date:
+            try:
+                target_date = pd.Timestamp(analysis_date)
+            except ValueError:
+                logger.error(f"Invalid analysis date: {analysis_date}")
+                return None
+
+            if target_date not in closes.index:
+                # 1. Post-Data Case (Data lag)
+                if target_date > closes.index[-1]:
+                    logger.warning(
+                        f"[{self.name}] Requested {target_date.date()} but data ends "
+                        f"{closes.index[-1].date()}. Falling back to last available data."
+                    )
+                    return closes.index[-1]
+
+                # 2. Gap Case (Holiday)
+                elif target_date < closes.index[-1]:
+                    available_dates = closes.index[closes.index < target_date]
+                    if available_dates.empty:
+                        logger.error(f"[{self.name}] No data found before {target_date.date()}")
+                        return None
+                    fallback_date = available_dates[-1]
+                    logger.info(
+                        f"[{self.name}] {target_date.date()} is holiday/missing. "
+                        f"Using: {fallback_date.date()}"
+                    )
+                    return fallback_date
+            
+            return target_date
+
+        # Default: Last available date
+        last_date = closes.index[-1]
+        logger.info(
+            f"[{self.name}] Analysis Date not provided. Using last DB date: {last_date.date()}"
+        )
+        return last_date
+
+    def _execute_screening_pipeline(
+        self,
+        data: dict[str, pd.DataFrame],
+        target_date: pd.Timestamp
+    ) -> int:
+        """Calculates signals and processes valid trades."""
         signals_dataframe = self._calculate_signals(data, target_date)
+        
         if signals_dataframe.empty:
-            logger.info(f"[{self.name}] No signals found for {target_date.date()}.")
+            logger.debug(f"[{self.name}] No signals found for {target_date.date()}.")
             return 0
 
-        logger.info(f"[{self.name}] Total signals: {len(signals_dataframe)}")
+        # --- Symbol Filtering Integration ---
+        # Filter out secondary class shares (e.g., maintain GOOG, drop GOOGL) if both are present
+        from ....tools.symbol_filter import SymbolFilter
+        
+        candidates = signals_dataframe.index.tolist()
+        filtered_candidates = SymbolFilter().filter_symbols(candidates)
+        
+        if len(candidates) != len(filtered_candidates):
+            removed = set(candidates) - set(filtered_candidates)
+            logger.info(f"[{self.name}] Filtered out secondary symbols: {removed}")
+            signals_dataframe = signals_dataframe.loc[filtered_candidates]
 
-        if signals_dataframe.empty:
-            return 0
-
-        # 5. Execute & Persist
+        logger.debug(f"[{self.name}] Total signals: {len(signals_dataframe)}")
         return self._process_signals(signals_dataframe, target_date)
-
-    def _get_analysis_parameters(
-        self, analysis_date: str | None
-    ) -> tuple[pd.Timestamp, int]:
-        """Calculates target date and required lookback window."""
-        lookback = self.config.LOOKBACK_DAYS
-
-        if not analysis_date:
-            logger.info("Analyse für HEUTE")
-            return pd.Timestamp.now(), lookback
-
-        try:
-            target_dt = pd.Timestamp(analysis_date)
-            # Ensure we fetch enough history if the date is far in the past
-            days_diff = (pd.Timestamp.now() - target_dt).days
-            if days_diff > (lookback - 250):
-                lookback = days_diff + 250
-
-            logger.info(f"Analyse für historisches Datum: {analysis_date}")
-            return target_dt, lookback
-        except (ValueError, TypeError) as error:
-            raise ValueError(f"Could not parse analysis_date '{analysis_date}': {error}") from error
 
     def _calculate_signals(
         self, data: dict[str, pd.DataFrame], target_date: pd.Timestamp
     ) -> pd.DataFrame:
         """Computes indicators and applies logic filters to find valid signals."""
         closes = data["close"]
-        
-        # Validate Date
-        if target_date not in closes.index:
-            if target_date > closes.index[-1]:
-                pass # Acceptable for 'today' if data is slightly lagging or holiday
-            elif target_date < closes.index[0]:
-                logger.error(f"Analysis date {target_date} is before start of data.")
-                return pd.DataFrame()
 
-        # Data is already pre-filtered by Symbol Universe.
-        # We just need to align columns.
-        
         # FIX: Clean the Index (Remove holidays where all US stocks are NaN)
-        # This prevents NaN propagation in rolling windows for strict rules
         valid_idx = closes.dropna(how="all").index
         closes = closes.loc[valid_idx]
         highs = data["high"].loc[valid_idx]
@@ -197,104 +240,150 @@ class DipBuyerStrategy(BaseStrategy):
         opens = data["open"].loc[valid_idx]
         volumes = data["volume"].loc[valid_idx]
 
+        # Verify target date validity after cleaning
+        # Verify target date validity after cleaning
+        # Note: _resolve_target_date already ensured the date exists in the raw data or selected a fallback.
+        # If the date is missing here after dropna(how="all"), it means the specific universe has no data for this day.
+        if target_date not in closes.index:
+            logger.warning(
+                f"[{self.name}] Target date {target_date.date()} dropped after cleaning (no valid data for universe)."
+            )
+            return pd.DataFrame()
+
         try:
-            # Map target_date to integer location
-            index_location = closes.index.get_loc(target_date)
+            current_index_location = closes.index.get_loc(target_date)
         except KeyError:
             logger.error(f"Date {target_date} not found in market data.")
             return pd.DataFrame()
 
-        # --- Vectorized Indicator Calculation ---
-        indicators = self._compute_indicators(closes, highs, lows, volumes)
-
-        # --- Apply Filtering ---
-        # Capture current slice
-        current_data = {
-            "close": closes.iloc[index_location],
-            "open": opens.iloc[index_location],
-            "high": highs.iloc[index_location],
-            "low": lows.iloc[index_location],
-            "volume": volumes.iloc[index_location],
-            "sma200": indicators["sma200"].iloc[index_location],
-            "volume_sma": indicators["volume_sma"].iloc[index_location],
-            "atr": indicators["atr"].iloc[index_location],
-            "atr_r3": indicators["atr_r3"].iloc[index_location],
-            "ibs": indicators["ibs"].iloc[index_location],
-            "vola_ratio": indicators["vola_ratio"].iloc[index_location]
-        }
-        
-        # Capture previous slice (for candle comparison)
-        if index_location == 0:
+        # --- Data Slicing ---
+        slices = self._slice_data_for_window(
+            closes, highs, lows, volumes, opens, current_index_location
+        )
+        if not slices:
             return pd.DataFrame()
             
-        previous_data = {
-            "close": closes.iloc[index_location - 1],
-            "open": opens.iloc[index_location - 1]
+        (closes_slice, highs_slice, lows_slice, volumes_slice, opens_slice) = slices
+
+        # --- Indicator Calculation ---
+        indicators = self._compute_indicators(
+            closes_slice, highs_slice, lows_slice, volumes_slice
+        )
+        
+        # --- Market State Construction ---
+        # Current Row Index (Relative to slice)
+        index = len(closes_slice) - 1
+        previous_index = index - 1
+        
+        if previous_index < 0:
+             return pd.DataFrame()
+
+        # We construct a Dict of Series representing the "Current Row" and "Previous Row"
+        current_market_state = {
+            "close": closes_slice.iloc[index],
+            "open": opens_slice.iloc[index],
+            "high": highs_slice.iloc[index],
+            "low": lows_slice.iloc[index],
+            "volume": volumes_slice.iloc[index],
+            "sma200": indicators["sma200"].iloc[index],
+            "volume_sma": indicators["volume_sma"].iloc[index],
+            "atr": indicators["atr"].iloc[index],
+            "atr_ratio_3day": indicators["atr_ratio_3day"].iloc[index],
+            "ibs": indicators["ibs"].iloc[index],
+            "volatility_ratio": indicators["volatility_ratio"].iloc[index],
+            # Setup score is derived from technicals (lower ratio = bigger dip = better)
+            "setup_score": indicators["atr_ratio_3day"].iloc[index] * -1
         }
 
-        # Apply Logic
-        df_results = self._apply_entry_filter(current_data, previous_data)
+        previous_market_state = {
+            "close": closes_slice.iloc[previous_index],
+            "open": opens_slice.iloc[previous_index]
+        }
+
+        # --- Filter Application ---
+        return self._filter_market_state(current_market_state, previous_market_state)
+
+    def _slice_data_for_window(
+        self,
+        closes: pd.DataFrame,
+        highs: pd.DataFrame,
+        lows: pd.DataFrame,
+        volumes: pd.DataFrame,
+        opens: pd.DataFrame,
+        current_location: int
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame] | None:
+        """Slices the dataframes to the required calculation window."""
+        required_window = 250
+        start_loc = max(0, current_location - required_window)
+        # Python slicing excludes upper bound, so +1
+        end_loc = current_location + 1
         
-        return df_results
+        if start_loc >= end_loc:
+             return None
+
+        return (
+            closes.iloc[start_loc:end_loc],
+            highs.iloc[start_loc:end_loc],
+            lows.iloc[start_loc:end_loc],
+            volumes.iloc[start_loc:end_loc],
+            opens.iloc[start_loc:end_loc] # Added opens to slice for consistency
+        )
 
     def _compute_indicators(
-        self, 
-        closes: pd.DataFrame, 
-        highs: pd.DataFrame, 
-        lows: pd.DataFrame, 
-        volumes: pd.DataFrame
+        self,
+        closes: pd.DataFrame,
+        highs: pd.DataFrame,
+        lows: pd.DataFrame,
+        volumes: pd.DataFrame,
     ) -> dict[str, pd.DataFrame]:
         """Calculates all technical indicators efficiently."""
-        
+        from ....tools import indicators
+
         # A) Trend: SMA 200
-        sma200 = closes.rolling(window=self.config.SMA_TREND_WINDOW, min_periods=150).mean()
+        sma200 = indicators.calculate_sma(closes, self.config.SMA_TREND_WINDOW)
 
         # B) Volume: SMA 20
-        volume_sma20 = volumes.rolling(window=20).mean()
+        volume_sma20 = indicators.calculate_volume_sma(volumes, 20)
 
         # C) ATR
-        true_range_1 = highs - lows
-        true_range_2 = (highs - closes.shift(1)).abs()
-        true_range_3 = (lows - closes.shift(1)).abs()
-        
-        # Vectorized Max
-        true_range = true_range_1.where(true_range_1 > true_range_2, true_range_2).where(lambda x: x > true_range_3, true_range_3)
-        
-        rma_span = (2 * self.config.ATR_WINDOW) - 1
-        atr = true_range.ewm(span=rma_span, adjust=False).mean()
+        atr = indicators.calculate_atr(highs, lows, closes, self.config.ATR_WINDOW)
 
         # D) Dip Metrics
-        diff_3day = closes - closes.shift(3)
-        atr_r3 = diff_3day / atr
+        price_drop_3day = closes - closes.shift(3)
+        atr_ratio_3day = price_drop_3day / atr
 
         # E) IBS
-        high_low_range = (highs - lows).replace(0, 0.01)
-        ibs = (closes - lows) / high_low_range
+        ibs = indicators.calculate_ibs(highs, lows, closes)
 
         # F) Volatility Ratio
-        vola_ratio = atr / closes
+        # Avoid division by zero
+        volatility_ratio = atr / closes.replace(0.0, float("nan"))
 
         return {
             "sma200": sma200,
             "volume_sma": volume_sma20,
             "atr": atr,
-            "atr_r3": atr_r3,
+            "atr_ratio_3day": atr_ratio_3day,
             "ibs": ibs,
-            "vola_ratio": vola_ratio
+            "volatility_ratio": volatility_ratio,
         }
 
-    def _apply_entry_filter(self, current: dict, previous: dict) -> pd.DataFrame:
+    def _filter_market_state(
+        self, current: dict, previous: dict
+    ) -> pd.DataFrame:
         """Applies configuration rules to filter candidates."""
         
         # 1. Liquidity & Price
-        mask = (current["volume_sma"] > self.config.MIN_VOLUME) & (current["close"] > self.config.MIN_PRICE)
+        mask = (current["volume_sma"] > self.config.MIN_VOLUME) & (
+            current["close"] > self.config.MIN_PRICE
+        )
 
         # 2. Trend (Above SMA200)
         mask &= current["close"] > current["sma200"]
 
         # 3. Dip Conditions
-        mask &= current["atr_r3"] < self.config.MAX_ATR_R3
-        mask &= current["vola_ratio"] > self.config.MIN_VOLA_RATIO
+        mask &= current["atr_ratio_3day"] < self.config.MAX_ATR_RATIO_3DAY
+        mask &= current["volatility_ratio"] > self.config.MIN_VOLATILITY_RATIO
         mask &= current["ibs"] < self.config.MAX_IBS
 
         # 4. Candles (Today Red, Yesterday Red)
@@ -305,19 +394,21 @@ class DipBuyerStrategy(BaseStrategy):
         hits_symbols = mask[mask].index
 
         # Assemble Result
-        return pd.DataFrame(
+        df_results = pd.DataFrame(
             {
                 "close": current["close"],
                 "high": current["high"],
                 "volume": current["volume"],
                 "atr": current["atr"],
                 "sma200": current["sma200"],
-                "atr_r3": current["atr_r3"],
+                "atr_ratio_3day": current["atr_ratio_3day"],
                 "ibs": current["ibs"],
-                "setup_score": current["atr_r3"] * -1,
+                "setup_score": current["setup_score"],
             },
             index=current["close"].index,
         ).loc[hits_symbols]
+
+        return df_results.sort_values(by="setup_score", ascending=False)
 
     def _process_signals(self, signals: pd.DataFrame, date_obj: pd.Timestamp) -> int:
         """Creates trade objects and reports results."""
@@ -325,12 +416,17 @@ class DipBuyerStrategy(BaseStrategy):
         saved_count = 0
         date_str = date_obj.strftime("%Y-%m-%d")
 
-        for symbol, row in signals.iterrows():
+        for symbol, signal_row in signals.iterrows():
             try:
                 # Calculations
-                entry_price = row["close"] - (row["atr"] * self.config.ENTRY_FACTOR)
-                # Target & LOC Basis: High of the signal day
-                high_next_target = row["high"] + 0.01
+                entry_price = signal_row["close"] - (
+                    signal_row["atr"] * self.config.ENTRY_FACTOR
+                )
+                target_price = entry_price + (
+                    signal_row["atr"] * self.config.EXIT_TP_FACTOR
+                )
+
+                high_next_target = signal_row["high"] + 0.01
 
                 # Identify Indices
                 indices = self._get_index_membership(str(symbol))
@@ -338,77 +434,73 @@ class DipBuyerStrategy(BaseStrategy):
                 context = {
                     "source": "screener",
                     "date": date_str,
-                    "setup_score": round(row["setup_score"], 2),
-                    "close": round(row["close"], 2),
-                    "volume": float(row["volume"]),
-                    "atr5": round(row["atr"], 2),
-                    "atr_r3": round(row["atr_r3"], 2),
-                    "ibs": round(row["ibs"], 2),
-                    "sma200": round(row["sma200"], 2),
+                    "setup_score": round(signal_row["setup_score"], 2),
+                    "close": round(signal_row["close"], 2),
+                    "volume": float(signal_row["volume"]),
+                    "atr5": round(signal_row["atr"], 2),
+                    "atr_r3": round(signal_row["atr_ratio_3day"], 2), # Maintained key for template
+                    "ibs": round(signal_row["ibs"], 2),
+                    "sma200": round(signal_row["sma200"], 2),
                     "indices": ",".join(indices),
                     "threshold_loc": round(high_next_target, 2),
                 }
 
-                self.trade_repo.create_trade(
+                self.trade_repository.create_trade(
                     symbol=str(symbol),
                     strategy=self.name,
                     size=0,
                     entry=round(entry_price, 2),
-                    sl=0.0,
-                    target=row["high"],
+                    stop_loss=0.0,
+                    target=round(target_price, 2),
                     context=context,
                 )
                 saved_count += 1
                 created_trades.append(
                     {
-                        "symbol": symbol,
-                        "entry": round(entry_price, 2),
+                        "Symbol": symbol,
+                        "Entry": round(entry_price, 2),
                         "LOC": round(high_next_target, 2),
-                        "score": round(row["setup_score"], 2),
-                        "close": round(row["close"], 2),
-                        "atr": round(row["atr"], 2)
+                        "Score": round(signal_row["setup_score"], 2),
+                        "Close": round(signal_row["close"], 2),
+                        "ATR": round(signal_row["atr"], 2),
                     }
                 )
 
             except Exception as error:
-                logger.error(f"[{self.name}] Failed to save trade for {symbol}: {error}")
+                logger.error(
+                    f"[{self.name}] Failed to save trade for {symbol}: {error}"
+                )
 
         # Reporting
         if self.telegram_bot and created_trades:
-            prefix = (
-                "BACKTEST"
-                if date_str != datetime.now().strftime("%Y-%m-%d")
-                else "LIVE"
-            )
+            prefix = "LIVE"
             df = pd.DataFrame(created_trades)
-            # User Keys: symbol, entry, LOC, score, Close, ATR
-            # keys are already set in created_trades dict, just need to capitalize headers if needed
-            df.columns = ["Symbol", "Entry", "LOC", "Score", "Close", "ATR"]
-            
-            self._send_telegram_report(
-                f"{self.name} ({prefix})", date_str, df
-            )
+            self._send_telegram_report(f"{self.name} ({prefix})", date_str, df)
 
         return saved_count
 
-    def analyze_single_symbol(self, symbol: str) -> dict[str, Any]:
+    def analyze_single_symbol(self, symbol: str) -> SymbolAnalysisResult:
         """
         Debug method to analyze a single symbol step-by-step.
         Returns detailed check results.
         """
         lookback = self.config.LOOKBACK_DAYS
-        
+
         # 1. Fetch Data
         df = self.data_provider.get_symbol_history(symbol, days=lookback)
         if df.empty:
-            return {"symbol": symbol, "error": "No data found"}
+            return {
+                "symbol": symbol,
+                "indices": [],
+                "last_date": "",
+                "data_valid": False,
+                "checks": {},
+                "values": {},
+                "result": "FAIL",
+                "error": "No data found",
+            }
 
-        # 2. Pivot to match _compute_indicators expectation (though it works with Series mostly if aligned)
-        # _compute_indicators expects DataFrames with columns as symbols.
-        # Here we have a single DF with columns Open/High/Low/Close. 
-        # We can simulate the dict structure or specific logic.
-        # Easiest: Create 1-column DFs.
-        # FIX: .values ensures we don't try to match RangeIndex with DateIndex (would result in NaNs)
+        # 2. Pivot to match _compute_indicators expectation
         closes = pd.DataFrame({symbol: df["close"].values}, index=df["date"])
         highs = pd.DataFrame({symbol: df["high"].values}, index=df["date"])
         lows = pd.DataFrame({symbol: df["low"].values}, index=df["date"])
@@ -416,54 +508,62 @@ class DipBuyerStrategy(BaseStrategy):
 
         # 3. Indicators
         indicators = self._compute_indicators(closes, highs, lows, volumes)
-        
-        # Get last row (Current) and second to last (Previous)
+
         if len(closes) < 2:
-            return {"symbol": symbol, "error": "Not enough data"}
-            
-        idx = -1
-        prev_idx = -2
-        
+            return {
+                "symbol": symbol,
+                "indices": [],
+                "last_date": "",
+                "data_valid": False,
+                "checks": {},
+                "values": {},
+                "result": "FAIL",
+                "error": "Not enough data",
+            }
+
+        index = -1
+        previous_index = -2
+
         # Extract values
-        current_close = closes.iloc[idx][symbol]
-        current_open = df["open"].iloc[idx]
-        prev_close = closes.iloc[prev_idx][symbol]
-        prev_open = df["open"].iloc[prev_idx]
-        
-        sma200 = indicators["sma200"].iloc[idx][symbol]
-        volume_sma = indicators["volume_sma"].iloc[idx][symbol]
-        atr = indicators["atr"].iloc[idx][symbol]
-        atr_r3 = indicators["atr_r3"].iloc[idx][symbol]
-        ibs = indicators["ibs"].iloc[idx][symbol]
-        vola_ratio = indicators["vola_ratio"].iloc[idx][symbol]
-        
-        # 4. Run Checks
-        # Ensure sets are loaded for index check
+        current_close = closes.iloc[index][symbol]
+        current_open = df["open"].iloc[index]
+        prev_close = closes.iloc[previous_index][symbol]
+        prev_open = df["open"].iloc[previous_index]
+
+        sma200 = indicators["sma200"].iloc[index][symbol]
+        volume_sma = indicators["volume_sma"].iloc[index][symbol]
+        atr = indicators["atr"].iloc[index][symbol]
+        atr_ratio_3day = indicators["atr_ratio_3day"].iloc[index][symbol]
+        ibs = indicators["ibs"].iloc[index][symbol]
+        volatility_ratio = indicators["volatility_ratio"].iloc[index][symbol]
+
+        # 4. Run checks
         self._initialize_symbol_sets()
         indices = self._get_index_membership(symbol)
-        
+
         checks = {
             "min_volume": bool(volume_sma > self.config.MIN_VOLUME),
             "min_price": bool(current_close > self.config.MIN_PRICE),
             "uptrend_sma200": bool(current_close > sma200),
-            "dip_atr_r3": bool(atr_r3 < self.config.MAX_ATR_R3),
-            "vola_ratio": bool(vola_ratio > self.config.MIN_VOLA_RATIO),
+            "dip_atr_ratio_3day": bool(atr_ratio_3day < self.config.MAX_ATR_RATIO_3DAY),
+            "volatility_ratio": bool(
+                volatility_ratio > self.config.MIN_VOLATILITY_RATIO
+            ),
             "low_ibs": bool(ibs < self.config.MAX_IBS),
             "red_candle_today": bool(current_close < current_open),
             "red_candle_yesterday": bool(prev_close < prev_open),
-            "in_universe": bool(len(indices) > 0)
+            "in_universe": bool(len(indices) > 0),
         }
-        
+
         passed = all(checks.values())
-        
-        # Safe extraction helper
+
         def safe_val(val, default=0.0):
             return default if pd.isna(val) else val
-            
+
         return {
             "symbol": symbol,
-            "indices": indices, # SHOW THE BUCKETS
-            "last_date": str(df["date"].iloc[idx].date()),
+            "indices": indices,
+            "last_date": str(df["date"].iloc[index].date()),
             "data_valid": True,
             "checks": checks,
             "values": {
@@ -471,11 +571,12 @@ class DipBuyerStrategy(BaseStrategy):
                 "sma200": round(safe_val(sma200), 2),
                 "volume_sma": int(safe_val(volume_sma, 0)),
                 "atr": round(safe_val(atr), 2),
-                "atr_r3": round(safe_val(atr_r3), 2),
+                "atr_ratio_3day": round(safe_val(atr_ratio_3day), 2),
                 "ibs": round(safe_val(ibs), 2),
-                "vola_ratio": round(safe_val(vola_ratio), 3)
+                "volatility_ratio": round(safe_val(volatility_ratio), 3),
             },
-            "result": "PASS" if passed else "FAIL"
+            "result": "PASS" if passed else "FAIL",
+            "error": None,
         }
 
     def _get_index_membership(self, symbol: str) -> list[str]:

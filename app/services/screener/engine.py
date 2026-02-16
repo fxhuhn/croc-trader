@@ -12,6 +12,7 @@ from .protocols import StrategyProtocol
 from .strategies.croc_setup import CrocSetupStrategy
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
+from .strategies.two_percent_strategy import TwoPercentStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +20,14 @@ class ScreenerEngine:
     def __init__(
         self,
         # Pfade brauchen wir hier nicht mehr, da Repos schon fertig sind
-        trade_repo: TradeRepository,     # <--- Dependency Injection
-        signal_repo: SignalRepository,   # <--- Dependency Injection
+        trade_repository: TradeRepository,     # <--- Dependency Injection
+        signal_repository: SignalRepository,   # <--- Dependency Injection
         data_provider: MarketDataProvider,
         config: dict[str, Any] | None = None,
         telegram_bot: TelegramBot | None = None,
     ) -> None:
-        self.trade_repo = trade_repo
-        self.signal_repo = signal_repo
+        self.trade_repository = trade_repository
+        self.signal_repository = signal_repository
         self.data_provider = data_provider
         self.telegram = telegram_bot
         self.active_strategies: list[StrategyProtocol] = []
@@ -39,16 +40,16 @@ class ScreenerEngine:
         # --- 1. DipBuyer Strategy ---
         self.register_strategy(
             DipBuyerStrategy(
-                self.trade_repo, 
-                self.data_provider, 
-                self.telegram
+                trade_repository=self.trade_repository, 
+                data_provider=self.data_provider, 
+                telegram_bot=self.telegram
             )
         )
 
         # --- 2. Turnover Timing Strategy ---
         self.register_strategy(
             TurnoverTimingStrategy(
-                trade_repo=self.trade_repo,
+                trade_repository=self.trade_repository,
                 data_provider=self.data_provider,
                 telegram_bot=self.telegram
             )
@@ -57,9 +58,17 @@ class ScreenerEngine:
         # --- 3. Croc Setup Strategy ---
         self.register_strategy(
             CrocSetupStrategy(
-                trade_repo=self.trade_repo,
+                trade_repository=self.trade_repository,
                 data_provider=self.data_provider,
-                signal_repo=self.signal_repo,
+                signal_repository=self.signal_repository,
+                telegram_bot=self.telegram
+            )
+        )
+        # --- 4. Two Percent Strategy ---
+        self.register_strategy(
+            TwoPercentStrategy(
+                trade_repository=self.trade_repository,
+                data_provider=self.data_provider,
                 telegram_bot=self.telegram
             )
         )

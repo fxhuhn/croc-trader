@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container-fluid" style="max-width: 1600px;">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="text-success">🐊 Croc Signale (Pending)</h1>
+        <h1 class="text-success">🐊 Croc Signale</h1>
         <div class="btn-group">
             <a href="/screener" class="btn btn-outline-secondary">Screener Übersicht</a>
             <a href="/trades/croc" class="btn btn-success">Zu den Trades</a>
@@ -39,11 +39,12 @@
                                     {{ row.symbol }} ↗
                                 </a>
                             </td>
-                            <td><span class="badge bg-light text-dark border">{{ row.ctx.indices or '-' }}</span></td>
+                            <td><span class="badge bg-light text-dark border">{{ row.context.indices or '-' }}</span>
+                            </td>
 
                             <td>
-                                {% set rule = row.ctx.get('match_rule', {}) %}
-                                {% set signal_name = rule.get('Signal') or row.ctx.get('original_signal') or
+                                {% set rule = row.context.get('match_rule', {}) %}
+                                {% set signal_name = rule.get('Signal') or row.context.get('original_signal') or
                                 row.strategy %}
                                 <!-- Clean setup name (remove Croc_) -->
                                 <div class="fw-bold text-primary">{{ signal_name.replace('Croc_', '') }}</div>
@@ -73,7 +74,7 @@
                             <!-- New Trend Column -->
                             <td>
                                 {% if rule.get('R_4W_Trend') %}
-                                <span class="text-muted">{{ rule['R_4W_Trend'] }}%</span>
+                                <span class="text-muted">{{ rule['R_4W_Trend'] }} %</span>
                                 {% else %}
                                 <span class="text-muted">-</span>
                                 {% endif %}
@@ -90,7 +91,10 @@
                             </td>
 
                             <td class="font-monospace text-success">
-                                {% if row.current_target and row.current_target|float > 0 %}
+                                {% if row.context.tp1 and row.context.tp3 %}
+                                <div class="small text-muted">TP1: {{ "%.2f"|format(row.context.tp1|float) }}</div>
+                                <div class="fw-bold">{{ "%.2f"|format(row.context.tp3|float) }}</div>
+                                {% elif row.current_target and row.current_target|float > 0 %}
                                 {{ "%.2f"|format(row.current_target|float) }}
                                 {% else %}
                                 <span class="text-muted">-</span>

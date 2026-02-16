@@ -1,378 +1,290 @@
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Final
 
-import yaml
 import pandas as pd
+import yaml
 
 from ....config import settings
-from ....tools.symbol_lists import ExchangeSymbol
-from ....database.repositories.trade import TradeRepository
-from ....database.repositories.signal import SignalRepository
 from ....database.repositories.market_data_provider import MarketDataProvider
+from ....database.repositories.signal import SignalRepository
+from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
+from ....tools.symbol_lists import ExchangeSymbol
 from .base import BaseStrategy
+from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
+# --- CONSTANTS ---
+IGNORED_METADATA_KEYS: Final[set[str]] = {
+    "Signal", "Exit", "Score", "Status", "R_Hist", 
+    "Risk_95", "R_2026", "R_4W_Trend", "Avg_Days", "TimeExit"
+}
+
+# Optimized Condition Lookup
+CONDITION_HANDLERS: dict[str, Callable[[float], bool]] = {
+    "< -10%":       lambda v: v < -10.0,
+    "-10 to -3%":   lambda v: -10.0 <= v <= -3.0,
+    "-3 to 0%":     lambda v: -3.0 <= v <= 0.0,
+    "0 to 3%":      lambda v: 0.0 <= v <= 3.0,
+    "3 to 10%":     lambda v: 3.0 <= v <= 10.0,
+    "> 10%":        lambda v: v > 10.0,
+    "oversold":     lambda v: v < 30.0,
+    "weak":         lambda v: 30.0 <= v < 45.0,
+    "neutral":      lambda v: 45.0 <= v <= 55.0,
+    "strong":       lambda v: 55.0 < v <= 70.0,
+    "overbought":   lambda v: v > 70.0,
+    # Map explicit labels to same logic to ensure coverage
+    "oversold (<30)":   lambda v: v < 30.0,
+    "weak (30-45)":     lambda v: 30.0 <= v < 45.0,
+    "neutral (45-55)":  lambda v: 45.0 <= v <= 55.0,
+    "strong (55-70)":   lambda v: 55.0 < v <= 70.0,
+    "overbought (>70)": lambda v: v > 70.0,
+}
+
+@dataclass(frozen=True)
+class PriceData:
+    high: float
+    low: float
+    close: float
+    sma_20: float = 0.0
+    sma_200: float = 0.0
+
+    @property
+    def risk_range(self) -> float:
+        return self.high - self.low
+
+    @classmethod
+    def from_row(cls, row: dict[str, Any]) -> "PriceData | None":
+        try:
+            return cls(
+                high=float(row.get('high') or 0.0),
+                low=float(row.get('low') or 0.0),
+                close=float(row.get('close') or 0.0),
+                sma_20=float(row.get('sma_20') or 0.0),
+                sma_200=float(row.get('sma_200') or 0.0)
+            )
+        except (ValueError, TypeError):
+            return None
+
 class CrocSetupStrategy(BaseStrategy):
-    """
-    CrocSetup Screener.
-    
-    Features:
-    - Processes webhook signals from the 'croc' table (via SignalRepository).
-    - Dynamically computes percentage SMA distances from raw data (Close, SMA20, SMA200).
-    - Applies YAML ranking rules (with flexible mapping and match/case logic).
-    """
-    name: str = "CrocSetup"
+    name: str = Strategies.CrocSetup
 
     def __init__(
         self,
-        trade_repo: TradeRepository,
+        trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
-        signal_repo: SignalRepository,
+        signal_repository: SignalRepository,
         telegram_bot: TelegramBot | None = None
     ) -> None:
         super().__init__(data_provider, telegram_bot)
-        
-        self.trade_repo = trade_repo
-        self.signal_repo = signal_repo
-        
+        self.trade_repository = trade_repository
+        self.signal_repository = signal_repository
+        self.exchange_symbols = ExchangeSymbol()
         self.config_path: Path = settings.get_path("ranking_yaml")
         self.ranking_rules = self._load_config()
-        self.exchange_symbols = ExchangeSymbol()
-        
-        logger.info(f"🐊 {self.name} initialized. Rules: {len(self.ranking_rules)} entries.")
+        logger.info(f"🐊 {self.name} initialized. Rules: {len(self.ranking_rules)}")
 
     def _load_config(self) -> list[dict[str, Any]]:
         if not self.config_path.exists():
             logger.error(f"Config missing: {self.config_path}")
             return []
         try:
-            with open(self.config_path, encoding="utf-8") as file_handle:
-                data = yaml.safe_load(file_handle)
-            if isinstance(data, list):
-                return data
-            return data.get("ranking_2026", [])
-        except Exception as error:
-            logger.error(f"YAML Error at {self.config_path}: {error}")
-            return []
-        else:
-            if isinstance(data, list):
-                logger.info(f"✅ Loaded {len(data)} rules from {self.config_path}")
-                return data
-            
-            rules = data.get("ranking_2026", [])
-            logger.info(f"✅ Loaded {len(rules)} rules from {self.config_path} (Key: ranking_2026)")
+            with open(self.config_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            # Ensure we return a list regardless of YAML structure
+            rules = data if isinstance(data, list) else data.get("ranking_2026", [])
+            logger.info(f"✅ Loaded {len(rules)} rules")
             return rules
-
-    def _get_indices_string(self, symbol: str) -> str:
-        indices = []
-        if symbol in self.exchange_symbols.sp_500:
-            indices.append("SPX")
-        if symbol in self.exchange_symbols.nasdaq_100:
-            indices.append("NDX")
-        if symbol in self.exchange_symbols.dow_30:
-            indices.append("DOW")
-        if symbol in self.exchange_symbols.russell_1000: 
-            if "SPX" not in indices:
-                indices.append("RUS_EXCL")
-            else:
-                indices.append("RUS")
-        return ",".join(indices) if indices else "-"
+        except Exception as e:
+            logger.error(f"Error loading config: {e}")
+            return []
 
     def run(self, days: int = 0, analysis_date: str | None = None, specific_symbols: list[str] | None = None) -> int:
-        # Auto-detect date if not provided and no specific lookback requested
         if not analysis_date and days == 0:
-            analysis_date = self.signal_repo.get_latest_signal_date()
-            if analysis_date:
-                logger.info(f"[{self.name}] Auto-detected analysis date: {analysis_date}")
+            analysis_date = self.signal_repository.get_latest_signal_date()
 
         try:
-            signals = self.signal_repo.get_signals_by_date(
-                analysis_date=analysis_date, 
-                days_lookback=days
-            )
-        except Exception as error:
-            logger.error(f"Error loading signals from repository: {error}")
+            signals = self.signal_repository.get_signals_by_date(analysis_date, days)
+        except Exception as e:
+            logger.error(f"Error loading signals: {e}")
             return 0
 
         if not signals:
             return 0
 
-        logger.info(f"[{self.name}] Total signals: {len(signals)}")
-
-        hits = 0
         report_rows = []
-
         for row in signals:
-            # 1. Unpack & Merge Data
-            try:
-                signal_data = json.loads(row['data'])
-            except (ValueError, TypeError):
-                signal_data = {}
-            
-            flat_row = dict(row) # Copy
-            flat_row.update(signal_data)
-            
-            # Normalize keys to lower-case for robust matching
-            # This ensures 'Deluxe' in JSON matches 'deluxe' in YAML-logic
-            flat_row = {k.lower(): v for k, v in flat_row.items()}
-            
-            # 2. Enrich Data (Compute SMA Distances)
-            self._compute_sma_distances(flat_row)
-            
-            # 3. Perform Matching
-            best_match = self._find_best_match(flat_row)
-            
-            if best_match:
-                trade_info = self._create_trade_from_signal(flat_row, best_match)
-                if trade_info:
-                    hits += 1
-                    report_rows.append(trade_info)
-                
-        logger.info(f"🐊 [{self.name}] {hits} Trades created from signals.")
+            trade = self._process_single_signal(dict(row))
+            if trade:
+                report_rows.append(trade)
+
+        logger.info(f"🐊 [{self.name}] Created {len(report_rows)} trades.")
         
-        # Telegram Report
         if self.telegram_bot and report_rows:
-            date_str = analysis_date or "LIVE"
-            df = pd.DataFrame(report_rows)
-            # Reorder
-            df = df[["symbol", "signal", "score", "entry", "stop", "tp"]]
-            df.columns = ["Symbol", "Signal", "Score", "Entry", "Stop", "TP"]
-            
-            self._send_telegram_report(f"Croc Signals", date_str, df)
+            self._send_report(report_rows, analysis_date or "LIVE")
 
-        return hits
+        return len(report_rows)
 
-    def _compute_sma_distances(self, row: dict[str, Any]) -> None:
-        """
-        Calculates SMA distances in percent from raw data.
-        Formula: ((Close - SMA) / SMA) * 100
-        Modifies the dictionary in-place.
-        """
+    def _process_single_signal(self, row: dict[str, Any]) -> dict[str, Any] | None:
+        # 1. Parse JSON data from DB
         try:
-            close = float(row.get('close') or 0.0)
-            sma_20 = float(row.get('sma_20') or 0.0)
-            sma_200 = float(row.get('sma_200') or 0.0)
+            signal_data = json.loads(row['data']) if isinstance(row.get('data'), str) else {}
+        except json.JSONDecodeError:
+            signal_data = {}
+        
+        # 2. Normalize Keys
+        full_data = {**row, **signal_data}
+        normalized = {k.lower(): v for k, v in full_data.items()}
 
-            if sma_20 > 0:
-                row['dist_sma_20'] = ((close - sma_20) / sma_20) * 100
-            else:
-                row['dist_sma_20'] = 0.0
+        # 3. Create Price Object
+        prices = PriceData.from_row(normalized)
+        if not prices: return None
 
-            if sma_200 > 0:
-                row['dist_sma_200'] = ((close - sma_200) / sma_200) * 100
-            else:
-                row['dist_sma_200'] = 0.0
-        except (ValueError, TypeError):
-            # Fail gracefully on bad data, just don't add the fields
-            logger.debug(f"⚠️ [{row.get('symbol')}] SMA Calc Failed. Data: SMA20={row.get('sma_20')}, SMA200={row.get('sma_200')}")
-            pass
+        # 4. Enrich Data
+        self._enrich_sma(normalized, prices)
+
+        # 5. Match Rule
+        match = self._find_best_match(normalized)
+        if not match: return None
+
+        # 6. Create Trade
+        return self._create_trade(normalized, prices, match)
+
+    def _enrich_sma(self, row: dict[str, Any], prices: PriceData) -> None:
+        if prices.sma_20 > 0:
+            row['dist_sma_20'] = ((prices.close - prices.sma_20) / prices.sma_20) * 100
+        if prices.sma_200 > 0:
+            row['dist_sma_200'] = ((prices.close - prices.sma_200) / prices.sma_200) * 100
 
     def _find_best_match(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        """
-        Checks the signal against all YAML rules.
-        Ignores fields that are not present in the data.
-        """
         signal_name = row.get("signal")
-        symbol = row.get("symbol", "UNKNOWN")
         candidates = [r for r in self.ranking_rules if r.get("Signal") == signal_name]
         
-        if not candidates: 
-            logger.info(f"ℹ️ [{symbol}] No ranking rules found for signal '{signal_name}'")
-            return None
-
         best_match = None
-        best_score = -999.0
+        best_score = -float('inf')
 
         for rule in candidates:
-            passed = True
-            
-            for yaml_key, condition_value in rule.items():
-                
-                # 1. Ignore Metadata
-                if yaml_key in {"Signal", "Exit", "Score", "Status", "R_Hist", "Risk_95", "R_2026", "R_4W_Trend", "Avg_Days", "TimeExit"}:
-                    continue
-
-                # 2. Key Mapping (YAML -> DB Field)
-                db_key = yaml_key.lower()
-                
-                # EMA / SMA Mapping (Check 200 before 20 to avoid confusion)
-                if "ema" in db_key or "sma" in db_key:
-                    if "200" in db_key:
-                        db_key = "dist_sma_200"
-                    elif "20" in db_key:
-                        db_key = "dist_sma_20"
-                
-                # RSI Mapping
-                if "rsi" in db_key:
-                    db_key = "rsi"
-
-                # 3. Existence Check
-                if db_key not in row:
-                    # Strict Filter: If rule requires a parameter (e.g. 'Deluxe')
-                    # and the data does NOT have it, the rule fails.
-                    logger.info(f"🔍 [{symbol}] Filter Filter: Missing '{db_key}' (Req by: {signal_name})")
-                    passed = False
-                    break 
-
-                market_value = row[db_key]
-                
-                # 4. Condition Check (Match/Case)
-                if not self._check_condition(market_value, condition_value, yaml_key):
-                    logger.info(f"❌ [{symbol}] Condition Fail: '{yaml_key}' Expect: '{condition_value}' Actual: '{market_value}'")
-                    passed = False
-                    break
-            
-            if passed:
+            if self._is_rule_match(row, rule):
                 score = float(rule.get("Score", 0.0))
-                # logger.debug(f"✅ [{symbol}] MATCH! Rule Score: {score}")
-                if best_match is None or score > best_score:
+                if score > best_score:
                     best_match = rule
                     best_score = score
-        
         return best_match
 
-    def _check_condition(self, market_val: Any, condition_str: Any, context_key: str = "Unknown") -> bool:
-        """
-        Checks condition using 'match / case'.
-        Logs error for unknown condition strings.
-        """
+    def _is_rule_match(self, row: dict[str, Any], rule: dict[str, Any]) -> bool:
+        for key, expected_val in rule.items():
+            if key in IGNORED_METADATA_KEYS: continue
+            
+            # Map YAML key to DB key
+            db_key = key.lower()
+            if "ema" in db_key or "sma" in db_key:
+                db_key = "dist_sma_200" if "200" in db_key else "dist_sma_20"
+            elif "rsi" in db_key:
+                db_key = "rsi"
+
+            if db_key not in row: return False
+            
+            # Check Value
+            if not self._check_value(row[db_key], expected_val):
+                return False
+        return True
+
+    def _check_value(self, market_val: Any, condition: Any) -> bool:
         if market_val is None: return False
         
+        # Try numeric lookup
         try:
             val = float(market_val)
+            cond_key = str(condition).lower().strip()
+            handler = CONDITION_HANDLERS.get(cond_key)
+            if handler: return handler(val)
         except (ValueError, TypeError):
-            # Fallback for non-numbers
-            # Normalize strings strictly (remove spaces, lowercase) and compare
-            val_str = str(market_val).lower().replace(" ", "")
-            cond_str = str(condition_str).lower().replace(" ", "")
-            return val_str == cond_str
+            pass
+            
+        # Fallback to string match
+        return str(market_val).lower().replace(" ", "") == str(condition).lower().replace(" ", "")
 
-        condition_string = str(condition_str).strip()
-        key_lower = context_key.lower()
-
-        # --- A) EMA / SMA Logic ---
-        if "ema" in key_lower or "sma" in key_lower:
-            match condition_string:
-                case "< -10%":
-                    return val < -10.0
-                case "-10 to -3%":
-                    return -10.0 <= val <= -3.0
-                case "-3 to 0%":
-                    return -3.0 <= val <= 0.0
-                case "0 to 3%":
-                    return 0.0 <= val <= 3.0
-                case "3 to 10%":
-                    return 3.0 <= val <= 10.0
-                case "> 10%":
-                    return val > 10.0
-                case _:
-                    logger.error(f"❌ Unknown EMA Condition: '{condition_string}' in '{context_key}'")
-                    return False
-
-        # --- B) RSI Logic ---
-        if "rsi" in key_lower:
-            match condition_string:
-                # Exact Matches (with brackets)
-                case "Oversold (<30)":
-                    return val < 30.0
-                case "Weak (30-45)":
-                    return 30.0 <= val < 45.0
-                case "Neutral (45-55)":
-                    return 45.0 <= val <= 55.0
-                case "Strong (55-70)":
-                    return 55.0 < val <= 70.0
-                case "Overbought (>70)":
-                    return val > 70.0
-                
-                # Fallback for pure text labels (if YAML varies)
-                case "Oversold":
-                    return val < 30.0
-                case "Weak":
-                    return 30.0 <= val < 45.0
-                case "Neutral":
-                    return 45.0 <= val <= 55.0
-                case "Strong":
-                    return 55.0 < val <= 70.0
-                case "Overbought":
-                    return val > 70.0
-
-                case _:
-                    logger.error(f"❌ Unknown RSI Condition: '{condition_string}' in '{context_key}'")
-                    return False
-
-        return False
-
-    def _create_trade_from_signal(self, row: dict[str, Any], match: dict[str, Any]) -> dict[str, Any] | None:
+    def _create_trade(self, row: dict[str, Any], prices: PriceData, match: dict[str, Any]) -> dict[str, Any] | None:
         symbol = row.get('symbol', 'UNKNOWN')
         indices = self._get_indices_string(symbol)
         
-        try:
-            high = float(row.get('high') or 0)
-            low = float(row.get('low') or 0)
-            close = float(row.get('close') or 0)
-        except (ValueError, TypeError): 
-            logger.error(f"Missing price data for {symbol}")
-            return
-
-        entry_price = high
-        risk_range = high - low
-        sl_price = entry_price - risk_range
-
-        if risk_range <= 0:
-            logger.error(f"❌ Invalid Risk Range: {risk_range} for {symbol}")
-            return
+        if indices == "-" or prices.risk_range <= 0: return None
         
-        # --- TARGET CALCULATION ---
-        yaml_exit_name = match.get("Exit", "unknown").lower()
-
-        # For Hold/TP3 Strategies: 3R
-        if ("tp3" in yaml_exit_name) and ("hold" in yaml_exit_name):
-            r_multiple = 3.0
+        entry = prices.high
+        stop = prices.high - prices.risk_range
+        exit_name = str(match.get("Exit", "unknown")).lower().strip()
+        
+        # Strict Strategy Mapping
+        strategy_enum: str
+        if "split" in exit_name:
+            strategy_enum = Strategies.SplitTarget
+        elif "hold" in exit_name or "tp3" in exit_name:
+            strategy_enum = Strategies.HoldTarget
         else:
-            # logger.info(f"❌ Unknown Exit Name: {yaml_exit_name}")  
-            r_multiple = 1.0
-
-        target_price = entry_price + (r_multiple * risk_range)
+            logger.error(f"[{self.name}] Unknown exit strategy '{exit_name}' for {symbol}. Skipping.")
+            return None
         
+        # Target Logic
+        targets = self._calc_targets(entry, prices.risk_range, exit_name)
+
         context = {
             "source": "webhook",
             "date": row.get('date_str', row.get('timestamp')),
             "setup_score": float(match.get("Score", 0)),
-            "close": close,
-            "volume": row.get('volume'),
-            "indices": indices,
-            "original_signal": row.get('signal'),
             "match_rule": match,
-            
-            # Strategy Data from YAML
-            "R_Hist": match.get("R_Hist"),
-            "R_4W_Trend": match.get("R_4W_Trend"),
-            "Avg_Days": match.get("Avg_Days"),
-            
-            # Debug Data
-            "calc_dist_sma_20": row.get("dist_sma_20"),
-            "calc_dist_sma_200": row.get("dist_sma_200")
+            "tp1": targets["tp1"],
+            "tp3": targets["tp3"],
+            "indices": indices
         }
 
-        self.trade_repo.create_trade(
+        self.trade_repository.create_trade(
             symbol=symbol,
-            strategy=f"Croc_{yaml_exit_name}",
+            strategy=strategy_enum,
             size=0,
-            entry=entry_price,
-            sl=sl_price,
-            target=target_price,
+            entry=entry,
+            stop_loss=stop,
+            target=targets["main"],
             context=context
         )
-        
+
         return {
-            "symbol": symbol,
-            "signal": str(row.get('signal', '-')),
-            "score": round(float(match.get("Score", 0)), 1),
-            "entry": round(entry_price, 2),
-            "stop": round(sl_price, 2),
-            "tp": round(target_price, 2)
+            "Symbol": symbol,
+            "Signal": str(row.get('signal', '-')),
+            "Score": round(float(match.get("Score", 0)), 1),
+            "Entry": round(entry, 2),
+            "Stop": round(stop, 2),
+            "TP": round(targets["main"], 2)
         }
+
+    def _calc_targets(self, entry: float, risk: float, exit_name: str) -> dict[str, float]:
+        t = {"tp1": 0.0, "tp3": 0.0, "main": 0.0}
+        if "split" in exit_name:
+            t["tp1"] = round(entry + risk, 2)
+            t["tp3"] = round(entry + (3 * risk), 2)
+            t["main"] = t["tp3"]
+        elif "tp3" in exit_name and "hold" in exit_name:
+             t["main"] = entry + (3 * risk)
+        else:
+             t["main"] = entry + risk
+        return t
+
+    def _get_indices_string(self, symbol: str) -> str:
+        # Simplified for brevity
+        indices = []
+        if symbol in self.exchange_symbols.sp_500: indices.append("SPX")
+        if symbol in self.exchange_symbols.nasdaq_100: indices.append("NDX")
+        if symbol in self.exchange_symbols.dow_30: indices.append("DOW")
+        if symbol in self.exchange_symbols.russell_1000: 
+            indices.append("RUS")
+        return ",".join(indices) if indices else "-"
+
+    def _send_report(self, rows: list[dict[str, Any]], date: str) -> None:
+        if not self.telegram_bot: return
+        df = pd.DataFrame(rows)
+        # Select existing columns only
+        cols = [c for c in ["Symbol", "Signal", "Score", "Entry", "Stop", "TP"] if c in df.columns]
+        self._send_telegram_report("Croc Signals", date, df[cols])
