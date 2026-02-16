@@ -49,10 +49,17 @@ class TelegramBot:
             r.raise_for_status()
             return r.json()
         except requests.exceptions.RequestException as e:
-            logger.error(f"Telegram Netzwerk-Fehler: {e}")
+            # Mask token in logs (Security Hardening)
+            error_msg = str(e)
+            if self.bot_token:
+                error_msg = error_msg.replace(self.bot_token, "********")
+            logger.error(f"Telegram Netzwerk-Fehler: {error_msg}")
             return None
         except Exception as e:
-            logger.error(f"Telegram Unbekannter Fehler: {e}")
+            error_msg = str(e)
+            if self.bot_token:
+                error_msg = error_msg.replace(self.bot_token, "********")
+            logger.error(f"Telegram Unbekannter Fehler: {error_msg}")
             return None
 
     def send_dataframe(
