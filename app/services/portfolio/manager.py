@@ -11,9 +11,9 @@ class PortfolioManager:
     Process: Screener -> [PortfolioManager] -> TradeManager(Execution)
     """
     
-    def __init__(self, trade_repo: TradeRepository):
-        self.trade_repo = trade_repo
-        self.allocator = PortfolioAllocator()
+    def __init__(self, trade_repository: TradeRepository, portfolio_config: dict | None = None):
+        self.trade_repository = trade_repository
+        self.allocator = PortfolioAllocator(portfolio_config=portfolio_config)
         
     def process_daily_signals(self) -> int:
         """
@@ -26,7 +26,7 @@ class PortfolioManager:
             # 1. Fetch Candidates (CREATED and size 0)
             # We fetch all CREATED types. If size is already set, we might skip or re-evaluate.
             # Design Decision: If size > 0, assume manual override or previous run. Skip.
-            candidates = self.trade_repo.get_by_status(TradeStatus.CREATED)
+            candidates = self.trade_repository.get_by_status(TradeStatus.CREATED)
             
             allocated_count = 0
             
@@ -42,12 +42,16 @@ class PortfolioManager:
                 allocation = self.allocator.allocate(trade)
                 
                 if allocation.size > 0:
-                    # 3. Update DB
-                    self.trade_repo.update_trade(trade['id'], {
+                    # 3. Update DB (Store metadata in Context)
+                    import json
+                    context = json.loads(trade.get('signal_context') or "{}")
+                    context['budget'] = allocation.budget_used
+                    context['risk_amount'] = allocation.risk_amount
+                    
+                    self.trade_repository.update_trade(trade['id'], {
                         "initial_size": allocation.size,
                         "current_size": allocation.size, # Synced for initial state
-                        "budget": allocation.budget_used,
-                        "risk_amount": allocation.risk_amount
+                        "signal_context": json.dumps(context)
                     }, reason=f"Portfolio Allocated: {allocation.reason}")
                     
                     logger.info(f"[{symbol}] Allocated: {allocation.size} shares ({allocation.reason})")
@@ -59,6 +63,6 @@ class PortfolioManager:
             logger.info(f"PortfolioManager: Finished. Allocated {allocated_count} new trades.")
             return allocated_count
 
-        except Exception as e:
-            logger.error(f"PortfolioManager Error: {e}", exc_info=True)
+        except Exception as exception:
+            logger.error(f"PortfolioManager Error: {exception}", exc_info=True)
             return 0
