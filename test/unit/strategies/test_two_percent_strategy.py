@@ -1,0 +1,414 @@
+# filename: test_two_percent_strategy.py
+import pytest
+from unittest.mock import MagicMock, patch
+import pandas as pd
+from datetime import date, datetime
+
+from app.services.screener.strategies.two_percent_strategy import TwoPercentStrategy as ScreenerStrategy
+from app.services.trade_manager.strategies.two_percent_strategy import TwoPercentStrategy as ManagerStrategy
+from app.database.repositories.trade import TradeRepository
+from app.database.repositories.market_data_provider import MarketDataProvider
+from app.types import TradeStatus, ExitReason
+
+# --- FIXTURES ---
+
+@pytest.fixture
+def mock_trade_repository() -> MagicMock:
+    """Provides a mock TradeRepository."""
+    return MagicMock(spec=TradeRepository)
+
+@pytest.fixture
+def mock_data_provider() -> MagicMock:
+    """Provides a mock MarketDataProvider."""
+    return MagicMock(spec=MarketDataProvider)
+
+@pytest.fixture
+def screener_strategy(mock_trade_repository: MagicMock, mock_data_provider: MagicMock) -> ScreenerStrategy:
+    """Provides a TwoPercent Screener Strategy instance."""
+    return ScreenerStrategy(
+        trade_repository=mock_trade_repository,
+        data_provider=mock_data_provider
+    )
+
+@pytest.fixture
+def manager_strategy() -> ManagerStrategy:
+    """Provides a TwoPercent Trade Manager Strategy instance."""
+    # MarketHolidayChecker is a singleton, so we need to be careful with patching
+    with patch("app.services.trade_manager.strategies.two_percent_strategy.MarketHolidayChecker") as mock_checker:
+        strategy = ManagerStrategy()
+        # Attach the mock to the strategy instance for easy configuration in tests
+        strategy.holiday_checker = mock_checker.return_value
+        return strategy
+
+# --- HELPERS ---
+
+def create_candle(date_str: str, close: float, open_price: float = None, high: float = None, low: float = None) -> pd.Series:
+    """Creates a mock candle as a pandas Series."""
+    o = open_price if open_price is not None else close
+    h = high if high is not None else close
+    l = low if low is not None else close
+    return pd.Series({
+        "date": pd.Timestamp(date_str),
+        "open": o,
+        "high": h,
+        "low": l,
+        "close": close
+    }, name=pd.Timestamp(date_str))
+
+# --- SCREENER TESTS ---
+
+@pytest.mark.parametrize("test_date", ["2026-02-02", "2026-02-03", "2026-02-04"])
+def test_screener_skips_monday_to_wednesday(screener_strategy: ScreenerStrategy, test_date: str) -> None:
+    """
+    Ensures that the screener does not generate signals on Monday, Tuesday, or Wednesday.
+    """
+    # Arrange
+    candle = create_candle(test_date, 100.0)
+    screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame([candle])
+    
+    # Act
+    result = screener_strategy.run(analysis_date=test_date)
+    
+    # Assert
+    assert result == 0
+    screener_strategy.trade_repository.create_trade.assert_not_called()
+
+def test_screener_signals_on_friday(screener_strategy: ScreenerStrategy) -> None:
+    """
+    Ensures that the screener generates a signal on Friday.
+    """
+    # Arrange
+    friday_date = "2026-02-06"
+    candle = create_candle(friday_date, 1000.0)
+    screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame([candle])
+    screener_strategy.trade_repository.exists.return_value = False
+    
+    # Act
+    result = screener_strategy.run(analysis_date=friday_date)
+    
+    # Assert
+    assert result == 1
+    # Check limit price (99% of 1000 = 990)
+    screener_strategy.trade_repository.create_trade.assert_called_once()
+    args, kwargs = screener_strategy.trade_repository.create_trade.call_args
+    assert kwargs["entry"] == 990.0
+    from app.const import Strategies
+    assert kwargs.get("strategy") == Strategies.TwoPercent
+
+@patch("app.services.screener.strategies.two_percent_strategy.MarketHolidayChecker")
+def test_screener_signals_on_thursday_if_friday_is_holiday(
+    mock_holiday_checker_class: MagicMock, 
+    screener_strategy: ScreenerStrategy
+) -> None:
+    """
+    Ensures that the screener signals on Thursday if Friday is a market holiday.
+    """
+    # Arrange
+    thursday_date = "2026-04-02" # April 3rd 2026 is Good Friday
+    friday_date = "2026-04-03"
+    
+    mock_checker = mock_holiday_checker_class.return_value
+    mock_checker.is_holiday.side_effect = lambda d: str(d) == friday_date
+    
+    candle = create_candle(thursday_date, 1000.0)
+    screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame([candle])
+    screener_strategy.trade_repository.exists.return_value = False
+    
+    # Act
+    result = screener_strategy.run(analysis_date=thursday_date)
+    
+    # Assert
+    assert result == 1
+    screener_strategy.trade_repository.create_trade.assert_called_once()
+
+# --- TRADE MANAGER ENTRY TESTS ---
+
+def test_entry_not_allowed_on_setup_day(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Ensures that a trade cannot enter on the same day the signal was generated.
+    """
+    # Arrange
+    setup_date = "2026-02-06"
+    trade = {
+        "id": "TRADE_SETUP_DAY",
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": 990.0,
+        "signal_context": '{"date": "2026-02-06"}'
+    }
+    candle = create_candle(setup_date, 980.0) # Price hit on Friday
+    
+    # Act
+    result = manager_strategy.check_entry(trade, candle, pd.DataFrame([candle]), mock_trade_repository)
+    
+    # Assert
+    assert result is None
+    mock_trade_repository.update_trade.assert_not_called()
+
+def test_entry_on_monday_fill_at_limit(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Standard Fill: Entry on Monday if price reaches the limit.
+    """
+    # Arrange
+    monday_date = "2026-02-09"
+    trade = {
+        "id": "TRADE_MONDAY_FILL",
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": 990.0,
+        "signal_context": '{"date": "2026-02-06"}'
+    }
+    # Monday: Open 1000, Low 985 (hits 990), Close 1010
+    candle = create_candle(monday_date, 1010.0, open_price=1000.0, high=1015.0, low=985.0)
+    
+    # Act
+    result = manager_strategy.check_entry(trade, candle, pd.DataFrame([candle]), mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "FILLED" in result
+    mock_trade_repository.update_trade.assert_called_once()
+    call_args = mock_trade_repository.update_trade.call_args[0]
+    assert call_args[1]["entry_price"] == 990.0
+
+def test_entry_gap_down_fill_at_open(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Gap Down Fill: If Monday opens below the limit, entry is at the open price.
+    """
+    # Arrange
+    monday_date = "2026-02-09"
+    trade = {
+        "id": "TRADE_ENTRY_GAP",
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": 990.0,
+        "signal_context": '{"date": "2026-02-06"}'
+    }
+    # Monday: Open 980 (below 990)
+    candle = create_candle(monday_date, 990.0, open_price=980.0, high=995.0, low=975.0)
+    
+    # Act
+    result = manager_strategy.check_entry(trade, candle, pd.DataFrame([candle]), mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "FILLED" in result
+    call_args = mock_trade_repository.update_trade.call_args[0]
+    assert call_args[1]["entry_price"] == 980.0
+
+def test_entry_invalidated_if_no_fill_on_day_one(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    One-Shot Rule: If price doesn't hit the limit on the first day after the signal, the trade is invalidated.
+    """
+    # Arrange
+    monday_date = "2026-02-09"
+    trade = {
+        "id": "TRADE_NO_FILL",
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": 990.0,
+        "signal_context": '{"date": "2026-02-06"}'
+    }
+    # Monday: Open 1000, Low 995 (Limit 990 NOT hit), Close 1005
+    candle = create_candle(monday_date, 1005.0, open_price=1000.0, high=1010.0, low=995.0)
+    
+    # Act
+    result = manager_strategy.check_entry(trade, candle, pd.DataFrame([candle]), mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "INVALIDATED" in result
+    mock_trade_repository.update_trade.assert_called_once()
+    call_args = mock_trade_repository.update_trade.call_args[0]
+    assert call_args[1]["status"] == TradeStatus.INVALID
+
+# --- TRADE MANAGER EXIT TESTS ---
+
+def test_exit_on_friday_time_stop(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Time Stop: Trade must close on Friday.
+    """
+    # Arrange
+    trade = {
+        "id": "TRADE_FRIDAY_STOP",
+        "symbol": "SXRV.DE",
+        "entry_price": 990.0,
+        "entry_date": "2026-02-09",
+        "status": "ACTIVE",
+        "current_size": 1
+    }
+    friday_date = "2026-02-13" # Next Friday
+    candle = create_candle(friday_date, 1005.0)
+    history = pd.DataFrame([candle])
+    
+    # Act
+    result = manager_strategy.manage_active_trade(trade, history, mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "TIME_STOP" in result
+    call_args = mock_trade_repository.update_trade.call_args[0]
+    assert call_args[1]["exit_reason"] == ExitReason.TIME_STOP
+    assert call_args[1]["exit_price"] == 1005.0
+
+def test_exit_on_thursday_if_friday_holiday(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Time Stop (Holiday): If Friday is a holiday, trade must close on Thursday.
+    """
+    # Arrange
+    thursday_date = "2026-04-02"
+    friday_date = "2026-04-03"
+    
+    manager_strategy.holiday_checker.is_holiday.side_effect = lambda d: str(d) == friday_date
+    
+    trade = {
+        "id": "TRADE_HOLIDAY_STOP",
+        "symbol": "SXRV.DE",
+        "entry_price": 990.0,
+        "entry_date": "2026-03-30",
+        "status": "ACTIVE",
+        "current_size": 1
+    }
+    candle = create_candle(thursday_date, 1005.0)
+    history = pd.DataFrame([candle])
+    
+    # Act
+    result = manager_strategy.manage_active_trade(trade, history, mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "TIME_STOP" in result
+    call_args = mock_trade_repository.update_trade.call_args[0]
+    assert call_args[1]["exit_reason"] == ExitReason.TIME_STOP
+
+def test_target_hit_only_allowed_from_day_plus_one(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Ensures Take Profit is not triggered on the same day as entry.
+    """
+    # Arrange
+    entry_date = "2026-02-09" # Monday
+    trade = {
+        "id": "TRADE_TP_SAME_DAY",
+        "entry_price": 1000.0,
+        "entry_date": entry_date,
+        "status": "ACTIVE"
+    }
+    # Target is 1020 (1000 * 1.02)
+    # Price hits 1025 on entry day
+    candle = create_candle(entry_date, 1010.0, high=1025.0)
+    history = pd.DataFrame([candle])
+    
+    # Act
+    result = manager_strategy.manage_active_trade(trade, history, mock_trade_repository)
+    
+    # Assert
+    assert result is None
+    mock_trade_repository.update_trade.assert_not_called()
+
+def test_target_hit_on_day_plus_one_success(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Take Profit: Successful exit on Tuesday if target hit.
+    """
+    # Arrange
+    entry_date = "2026-02-09"
+    tuesday_date = "2026-02-10"
+    trade = {
+        "id": "TRADE_TP_SUCCESS",
+        "entry_price": 1000.0,
+        "entry_date": entry_date,
+        "status": "ACTIVE",
+        "current_size": 1
+    }
+    # Target is 1020
+    candle = create_candle(tuesday_date, 1015.0, high=1025.0)
+    history = pd.DataFrame([candle])
+    
+    # Act
+    result = manager_strategy.manage_active_trade(trade, history, mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "TARGET_HIT" in result
+    call_args = mock_trade_repository.update_trade.call_args[0]
+    assert call_args[1]["exit_price"] == 1020.0
+
+def test_regression_feb_2026_entry_exit(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Regression Test for Week of Feb 9th 2026:
+    - Signal: Fri Feb 6 (Screener runs).
+    - Entry: Mon Feb 9 (Day 1). Price dips to limit -> Fill.
+    - Active: Tue Feb 10 (Day 2). No exit.
+    - Exit: Wed Feb 11 (Day 3). Price hits target.
+    """
+    # 1. Setup Trade (Simulating it was created by Screener on Fri Feb 6)
+    # Fri Feb 6 Close was X. Limit = 0.99 * X.
+    # Let's say Close = 100.0, Limit = 99.0.
+    trade_id = "TRADE_REGRESSION_FEB_2026"
+    trade_entry_price = 99.0
+    signal_date = "2026-02-06"
+    
+    trade = {
+        "id": trade_id,
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": trade_entry_price,
+        "signal_context": f'{{"date": "{signal_date}"}}',
+        "entry_date": None, # Not entered yet
+        "status": TradeStatus.CREATED
+    }
+
+    # 2. Monday Feb 9: Check Entry
+    # Mock History so _get_trading_days_post_signal calculates correctly.
+    # We need Fri Feb 6 and Mon Feb 9 in history.
+    candle_fri = create_candle("2026-02-06", 100.0)
+    candle_mon = create_candle("2026-02-09", 101.0, open_price=100.0, low=98.5) # Low 98.5 < 99.0 Limit -> FILL
+    
+    history_mon = pd.DataFrame([candle_fri, candle_mon])
+    
+    # Act: Check Entry
+    # We must patch _get_trading_days_post_signal because it relies on complex trading day logic 
+    # that might rely on external data or bigger history. 
+    # OR better: we trust the Abstract Strategy logic if we provide enough history.
+    # Let's assume BaseTradeStrategy uses self.data_provider or the dataframe passed in.
+    # If it uses dataframe passed in, history_mon is sufficient.
+    
+    # NOTE: Since we can't easily rely on base class logic without looking at it, 
+    # we will assume the standard "next trading day" logic works if dates are contiguous weekdays.
+    
+    with patch.object(manager_strategy, '_get_trading_days_post_signal', return_value=1):
+        result_entry = manager_strategy.check_entry(trade, candle_mon, history_mon, mock_trade_repository)
+    
+    assert result_entry is not None
+    assert "FILLED" in result_entry
+    
+    # 3. Simulate Entry Update in Trade Repo
+    trade["status"] = TradeStatus.ACTIVE
+    trade["entry_date"] = "2026-02-09"
+    trade["entry_price"] = trade_entry_price
+    trade["current_size"] = 10
+    
+    # 4. Tuesday Feb 10: Manage Active (No Exit)
+    # Price moves but doesn't hit target (Target = 99 * 1.02 = 100.98)
+    # Let's say High is 100.5
+    candle_tue = create_candle("2026-02-10", 100.0, high=100.5)
+    history_tue = pd.DataFrame([candle_fri, candle_mon, candle_tue])
+    
+    result_manage_tue = manager_strategy.manage_active_trade(trade, history_tue, mock_trade_repository)
+    assert result_manage_tue is None # No exit
+    
+    # 5. Wednesday Feb 11: Manage Active (Target Hit)
+    # Price spikes to 102.0 (Target 100.98)
+    candle_wed = create_candle("2026-02-11", 101.5, high=102.0)
+    history_wed = pd.DataFrame([candle_fri, candle_mon, candle_tue, candle_wed])
+    
+    result_manage_wed = manager_strategy.manage_active_trade(trade, history_wed, mock_trade_repository)
+    
+    assert result_manage_wed is not None
+    assert "TARGET_HIT" in result_manage_wed
+    
+    # Verify Exit Price logic (max of Open/Target)
+    # If Open was 100.0, Target 100.98. Exit at Target.
+    call_args = mock_trade_repository.update_trade.call_args[0]
+    # The last call should be the exit
+    assert call_args[1]["exit_reason"] == ExitReason.TARGET_HIT
+

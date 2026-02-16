@@ -106,16 +106,23 @@ def test_manager_processes_trades_successfully(manager, mock_repo):
     assert mock_repo.update_trade.call_count == 2
     
     # Check Trade 1 Update (DipBuyer: 2000/100 = 20)
+    import json
     args_1, kwargs_1 = mock_repo.update_trade.call_args_list[0]
     assert args_1[0] == "1"
     assert args_1[1]["initial_size"] == 20
-    assert args_1[1]["budget"] == 2000.0
+    
+    # Verify Context (Budget)
+    context_1 = json.loads(args_1[1]["signal_context"])
+    assert context_1["budget"] == 2000.0
     
     # Check Trade 2 Update (HoldTarget: 100/(50-40) = 10)
     args_2, kwargs_2 = mock_repo.update_trade.call_args_list[1]
     assert args_2[0] == "2"
     assert args_2[1]["initial_size"] == 10
-    assert args_2[1]["risk_amount"] == 100.0
+    
+    # Verify Context (Risk Amount)
+    context_2 = json.loads(args_2[1]["signal_context"])
+    assert context_2["risk_amount"] == 100.0
 
 def test_manager_skips_trades_with_size(manager, mock_repo):
     # Arrange: Trade already has size
