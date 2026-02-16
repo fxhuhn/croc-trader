@@ -1,53 +1,13 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from enum import StrEnum
+
 from typing import Literal, Dict, Any, Optional, List, TypedDict
 
-# --- Enums (originally from database/enums.py) ---
+from .const import TradeStatus, ExitReason, TradeEventType, EntryReason
 
-class TradeStatus(StrEnum):
-    CREATED = "CREATED"
-    ACTIVE = "ACTIVE"
-    CLOSED = "CLOSED"
-    MISSED = "MISSED"   # Entry not filled (Limit not reached)
-    INVALID = "INVALID" # Setup invalidated before entry (e.g. Stop Validation)
-    SKIPPED = "SKIPPED" # Rejected by Portfolio Manager
+# --- Enums (Moved to app/const.py) ---
 
-class ExitReason(StrEnum):
-    # Profit Exits
-    TAKE_PROFIT = "TAKE_PROFIT"
-    LOC_PROFIT = "LOC_PROFIT"
-    TARGET_HIT = "TARGET_HIT"
 
-    # Stop / Time Exits
-    STOP_LOSS = "STOP_LOSS"
-    TIME_STOP = "TIME_STOP"
-
-    # Validity Exits
-    EXPIRED = "EXPIRED"
-    INVALIDATED = "INVALIDATED"
-    
-    # Other
-    MANUAL = "MANUAL"
-
-class TradeEventType(StrEnum):
-    ENTRY = "ENTRY"
-    EXIT = "EXIT"
-    
-    UPDATE = "UPDATE"
-    SL_UPDATE = "SL_UPDATE"
-    TP_UPDATE = "TP_UPDATE"
-    STATUS_UPDATE = "STATUS_UPDATE"
-    
-    PARTIAL_EXIT = "PARTIAL_EXIT"
-    
-    INFO = "INFO"
-
-# --- New Enums (consolidated from strategy usage) ---
-
-class EntryReason(StrEnum):
-    GAP_UP = "GAP UP (Stop)"
-    BREAKOUT = "BREAKOUT (Stop)"
 
 # --- Types (originally from trade_manager/types.py) ---
 
@@ -86,48 +46,8 @@ class TradeData(TypedDict, total=False):
     exit_reason: str | None
     realized_pnl: float | None
 
-
-@dataclass
-class TradeParams:
-    """
-    General container for strategy-specific state parameters.
-    For DipBuyer:
-    - stop_loss: 0.0 (No hard stop)
-    - tp_1: The Fixed ATR Target
-    - extras['threshold_loc']: The Previous Day High (Dynamic limit)
-    """
-
-    stop_loss: float
-    tp_1: float | None = None
-    tp_2: float | None = None
-    tp_3: float | None = None
-    extras: dict = field(default_factory=dict)
-
-
-@dataclass
-class OrderLeg:
-    action: OrderAction
-    type: OrderType
-    price: float
-    qty: int | None = None
-    tif: TimeInForce = "DAY"
-
-
-@dataclass
-class Order:
-    id: str
-    symbol: str
-    qty: int
-    mode: str
-    entry: OrderLeg | None = None
-    exits: list[OrderLeg] = field(default_factory=list)
-    last_status: str = "PendingSubmit"
-    last_update: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
-
-
-@dataclass
-class CrocContext:
-    high: float
-    low: float
+class MetricsOverview(TypedDict):
+    """Mapping of metrics to their source (Database vs Runtime Calculation)."""
+    metric_name: str
+    source: Literal["Database", "Simulation"]
+    description: str

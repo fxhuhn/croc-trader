@@ -14,6 +14,7 @@ from ..database.repositories.market_data_provider import MarketDataProvider
 from ..services.trade_manager import TradeManager
 from ..services.screener import ScreenerEngine
 from ..services.telegram import TelegramBot
+from ..tools.market_holidays import MarketHolidayChecker
 
 # Tasks importieren
 from ..tasks import run_daily_strategy_check, run_market_data_update, run_db_maintenance, run_db_backup
@@ -31,6 +32,17 @@ def register_services(app, config):
     telegram = TelegramBot(token=tele_conf.token, chat_id=tele_conf.chat_id, enabled=tele_conf.enabled)
     app.extensions["telegram"] = telegram
 
+    # 1.5 Holiday Checker
+    holidays_path = config.get_path("holidays_yaml")
+    holiday_checker = MarketHolidayChecker(holidays_path)
+    app.extensions["holiday_checker"] = holiday_checker
+
+    # 1.6 Symbol Filter (Background Init)
+    from ..tools.symbol_filter import SymbolFilter
+    # Initialize singleton to start background thread/cache loading
+    symbol_filter = SymbolFilter() 
+    app.extensions["symbol_filter"] = symbol_filter
+
     # 2. Market Data Infrastructure (Read-Side)
     stocks_session = DatabaseSession(str(db_stocks))
     # market_repo unused here
@@ -42,12 +54,12 @@ def register_services(app, config):
     signals_session = DatabaseSession(str(db_signals))
     
     # Repos erstellen
-    trade_repo = TradeRepository(signals_session)
-    signal_repo = SignalRepository(signals_session)
+    trade_repository = TradeRepository(signals_session)
+    signal_repository = SignalRepository(signals_session)
     
     # Init Schemas (Sicherstellen, dass Tabellen existieren)
-    trade_repo.init_schema()
-    signal_repo.init_schema()
+    trade_repository.init_schema()
+    signal_repository.init_schema()
 
     # 4. Screener Config laden
     yaml_path = config.get_strategy_path()
@@ -63,8 +75,8 @@ def register_services(app, config):
 
     # 5. Screener Engine (DI: Repos direkt übergeben)
     screener = ScreenerEngine(
-        trade_repo=trade_repo,     # <--- WICHTIG: Repo statt Pfad/DB-Wrapper
-        signal_repo=signal_repo,   # <--- WICHTIG
+        trade_repository=trade_repository,     # <--- WICHTIG: Repo statt Pfad/DB-Wrapper
+        signal_repository=signal_repository,   # <--- WICHTIG
         data_provider=md_provider,
         config=loaded_config,
         telegram_bot=telegram
@@ -107,7 +119,7 @@ def configure_scheduler(app, config):
     if tm:
         scheduler.add_job(
             func=tm.run_daily_process,
-            trigger=CronTrigger(day_of_week="mon-fri", hour=7, minute=0, timezone=pytz.timezone("Europe/Berlin")),
+            trigger=CronTrigger(day_of_week="mon-sat", hour=7, minute=0, timezone=pytz.timezone("Europe/Berlin")),
             id="trade_manager_process",
             replace_existing=True
         )
@@ -116,7 +128,7 @@ def configure_scheduler(app, config):
     scheduler.add_job(
         func=run_daily_strategy_check,
         args=[app], 
-        trigger=CronTrigger(day_of_week="mon-sat", hour=6, minute=30, timezone=pytz.timezone("Europe/Berlin")),
+        trigger=CronTrigger(day_of_week="mon-fri", hour=6, minute=30, timezone=pytz.timezone("Europe/Berlin")),
         id="strategy_check",
         replace_existing=True
     )

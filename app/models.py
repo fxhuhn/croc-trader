@@ -1,12 +1,118 @@
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from .mapping import mapper
 
+if TYPE_CHECKING:
+    from .types import OrderAction, OrderType, TimeInForce
+
 logger = logging.getLogger(__name__)
 
+@dataclass
+class TradeParams:
+    """General container for strategy-specific state parameters."""
+    stop_loss: float
+    take_profit_1: float | None = None
+    take_profit_2: float | None = None
+    take_profit_3: float | None = None
+    extras: dict = field(default_factory=dict)
+
+@dataclass
+class OrderLeg:
+    action: "OrderAction"
+    type: "OrderType"
+    price: float
+    quantity: int | None = None
+    tif: "TimeInForce" = "DAY"
+
+@dataclass
+class Order:
+    id: str
+    symbol: str
+    quantity: int
+    mode: str
+    entry: OrderLeg | None = None
+    exits: list[OrderLeg] = field(default_factory=list)
+    last_status: str = "PendingSubmit"
+    last_update: str = field(
+        default_factory=lambda: datetime.now(timezone.utc).isoformat()
+    )
+
+@dataclass
+class CrocContext:
+    high: float
+    low: float
+
+@dataclass(frozen=True)
+class SQNClassification:
+    label: str
+    color: str
+
+@dataclass(frozen=True)
+class BacktestMetrics:
+    total_trades: int
+    win_rate: float
+    profit_factor: float
+    net_profit: float
+    maximum_drawdown: float
+    sharpe_ratio: float
+    kelly_criterion: float
+    expectancy: float
+    system_quality_number: float
+    average_win: float
+    average_loss: float
+    
+    # Efficiency
+    average_maximum_adverse_excursion: float
+    average_maximum_favorable_excursion: float
+    
+    # Robustness
+    risk_of_ruin: float
+    
+    # Comparison
+    benchmark_return: float
+    strategy_return: float
+    
+    # Kelly
+    kelly_mean: float
+    kelly_std: float
+    kelly_safe: float
+    
+    # Advanced
+    market_exposure_pct: float
+    risk_adjusted_benchmark: float
+    exposure_efficiency: float 
+    return_over_maximum_drawdown: float
+    diversification_score: float
+
+@dataclass(frozen=True)
+class PortfolioMetrics:
+    combined_mean_kelly: float
+    safe_kelly_25: float
+    correlation_fail_rate: float
+    suggested_multiplier: float
+    leveraged_max_drawdown: float
+    max_concurrent_trades: int
+    max_total_exposure: float
+    # Unconstrained Simulation
+    uncapped_multiplier: float
+    uncapped_max_total_exposure: float
+    uncapped_leveraged_max_drawdown: float
+    max_trades_per_strategy: dict[str, int] = field(default_factory=dict)
+    
+    # Days at Max Concurrency
+    max_concurrent_trades_days: int = 0
+    max_trades_per_strategy_days: dict[str, int] = field(default_factory=dict)
+    
+    # Percentile-Based Sizing (Phase 1)
+    percentile_95_concurrent_trades: float = 0.0
+    percentile_95_trades_per_strategy: dict[str, float] = field(default_factory=dict)
+    
+    # Capacity Ratios (Phase 7)
+    global_capacity_ratio: float = 1.0
+    strategy_capacity_ratios: dict[str, float] = field(default_factory=dict)
 
 @dataclass
 class CrocSignal:

@@ -36,6 +36,7 @@ DEFAULT_DB_FILES = {
     "exchange_mapping": "symbol_exchange.json",
     "stats_import": "croc_statistik.csv",
     "ranking_yaml": "ranking_2026.yaml",  # NEU
+    "holidays_yaml": "holidays.yaml",
 }
 
 DEFAULT_DB_FOLDERS = {"orders": "orders"}
@@ -240,18 +241,32 @@ class ConfigManager:
             sys.exit(1)
 
     def get_path(self, key: str) -> Path:
-        """Universeller Abruf für konfigurierte Dateipfade."""
+        """Universeller Abruf für konfigurierte Dateipfade mit Traversal-Schutz."""
         filename = self.app.database.files.get(key)
         if not filename:
-            # Fallback, falls Key wirklich fehlt -> Loggt Fehler im Caller
             return self.db_root_path / f"MISSING_CONFIG_{key}"
-        return self.db_root_path / filename
+        
+        target_path = (self.db_root_path / filename).resolve()
+        
+        # Security: Prevent Path Traversal
+        if not str(target_path).startswith(str(self.db_root_path.resolve())):
+            logger.error(f"❌ SECURITY: Path Traversal Attempt blocked: {filename}")
+            raise ValueError(f"Insecure path detected: {filename}")
+            
+        return target_path
 
     def get_folder(self, key: str) -> Path:
+        """Abruf für Ordner mit Traversal-Schutz."""
         foldername = self.app.database.folders.get(key, key)
-        path = self.db_root_path / foldername
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+        target_path = (self.db_root_path / foldername).resolve()
+        
+        # Security: Prevent Path Traversal
+        if not str(target_path).startswith(str(self.db_root_path.resolve())):
+            logger.error(f"❌ SECURITY: Path Traversal Attempt blocked in folder: {foldername}")
+            raise ValueError(f"Insecure folder path detected: {foldername}")
+            
+        target_path.mkdir(parents=True, exist_ok=True)
+        return target_path
 
     # Helper Methoden
     def get_db_path(self, db_key: str) -> str:
