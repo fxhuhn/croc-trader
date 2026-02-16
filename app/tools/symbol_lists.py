@@ -1,91 +1,152 @@
 import logging
 import threading
-from typing import Optional
-
+import json
+from pathlib import Path
+from typing import Optional, Any
 import pandas as pd
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Setup Logger
 logger = logging.getLogger(__name__)
 
+# Constants
+CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data"
+CACHE_FILE = CACHE_DIR / "symbol_cache.json"
 
 class ExchangeSymbol:
     """
     Singleton class to fetch and cache stock symbols from Wikipedia.
     Uses dynamic table search to be robust against page layout changes.
     Thread-safe implementation to prevent race conditions during initialization.
+    Supports background loading and local caching to speed up startup.
     """
 
     _instance: Optional["ExchangeSymbol"] = None
     _initialized: bool = False
-    _lock = threading.Lock()  # Lock für Thread-Safety
+    _lock = threading.Lock()  # Lock for thread-safety
 
     def __new__(cls):
         if cls._instance is None:
             with cls._lock:
-                # Double-checked locking für die Instanz
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
     def __init__(self):
-        # Schneller Check ohne Lock (Performance)
+        # Quick check without lock (Performance)
         if ExchangeSymbol._initialized:
             return
 
-        # Kritischer Abschnitt: Nur ein Thread darf initialisieren
+        # Critical section: Only one thread initializes
         with ExchangeSymbol._lock:
-            # Zweiter Check innerhalb des Locks (falls ein anderer Thread gerade fertig wurde)
             if ExchangeSymbol._initialized:
                 return
 
             logger.info("Initializing ExchangeSymbol singleton...")
 
+            # Initialize empty lists
             self._sp_500: list[str] = []
             self._nasdaq_100: list[str] = []
             self._dow_30: list[str] = []
             self._russell_1000: list[str] = []
-            self._special_symbols: list[str] = ["SPY", "QQQ", "SXRV.DE", "DIA"]
+            self._special_symbols: list[str] = ["SPY", "QQQ", "SXRV.DE", "DIA", "^VIX"]
 
+            # 1. Try to load from cache immediately
+            self._load_from_cache()
+
+            # 2. Start background thread to refresh data
+            refresh_thread = threading.Thread(target=self._refresh_data, daemon=True)
+            refresh_thread.start()
+
+            ExchangeSymbol._initialized = True
+
+    def _load_from_cache(self) -> None:
+        """Loads symbol lists from local JSON cache if available."""
+        if not CACHE_FILE.exists():
+            logger.info("No symbol cache found at %s", CACHE_FILE)
+            return
+
+        try:
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            self._sp_500 = data.get("sp_500", [])
+            self._nasdaq_100 = data.get("nasdaq_100", [])
+            self._dow_30 = data.get("dow_30", [])
+            self._russell_1000 = data.get("russell_1000", [])
+            
+            logger.info("✓ Loaded symbols from cache: SPX=%d, NDX=%d, DOW=%d, RUI=%d",
+                        len(self._sp_500), len(self._nasdaq_100), 
+                        len(self._dow_30), len(self._russell_1000))
+        except Exception as e:
+            logger.error("Failed to load symbol cache: %s", e)
+
+    def _save_to_cache(self) -> None:
+        """Saves current symbol lists to local JSON cache."""
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            data = {
+                "sp_500": self._sp_500,
+                "nasdaq_100": self._nasdaq_100,
+                "dow_30": self._dow_30,
+                "russell_1000": self._russell_1000
+            }
+            with open(CACHE_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            logger.info("✓ Symbol cache saved to %s", CACHE_FILE)
+        except Exception as e:
+            logger.error("Failed to save symbol cache: %s", e)
+
+    def _refresh_data(self) -> None:
+        """Background task to fetch fresh data from Wikipedia."""
+        logger.info("Starting background symbol refresh...")
+        
+        try:
             # 1. S&P 500
-            self._sp_500 = self._fetch_from_wikipedia(
+            sp_500 = self._fetch_from_wikipedia(
                 url="https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
                 search_columns=["Symbol", "Ticker"],
                 name="S&P 500",
             )
 
             # 2. NASDAQ-100
-            self._nasdaq_100 = self._fetch_from_wikipedia(
+            nasdaq_100 = self._fetch_from_wikipedia(
                 url="https://en.wikipedia.org/wiki/Nasdaq-100",
                 search_columns=["Ticker", "Symbol"],
                 name="NASDAQ-100",
             )
 
             # 3. Dow Jones 30
-            self._dow_30 = self._fetch_from_wikipedia(
+            dow_30 = self._fetch_from_wikipedia(
                 url="https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
                 search_columns=["Symbol", "Ticker"],
                 name="Dow Jones 30",
             )
 
             # 4. Russell 1000
-            # Wir suchen dynamisch nach der Tabelle mit 'Ticker' oder 'Symbol'
-            self._russell_1000 = self._fetch_from_wikipedia(
+            russell_1000 = self._fetch_from_wikipedia(
                 url="https://en.wikipedia.org/wiki/Russell_1000_Index",
                 search_columns=["Symbol", "Ticker", "Company"],
                 name="Russell 1000",
             )
 
-            ExchangeSymbol._initialized = True
+            # Update internal state (Atomic assignment is thread-safe in Python for lists)
+            if sp_500: self._sp_500 = sp_500
+            if nasdaq_100: self._nasdaq_100 = nasdaq_100
+            if dow_30: self._dow_30 = dow_30
+            if russell_1000: self._russell_1000 = russell_1000
+
             logger.info(
-                f"✓ ExchangeSymbol initialized: "
+                f"✓ Symbol refresh complete: "
                 f"S&P 500={len(self._sp_500)}, "
                 f"NASDAQ-100={len(self._nasdaq_100)}, "
                 f"Dow 30={len(self._dow_30)}, "
-                f"Russell 1000={len(self._russell_1000)}, "
-                f"Special={len(self._special_symbols)}"
+                f"Russell 1000={len(self._russell_1000)}"
             )
+            
+            self._save_to_cache()
+
+        except Exception as e:
+            logger.error("Background symbol refresh failed: %s", e)
 
     def _fetch_from_wikipedia(
         self, url: str, search_columns: list[str], name: str
@@ -150,9 +211,9 @@ class ExchangeSymbol:
             # Duplikate entfernen und sortieren
             result = sorted(list(set(clean_symbols)))
 
-            logger.info(
-                f"✓ Loaded {len(result)} {name} symbols (found in table with col '{found_col}')"
-            )
+            # logger.info(
+            #     f"✓ Loaded {len(result)} {name} symbols (found in table with col '{found_col}')"
+            # )
             return result
 
         except Exception as e:
@@ -198,5 +259,13 @@ class ExchangeSymbol:
 
 
 if __name__ == "__main__":
+    # Configure logging to see output
+    logging.basicConfig(level=logging.INFO)
     exchange = ExchangeSymbol()
+    
+    # Wait for thread to finish to see results in a script run
+    import time
+    print("Waiting for background thread (max 30s)...")
+    time.sleep(5) 
+    
     print(f"Total Unique Symbols: {len(exchange.all)}")
