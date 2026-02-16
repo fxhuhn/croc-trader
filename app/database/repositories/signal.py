@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from .base import BaseRepository
+from ...const import Strategies, TradeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -177,25 +178,33 @@ class SignalRepository(BaseRepository):
         row = self.fetch_one(sql)
         return row["d"] if row else None
 
-    def get_trade_candidates(self, strategy_prefix: str, limit: int = 100) -> list[dict]:
+    def get_trade_candidates(self, strategy_prefix: str | Strategies, limit: int = 100, statuses: list[TradeStatus | str] | None = None) -> list[dict]:
         """
-        Holt potenzielle Trades (Status 'CREATED') aus der 'trades' Tabelle.
+        Holt potenzielle Trades aus der 'trades' Tabelle.
         Parst automatisch das 'signal_context' JSON Feld.
         
         Args:
-            strategy_prefix: z.B. 'Croc' oder 'DipBuyer'
+            strategy_prefix: z.B. 'Croc' oder Strategies.DipBuyer
             limit: Anzahl der Ergebnisse
+            statuses: Liste von Status-Enums/Strings (Standard: [TradeStatus.CREATED])
         """
-        # SQL: Wir suchen nach Trades, die erstellt, aber noch nicht aktiv sind
-        sql = """
+        if statuses is None:
+            statuses = [TradeStatus.CREATED]
+
+        # Use string conversion as StrEnum handles this correctly
+        status_list = [str(s) for s in statuses]
+        status_placeholders = ", ".join("?" for _ in status_list)
+        
+        sql = f"""
             SELECT * FROM trades 
-            WHERE status = 'CREATED' 
-            AND strategy LIKE ?
+            WHERE status IN ({status_placeholders})
+            AND LOWER(strategy) LIKE LOWER(?)
             ORDER BY created_at DESC 
             LIMIT ?
         """
         
-        rows = self.fetch_all(sql, (f"{strategy_prefix}%", limit))
+        params = tuple(status_list) + (f"{strategy_prefix}%", limit)
+        rows = self.fetch_all(sql, params)
         
         results = []
         for row in rows:
@@ -213,7 +222,7 @@ class SignalRepository(BaseRepository):
                 except Exception:
                     ctx = {}
             
-            r["ctx"] = ctx
+            r["context"] = ctx
             
             # 2. Hilfsfelder für das Template
             r["setup_score"] = ctx.get("setup_score", 0)
@@ -224,18 +233,15 @@ class SignalRepository(BaseRepository):
             display_ts = r.get("entry_date")
             
             # Prio 2: Signal-Datum aus dem Context (Das echte Datum!)
-            if not display_ts and ctx.get("date"):
-                display_ts = ctx["date"]
-            
-            # Prio 3: Fallback auf DB-Erstellung (nur wenn context leer)
             if not display_ts:
-                display_ts = r.get("created_at")
+                display_ts = ctx.get("date") or ctx.get("setup_date")
+            
+            # Prio 3: No fallback to created_at (STRICT RULE)
+            if not display_ts:
+                display_ts = None
 
             # String Cleaning (Trennzeichen entfernen bei ISO Format)
             r["display_date"] = str(display_ts).split("T")[0].split(" ")[0] if display_ts else "-"
-            
-            # Überschreibe auch created_at für Views, die dieses Feld direkt nutzen
-            r["created_at"] = r["display_date"]
             
             results.append(r)
             

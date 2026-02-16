@@ -12,11 +12,11 @@ class TradeRepository(BaseRepository):
     def init_schema(self):
         """Erstellt das DB-Schema neu (Unified Table)."""
         with self.session.connect() as conn:
-            #self.execute("DROP TABLE IF EXISTS active_trades", conn=conn)
-            #self.execute("DROP TABLE IF EXISTS trades_croc", conn=conn)
-            #self.execute("DROP TABLE IF EXISTS trades_dip_buyer", conn=conn)
-            #self.execute("DROP TABLE IF EXISTS trades", conn=conn)
-            #self.execute("DROP TABLE IF EXISTS trade_logs", conn=conn)
+            # self.execute("DROP TABLE IF EXISTS active_trades", conn=conn)
+            # self.execute("DROP TABLE IF EXISTS trades_croc", conn=conn)
+            # self.execute("DROP TABLE IF EXISTS trades_dip_buyer", conn=conn)
+            # self.execute("DROP TABLE IF EXISTS trades", conn=conn)
+            # self.execute("DROP TABLE IF EXISTS trade_logs", conn=conn)
 
             self.execute("""
                 CREATE TABLE IF NOT EXISTS trades (
@@ -71,6 +71,14 @@ class TradeRepository(BaseRepository):
                 )
             """, conn=conn)
 
+    def clear_trades(self):
+        """Truncates the trades and trade_logs tables to restart a backtest run."""
+        with self.session.connect() as conn:
+            self.execute("DELETE FROM trade_logs", conn=conn)
+            self.execute("DELETE FROM trades", conn=conn)
+            conn.commit()
+            logger.info("Trade history cleared for new backtest run.")
+
     def get_trade(self, trade_id: int, conn=None) -> dict[str, Any] | None:
         row = self.fetch_one("SELECT * FROM trades WHERE id = ?", (trade_id,), conn=conn)
         return dict(row) if row else None
@@ -102,9 +110,17 @@ class TradeRepository(BaseRepository):
         return [r["symbol"] for r in rows if r["symbol"]]
 
     def create_trade(self, symbol: str, strategy: str, size: float, 
-                     entry: float, sl: float, target: float, context: dict) -> int:
+                     entry: float, stop_loss: float, target: float, context: dict) -> int:
+        
+        # Security Hardening: Validate financial inputs
+        import math
+        for val, name in [(entry, "entry"), (stop_loss, "stop_loss"), (target, "target")]:
+            if not math.isfinite(val) or val < 0:
+                logger.error(f"❌ SECURITY: Invalid financial input for {symbol}: {name}={val}")
+                raise ValueError(f"Value for {name} must be a finite non-negative number")
+
         context_json = json.dumps(context, default=str)
-        qty = int(size)
+        quantity = int(size)
         
         # 1. Datum extrahieren für den Eindeutigkeits-Check
         signal_date = context.get("date")
@@ -136,7 +152,7 @@ class TradeRepository(BaseRepository):
                             updated_at = CURRENT_TIMESTAMP
                         WHERE id = ?
                     """
-                    conn.execute(update_sql, (qty, qty, entry, sl, target, context_json, trade_id))
+                    conn.execute(update_sql, (quantity, quantity, entry, stop_loss, target, context_json, trade_id))
                     
                     conn.execute("INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)", 
                          (trade_id, "RESET", "OLD_STATE", "CREATED", "Backtest Re-Run"))
@@ -156,14 +172,14 @@ class TradeRepository(BaseRepository):
             
             cursor = conn.execute(sql, (
                 symbol, strategy,
-                qty, qty, 
-                entry, sl, target,
+                quantity, quantity, 
+                entry, stop_loss, target,
                 context_json
             ))
             trade_id = cursor.lastrowid
             
             conn.execute("INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)", 
-                     (trade_id, "ENTRY", None, f"Qty: {qty} @ {entry}", "Setup Found"))
+                     (trade_id, "ENTRY", None, f"Quantity: {quantity} @ {entry}", "Setup Found"))
             
             conn.commit()
             return trade_id
@@ -175,10 +191,18 @@ class TradeRepository(BaseRepository):
         # Enums in updates behandeln
         safe_updates = {}
         for k, v in updates.items():
-            if isinstance(v, Enum):
-                safe_updates[k] = v.value
-            else:
-                safe_updates[k] = v
+            # Enum conversion
+            val = v.value if isinstance(v, Enum) else v
+            
+            # Robust Date Normalization for entry_date and exit_date
+            # Ensures "YYYY-MM-DD" instead of "YYYY-MM-DD HH:MM:SS"
+            if k in ("entry_date", "exit_date"):
+                if isinstance(val, str) and " " in val:
+                    val = val.split(" ")[0]
+                elif hasattr(val, "strftime"):
+                    val = val.strftime("%Y-%m-%d")
+            
+            safe_updates[k] = val
 
         with self.session.connect() as conn:
             trade = self.get_trade(trade_id, conn=conn)
