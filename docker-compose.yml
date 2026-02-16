@@ -1,6 +1,6 @@
 services:
   croc-trader:
-    image: ghcr.io/fxhuhn/croc-trader:dev
+    image: ghcr.io/fxhuhn/croc-trader:next
     container_name: croc-trader
     restart: unless-stopped
 
