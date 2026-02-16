@@ -38,7 +38,13 @@ def ingest_webhook() -> Response:
         if not payload:
             raw_data = request.get_data(as_text=True)
             logger.warning(f"⚠️ Malformed Webhook Data: {raw_data}")
-            return jsonify({"status": "error", "message": "Empty Payload or Invalid JSON"}), 400
+            return jsonify({"status": "error", "message": "Invalid JSON"}), 400
+
+        # Mandatory Field Validation (Defense-in-depth)
+        symbol = payload.get("symbol")
+        if not symbol:
+             logger.warning(f"⚠️ Webhook rejected: Missing 'symbol' in payload {payload}")
+             return jsonify({"status": "error", "message": "Missing mandatory field: symbol"}), 400
 
         configuration = current_app.config.get("APP_CONFIG")
         db_path = configuration.get_db_path("signals") if configuration else "instance/signals.db"
@@ -48,14 +54,20 @@ def ingest_webhook() -> Response:
 
         signal_id = repository.save_signal(payload)
         
-        symbol = payload.get("symbol", "UNKNOWN")
         logger.info(f"✅ Webhook saved: {symbol} -> ID {signal_id}")
         
         return jsonify({"status": "success", "id": signal_id}), 201
 
     except Exception as error:
-        logger.error(f"Internal Webhook Error: {error}", exc_info=True)
-        return jsonify({"status": "error", "message": str(error)}), 500
+        # Error Shielding: Do not disclose raw exception details to the client
+        import uuid
+        error_id = str(uuid.uuid4())[:8]
+        logger.error(f"Internal Webhook Error [{error_id}]: {error}", exc_info=True)
+        return jsonify({
+            "status": "error", 
+            "message": "Internal Server Error", 
+            "error_id": error_id
+        }), 500
 
 # --- SCREENER & TRADING ---
 

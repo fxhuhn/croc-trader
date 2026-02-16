@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any
 from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
@@ -7,122 +8,99 @@ import plotly.io as pio
 
 from flask import Blueprint, current_app, render_template, request
 
+
+from flask import Blueprint, current_app, render_template, request
+
 from ..types import TradeStatus
+from ..const import Strategies, ExitReason
 from ..database.repositories.signal import SignalRepository
-from ..database.repositories.trade import TradeRepository
-from ..database.repositories.market import MarketRepository
 from ..database.session import DatabaseSession
+from ..models import BacktestMetrics
+from ..services.backtester.analytics import BacktestAnalytics
+from ..services.backtester.backtest_results import ResultsPersistence
+from ..services.screener.view_service import ScreenerViewService
+from ..services.trade_manager.view_service import TradeViewService
+from ..extensions import cache
 
 logger = logging.getLogger(__name__)
 views_bp = Blueprint("views", __name__)
 
-def _get_db_path(name="signals"):
-    conf = current_app.config["APP_CONFIG"]
-    return Path(conf.get_db_path(name)).resolve()
+def _get_database_path(name: str = "signals") -> Path:
+    """Retrieves the absolute path to a specific database."""
+    configuration = current_app.config["APP_CONFIG"]
+    return Path(configuration.get_db_path(name)).resolve()
 
-def _get_repo() -> SignalRepository:
-    session = DatabaseSession(str(_get_db_path("signals")))
+def _get_signal_repository() -> SignalRepository:
+    """Instantiates the signal repository."""
+    session = DatabaseSession(str(_get_database_path("signals")))
     return SignalRepository(session)
 
-def _get_trade_repo() -> TradeRepository:
-    session = DatabaseSession(str(_get_db_path("signals")))
-    return TradeRepository(session)
+def _get_screener_view_service() -> ScreenerViewService:
+    """Instantiates the screener view service."""
+    return ScreenerViewService(_get_signal_repository())
 
-def _get_market_repo() -> MarketRepository:
-    session = DatabaseSession(str(_get_db_path("stocks")))
-    return MarketRepository(session)
+def _get_trade_view_service() -> TradeViewService:
+    """Instantiates the trade view service."""
+    return TradeViewService()
 
-def is_strategy_match(trade: dict, keyword: str) -> bool:
-    strat = str(trade.get("strategy", "")).lower()
-    return keyword.lower() in strat
+def _get_backtest_database_path() -> Path:
+    """Retrieves the absolute path to the backtest.db."""
+    # Logic to find backtest.db relative to the signals database directory
+    signals_db_path = _get_database_path("signals")
+    return signals_db_path.parent / "backtest.db"
 
-def prepare_view_model(trades, market_repo: MarketRepository):
-    """Bereitet Trades für die Anzeige auf (Haltedauer, Live-Preis-Fix, PnL %, Visuals)."""
-    today_str = pd.Timestamp.now().strftime("%Y-%m-%d")
-    
-    for t in trades:
-        # 1. Context parsen
-        try:
-            raw = t.get("signal_context")
-            t["ctx"] = json.loads(raw) if isinstance(raw, str) and raw else (raw or {})
-        except Exception:
-            t["ctx"] = {}
+def _prepare_backtest_metrics(summary_data: dict[str, Any]) -> BacktestMetrics:
+    """Maps summary dictionary data to a BacktestMetrics object.
 
-        # 2. Datum formatieren
-        entry_date = t.get("entry_date")
-        exit_date = t.get("exit_date")
-        t["display_entry"] = str(entry_date).split(" ")[0] if entry_date else "-"
-        t["display_exit"] = str(exit_date).split(" ")[0] if exit_date else "-"
+    Args:
+        summary_data: Dictionary containing raw backtest results.
 
-        # 3. Haltedauer
-        t["days_held"] = 0
-        if entry_date:
-            start = str(entry_date).split(" ")[0]
-            end = str(exit_date).split(" ")[0] if exit_date else today_str
-            t["days_held"] = market_repo.get_trading_days_count(t["symbol"], start, end)
+    Returns:
+        BacktestMetrics: Populated metrics object.
+    """
 
-        # 4. Preis & PnL Berechnung
-        entry_price = float(t.get("entry_price") or 0)
-        current_price = float(t.get("current_price") or 0)
-        size = float(t.get("current_size") or 0)
-        
-        # FIX: Wenn Active Trade keinen aktuellen Preis hat (0), lade den letzten Close aus Market DB
-        if t.get("status") == "ACTIVE" and current_price == 0:
-            latest_price = market_repo.get_latest_price(t["symbol"])
-            if latest_price:
-                current_price = latest_price
-                t["current_price"] = latest_price
+    return BacktestMetrics(
+        total_trades=summary_data.get("total_trades", 0),
+        win_rate=summary_data.get("win_rate", 0.0),
+        profit_factor=summary_data.get("profit_factor", 0.0),
+        net_profit=summary_data.get("net_profit", 0.0),
+        maximum_drawdown=summary_data.get("maximum_drawdown", 0.0),
+        sharpe_ratio=summary_data.get("sharpe_ratio", 0.0),
+        expectancy=summary_data.get("expectancy", 0.0),
+        system_quality_number=summary_data.get("sqn", 0.0),
+        kelly_safe=summary_data.get("kelly_safe", 0.0),
+        strategy_return=summary_data.get("strategy_return", 0.0),
+        benchmark_return=summary_data.get("benchmark_return", 0.0),
+        # Fields not present in summary but required by dataclass
+        kelly_criterion=summary_data.get("kelly_safe", 0.0),
+        average_win=0.0,
+        average_loss=0.0,
+        average_maximum_adverse_excursion=0.0,
+        average_maximum_favorable_excursion=0.0,
+        risk_of_ruin=0.0,
+        kelly_mean=0.0,
+        kelly_std=0.0,
+        market_exposure_pct=summary_data.get("market_exposure_pct", 0.0),
+        risk_adjusted_benchmark=0.0,
+        exposure_efficiency=0.0,
+        return_over_maximum_drawdown=0.0,
+        diversification_score=summary_data.get("diversification_score", 0.0),
+    )
 
-        # --- Metrics Calculation ---
-        t["unrealized_pnl"] = 0.0
-        t["pnl_pct"] = 0.0
-        t["is_critical"] = False
-        t["progress"] = 0 # Für Progress Bar (0 = SL, 100 = Target)
+def _prepare_strategy_metrics(
+    strategy_list: list[dict[str, Any]]
+) -> dict[str, BacktestMetrics]:
+    """Converts a list of strategy metrics dicts to a map of BacktestMetrics.
 
-        # Active Trades
-        if t.get("status") == "ACTIVE" and entry_price > 0 and current_price > 0:
-            t["unrealized_pnl"] = (current_price - entry_price) * size
-            t["pnl_pct"] = ((current_price - entry_price) / entry_price) * 100
-            
-            # SL Warnung & Progress Bar Logic (für Croc)
-            sl = float(t.get("current_stop_loss") or 0)
-            
-            # Target ermitteln (TP3 oder TP1 oder kalkuliert)
-            target = 0
-            if t["ctx"].get("target_price"): target = float(t["ctx"]["target_price"])
-            elif t["ctx"].get("tp3"): target = float(t["ctx"]["tp3"])
-            elif t["ctx"].get("tp1"): target = float(t["ctx"]["tp1"])
-            
-            # Calculation für Progress Bar (Position zwischen SL und Target)
-            if sl > 0 and target > 0 and sl != target:
-                # Range: SL (0%) bis Target (100%)
-                total_range = target - sl
-                current_dist = current_price - sl
-                pct = (current_dist / total_range) * 100
-                t["progress"] = max(0, min(100, pct)) # Clamp 0-100
-            
-            # Kritischer SL Abstand (< 1%)
-            if sl > 0:
-                dist = abs(current_price - sl)
-                if (dist / current_price) < 0.01:
-                    t["is_critical"] = True
-            
-        # Closed Trades (Fallback PnL)
-        if t.get("status") == "CLOSED":
-             exit_price = float(t.get("exit_price") or 0)
-             if exit_price > 0 and entry_price > 0:
-                 if not t.get("realized_pnl"):
-                     t["realized_pnl"] = (exit_price - entry_price) * size
-                 # Prozentualer Gewinn
-                 t["pnl_pct"] = ((exit_price - entry_price) / entry_price) * 100
+    Args:
+        strategy_list: List of dictionaries from the strategy_metrics table.
 
-def get_portfolio_summary(active_trades):
-    """Berechnet Kennzahlen für das Cockpit."""
-    total_invested = sum((float(t.get("entry_price") or 0) * float(t.get("current_size") or 0)) for t in active_trades)
-    total_open_pnl = sum(t.get("unrealized_pnl", 0) for t in active_trades)
+    Returns:
+        dict[str, BacktestMetrics]: Mapping of strategy name to metrics.
+    """
     return {
-        "invested": total_invested,
-        "open_pnl": total_open_pnl
+        strategy["strategy_name"]: _prepare_backtest_metrics(strategy)
+        for strategy in strategy_list
     }
 
 # --- ROUTES ---
@@ -130,491 +108,575 @@ def get_portfolio_summary(active_trades):
 # 1. Landing Pages (Übersichten)
 @views_bp.route("/screener", methods=["GET"])
 def view_screener_overview() -> str:
-    repo = _get_repo()
+    """Displays the overview page for all available screeners."""
+    signals_repository = _get_signal_repository()
+
+    # Signale zählen
+    # We use ScreenerViewService to benefit from aggregation logic (e.g. Croc)
+    screener_service = _get_screener_view_service()
     
-    # Signale zählen (wir laden die Liste und nehmen die Länge, 
-    # für EOD/geringe Datenmengen ist das performant genug)
-    count_croc = len(repo.get_trade_candidates("Croc", limit=100))
-    count_dip = len(repo.get_trade_candidates("DipBuyer", limit=100))
-    count_turnover = len(repo.get_trade_candidates("TurnoverTiming", limit=100))
-    count_twopercent = len(repo.get_trade_candidates("TwoPercentStrategy", limit=100))
-    
+    count_croc = len(screener_service.get_candidates(Strategies.CrocSetup, limit=100))
+    count_dip = len(signals_repository.get_trade_candidates(Strategies.DipBuyer, limit=100))
+    count_turnover = len(
+        signals_repository.get_trade_candidates(Strategies.TurnOverTiming, limit=100)
+    )
+    count_twopercent = len(
+        signals_repository.get_trade_candidates(Strategies.TwoPercent, limit=100)
+    )
+
     return render_template(
         "screener.html",
         count_croc=count_croc,
         count_dip=count_dip,
         count_turnover=count_turnover,
-        count_twopercent=count_twopercent
+        count_twopercent=count_twopercent,
     )
 
-def generate_sparkline(dates: list, prices: list, is_up: bool) -> str:
+def generate_sparkline(dates: list, prices: list, is_positive: bool) -> str:
     """Generates a minimalistic sparkline chart (Spline, No Axes)."""
-    color = '#10b981' if is_up else '#ef4444' # Emerald-500 or Rose-500
-    fill_color = 'rgba(16, 185, 129, 0.1)' if is_up else 'rgba(239, 68, 68, 0.1)'
+    color = "#10b981" if is_positive else "#ef4444"  # Emerald-500 or Rose-500
+    fill_color = "rgba(16, 185, 129, 0.1)" if is_positive else "rgba(239, 68, 68, 0.1)"
 
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(
+    figure = go.Figure()
+    figure.add_trace(go.Scatter(
         x=dates,
         y=prices,
-        mode='lines',
-        line=dict(color=color, width=2, shape='spline', smoothing=1.3),
-        fill='tozeroy',
+        mode="lines",
+        line=dict(color=color, width=2, shape="spline", smoothing=1.3),
+        fill="tozeroy",
         fillcolor=fill_color,
-        hoverinfo='skip'
+        hoverinfo="skip"
     ))
 
-    fig.update_layout(
+    figure.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         xaxis=dict(visible=False),
         yaxis=dict(visible=False),
         showlegend=False,
         height=50,
         width=120
     )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'displayModeBar': False})
+    return figure.to_html(
+        full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
+    )
 
 def generate_donut_chart(labels: list, values: list, colors: list) -> str:
     """Generates a clean donut chart for strategy allocation."""
-    fig = go.Figure(data=[go.Pie(
+    figure = go.Figure(data=[go.Pie(
         labels=labels,
         values=values,
         hole=0.8,
-        textinfo='none',
-        hoverinfo='label+percent+value',
+        textinfo="none",
+        hoverinfo="label+percent+value",
         marker=dict(colors=colors),
         sort=False
     )])
 
-    fig.update_layout(
+    figure.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
-        paper_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
         height=180,
     )
-    return fig.to_html(full_html=False, include_plotlyjs='cdn', config={'displayModeBar': False})
+    return figure.to_html(
+        full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
+    )
 
 @views_bp.route("/trades", methods=["GET"])
+@views_bp.route("/trades/", methods=["GET"])
 def view_trades_overview() -> str:
-    trade_repo = _get_trade_repo()
-    market_repo = _get_market_repo()
-    
+    """Displays an overview of all active trades across strategies."""
+    service = _get_trade_view_service()
+
     # 1. Fetch Active Trades
-    active = trade_repo.get_by_status([TradeStatus.ACTIVE])
-    prepare_view_model(active, market_repo) # Calculates PnL, Price etc.
-    
+    active_trades = service.get_trades(status=TradeStatus.ACTIVE)
+    service.attach_sparklines(active_trades)
+
     # 2. Portfolio Metrics
-    total_invested = sum((float(t.get("entry_price") or 0) * float(t.get("current_size") or 0)) for t in active)
-    total_open_pnl = sum(t.get("unrealized_pnl", 0) for t in active)
-    active_count = len(active)
-    
+    summary_metrics = service.get_portfolio_summary(active_trades)
+
     # 3. Strategy Allocation & Performance
-    strategy_stats = {}
-    
-    for t in active:
-        strat = t.get("strategy", "Unknown")
-        # Normalize strategy names if needed (e.g. remove versions)
-        if "Croc" in strat: label = "Croc Setup"
-        elif "DipBuyer" in strat: label = "Dip Buyer"
-        elif "Turnover" in strat: label = "Turnover"
-        elif "two_percent" in strat: label = "Two Percent"
-        else: label = strat
+    strategy_stats = {
+        "Croc Setup": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Dip Buyer": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Turnover": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Two Percent": {"count": 0, "pnl": 0.0, "invested": 0.0},
+    }
+
+    croc_group = [Strategies.CrocSetup, Strategies.HoldTarget, Strategies.SplitTarget, "croc"]
+    turnover_group = [Strategies.TurnOverTiming, Strategies.TurnOverTiming_05, Strategies.TurnOverTiming_10]
+
+    for trade in active_trades:
+        # Resolve strategy via service to get the Enum value string
+        strat_key = service.resolve_strategy(trade)
         
+        # Robust grouping
+        if strat_key in croc_group:
+            label = "Croc Setup"
+        elif strat_key == Strategies.DipBuyer:
+            label = "Dip Buyer"
+        elif strat_key in turnover_group:
+            label = "Turnover"
+        elif strat_key == Strategies.TwoPercent:
+            label = "Two Percent"
+        else:
+            label = str(trade.get("strategy", "Unknown"))
+
         if label not in strategy_stats:
             strategy_stats[label] = {"count": 0, "pnl": 0.0, "invested": 0.0}
-            
+
         strategy_stats[label]["count"] += 1
-        strategy_stats[label]["pnl"] += t.get("unrealized_pnl", 0)
-        entry = float(t.get("entry_price") or 0)
-        size = float(t.get("current_size") or 0)
-        strategy_stats[label]["invested"] += (entry * size)
+        strategy_stats[label]["pnl"] += trade.get("unrealized_pnl", 0.0)
+        
+        entry_price = float(trade.get("entry_price") or 0.0)
+        initial_size = float(trade.get("initial_size") or 0.0)
+        strategy_stats[label]["invested"] += entry_price * initial_size
 
     # Prepare Data for Donut Chart
-    alloc_labels = list(strategy_stats.keys())
-    alloc_values = [d["invested"] for d in strategy_stats.values()]
+    allocation_labels = list(strategy_stats.keys())
+    allocation_values = [data["invested"] for data in strategy_stats.values()]
     # Custom colors: Blue, Purple, Orange, Slate...
-    palette = ['#2563eb', '#8b5cf6', '#f97316', '#64748b'] 
-    
-    donut_html = generate_donut_chart(alloc_labels, alloc_values, palette)
-    
-    # 4. Generate Sparklines for Active Trades
-    # Get history for all active symbols (last 14 days)
-    today = pd.Timestamp.now()
-    start_date = (today - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
-    symbols = [t["symbol"] for t in active]
-    
-    history_df = market_repo.get_batch_history_raw(symbols, start_date, today.strftime("%Y-%m-%d"))
-    
-    for t in active:
-        sym = t["symbol"]
-        # Filter df for symbol
-        rows = history_df[history_df["symbol"] == sym].sort_values("date")
-        if not rows.empty:
-            dates = rows["date"].tolist()
-            prices = rows["close"].tolist()
-            
-            # Trend determination (simple)
-            is_up = prices[-1] >= prices[0] if prices else True
-            if t.get("unrealized_pnl", 0) < 0: is_up = False # Visual match with PnL
-            
-            t["sparkline"] = generate_sparkline(dates, prices, is_up)
-        else:
-            t["sparkline"] = ""
+    palette = ["#2563eb", "#8b5cf6", "#f97316", "#64748b"]
 
-    summary = {
-        "invested": total_invested,
-        "open_pnl": total_open_pnl,
-        "count": active_count
-    }
-    
+    allocation_chart_html = service.generate_donut_chart(
+        allocation_labels, allocation_values, palette
+    )
+
     return render_template(
-        "trades.html", 
-        active_trades=active, 
-        summary=summary,
+        "trades.html",
+        active_trades=active_trades,
+        summary=summary_metrics,
         strategy_stats=strategy_stats,
-        donut_html=donut_html
+        donut_html=allocation_chart_html,
     )
 
 
 # 2. Screener Details
 @views_bp.route("/screener/croc", methods=["GET"])
 def view_screener_croc() -> str:
+    """Displays the Croc Setup screener results."""
     limit = request.args.get("limit", 200, type=int)
-    repo = _get_repo()
-    results = repo.get_trade_candidates("Croc", limit=limit)
-    
-    # --- FIX: Datum aus Context extrahieren für korrekte Anzeige ---
-    processed_results = []
-    for row in results:
-        # Row zu Dict konvertieren, damit wir sie ändern können
-        item = dict(row)
-        try:
-            # Signal Context parsen
-            raw_ctx = item.get("signal_context")
-            ctx = json.loads(raw_ctx) if raw_ctx and isinstance(raw_ctx, str) else (raw_ctx or {})
-            
-            # Wenn ein echtes Signal-Datum existiert, überschreiben wir 'created_at' für die Anzeige
-            if ctx.get("date"):
-                # ISO-String (z.B. "2026-01-16T...") zu Datum ("2026-01-16")
-                signal_date = str(ctx["date"]).split("T")[0].split(" ")[0]
-                item["created_at"] = signal_date
-                
-            item["ctx"] = ctx # Context für Template verfügbar machen
-        except Exception as e:
-            logger.warning(f"Fehler beim Parsen des Context für {item.get('symbol')}: {e}")
-            item["ctx"] = {}
-            
-        processed_results.append(item)
-        
-    return render_template("screener_croc.html", results=processed_results)
+    service = _get_screener_view_service()
+    results = service.get_candidates("Croc_", limit=limit)
+    return render_template("screener_croc.html", results=results)
 
 @views_bp.route("/screener/dip-buyer", methods=["GET"])
 def view_screener_dip_buyer() -> str:
+    """Displays the Dip Buyer screener results."""
     limit = request.args.get("limit", 100, type=int)
-    repo = _get_repo()
-    results = repo.get_trade_candidates("DipBuyer", limit=limit)
-    
-    # Auch hier sicherheitshalber in Dicts wandeln
-    processed_results = []
-    for row in results:
-        item = dict(row)
-        try:
-            raw = item.get("signal_context") or item.get("ctx")
-            item["ctx"] = json.loads(raw) if isinstance(raw, str) and raw else (raw or {})
-        except Exception:
-            item["ctx"] = {}
-        processed_results.append(item)
-        
-    return render_template("screener_dip_buyer.html", results=processed_results)
+    service = _get_screener_view_service()
+    results = service.get_candidates(Strategies.DipBuyer, limit=limit)
+    return render_template("screener_dip_buyer.html", results=results)
 
 @views_bp.route("/screener/turnover", methods=["GET"])
 def view_screener_turnover() -> str:
+    """Displays the Turnover Timing screener results, aggregated by symbol."""
     limit = request.args.get("limit", 200, type=int)
-    repo = _get_repo()
-    # 1. Fetch Raw Candidates (e.g. NVDA_0.5, NVDA_1.0)
-    results = repo.get_trade_candidates("TurnoverTiming", limit=limit)
-    
-    # 2. Aggregation Logic
-    aggregated = {}
-    
-    for row in results:
-        symbol = row["symbol"]
-        
-        # Ensure base structure
-        if symbol not in aggregated:
-            aggregated[symbol] = {
-                "symbol": symbol,
-                "display_date": row["display_date"],
-                "entry_0_5": None,
-                "entry_1_0": None,
-                "close": 0.0,
-                "atr": 0.0
-            }
-            
-        # Parse Context (where setup data lives)
-        try:
-            # Already parsed in get_trade_candidates? Check repo code.
-            # get_trade_candidates calls "r['ctx'] = ctx", so we can use row['ctx']
-            ctx = row.get("ctx", {})
-            
-            # Extract common metrics (should be same for both variants)
-            aggregated[symbol]["close"] = float(ctx.get("setup_close", 0))
-            aggregated[symbol]["atr"] = float(ctx.get("setup_atr", 0))
-            
-            # Extract Index (Bucket)
-            raw_bucket = ctx.get("bucket", "UNKNOWN")
-            # Nice formatting: NASDAQ_100 -> NASDAQ 100
-            aggregated[symbol]["bucket"] = raw_bucket.replace("_", " ") if raw_bucket else "-"
-            
-            # Identify variant based on strategy name pattern "TurnoverTiming_0.5"
-            strat_name = row["strategy"]
-            entry_price = float(row.get("entry_price") or 0)
-            
-            if "_0.5" in strat_name:
-                aggregated[symbol]["entry_0_5"] = entry_price
-            elif "_1.0" in strat_name:
-                aggregated[symbol]["entry_1_0"] = entry_price
-                
-        except Exception as e:
-            logger.warning(f"Error Aggregating Turnover {symbol}: {e}")
+    service = _get_screener_view_service()
+    results = service.get_turnover_candidates(limit=limit)
+    return render_template("screener_turnover.html", results=results)
 
-    # Convert dict to list for template
-    final_list = list(aggregated.values())
-    
-    return render_template("screener_turnover.html", results=final_list)
+@views_bp.route("/screener/twopercent", methods=["GET"])
+def view_screener_twopercent() -> str:
+    """Displays the Two Percent Screener with trade candidates."""
+    limit = request.args.get("limit", 50, type=int)
+    service = _get_screener_view_service()
+    results = service.get_candidates(Strategies.TwoPercent, limit=limit)
+    return render_template("screener_twopercent.html", results=results)
 
 
 # 3. Trades Details
 @views_bp.route("/trades/croc", methods=["GET"])
 def view_trades_croc() -> str:
+    """Displays the Croc Setup trade history and active positions."""
     limit = request.args.get("limit", 100, type=int)
-    trade_repo = _get_trade_repo()
-    market_repo = _get_market_repo()
-    
-    all_active = trade_repo.get_by_status([TradeStatus.ACTIVE])
-    all_closed = trade_repo.get_by_status([TradeStatus.CLOSED])
-    
-    # Filterung
-    active = [t for t in all_active if is_strategy_match(t, "croc")]
-    closed = [t for t in all_closed if is_strategy_match(t, "croc")]
-    
-    # Sortierung
-    closed.sort(key=lambda x: x.get("exit_date") or "", reverse=True)
-    
-    # Datenaufbereitung (Dates, PnL Calculation etc.)
-    prepare_view_model(active, market_repo)
-    prepare_view_model(closed, market_repo)
-    
-    # Summary für AKTIVE Trades
-    summary = get_portfolio_summary(active)
+    service = _get_trade_view_service()
 
-    # NEU: Berechnung Summary für GESCHLOSSENE Trades
-    total_closed_pnl = sum(float(t.get("realized_pnl") or 0) for t in closed)
-    closed_count = len(closed)
-    avg_pnl = total_closed_pnl / closed_count if closed_count > 0 else 0
+    # Filtering
+    croc_group = [Strategies.CrocSetup, Strategies.HoldTarget, Strategies.SplitTarget, "croc"]
+    
+    active = service.get_trades(strategies=croc_group, status=TradeStatus.ACTIVE)
+    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
 
-    closed_summary = {
-        "total_pnl": total_closed_pnl,
-        "count": closed_count,
-        "avg_pnl": avg_pnl
-    }
+    closed = service.get_trades(strategies=croc_group, status=TradeStatus.CLOSED)
+    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
+
+    # Summaries
+    summary_metrics = service.get_portfolio_summary(active)
+    closed_summary = service.get_closed_summary(closed)
+    
+    # Aggregations
+    index_stats = service.get_index_stats(closed)
+    active_groups = service.group_trades_by_symbol(active)
+    history_groups = service.group_trades_history(closed)
+
+    # Signal Aggregation (specific to Croc)
+    signal_stats = {}
+    for trade in closed:
+        raw_signal = (
+            trade["context"].get("original_signal") 
+            or trade["context"].get("match_rule", {}).get("Signal")
+            or trade["strategy"]
+        )
+        signal_name = str(raw_signal).replace("Croc_", "") if raw_signal else "Unknown"
+
+        if signal_name not in signal_stats:
+            signal_stats[signal_name] = {"count": 0, "win": 0, "loss": 0, "pnl": 0.0}
+
+        pnl = trade["realized_pnl"]
+        service._update_stat(signal_stats[signal_name], pnl)
+
+    # Add Avg PnL
+    for value in signal_stats.values():
+        value["average_pnl"] = value["pnl"] / value["count"] if value["count"] > 0 else 0.0
+
+    sorted_signals = dict(
+        sorted(signal_stats.items(), key=lambda item: item[1]["count"], reverse=True)
+    )
 
     return render_template(
-        "trades_croc.html", 
-        active_trades=active, 
-        closed_trades=closed[:limit],
-        summary=summary,
-        closed_summary=closed_summary  # Hier übergeben wir die berechneten Werte
+        "trades_croc.html",
+        active_trades=active,
+        active_groups=active_groups,
+        closed_trades=closed,
+        history_groups=history_groups,
+        summary=summary_metrics,
+        closed_summary=closed_summary,
+        index_stats=index_stats,
+        signal_stats=sorted_signals,
     )
 
 @views_bp.route("/trades/dip-buyer", methods=["GET"])
 def view_trades_dip_buyer() -> str:
     limit = request.args.get("limit", 100, type=int)
-    trade_repo = _get_trade_repo()
-    market_repo = _get_market_repo()
+    service = _get_trade_view_service()
     
-    active = [t for t in trade_repo.get_by_status([TradeStatus.ACTIVE]) if is_strategy_match(t, "dipbuyer")]
-    closed = [t for t in trade_repo.get_by_status([TradeStatus.CLOSED]) if is_strategy_match(t, "dipbuyer")]
+    active = service.get_trades(strategies=Strategies.DipBuyer, status=TradeStatus.ACTIVE)
+    # Sort by Entry Date Descending
+    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
     
-    closed.sort(key=lambda x: x.get("exit_date") or "", reverse=True)
-    
-    prepare_view_model(active, market_repo)
-    prepare_view_model(closed, market_repo)
-    
-    summary = get_portfolio_summary(active)
+    # Inject Max Days for Time Stop Visualization
+    for trade in active:
+        trade["max_days"] = 7
+        
+    closed = service.get_trades(strategies=Strategies.DipBuyer, status=TradeStatus.CLOSED)
+    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
 
-    # NEU: Statistik für geschlossene Trades berechnen (analog zu Croc)
-    total_closed_pnl = sum(float(t.get("realized_pnl") or 0) for t in closed)
-    closed_count = len(closed)
-    avg_pnl = total_closed_pnl / closed_count if closed_count > 0 else 0
-
-    closed_summary = {
-        "total_pnl": total_closed_pnl,
-        "count": closed_count,
-        "avg_pnl": avg_pnl
-    }
+    summary_metrics = service.get_portfolio_summary(active)
+    closed_summary = service.get_closed_summary(closed)
+    
+    index_stats = service.get_index_stats(closed)
+    # active_groups removed as we use flat table now
+    history_groups = service.group_trades_history(closed)
 
     return render_template(
-        "trades_dip_buyer.html", 
-        active_trades=active, 
-        closed_trades=closed[:limit],
-        summary=summary,
-        closed_summary=closed_summary # Wichtig für das neue Template
+        "trades_dip_buyer.html",
+        active_trades=active,
+        closed_trades=closed,
+        history_groups=history_groups,
+        summary=summary_metrics,
+        closed_summary=closed_summary,
+        index_stats=index_stats,
     )
 
 
 @views_bp.route("/trades/turnover", methods=["GET"])
 def view_trades_turnover() -> str:
+    """Displays the Turnover Timing trade history and active positions."""
     limit = request.args.get("limit", 200, type=int)
-    trade_repo = _get_trade_repo()
-    market_repo = _get_market_repo()
-    
-    all_active = trade_repo.get_by_status([TradeStatus.ACTIVE])
-    all_closed = trade_repo.get_by_status([TradeStatus.CLOSED])
-    
-    # Filtern nach Strategie-Key
-    active = [t for t in all_active if "TurnoverTiming" in t['strategy']]
-    closed = [t for t in all_closed if "TurnoverTiming" in t['strategy']]
-    
-    # Sortierung: Datum (Prio 1) + Symbol (Prio 2) für saubere Gruppierung im Template
-    active.sort(key=lambda x: (x.get("entry_date") or "", x.get("symbol")), reverse=True)
-    closed.sort(key=lambda x: (x.get("exit_date") or "", x.get("symbol")), reverse=True)
-    
-    prepare_view_model(active, market_repo)
-    prepare_view_model(closed, market_repo)
-    
-    summary = get_portfolio_summary(active)
+    service = _get_trade_view_service()
 
-    # NEU: Statistik für geschlossene Turnover Trades
-    total_closed_pnl = sum(float(t.get("realized_pnl") or 0) for t in closed)
-    closed_count = len(closed)
-    avg_pnl = total_closed_pnl / closed_count if closed_count > 0 else 0
+    turnover_group = [Strategies.TurnOverTiming, Strategies.TurnOverTiming_05, Strategies.TurnOverTiming_10]
+    
+    active = service.get_trades(strategies=turnover_group, status=TradeStatus.ACTIVE)
+    
+    # Inject Max Days for Visualization (Mon-Fri = 5 days)
+    for trade in active:
+        trade["max_days"] = 5
+    
+    # Fetch CLOSED Trades EXCLUDING Expired ones
+    closed = service.get_trades(
+        strategies=turnover_group, 
+        status=TradeStatus.CLOSED,
+        exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED]
+    )
+    
+    # Sort Closed: Exit Date desc, then Symbol
+    closed.sort(key=lambda x: (x["exit_date"] or "", x["symbol"]), reverse=True)
+    closed = closed[:limit]
 
-    closed_summary = {
-        "total_pnl": total_closed_pnl,
-        "count": closed_count,
-        "avg_pnl": avg_pnl
+    # Active Groups
+    active_groups = service.group_trades_by_symbol(active)
+    
+    # Stats
+    summary_metrics = service.get_portfolio_summary(active)
+    stats = {
+        "invested": summary_metrics["invested"],
+        "open_positions": summary_metrics["count"],
+        "open_pnl": summary_metrics["open_pnl"],
     }
+    
+    closed_summary = service.get_closed_summary(closed)
+    
+    # Aggregations
+    index_stats = service.get_index_stats(closed)
+    
+    # Variant Stats
+    variant_stats = {
+        "Turnover 0.5": {"name": "Turnover 0.5", "count": 0, "win": 0, "loss": 0, "pnl": 0.0},
+        "Turnover 1.0": {"name": "Turnover 1.0", "count": 0, "win": 0, "loss": 0, "pnl": 0.0}
+    }
+    
+    for trade in closed:
+        strategy_name = str(trade.get("strategy") or "")
+        variant_key = None
+        if "0.5" in strategy_name:
+            variant_key = "Turnover 0.5"
+        elif "1.0" in strategy_name:
+            variant_key = "Turnover 1.0"
+
+        if variant_key:
+            service._update_stat(variant_stats[variant_key], trade["realized_pnl"])
+            
+    # Calc Averages for Variants
+    for item in variant_stats.values():
+        item["average_pnl"] = item["pnl"] / item["count"] if item["count"] > 0 else 0.0
+
+    history_groups = service.group_trades_history(closed)
 
     return render_template(
         "trades_turnover.html", 
-        active_trades=active, 
-        closed_trades=closed[:limit],
-        summary=summary,
-        closed_summary=closed_summary
+        stats=stats,
+        active_trades=active_groups,  # Confirmed mapping based on analysis
+        history_groups=history_groups,
+        history_summary=closed_summary,
+        performance_index=list(index_stats.values()),
+        performance_variants=list(variant_stats.values())
     )
 
-@views_bp.route("/screener/twopercent", methods=["GET"])
-def view_screener_twopercent() -> str:
-    limit = request.args.get("limit", 50, type=int)
-    repo = _get_repo()
-    results = repo.get_trade_candidates("TwoPercentStrategy", limit=limit)
-    
-    # Context Processing
-    processed = []
-    for row in results:
-        item = dict(row)
-        try:
-             # Raw Context
-            raw = item.get("signal_context") or item.get("ctx")
-            item["ctx"] = json.loads(raw) if isinstance(raw, str) and raw else (raw or {})
-            
-            # Display Date
-            if item["ctx"].get("date"):
-                item["display_date"] = item["ctx"]["date"]
-                
-            processed.append(item)
-        except Exception:
-            item["ctx"] = {}
-            processed.append(item)
-            
-    return render_template("screener_twopercent.html", results=processed)
+
 
 @views_bp.route("/trades/twopercent", methods=["GET"])
 def view_trades_twopercent() -> str:
+    """Displays the Two Percent trade history and active positions."""
     limit = request.args.get("limit", 100, type=int)
-    trade_repo = _get_trade_repo()
-    market_repo = _get_market_repo()
-    
-    # Filter for 'two_percent_strategy'
-    # Note: Strategy Key in DB is 'two_percent_strategy'
-    all_active = trade_repo.get_by_status([TradeStatus.ACTIVE])
-    all_closed = trade_repo.get_by_status([TradeStatus.CLOSED])
-    
-    active = [t for t in all_active if "two_percent" in t['strategy']]
-    closed = [t for t in all_closed if "two_percent" in t['strategy']]
-    
-    # Sort
-    active.sort(key=lambda x: x.get("entry_date") or "", reverse=True)
-    closed.sort(key=lambda x: x.get("exit_date") or "", reverse=True)
-    
-    prepare_view_model(active, market_repo)
-    prepare_view_model(closed, market_repo)
-    
-    summary = get_portfolio_summary(active)
-    
-    total_closed_pnl = sum(float(t.get("realized_pnl") or 0) for t in closed)
-    closed_count = len(closed)
-    avg_pnl = total_closed_pnl / closed_count if closed_count > 0 else 0
+    service = _get_trade_view_service()
 
-    closed_summary = {
-        "total_pnl": total_closed_pnl,
-        "count": closed_count,
-        "avg_pnl": avg_pnl
-    }
+    active = service.get_trades(strategies=Strategies.TwoPercent, status=TradeStatus.ACTIVE)
+    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
     
+    closed = service.get_trades(strategies=Strategies.TwoPercent, status=TradeStatus.CLOSED)
+    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
+
+    summary_metrics = service.get_portfolio_summary(active)
+    closed_summary = service.get_closed_summary(closed)
+    
+    active_groups = service.group_trades_by_symbol(active)
+    history_groups = service.group_trades_history(closed)
+
     return render_template(
-        "trades_twopercent.html", 
-        active_trades=active, 
-        closed_trades=closed[:limit],
-        summary=summary,
-        closed_summary=closed_summary
+        "trades_twopercent.html",
+        active_trades=active,
+        active_groups=active_groups,
+        closed_trades=closed,
+        history_groups=history_groups,
+        summary=summary_metrics,
+        closed_summary=closed_summary,
+        index_stats={},  # Standard compatibility
     )
 
 @views_bp.route("/backtest", methods=["GET"])
 def view_backtest_dashboard() -> str:
-    """Displays the Backtest Dashboard."""
-    # Paths
-    bt_db = str(_get_db_path("backtest").parent / "backtest.db")
-    mkt_db = str(_get_db_path("stocks"))
-    
-    # 1. Analytics
-    from ..services.backtester.analytics import BacktestAnalytics
-    from ..services.backtester.charts import generate_backtest_charts, generate_profit_factor_gauge, generate_win_rate_gauge, generate_sqn_gauge
-    
-    analytics = BacktestAnalytics(bt_db, mkt_db)
-    metrics = analytics.run_analysis()
-    
-    # 2. Charts
-    df_equity = analytics.get_equity_curve()
-    chart_eq, chart_dd = generate_backtest_charts(df_equity)
-    
-    # Gauge for Profit Factor
-    chart_pf = generate_profit_factor_gauge(metrics.profit_factor)
-    
-    # Gauge for Win Rate
-    chart_wr = generate_win_rate_gauge(metrics.win_rate * 100)
-    
-    # Gauge for SQN
-    chart_sqn = generate_sqn_gauge(metrics.sqn)
-    
-    # 3. Trade Lists (Recent, Top, Worst)
+    """Displays the backtest dashboard by retrieving pre-calculated results."""
+    # 1. Configuration & Paths
+    backtest_database_path = _get_backtest_database_path()
+    market_database_path = _get_database_path("stocks")
+
+    # 2. Results Persistence
+    persistence = ResultsPersistence(str(backtest_database_path))
+    run_identifier = (
+        request.args.get("run_id", type=int) or persistence.get_latest_run_id()
+    )
+
+    if not run_identifier:
+        return f"No backtest results found. Please run the backtester first. DB Path: {backtest_database_path}"
+
+    # 3. Data Retrieval (DRY Principle: No simulations in the route)
+    run_data = persistence.get_run_results(run_identifier)
+    if not run_data:
+        return f"Results for Run ID {run_identifier} not found."
+
+    summary_data = run_data["summary"]
+
+    # 4. Metric Preparation (Object Mapping)
+    main_metrics = _prepare_backtest_metrics(summary_data)
+    strategy_metrics_map = _prepare_strategy_metrics(run_data["strategies"])
+    portfolio_metrics = run_data["portfolio"]
+
+    # 5. Chart Data Preparation
+    # Convert lists of dicts from DB back to DataFrames for chart functions
+    equity_dataframe = pd.DataFrame(run_data.get("equity_curves", []))
+    regime_dataframe = pd.DataFrame(run_data.get("regime_data", []))
+    exposure_dataframe = pd.DataFrame(run_data.get("exposure_data", []))
+
+    # Identify Dates for Benchmarks
+    start_date_str = summary_data["start_date"]
+    end_date_str = summary_data["end_date"]
+
+    # 6. Chart Generation
+    analytics = BacktestAnalytics(
+        str(backtest_database_path), str(market_database_path)
+    )
+    dashboard_charts = _generate_dashboard_charts(
+        analytics=analytics,
+        main_metrics=main_metrics,
+        equity_dataframe=equity_dataframe,
+        regime_dataframe=regime_dataframe,
+        exposure_dataframe=exposure_dataframe,
+        start_date=start_date_str,
+        end_date=end_date_str,
+    )
+
+    # 7. Rendering
     trade_lists = analytics.get_trade_lists()
-    
-    # 4. Strategy Breakdown
-    strategy_metrics = analytics.run_strategy_analysis()
-    
+
     return render_template(
         "backtest_dashboard.html",
-        metrics=metrics,
-        strategy_metrics=strategy_metrics,
-        chart_equity=chart_eq,
-        chart_drawdown=chart_dd,
-        chart_pf=chart_pf,
-        chart_wr=chart_wr,
-        chart_sqn=chart_sqn,
-        recent_trades=trade_lists['recent'],
-        top_trades=trade_lists['top'],
-        worst_trades=trade_lists['worst']
+        run_id=run_identifier,
+        metrics=main_metrics,
+        kelly_metrics=portfolio_metrics,
+        strategy_metrics=strategy_metrics_map,
+        wfa_results=run_data.get("wfa", []),
+        stress_results=run_data.get("stress", {}),
+        funnel_data=run_data.get("funnel", []),
+        quality_data=run_data.get("quality", []),
+        start_date=start_date_str,
+        end_date=end_date_str,
+        **dashboard_charts,
+        recent_trades=trade_lists["recent"],
+        top_trades=trade_lists["top"],
+        worst_trades=trade_lists["worst"],
     )
+
+def _generate_dashboard_charts(
+    analytics: BacktestAnalytics,
+    main_metrics: BacktestMetrics,
+    equity_dataframe: pd.DataFrame,
+    regime_dataframe: pd.DataFrame,
+    exposure_dataframe: pd.DataFrame,
+    start_date: str,
+    end_date: str,
+) -> dict[str, str]:
+    """Orchestrates chart generation for the backtest dashboard.
+
+    Args:
+        analytics: Analytics engine for benchmark fetching.
+        equity_dataframe: Time series of equity curves.
+        regime_dataframe: Time series of regime/VIX data.
+        exposure_dataframe: Time series of strategy utilization.
+        start_date: Backtest start date.
+        end_date: Backtest end date.
+
+    Returns:
+        dict[str, str]: Map of template variable names to HTML chart strings.
+    """
+    from ..services.backtester.charts import (
+        generate_backtest_charts,
+        generate_profit_factor_gauge,
+        generate_win_rate_gauge,
+        generate_sqn_gauge,
+        generate_regime_overlay_chart,
+        generate_price_of_safety_chart,
+        generate_exposure_heatmap,
+        generate_risk_reward_scatter,
+    )
+
+    # 1. Benchmarks
+    initial_capital = 100_000.0
+    spy_dataframe = analytics.fetch_benchmark_data(
+        "SPY", start_date, end_date, initial_capital=initial_capital
+    )
+    qqq_dataframe = analytics.fetch_benchmark_data(
+        "QQQ", start_date, end_date, initial_capital=initial_capital
+    )
+
+    # 2. Split Equity Curves
+    base_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Base"]
+    if base_equity.empty:
+        base_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Portfolio"]
+    if base_equity.empty:
+        base_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Kelly"]
+    if base_equity.empty:
+        base_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Safety"]
+    kelly_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Kelly"]
+    safety_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Safety"]
+
+    # 3. Generate individual charts
+    chart_equity_base, chart_drawdown_base = ("<div>No Data</div>", "<div>No Data</div>")
+    if not base_equity.empty:
+        chart_equity_base, chart_drawdown_base = generate_backtest_charts(
+            base_equity["date"],
+            base_equity["equity"],
+            base_equity["drawdown_pct"],
+            benchmark_df=spy_dataframe,
+            id_prefix="base",
+        )
+
+    chart_equity_kelly, chart_drawdown_kelly = ("<div>No Data</div>", "<div>No Data</div>")
+    if not kelly_equity.empty:
+        chart_equity_kelly, chart_drawdown_kelly = generate_backtest_charts(
+            kelly_equity["date"],
+            kelly_equity["equity"],
+            kelly_equity["drawdown_pct"],
+            benchmark_df=spy_dataframe,
+            id_prefix="kelly",
+        )
+
+    # Specialized Charts
+    # Rename 'vix_close' to 'vix' for generate_regime_overlay_chart compatibility
+    regime_input = regime_dataframe.rename(columns={"vix_close": "vix"})
+
+    # FIX: Merge 'equity' from base_equity into regime_input for the overlay chart
+    if not base_equity.empty:
+        regime_input = pd.merge(
+            regime_input, 
+            base_equity[["date", "equity"]], 
+            on="date", 
+            how="left"
+        )
+    else:
+        regime_input["equity"] = 0.0
+
+    # Rename exposure columns for generate_exposure_heatmap compatibility
+    # Expected format: exposure_<strategy_name>
+    exposure_pivot = exposure_dataframe.pivot(
+        index="date", columns="strategy_name", values="exposure_value"
+    ).reset_index()
+    exposure_pivot.columns = [
+        f"exposure_{col}" if col != "date" else col for col in exposure_pivot.columns
+    ]
+
+    return {
+        "chart_equity": chart_equity_base,
+        "chart_underwater": chart_drawdown_base,
+        "chart_equity_kelly": chart_equity_kelly,
+        "chart_underwater_kelly": chart_drawdown_kelly,
+        "chart_regime": generate_regime_overlay_chart(regime_input),
+        "chart_safety": generate_price_of_safety_chart(
+            kelly_equity,
+            base_equity,
+            safety_equity,
+            spy_dataframe=spy_dataframe,
+            qqq_dataframe=qqq_dataframe,
+        ),
+        "chart_exposure": generate_exposure_heatmap(exposure_pivot),
+        "chart_risk": generate_risk_reward_scatter(safety_equity),
+        "chart_pf": generate_profit_factor_gauge(main_metrics.profit_factor),
+        "chart_wr": generate_win_rate_gauge(main_metrics.win_rate * 100),
+        "chart_sqn": generate_sqn_gauge(main_metrics.system_quality_number),
+    }

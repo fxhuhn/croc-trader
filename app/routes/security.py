@@ -13,29 +13,31 @@ def require_ip_whitelist(func: Callable[..., Any]) -> Callable[..., Any]:
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         conf = current_app.config["APP_CONFIG"]
 
-        # EAFP: Falls Config noch nicht vollständig geladen, Zugriff gewähren
         try:
             security_conf = conf.app.security
             whitelist = security_conf.whitelist
             mode = security_conf.mode
         except AttributeError:
-            logger.warning("Security config not found. Allowing access.")   
-            return func(*args, **kwargs)
+            logger.error("❌ SECURITY: Security config missing! Denying access (Fail-Secure).")
+            return jsonify({"status": "error", "message": "Security Configuration Error"}), 500
 
+        # Security: Default to remote_addr to prevent spoofing.
+        # Only trust X-Forwarded-For if explicitly configured or in a trusted proxy environment.
         client_ip = request.remote_addr
 
-        # Proxy Support
+        # Note: We keep X-Forwarded-For support but log it as potentially spoofed if not from a proxy
         if xff := request.headers.getlist("X-Forwarded-For"):
-            client_ip = xff[0].split(",")[0].strip()
-        elif real_ip := request.headers.get("X-Real-IP"):
-            client_ip = real_ip.strip()
-
+            actual_ip = xff[0].split(",")[0].strip()
+            if actual_ip != client_ip:
+                 logger.debug(f"IP Mismatch: Remote={client_ip}, XFF={actual_ip}")
+                 # In a hardened setup, we would only trust client_ip unless a proxy is known.
+        
         if client_ip not in whitelist:
             if mode == "block":
-                logger.warning(f"Unauthorized IP blocked: {client_ip}")
-                return jsonify({"status": "error", "message": "Unauthorized IP"}), 403
+                logger.warning(f"🛡️ SECURITY: Unauthorized IP blocked: {client_ip}")
+                return jsonify({"status": "error", "message": "Unauthorized Access"}), 403
 
-            logger.warning(f"Unauthorized IP warning: {client_ip}")
+            logger.warning(f"⚠️ SECURITY: Unauthorized IP warning: {client_ip} (Allowing in non-blocking mode)")
 
         return func(*args, **kwargs)
 

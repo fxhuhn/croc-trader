@@ -37,8 +37,11 @@ def page_not_found(e: Exception) -> tuple[Response | str, int]:
     if not is_blocked:
         # NUR loggen, wenn es KEIN geblockter Pfad ist
         client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        # Security: Allow only safe characters in log
+        safe_path = request.path.replace("\n", "").replace("\r", "")
+        safe_method = request.method.replace("\n", "").replace("\r", "")
         logger.warning(
-            f"404 Not Found: {request.method} {request.path} - IP: {client_ip}"
+            f"404 Not Found: {safe_method} {safe_path} - IP: {client_ip}"
         )
 
     # Normale 404 Seite
@@ -70,8 +73,10 @@ def internal_server_error(e: Exception) -> tuple[Response | str, int]:
     logger.error(f"500 Internal Server Error: {e}", exc_info=True)
 
     if request.path.startswith(API_PREFIXES) or request.is_json:
+        # Security: Do NOT return str(e) to client, as it may contain sensitive info
+        # (SQL queries, file paths, etc.)
         return jsonify(
-            {"status": "error", "message": "Internal Server Error", "detail": str(e)}
+            {"status": "error", "message": "Internal Server Error"}
         ), 500
 
     return render_template("500.html"), 500
