@@ -12,7 +12,7 @@ from .routes import main_bp
 from .services.setup import register_services, configure_scheduler
 
 def create_app(config_object=settings):
-    app = Flask(__name__)
+    app = Flask(__name__, static_url_path='', static_folder='static')
 
     # 1. Config & Cache
     app.config["CACHE_TYPE"] = "SimpleCache"
