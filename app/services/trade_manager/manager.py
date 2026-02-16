@@ -3,9 +3,7 @@ from pathlib import Path
 from datetime import datetime
 import re
 
-
-
-
+from ...const import Strategies, STRATEGY_ALIASES
 from ...types import TradeStatus
 from ...database.repositories.trade import TradeRepository
 from ...database.repositories.market import MarketRepository
@@ -15,12 +13,19 @@ from ...services.telegram import TelegramBot
 # Strategien importieren
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.hold_target import HoldTargetStrategy
+from .strategies.split_target import SplitTargetStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
-from .strategies.two_percent_strategy import TwoPercentStrategyManager
+from .strategies.two_percent_strategy import TwoPercentStrategy
 
 logger = logging.getLogger(__name__)
 
 class TradeManager:
+    """
+    Manages the lifecycle of trades, including entry, exit, and order generation.
+    Resolves legacy strategy names to strict Enum constants.
+    """
+
+
     def __init__(self, db_path: Path, stocks_db_path: Path, telegram_bot: TelegramBot | None = None):
         self.db_path = db_path
         self.stocks_db_path = stocks_db_path
@@ -32,53 +37,71 @@ class TradeManager:
         
         # Verbindung zur Signals-DB
         self.signals_session = DatabaseSession(str(db_path))
-        self.trade_repo = TradeRepository(self.signals_session)
+        self.trade_repository = TradeRepository(self.signals_session)
 
-        # Strategie-Registry (Key muss lowercase sein!)
+        # Strategie-Registry (Strict Keys via Enum)
         self.strategies = {
-            "dipbuyer": DipBuyerStrategy(),
-            "turnovertiming": TurnoverTimingStrategy(),
-            # Aliases für Turnover Varianten
-            "turnovertiming_0.5": TurnoverTimingStrategy(), 
-            "turnovertiming_1.0": TurnoverTimingStrategy(),
-            # Croc Strategien
-            "croc_holdtp3": HoldTargetStrategy(),
-            "crocholdtp3": HoldTargetStrategy(),
-            "croc_tp3": HoldTargetStrategy(),
-            "holdtarget": HoldTargetStrategy(),
-            # SXRV Two Percent
-            "two_percent_strategy": TwoPercentStrategyManager(),
-            "twopercent": TwoPercentStrategyManager()
+            Strategies.DipBuyer: DipBuyerStrategy(),
+            Strategies.TurnOverTiming: TurnoverTimingStrategy(),
+            Strategies.TurnOverTiming_10: TurnoverTimingStrategy(),
+            Strategies.TurnOverTiming_05: TurnoverTimingStrategy(),
+            Strategies.HoldTarget: HoldTargetStrategy(),
+            Strategies.SplitTarget: SplitTargetStrategy(),
+            Strategies.TwoPercent: TwoPercentStrategy(),
         }
         
         logger.info(f"TradeManager init. Registered Strategies: {list(self.strategies.keys())}")
 
-    def _normalize_strategy_name(self, name: str) -> str:
-        """Entfernt Sonderzeichen und Leerzeichen für robustes Matching."""
-        if not name: return ""
-        # Alles lowercase, entferne alles was kein Buchstabe oder Zahl ist
-        return re.sub(r'[^a-z0-9]', '', name.lower())
+    def _resolve_strategy_name(self, name: str) -> Strategies | None:
+        """
+        Resolves a string (legacy or new) to a strict `Strategies` Enum member.
+        """
+        if not name:
+            return None
+        
+        # 1. Direct Match (if already correct string)
+        try:
+            return Strategies(name)
+        except ValueError:
+            pass
+            
+        # 2. Normalized Lookup from Aliases
+        # Normalize: lowercase, remove non-alphanumeric (except dots/underscore if needed, 
+        # but our keys are mostly clean. Let's try direct alias lookup first)
+        
+        # Basic cleanup for lookup
+        lower_name = name.lower()
+        
+        if lower_name in STRATEGY_ALIASES:
+            return STRATEGY_ALIASES[lower_name]
+
+        # 3. Fallback: Aggressive Normalization (remove underscores/spaces)
+        # e.g. "Two Percent" -> "twopercent"
+        clean_name = re.sub(r'[^a-z0-9]', '', lower_name)
+        
+        # Search aliases values / keys for match? 
+        # The aliases map above handles most cases. Let's add specific fallbacks if needed.
+        
+        # Manual Fallbacks for very messy inputs
+        if "turnover" in clean_name: return Strategies.TurnOverTiming
+        if "dip" in clean_name: return Strategies.DipBuyer
+        if "hold" in clean_name or "tp3" in clean_name: return Strategies.HoldTarget
+        if "split" in clean_name: return Strategies.SplitTarget
+        if "percent" in clean_name: return Strategies.TwoPercent
+
+        return None
     
     def _get_strategy(self, strategy_name: str):
         """
         Findet die passende Strategie-Instanz.
-        Nutzt Normalisierung für Maximum Match.
         """
-        if not strategy_name: return None
+        enum_key = self._resolve_strategy_name(strategy_name)
         
-        # 1. Normalisierter Lookup (Sicherster Weg)
-        clean_key = self._normalize_strategy_name(strategy_name)
-        
-        if clean_key in self.strategies:
-            return self.strategies[clean_key]
-            
-        # 2. Heuristischer Fallback (Falls Name komplett unbekannt)
-        if "turnover" in clean_key: return self.strategies["turnovertiming"]
-        if "dip" in clean_key: return self.strategies["dipbuyer"]
-        if "hold" in clean_key or "tp3" in clean_key: return self.strategies["crocholdtp3"]
+        if enum_key and enum_key in self.strategies:
+            return self.strategies[enum_key]
         
         # 3. Nichts gefunden -> Warning loggen!
-        logger.warning(f"⚠️ ACHTUNG: Unbekannte Strategie '{strategy_name}' (Key: '{clean_key}'). Keine Logik gefunden!")
+        logger.warning(f"⚠️ ACHTUNG: Unbekannte Strategie '{strategy_name}' (Resolved: {enum_key}). Keine Logik gefunden!")
         return None
 
     def run_daily_process(self):
@@ -86,7 +109,7 @@ class TradeManager:
         
         # 1. Active Trades verwalten (Exit Checks)
         try:
-            active_trades = self.trade_repo.get_by_status(TradeStatus.ACTIVE)
+            active_trades = self.trade_repository.get_by_status(TradeStatus.ACTIVE)
             logger.info(f"Prüfe {len(active_trades)} aktive Trades auf Exits...")
             for trade in active_trades:
                 self._process_active_trade(trade)
@@ -95,7 +118,7 @@ class TradeManager:
 
         # 2. Pending Trades verwalten (Entry Checks)
         try:
-            created_trades = self.trade_repo.get_by_status(TradeStatus.CREATED)
+            created_trades = self.trade_repository.get_by_status(TradeStatus.CREATED)
             logger.info(f"Prüfe {len(created_trades)} wartende Trades auf Entry...")
             for trade in created_trades:
                 self._process_created_trade(trade)
@@ -123,7 +146,7 @@ class TradeManager:
             if df_hist.empty:
                 return 
 
-            result = strategy.manage_active_trade(trade, df_hist, self.trade_repo)
+            result = strategy.manage_active_trade(trade, df_hist, self.trade_repository)
             
             if result:
                 logger.info(f"Trade Update {symbol}: {result}")
@@ -133,7 +156,7 @@ class TradeManager:
             # Update current price für Dashboard
             if not df_hist.empty:
                 current_close = df_hist.iloc[-1]['close']
-                self.trade_repo.update_trade(trade['id'], {"current_price": current_close})
+                self.trade_repository.update_trade(trade['id'], {"current_price": current_close})
 
         except Exception as e:
             logger.error(f"Fehler bei Exit Check {symbol}: {e}", exc_info=True)
@@ -155,7 +178,7 @@ class TradeManager:
             # Letzte Kerze prüfen
             candle = df_hist.iloc[-1]
             
-            result = strategy.check_entry(trade, candle, df_hist, self.trade_repo)
+            result = strategy.check_entry(trade, candle, df_hist, self.trade_repository)
             
             if result:
                 logger.info(f"Entry Check {symbol}: {result}")
@@ -176,7 +199,7 @@ class TradeManager:
         
         # 1. Hole alle CREATED Trades
         # (Wir holen alle, Strategien filtern selbst oder generieren Orders wenn passend)
-        created_trades = self.trade_repo.get_by_status(TradeStatus.CREATED)
+        created_trades = self.trade_repository.get_by_status(TradeStatus.CREATED)
         
         orders = []
         
@@ -199,7 +222,7 @@ class TradeManager:
                 # Default Budget from Trade Record (set by Portfolio Manager)
                 budget = float(trade.get('budget') or 2000.0) # Fallback to 2000 if PM failed or missed
                 
-                order = strategy.generate_orders(trade, df_hist, budget, self.trade_repo)
+                order = strategy.generate_orders(trade, df_hist, budget, self.trade_repository)
                 
                 if order:
                     # Clean None values (e.g. qty in Entry Leg)

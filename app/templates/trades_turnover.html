@@ -1,224 +1,368 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
 
-{% block content %}
-<style>
-    /* Spezifischer Style für Turnover Gruppierung */
-    tr.group-start td {
-        border-top: 2px solid #dee2e6 !important;
-        /* Dickerer Trennstrich bei neuer Gruppe */
-    }
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turnover Strategy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
 
-    /* Kerzen Visualisierung */
-    .candle-box {
-        display: inline-block;
-        width: 12px;
-        height: 18px;
-        margin-right: 2px;
-        border-radius: 2px;
-        border: 1px solid rgba(0, 0, 0, 0.1);
-    }
+<body class="bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900">
 
-    .candle-green {
-        background-color: #27ae60;
-    }
-
-    .candle-red {
-        background-color: #e74c3c;
-    }
-</style>
-
-<div class="container-fluid" style="max-width: 1600px;">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 style="color: #d35400;">🔄 Turnover Timing Trades</h1>
-        <div class="btn-group">
-            <a href="/trades" class="btn btn-outline-secondary">Alle Trades</a>
-            <a href="/screener/turnover" class="btn btn-warning text-white">Zum Screener</a>
-            <a href="/" class="btn btn-secondary">Home</a>
-        </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col-md-3">
-            <div class="card p-3 text-center shadow-sm">
-                <small class="text-muted text-uppercase fw-bold">Investiert</small>
-                <h3 class="fw-bold text-dark">{{ "%.0f"|format(summary.invested) }} $</h3>
+    <div class="max-w-6xl mx-auto">
+        <!-- 2.1 Header & Navigation -->
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-800">Turnover Strategy</h1>
+                <p class="text-slate-400 text-sm font-medium">Portfolio & Performance Tracker</p>
             </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card p-3 text-center shadow-sm">
-                <small class="text-muted text-uppercase fw-bold">Offene Positionen</small>
-                <h3 class="fw-bold" style="color: #d35400;">{{ active_trades|length }}</h3>
-            </div>
-        </div>
-        <div class="col-md-3">
-            <div class="card p-3 text-center shadow-sm">
-                <small class="text-muted text-uppercase fw-bold">Offener PnL</small>
-                <h3 class="fw-bold {% if summary.open_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
-                    {{ "%+.2f"|format(summary.open_pnl) }} $
-                </h3>
-            </div>
-        </div>
-    </div>
 
-    <div class="card shadow-sm border-0 mb-5">
-        <div class="card-header text-white fw-bold" style="background-color: #d35400;">
-            🚀 Laufende Positionen
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0 align-middle">
-                    <thead class="bg-light">
-                        <tr>
-                            <th>Entry Datum</th>
-                            <th>Symbol</th>
-                            <th>Strategie / Variante</th>
-                            <th>Size</th>
-                            <th>Tage</th>
-                            <th class="text-end">Entry</th>
-                            <th class="text-end">Aktuell</th>
-                            <th class="text-center">Setup (Kerzen)</th>
-                            <th class="text-end">PnL</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for t in active_trades %}
-                        <tr
-                            class="{{ 'group-start' if loop.index > 1 and (t['entry_date'] != active_trades[loop.index0 - 1]['entry_date'] or t['symbol'] != active_trades[loop.index0 - 1]['symbol']) }}">
-                            <td>{{ t.display_entry }}</td>
-                            <td>
-                                <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
-                                    class="tv-link fw-bold text-dark text-decoration-none" target="_blank">
-                                    {{ t.symbol }} ↗
-                                </a>
-                            </td>
-                            <td>
-                                <span class="badge bg-light text-dark border">
-                                    {% if "_" in t.strategy %}
-                                    Variante {{ t.strategy.split('_')[1] }}
-                                    {% else %}
-                                    Standard
-                                    {% endif %}
-                                </span>
-                            </td>
-                            <td>{{ t.current_size|int }}</td>
-                            <td><span class="badge bg-light text-dark border">{{ t.days_held }}</span></td>
+            <nav class="bg-white p-1 rounded-xl border border-slate-200 shadow-sm flex">
+                <a href="/trades/turnover"
+                    class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-700 transition-colors">
+                    Trades
+                </a>
+                <a href="/screener/turnover"
+                    class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
+                    Screener
+                </a>
+                <a href="/"
+                    class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
+                    Dashboard
+                </a>
+            </nav>
+        </header>
 
-                            <td class="text-end font-monospace">{{ "%.2f"|format(t.entry_price|float) }}</td>
-                            <td class="text-end font-monospace fw-bold">{{ "%.2f"|format(t.current_price|float) }}</td>
-
-                            <td class="text-center">
-                                <span
-                                    class="candle-box {% if t.ctx.get('setup_candle_green') %}candle-green{% else %}candle-red{% endif %}"
-                                    title="Setup Kerze: {{ 'Grün' if t.ctx.get('setup_candle_green') else 'Rot' }}">
-                                </span>
-                            </td>
-
-                            <td class="text-end">
-                                <div
-                                    class="fw-bold {% if t.unrealized_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                    {{ "%+.2f"|format(t.unrealized_pnl) }} $
-                                </div>
-                                <small class="text-muted">{{ "%+.2f"|format(t.pnl_pct) }}%</small>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="9" class="text-center py-4 text-muted">Keine offenen Positionen.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <div class="card shadow-sm border-0">
-        <div class="card-header bg-secondary text-white fw-bold d-flex justify-content-between align-items-center">
-            <span>💰 Historie (Abgeschlossen)</span>
-        </div>
-
-        <div class="card-body bg-light border-bottom p-3">
-            <div class="row text-center">
-                <div class="col-md-4 border-end">
-                    <small class="text-muted text-uppercase">Anzahl Trades</small>
-                    <div class="fw-bold fs-5">{{ closed_summary.count }}</div>
+        <!-- 2.2 KPI Cards -->
+        <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Invested -->
+            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
+                    <i data-lucide="wallet" class="w-6 h-6"></i>
                 </div>
-                <div class="col-md-4 border-end">
-                    <small class="text-muted text-uppercase">Gesamt PnL</small>
-                    <div
-                        class="fw-bold fs-5 {% if closed_summary.total_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ "%+.2f"|format(closed_summary.total_pnl) }} $
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Invested</p>
+                    <p class="text-2xl font-black text-slate-900">${{ "{:,.0f}".format(stats.invested) }}</p>
+                </div>
+            </article>
+
+            <!-- Active Positions -->
+            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
+                    <i data-lucide="activity" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Active Positions</p>
+                    <p class="text-2xl font-black text-slate-900">{{ stats.open_positions }}</p>
+                </div>
+            </article>
+
+            <!-- Open PnL -->
+            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
+                    <i data-lucide="trending-up" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Open PnL</p>
+                    <p class="text-2xl font-black {{ 'text-emerald-500' if stats.open_pnl >= 0 else 'text-rose-500' }}">
+                        {{ "{:+,.2f}".format(stats.open_pnl) }} $
+                    </p>
+                </div>
+            </article>
+        </section>
+
+        <!-- 2.3 Active Trades Section (Grouped) -->
+        {% if active_trades %}
+        <section class="mb-12">
+            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <i data-lucide="zap" class="w-5 h-5 text-indigo-500"></i> Active Trades
+            </h2>
+
+            <div class="flex flex-col gap-6">
+                {% for group in active_trades %}
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <!-- Group Header -->
+                    <div class="px-6 py-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl font-black text-slate-900">{{ group.symbol }}</span>
+                            <a href="https://www.tradingview.com/chart/?symbol={{ group.symbol }}" target="_blank"
+                                class="text-slate-400 hover:text-indigo-500 transition-colors">
+                                <i data-lucide="external-link" class="w-4 h-4"></i>
+                            </a>
+                        </div>
+                        <div class="font-bold {{ 'text-emerald-500' if group.total_pnl >= 0 else 'text-rose-500' }}">
+                            {{ "{:+,.2f}".format(group.total_pnl) }} $
+                        </div>
+                    </div>
+
+                    <!-- Variants List -->
+                    <div class="divide-y divide-slate-100">
+                        {% for t in group.variants %}
+                        <div class="p-6 transition-colors hover:bg-slate-50/30">
+                            <!-- Strip Layout -->
+                            <div class="flex flex-col md:flex-row items-center gap-2 md:gap-4 w-full">
+
+                                <!-- 1. Strategy Name (Level 2) -->
+                                <div class="text-slate-600 font-bold whitespace-nowrap">
+                                    {{ t.strategy.split('_')[-1] if '_' in t.strategy else 'STD' }}
+                                </div>
+
+                                <div class="hidden md:block border-l border-slate-200 h-4"></div>
+
+                                <!-- 2. Entry Info (Level 3 - Silent) -->
+                                <div
+                                    class="text-[9px] font-bold tracking-[0.15em] text-slate-400 uppercase whitespace-nowrap flex gap-2">
+                                    <span>QTY: {{ t.current_size|int }}</span>
+                                    <span class="text-slate-300">@</span>
+                                    <span>{{ "{:,.2f}".format(t.entry_price|float) }}</span>
+                                </div>
+
+                                <div class="hidden md:block border-l border-slate-200 h-4"></div>
+
+                                <!-- 3. 7-Day Tracker (Visual Adapter) -->
+                                <div class="flex items-center gap-3 w-full md:w-auto flex-1">
+                                    <span
+                                        class="text-[9px] font-bold tracking-[0.15em] text-slate-300 uppercase whitespace-nowrap">DAY
+                                        {{ t.days_held }}/5</span>
+                                    <div class="flex gap-1 flex-1 max-w-[120px]">
+                                        {% for i in range(1, 6) %}
+                                        <div
+                                            class="h-1.5 flex-1 rounded-full {{ 'bg-indigo-400/60' if i <= t.days_held|int else 'bg-slate-100' }}">
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+
+                                <!-- 4. Metrics (Right Aligned) -->
+                                <div class="flex items-center gap-4 ml-auto w-full md:w-auto justify-end">
+                                    <span class="text-xs font-medium text-slate-400">{{ "{:+.2f}".format(t.pnl_pct)
+                                        }}%</span>
+                                    <span
+                                        class="text-lg font-black {{ 'text-emerald-500/80' if t.unrealized_pnl >= 0 else 'text-rose-500/90' }}">
+                                        {{ "{:+,.2f}".format(t.unrealized_pnl) }} $
+                                    </span>
+                                </div>
+
+                            </div>
+                        </div>
+                        {% endfor %}
                     </div>
                 </div>
-                <div class="col-md-4">
-                    <small class="text-muted text-uppercase">Ø PnL / Trade</small>
-                    <div
-                        class="fw-bold fs-5 {% if closed_summary.avg_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
-                        {{ "%+.2f"|format(closed_summary.avg_pnl) }} $
-                    </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        <!-- 2.4 Performance Tables (Two Columns) -->
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+
+            <!-- Index Performance -->
+            <div>
+                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <i data-lucide="layers" class="w-5 h-5 text-indigo-500"></i> Index Performance
+                </h2>
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table class="w-full text-sm text-left">
+                        <thead>
+                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                                <th class="px-6 py-4 font-normal">Index</th>
+                                <th class="px-6 py-4 font-normal text-right">Win — Loss</th>
+                                <th class="px-6 py-4 font-normal text-right">Total PnL</th>
+                                <th class="px-6 py-4 font-normal text-right">Avg</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            {% for row in performance_index %}
+                            {% if row.win > 0 or row.loss > 0 %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-3 font-medium text-slate-700">{{ row.name }}</td>
+                                <td class="px-6 py-3 text-right text-slate-500">
+                                    <span class="text-emerald-500 font-bold">{{ row.win }}W</span> — <span
+                                        class="text-rose-500 font-bold">{{ row.loss }}L</span>
+                                </td>
+                                <td
+                                    class="px-6 py-3 text-right font-medium {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500' }}">
+                                    {{ "{:+.0f}".format(row.pnl) }}
+                                </td>
+                                <td class="px-6 py-3 text-right text-slate-500">
+                                    {{ "{:+.2f}".format(row.average_pnl) }}
+                                </td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-        </div>
 
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0 align-middle">
-                    <thead class="bg-light">
-                        <tr>
-                            <th>Entry</th>
-                            <th>Exit</th>
-                            <th>Symbol</th>
-                            <th>Variante</th>
-                            <th>Size</th>
-                            <th class="text-end">Entry $</th>
-                            <th class="text-end">Exit $</th>
-                            <th class="text-end">PnL</th>
-                            <th>Grund</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for t in closed_trades %}
-                        <tr
-                            class="{{ 'group-start' if loop.index > 1 and (t['exit_date'] != closed_trades[loop.index0 - 1]['exit_date'] or t['symbol'] != closed_trades[loop.index0 - 1]['symbol']) }}">
-                            <td>{{ t.display_entry }}</td>
-                            <td>{{ t.display_exit }}</td>
-                            <td class="fw-bold">{{ t.symbol }}</td>
-
-                            <td>
-                                <small class="text-muted">
-                                    {% if "_" in t.strategy %}
-                                    {{ t.strategy.split('_')[1] }}
-                                    {% else %}
-                                    Standard
-                                    {% endif %}
-                                </small>
-                            </td>
-                            <td>{{ t.current_size|int }}</td>
-
-                            <td class="text-end font-monospace text-muted">{{ "%.2f"|format(t.entry_price|float) }}</td>
-                            <td class="text-end font-monospace">{{ "%.2f"|format(t.exit_price|float) }}</td>
-
-                            <td class="text-end">
-                                <div
-                                    class="fw-bold {% if t.realized_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
-                                    {{ "%+.2f"|format(t.realized_pnl) }} $
-                                </div>
-                                <small class="text-muted">{{ "%+.2f"|format(t.pnl_pct) }}%</small>
-                            </td>
-
-                            <td>
-                                <span class="badge bg-secondary">{{ t.exit_reason }}</span>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="9" class="text-center py-4 text-muted">Keine Historie.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <!-- Variant Performance -->
+            <div>
+                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-5 h-5 text-indigo-500"></i> Variant Stats
+                </h2>
+                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <table class="w-full text-sm text-left">
+                        <thead>
+                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                                <th class="px-6 py-4 font-normal">Variant</th>
+                                <th class="px-6 py-4 font-normal text-right">Win — Loss</th>
+                                <th class="px-6 py-4 font-normal text-right">Total PnL</th>
+                                <th class="px-6 py-4 font-normal text-right">Avg</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            {% for row in performance_variants %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-3 font-medium text-slate-700">{{ row.name }}</td>
+                                <td class="px-6 py-3 text-right text-slate-500">
+                                    <span class="text-emerald-500 font-bold">{{ row.win }}W</span> — <span
+                                        class="text-rose-500 font-bold">{{ row.loss }}L</span>
+                                </td>
+                                <td
+                                    class="px-6 py-3 text-right font-medium {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500' }}">
+                                    {{ "{:+.0f}".format(row.pnl) }}
+                                </td>
+                                <td class="px-6 py-3 text-right text-slate-500">
+                                    {{ "{:+.2f}".format(row.average_pnl) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
+
+        </section>
+
+        <!-- 2.5 Trade History -->
+        <section>
+            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <i data-lucide="history" class="w-5 h-5 text-indigo-500"></i> Trade History
+            </h2>
+
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm text-left">
+                        <thead>
+                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                                <th class="px-6 py-4 font-normal">Date</th>
+                                <th class="px-6 py-4 font-normal">Symbol</th>
+                                <th class="px-6 py-4 font-normal">Qty</th>
+                                <th class="px-6 py-4 font-normal text-right">Entry</th>
+                                <th class="px-6 py-4 font-normal text-right">Exit</th>
+                                <th class="px-6 py-4 font-normal text-right">PnL</th>
+                                <th class="px-6 py-4 font-normal text-right">Reason</th>
+                            </tr>
+                        </thead>
+                        {% for group in history_groups %}
+                        <tbody class="border-b border-slate-100 last:border-0 hover:bg-slate-50/30 transition-colors">
+                            {% for t in group.trades %}
+                            <tr class="group">
+                                <!-- Date: Entry (First) + Exit + Holding -->
+                                <!-- Date: Exit (Bold) + Entry (Small) -->
+                                <td class="px-6 py-3 text-slate-500 align-top">
+                                    {% if loop.first or t.display_exit != loop.previtem.display_exit %}
+                                    <div class="text-slate-900 font-bold">{{ t.display_exit }} <span
+                                            class="text-xs text-slate-400 font-normal">({{ t.days_held }}d)</span></div>
+                                    {% endif %}
+
+                                    {% if loop.first %}
+                                    <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-1">In: {{
+                                        group.entry_date }}</div>
+                                    {% endif %}
+                                </td>
+
+                                <!-- Symbol + Index (Grouped) -->
+                                <td class="px-6 py-3 align-top">
+                                    {% if loop.first %}
+                                    <div class="font-black text-slate-700 text-lg leading-tight">{{ group.symbol }}
+                                    </div>
+                                    <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">{{
+                                        group.display_index }}</div>
+                                    {% endif %}
+                                </td>
+
+                                <td class="px-6 py-3 text-slate-500 align-top">{{ t.initial_size|int }}</td>
+                                <td class="px-6 py-3 text-right font-mono text-slate-400 align-top">{{
+                                    "{:,.2f}".format(t.entry_price|float) }}</td>
+                                <td class="px-6 py-3 text-right font-mono text-slate-700 align-top">{{
+                                    "{:,.2f}".format(t.exit_price|float) }}</td>
+                                <td
+                                    class="px-6 py-3 text-right font-bold align-top {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }}">
+                                    {{ "{:+,.2f}".format(t.realized_pnl) }}
+                                </td>
+                                <td class="px-6 py-3 text-right align-top">
+                                    {% if 'TAKE_PROFIT' in t.exit_reason or 'TARGET' in t.exit_reason or 'LOC' in
+                                    t.exit_reason %}
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50">
+                                        {{ t.exit_reason }}
+                                    </span>
+                                    {% elif 'STOP_LOSS' in t.exit_reason %}
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50">
+                                        {{ t.exit_reason }}
+                                    </span>
+                                    {% elif 'GREEN_SEQUENCE' in t.exit_reason %}
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50/50 text-indigo-600/80 border border-indigo-100/50"
+                                        title="Standard Turnover Exit (2 Green Candles)">
+                                        Conditional
+                                    </span>
+                                    {% else %}
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-50 text-slate-400 border border-slate-100">
+                                        {{ t.exit_reason }}
+                                    </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        {% endfor %}
+                        <tfoot class="bg-slate-50 border-t border-slate-200">
+                            <tr>
+                                <td colspan="5"
+                                    class="px-6 py-4 text-right font-bold text-slate-500 uppercase tracking-widest text-xs">
+                                    Total History PnL</td>
+                                <td
+                                    class="px-6 py-4 text-right font-black text-lg {{ 'text-emerald-500' if history_summary.total_pnl >= 0 else 'text-rose-500' }}">
+                                    {{ "{:+,.2f}".format(history_summary.total_pnl) }} $
+                                </td>
+                                <td></td>
+                            </tr>
+                            <tr>
+                                <td colspan="5"
+                                    class="px-6 py-2 text-right font-bold text-slate-400 uppercase tracking-widest text-xs">
+                                    Avg per Trade</td>
+                                <td class="px-6 py-2 text-right font-bold text-slate-500">
+                                    {{ "{:+,.2f}".format(history_summary.average_pnl) }} $
+                                </td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <footer class="mt-12 text-center text-slate-400 text-sm mb-8">
+            <p>&copy; 2026 Croc Trader System. Premium SaaS Edition.</p>
+        </footer>
+
     </div>
-</div>
-{% endblock %}
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+
+</html>

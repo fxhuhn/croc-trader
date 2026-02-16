@@ -1,205 +1,301 @@
-
-import json
 import logging
-import calendar
-from typing import Any, override
+import json
+import uuid
+from typing import TypedDict, final, override
+
 import pandas as pd
 
-from ....types import TradeStatus, TradeParams, ExitReason, TradeData
 from ....database.repositories.trade import TradeRepository
+from ....models import Order, OrderLeg, TradeParams
+from ....tools.market_holidays import MarketHolidayChecker
+from ....types import ExitReason, TradeData
+from ....const import Strategies
 from .abstract import BaseTradeStrategy
 
 logger = logging.getLogger(__name__)
 
+
+class TurnoverContext(TypedDict, total=False):
+    """Context structure for Turnover Strategy signal data."""
+
+    green_candle_count: int
+
+
+@final
 class TurnoverTimingStrategy(BaseTradeStrategy):
     """
-    Manager für Turnover Timing Trades.
-    Entry: Limit Order (Low <= Limit).
-    Exit: 2 Green Candles in Folge ODER Freitag Close.
+    Manages execution for 'TurnoverTiming' Strategy.
+
+    Rules:
+    1. Entry: Limit Buy at specific level from signal.
+    2. Exit:
+       - Early: Two consecutive green candles (+ logic).
+       - Time: Friday Close.
     """
-    name = "TurnoverTiming"
-    
-    # -------------------------------------------------------------------------
-    # 1. Parameter Extraction
-    # -------------------------------------------------------------------------
+
+    name: str = Strategies.TurnOverTiming
+    """Unique identifier for the strategy."""
+
+    DEFAULT_SLIPPAGE: float = 0.0
+    """Default slippage applied to executions."""
+
+    def __init__(self, strategy_name: str | None = None):
+        if strategy_name:
+            self.name = strategy_name
+
+    def _is_green_candle(self, open_price: float, close_price: float) -> bool:
+        """Determines if a candle is green (Close > Open)."""
+        return close_price > open_price
+
     @override
     def get_current_params(
-        self, 
-        trade: TradeData, 
-        df_history: pd.DataFrame | None = None, 
-        repository: TradeRepository | None = None
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame | None = None,
+        repository: TradeRepository | None = None,
     ) -> TradeParams:
-        dict_trade = dict(trade)
+        """Standardizes TradeParams for turnover strategy."""
         return TradeParams(
-            symbol=dict_trade['symbol'],
-            entry=float(dict_trade.get('entry_price') or 0),
-            size=float(dict_trade.get('current_size') or 0),
-            stop=0.0, 
-            target=0.0
+            stop_loss=0.0,
+            take_profit_1=0.0,
+            extras={
+                "variant": trade.get("strategy", "STD"),
+                "current_size": float(trade.get("current_size") or 0.0),
+            },
         )
 
-    # -------------------------------------------------------------------------
-    # 2. Entry Logic
-    # -------------------------------------------------------------------------
     @override
-    def check_entry(
-        self, 
-        trade: TradeData, 
-        candle: pd.Series, 
-        df_history: pd.DataFrame, 
-        repository: TradeRepository
-    ) -> str | None:
-        """
-        Prüft Limit-Entry.
-        Regel: Low <= Limit Preis.
-        Gültigkeit: Nur am ersten Tag nach dem Signal (Day Valid).
-        """
-        dict_trade = dict(trade)
-        context = self._get_context(dict_trade)
-        
-        signal_date_str = context.get("setup_date") or context.get("date")
-        if not signal_date_str: 
-            return None
-        
-        signal_date = pd.Timestamp(signal_date_str).date()
-        current_date = pd.Timestamp(candle['date']).date()
-        
-        # 1. Backtest-Schutz: Nicht am Signaltag handeln (Look-Ahead Bias verhindern)
-        if current_date <= signal_date:
-            return None
-            
-        limit_price = float(dict_trade['entry_price'])
-        low = float(candle['low'])
-        open_price = float(candle['open'])
-        
-        # 2. Limit Check
-        # Gap-Handling: Wenn Open < Limit, kaufen wir zum Open (besserer Preis)
-        # Wenn Low <= Limit, kaufen wir zum Limit
-        fill_price = 0.0
-        filled = False
-        
-        if open_price <= limit_price:
-            fill_price = open_price
-            filled = True
-        elif low <= limit_price:
-            fill_price = limit_price
-            filled = True
-            
-        if filled:
-            # Size berechnen (falls noch 0, z.B. 2000$ Budget)
-            current_size = float(dict_trade.get('current_size') or 0)
-            if current_size == 0:
-                budget = 2000.0 # Standard Backtest Budget
-                current_size = int(budget / fill_price) if fill_price > 0 else 0
-            
-            repository.update_trade(dict_trade['id'], {
-                "status": TradeStatus.ACTIVE,
-                "entry_date": str(candle['date']),
-                "entry_price": fill_price,
-                "initial_size": current_size,
-                "current_size": current_size
-            }, reason=f"LIMIT FILLED @ {fill_price:.2f}")
-            return f"✅ FILLED @ {fill_price:.2f}"
-        else:
-            # Order expired (Day Valid) -> Trade wird ungültig
-            repository.update_trade(dict_trade['id'], {
-                "status": TradeStatus.MISSED,
-                "exit_reason": ExitReason.EXPIRED 
-            })
-            return f"❌ MISSED (Low {low} > Limit {limit_price})"
+    def generate_orders(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        repository: TradeRepository,
+    ) -> Order | None:
+        """Generates Entry or Exit Orders based on state."""
+        status = trade.get("status")
 
-    # -------------------------------------------------------------------------
-    # 3. Active Trade Management (Exits)
-    # -------------------------------------------------------------------------
-    @override
-    def manage_active_trade(
-        self, 
-        trade: TradeData, 
-        df_history: pd.DataFrame, 
-        repository: TradeRepository
-    ) -> str | None:
-        """
-        Exit Logik:
-        1. 2 Grüne Kerzen in Folge -> Exit Market Open.
-        2. Ende der Woche (Freitag) -> Exit Market Close.
-        """
-        if df_history.empty: 
-            return None
-        
-        dict_trade = dict(trade)
-        current_candle = df_history.iloc[-1]
-        current_date = pd.Timestamp(current_candle['date'])
-        current_close = float(current_candle['close'])
-        
-        context = self._get_context(dict_trade)
-        
-        # --- A) Zeit-Stopp (Freitag) ---
-        # Wenn heute Freitag ist, steigen wir zum Close aus.
-        if current_date.weekday() == calendar.FRIDAY:
-            return self._close_trade(repository, dict_trade, current_close, ExitReason.TIME_STOP, current_date)
-            
-        # --- B) 2 Grüne Kerzen ---
-        # Wir prüfen die Historie (Gestern und Vorgestern).
-        # Wenn beide grün waren, steigen wir HEUTE zum Open aus.
-        
-        yesterday_green = False
-        before_yesterday_green = False
-        
-        # Helper: Ist Kerze an Position idx grün?
-        def is_green(idx):
-            if len(df_history) >= abs(idx):
-                c = df_history.iloc[idx]
-                return c['close'] > c['open']
-            return False
+        # 1. Entry Order (CREATED)
+        if status == "CREATED":
+            entry_price = float(trade.get("entry_price") or 0.0)
+            if entry_price <= 0 or budget <= 0:
+                return None
 
-        # Gestern (iloc[-2])
-        if len(df_history) >= 2:
-            yesterday_green = is_green(-2)
-        else:
-            # Fallback auf Setup-Kerze (vom Screener Context)
-            yesterday_green = bool(context.get("setup_candle_green", False))
+            quantity = int(budget / entry_price)
+            if quantity < 1:
+                return None
 
-        # Vorgestern (iloc[-3])
-        if len(df_history) >= 3:
-            before_yesterday_green = is_green(-3)
-        else:
-            # Wenn History zu kurz, nehmen wir an, Vorgestern war die Setup-Kerze
-            before_yesterday_green = bool(context.get("setup_candle_green", False))
+            return Order(
+                id=str(uuid.uuid4()),
+                symbol=trade["symbol"],
+                quantity=quantity,
+                mode="Entry",
+                entry=OrderLeg(
+                    action="BUY", type="LMT", price=entry_price, quantity=quantity
+                ),
+                exits=[],
+            )
 
-        # TRIGGER
-        if yesterday_green and before_yesterday_green:
-            # Exit zum Open von HEUTE
-            exit_price = float(current_candle['open'])
-            # Logic: Exit was caused by technical signal "2 Green Candles"
-            return self._close_trade(repository, dict_trade, exit_price, ExitReason.TAKE_PROFIT, current_date)
+        # 2. Exit Order (ACTIVE)
+        if status == "ACTIVE":
+            raw_context = trade.get("signal_context") or "{}"
+            context: TurnoverContext = json.loads(raw_context)
+            green_candle_count = context.get("green_candle_count", 0)
+            quantity = int(trade.get("current_size") or 0)
+
+            if quantity <= 0:
+                return None
+
+            # a) Green Sequence Exit (TRIGGERED)
+            if green_candle_count >= 2:
+                return Order(
+                    id=str(uuid.uuid4()),
+                    symbol=trade["symbol"],
+                    quantity=quantity,
+                    mode="Exit",
+                    entry=None,
+                    exits=[
+                        OrderLeg(
+                            action="SELL", type="MKT", price=0.0, quantity=quantity
+                        )
+                    ],
+                )
+
+            # b) Friday Time Stop
+            if not dataframe_history.empty:
+                last_date = pd.Timestamp(dataframe_history.iloc[-1]["date"])
+                day_of_week = last_date.dayofweek
+
+                # Logic Clean-up:
+                # We want to exit on Friday.
+                # If we are generating orders based on THURSDAY data (day=3),
+                # we generate an exit for Friday.
+                # Note: Real execution will be Friday Open (MKT) or Close (MOC).
+                # Assuming MKT for now as strict "Close" requires MOC support.
+                if day_of_week == 3:  # Thursday
+                    return Order(
+                        id=str(uuid.uuid4()),
+                        symbol=trade["symbol"],
+                        quantity=quantity,
+                        mode="Exit",
+                        entry=None,
+                        exits=[
+                            OrderLeg(
+                                action="SELL", type="MKT", price=0.0, quantity=quantity
+                            )
+                        ],
+                    )
 
         return None
 
-    # -------------------------------------------------------------------------
-    # Helpers
-    # -------------------------------------------------------------------------
-    def _get_context(self, trade: dict) -> dict:
-        raw = trade.get("signal_context")
-        try:
-            return json.loads(raw) if isinstance(raw, str) else (raw or {})
-        except Exception:
-            return {}
+    @override
+    def check_entry(
+        self,
+        trade: TradeData,
+        candle: pd.Series,
+        dataframe_history: pd.DataFrame,
+        repository: TradeRepository,
+    ) -> str | None:
+        """Checks if the limit entry was reached on the NEXT trading day only."""
+        limit_price = float(trade.get("entry_price") or 0.0)
 
-    def _close_trade(self, repository, trade, price, reason, date_obj):
-        entry_price = float(trade['entry_price'])
-        size = float(trade['current_size'])
-        pnl = (price - entry_price) * size
+        if limit_price <= 0:
+            return None
         
-        repository.update_trade(trade['id'], {
-            "status": TradeStatus.CLOSED,
-            "exit_reason": reason,
-            "exit_price": price,
-            "exit_date": date_obj.strftime("%Y-%m-%d"),
-            "realized_pnl": pnl
-        })
-        return f"EXIT {trade['symbol']}: {reason} @ {price:.2f}"
+        # Determine Timestamps
+        current_date_ts = pd.Timestamp(candle["date"])
+        current_date = str(current_date_ts.date())
+        signal_date_ts = self._get_signal_date(trade)
+        
+        if not signal_date_ts:
+            return None
+
+        # Count trading days strictly after signal
+        days_post_signal = self._get_trading_days_post_signal(trade, dataframe_history)
+        
+        # 1. Too early (Same day) -> count = 0
+        if days_post_signal < 1:
+            return None
+            
+        # 2. Too late (Expired) -> count > 1
+        if days_post_signal > 1:
+             return self._expire_trade(trade, repository, current_date)
+
+        # 3. Check Fill on the next trading day (valid) -> count == 2
+        low_price = float(candle["low"])
+        open_price = float(candle["open"])
+        
+        if low_price <= limit_price:
+            fill_price = (
+                min(open_price, limit_price)
+                if open_price < limit_price
+                else limit_price
+            )
+            # Ensure fill_price is valid
+            if fill_price <= 0:
+                return None
+
+            # Update green candle count if the entry day itself is green
+            close_price = float(candle["close"])
+            raw_context = trade.get("signal_context") or "{}"
+            try:
+                context: TurnoverContext = json.loads(raw_context)
+            except json.JSONDecodeError:
+                 context = {"green_candle_count": 0}
+            
+            # Use strict helper
+            if self._is_green_candle(open_price, close_price):
+                 count = context.get("green_candle_count", 0) + 1
+            else:
+                 count = 0
+
+            # Update context correctly
+            context["green_candle_count"] = count
+
+            return self._execute_activation(
+                trade,
+                repository,
+                fill_price,
+                "LIMIT",
+                current_date,
+                extra_updates={"signal_context": json.dumps(context, default=str)},
+            )
+
+        return None
 
     @override
-    def generate_orders(self, trade, df_history, budget, repo):
-        # Für Live-Trading Order-Generierung (optional)
+    def manage_active_trade(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        repository: TradeRepository,
+    ) -> str | None:
+        """Manages Exits: Multi-Day Green sequence (Next Open) or Time Stop (EOD)."""
+        if dataframe_history.empty:
+            return None
+
+        current_candle = dataframe_history.iloc[-1]
+        date_string = str(current_candle["date"])
+
+        # 1. Signal-Specific Exit (State-Based Green Candles sequence)
+        # Rule: If count >= 2, exit at current candle OPEN (Next Open Rule).
+        # Otherwise, update count based on current candle color.
+
+        raw_context = trade.get("signal_context") or "{}"
+        try:
+             context: TurnoverContext = json.loads(raw_context)
+        except json.JSONDecodeError:
+             context = {"green_candle_count": 0}
+
+        green_candle_count = context.get("green_candle_count", 0)
+
+        # Check for Exit Trigger (Next Open)
+        if green_candle_count >= 2:
+            return self._close_trade(
+                trade,
+                repository,
+                float(current_candle["open"]),
+                ExitReason.GREEN_SEQUENCE,
+                date_string,
+            )
+
+        # Update Count for the NEXT day
+        # Use strict helper
+        if self._is_green_candle(float(current_candle["open"]), float(current_candle["close"])):
+            green_candle_count += 1
+        else:
+            green_candle_count = 0
+
+        # Persist Count back to context
+        context["green_candle_count"] = green_candle_count
+        repository.update_trade(
+            trade["id"],
+            {"signal_context": json.dumps(context, default=str)},
+            reason=f"Update Green Candle Count: {green_candle_count}",
+        )
+
+        # 2. End of Week Time Stop (Friday or Holiday-Thursday Close)
+        current_date_timestamp = pd.Timestamp(current_candle["date"])
+        day_of_week = current_date_timestamp.dayofweek
+        holiday_checker = MarketHolidayChecker()
+
+        is_end_of_week = False
+        if day_of_week == 4:  # Friday
+            is_end_of_week = True
+        elif day_of_week == 3:  # Thursday
+            # If Friday is a holiday, Thursday is the end of the week
+            tomorrow = current_date_timestamp + pd.Timedelta(days=1)
+            # Use explicit date() for checker
+            if holiday_checker.is_holiday(tomorrow.date()):
+                is_end_of_week = True
+
+        if is_end_of_week:
+            return self._close_trade(
+                trade,
+                repository,
+                float(current_candle["close"]),
+                ExitReason.TIME_STOP,
+                date_string,
+            )
+
         return None

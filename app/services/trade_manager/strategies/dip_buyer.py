@@ -1,11 +1,10 @@
 import logging
-import json
-from typing import override, final, Optional, Any
-from datetime import date
-
+from typing import override, final
 import pandas as pd
 
-from ....types import TradeStatus, TradeParams, Order, OrderLeg, ExitReason, TradeData
+from ....types import TradeStatus, ExitReason, TradeData
+from ....const import Strategies
+from ....models import TradeParams, Order, OrderLeg
 from ....database.repositories.trade import TradeRepository
 from .abstract import BaseTradeStrategy
 
@@ -13,37 +12,41 @@ logger = logging.getLogger(__name__)
 
 @final
 class DipBuyerStrategy(BaseTradeStrategy):
-    """
-    Dip Buyer Strategie: Versucht Anteile mittels Limit-Order in die Schwäche zu kaufen.
-
-    Regeln:
-    - Entry: Limit Buy unter aktuellem Marktpreis.
-    - Exit 1: LOC (Limit On Close) - Wenn Close > High(Vorheriger Tag).
-    - Exit 2: Target (Take Profit) - Aus dem Signal übernommen (ignoriert am Entry-Tag).
-    - Exit 3: TimeStop nach N Handelstagen (nicht Kalendertage!).
+    """Dip Buyer Strategy: Enters on weakness via Limit Order.
+    
+    Attributes:
+        name: Strategy identifier.
+        DEFAULT_BUDGET: Default capital allocation for the trade.
+        TIME_STOP_DAYS: Maximum holding period in trading days.
     """
     
-    name = "DipBuyer"
-    
-    # Configuration Constants
+    name = Strategies.DipBuyer
     DEFAULT_BUDGET: float = 2000.0
-    TIME_STOP_DAYS: int = 10
+    TIME_STOP_DAYS: int = 8
     
     @override
     def get_current_params(
         self, 
         trade: TradeData, 
-        df_history: Optional[pd.DataFrame] = None, 
-        repository: Optional[TradeRepository] = None
+        dataframe_history: pd.DataFrame | None = None, 
+        repository: TradeRepository | None = None
     ) -> TradeParams:
-        """Extrahiert die aktuellen Trade-Parameter für das Frontend/Logging."""
-        # TypedDict access - use .get() for safety if key is optional
+        """Extracts current strategy parameters for display.
+
+        Args:
+            trade: Current trade data.
+            dataframe_history: Historical price data.
+            repository: Trade database repository.
+
+        Returns:
+            TradeParams: Extracted parameters for UI display.
+        """
         return TradeParams(
-            stop_loss=0.0, # Strategy has no Stop Loss
-            tp_1=float(trade.get('current_target') or 0.0),
+            stop_loss=0.0, # No stop loss
+            take_profit_1=float(trade.get("current_target") or 0.0),
             extras={
-                "entry_limit": float(trade.get('entry_price') or 0.0),
-                "current_size": float(trade.get('current_size') or 0.0)
+                "entry_limit": float(trade.get("entry_price") or 0.0),
+                "current_size": float(trade.get("current_size") or 0.0)
             }
         )
 
@@ -52,282 +55,206 @@ class DipBuyerStrategy(BaseTradeStrategy):
         self, 
         trade: TradeData, 
         candle: pd.Series, 
-        df_history: pd.DataFrame, 
+        dataframe_history: pd.DataFrame, 
         repository: TradeRepository
     ) -> str | None:
+        """Checks if the limit entry was reached.
+
+        Rules:
+        1. Skip signal day (Day 0).
+        2. Entry on Next Day (Day 1) via Limit Order.
+        3. Invalidate if Day > 1.
+
+        Args:
+            trade: Current trade record.
+            candle: Latest market candle.
+            dataframe_history: Historical data for context.
+            repository: Trade repository for updates.
+
+        Returns:
+            str | None: Description of transition if triggered.
         """
-        Prüft, ob das Limit für den Entry erreicht wurde.
-        
-        Logik:
-        1. Validierung des Handelstages (nicht am Signal-Tag handeln).
-        2. Prüfung ob Low <= Limit Preis.
-        3. Ausführung (ggf. Gap-Down Schutz).
-        4. Verfall (Expire), falls Limit nicht erreicht (Day Order).
-        """
-        symbol = trade.get('symbol', 'UNKNOWN')
-        
-        try:
-            dict_trade = dict(trade) # Cast for safety if needed, though TypedDict behaves like dict
-            
-            limit_price = float(dict_trade.get('entry_price') or 0.0)
-            if limit_price <= 0:
-                logger.warning("Trade %s hat keinen validen Limit-Preis (<= 0).", symbol)
-                return None
-
-            # 1. Datum Validierung (Early Return)
-            if not self._is_valid_entry_date(dict_trade, candle):
-                return None
-
-            low_price = float(candle['low'])
-            
-            # 2. Check: Limit erreicht?
-            if low_price > limit_price:
-                # Limit nicht erreicht -> Day Order expired
-                self._handle_expired_order(dict_trade, candle, repository)
-                return "EXPIRED (Limit not reached)"
-
-            # 3. Execution Logic
-            # Gap Schutz: Wenn Open < Limit, bekommen wir den Open Price (besserer Einstieg)
-            open_price = float(candle['open'])
-            fill_price = min(open_price, limit_price) if open_price < limit_price else limit_price
-            
-            return self._execute_trade(dict_trade, fill_price, str(candle['date']), repository)
-
-        except Exception:
-            logger.exception("Kritischer Fehler beim Entry-Check für %s", symbol)
+        limit_price = float(trade.get("entry_price") or 0.0)
+        if limit_price <= 0:
             return None
+
+        # 1. Date/Session Validation
+        # Rules: Skip signal day (Day 0), Entry on Next Day (Day 1), Invalidate if Day > 1
+        days_passed = self._get_trading_days_post_signal(trade, dataframe_history)
+        
+        if days_passed == 0:
+            # Too early (Signal Day)
+            return None
+        
+        date_string = str(candle["date"])
+        if days_passed > 1:
+            # Too late: Missed the entry window
+            return self._reject_setup(
+                trade, repository, date_string, "Missed Entry Window"
+            )
+
+        # 2. Check Fill (Day 1)
+        low_price = float(candle["low"])
+        open_price = float(candle["open"])
+
+        if low_price > limit_price:
+            # Missed entry on the target day -> Invalidate the setup
+            return self._invalidate_trade(
+                trade, repository, low_price, limit_price, date_string
+            )
+
+        # 3. Execution (with Gap Down benefit)
+        fill_price = (
+            min(open_price, limit_price) if open_price < limit_price else limit_price
+        )
+
+        return self._execute_activation(
+            trade, repository, fill_price, "LIMIT", date_string
+        )
 
     @override
     def manage_active_trade(
         self, 
         trade: TradeData, 
-        df_history: pd.DataFrame, 
+        dataframe_history: pd.DataFrame, 
         repository: TradeRepository
     ) -> str | None:
+        """Manages exits: LOC, Target, and Time Stop.
+
+        Exits:
+        1. LOC (Limit On Close) - If Close > Previous Day High.
+        2. Target (Take Profit) - Predefined target hit.
+        3. Time Stop - Closed at end of day 8.
+
+        Args:
+            trade: Current active trade.
+            dataframe_history: Historical price sequence.
+            repository: Trade repository for updates.
+
+        Returns:
+            str | None: Description of transition if triggered.
         """
-        Verwaltet offene Trades (LOC, TP, TimeStop).
-        """
-        if df_history.empty:
+        if dataframe_history.empty:
             return None
         
-        try:
-            # Cast safe copy
-            dict_trade = dict(trade)
-            candle = df_history.iloc[-1]
-            return self._check_exit_conditions(dict_trade, candle, df_history, repository)
-        except Exception:
-            logger.exception("Fehler beim Management von Trade %s", trade.get('symbol'))
-            return None
+        candle = dataframe_history.iloc[-1]
+        date_string = str(candle['date'])
+        current_date_obj = pd.Timestamp(candle['date'])
+        
+        # 1. Day Check
+        entry_date_str = trade.get("entry_date")
+        is_entry_day = False
+        if entry_date_str:
+            entry_date = pd.Timestamp(entry_date_str).date()
+            if current_date_obj.date() < entry_date:
+                return None
+            is_entry_day = (current_date_obj.date() == entry_date)
+
+        # 2. Target Logic (Take Profit)
+        # Rule: Target can NOT be hit on entry day.
+        target_price = float(trade.get('current_target') or 0.0)
+        high_price = float(candle['high'])
+        open_price = float(candle['open'])
+        
+        if not is_entry_day and target_price > 0 and high_price >= target_price:
+            exit_price = max(open_price, target_price)
+            return self._close_trade(
+                trade, repository, exit_price, ExitReason.TARGET_HIT, date_string
+            )
+
+        # 3. LOC (Limit On Close) Logic
+        # Rule: Only Limit on Close is possible for same day.
+        if len(dataframe_history) >= 2:
+            prev_candle = dataframe_history.iloc[-2]
+            prev_high = float(prev_candle["high"])
+            close_price = float(candle["close"])
+            
+            if close_price > prev_high:
+                return self._close_trade(
+                    trade, repository, close_price, "LOC_HIT", date_string
+                )
+
+        entry_date_str = trade.get("entry_date")
+        if entry_date_str:
+            # Count trading days since entry
+            # User Request: Close AT the 8th trading day
+            trading_days_held = len(
+                dataframe_history[dataframe_history["date"] >= entry_date_str]
+            )
+            if trading_days_held >= self.TIME_STOP_DAYS:
+                close_price = float(candle["close"])
+                return self._close_trade(
+                    trade,
+                    repository,
+                    close_price,
+                    ExitReason.TIME_STOP,
+                    date_string,
+                )
+
+        return None
 
     @override
     def generate_orders(
         self, 
         trade: TradeData, 
-        df_history: pd.DataFrame, 
+        dataframe_history: pd.DataFrame, 
         budget: float, 
         repository: TradeRepository
     ) -> Order | None:
-        """
-        Erstellt ein Order-Objekt für den IBKR-Export.
-        Logik: Limit Buy + Bracket (Take Profit, Stop Loss).
+        """Generates an Order object for IBKR export.
+
+        Args:
+            trade: Current trade data.
+            dataframe_history: Historical price sequence.
+            budget: Strategy allocation budget.
+            repository: Trade database.
+
+        Returns:
+            Order | None: Order descriptor if valid.
         """
         symbol = trade.get('symbol', 'UNKNOWN')
         entry_price = float(trade.get('entry_price') or 0.0)
         
         if entry_price <= 0:
-            logger.warning(f"[{symbol}] Cannot generate order: Invalid Entry Price {entry_price}")
             return None
 
         # 1. Quantity Calculation
-        # Check if DB already has a fixed size (initial_size)
         db_size = float(trade.get('initial_size') or 0.0)
-        
         if db_size > 0:
-            qty = int(db_size)
+            quantity = int(db_size)
         else:
-            # Fallback: Calculate from Budget
-            trade_budget = trade.get('budget')
-            if trade_budget:
-                budget_to_use = float(trade_budget)
-            else:
-                budget_to_use = self.DEFAULT_BUDGET
-                logger.warning(f"[{symbol}] Using DEFAULT_BUDGET ({self.DEFAULT_BUDGET}) for Order Generation.")
-
-            qty = int(budget_to_use / entry_price)
+            trade_budget = float(trade.get('budget') or budget or self.DEFAULT_BUDGET)
+            quantity = int(trade_budget / entry_price)
         
-        if qty <= 0:
-            logger.warning(f"[{symbol}] Calculated Quantity is 0 (Size: {db_size}, Price: {entry_price}).")
+        if quantity <= 0:
             return None
 
-        # 2. Construct Order Legs
-        # Entry: BUY LMT DAY
+        # 2. Construct Legs
         entry_leg = OrderLeg(
             action="BUY",
             type="LMT",
             price=entry_price,
-            # qty is redundant in Entry Leg (covered by Parent Order)
+            quantity=quantity,
             tif="DAY"
         )
         
         exits = []
-        
-        # Exit 1: Take Profit (Target) -> LOC (Limit On Close) per User Request example
         target_price = float(trade.get('current_target') or 0.0)
         if target_price > 0:
             exits.append(OrderLeg(
                 action="SELL",
-                type="LOC", # User specific requirement
+                type="LOC",
                 price=target_price,
-                qty=qty, # Exit full position
+                quantity=quantity,
                 tif="DAY"
             ))
 
-        # 3. Assemble Order
-        # ID is composition of Symbol + Strategy Name
-        order_id = f"{symbol}_{self.name}" 
-        
         return Order(
-            id=order_id,
+            id=f"{symbol}_{self.name}",
             symbol=symbol,
-            qty=qty,
+            quantity=quantity,
             mode="BRACKET",
             entry=entry_leg,
             exits=exits,
             last_status="CREATED"
         )
-
-    # --- Private Helper Methods (Clean Code) ---
-
-    def _is_valid_entry_date(self, trade: dict, candle: pd.Series) -> bool:
-        """
-        Prüft, ob der aktuelle Tag nach dem Signal-Tag liegt.
-        """
-        try:
-            context_str = trade.get('signal_context')
-            if not context_str:
-                return True 
-                
-            context = json.loads(context_str)
-            signal_date_str = context.get('date') or context.get('setup_date')
-            
-            if not signal_date_str:
-                return True
-
-            signal_date = pd.Timestamp(signal_date_str).date()
-            current_date = pd.Timestamp(candle['date']).date()
-            
-            if current_date <= signal_date:
-                return False
-                
-            return True
-        except (ValueError, TypeError, json.JSONDecodeError):
-            logger.warning("Konnte Signal-Datum für Trade nicht parsen. Erlaube Entry.")
-            return True
-
-    def _handle_expired_order(self, trade: dict, candle: pd.Series, repository: TradeRepository) -> None:
-        """Setzt den Trade auf MISSED (Order Expired)."""
-        repository.update_trade(trade['id'], {
-            "status": TradeStatus.MISSED,
-            "exit_reason": ExitReason.EXPIRED,
-            "exit_date": str(candle['date']),
-            "realized_pnl": 0.0
-        })
-
-    def _execute_trade(self, trade: dict, fill_price: float, date_str: str, repository: TradeRepository) -> str:
-        """Führt den Trade aus."""
-        if fill_price <= 0:
-            logger.error("Versuchter Fill mit Preis <= 0 für Trade %s", trade.get('id'))
-            return "ERROR: Fill Price <= 0"
-
-        budget = float(trade.get('budget') or self.DEFAULT_BUDGET)
-        current_size = int(budget / fill_price)
-        
-        repository.update_trade(trade['id'], {
-            "status": TradeStatus.ACTIVE,
-            "entry_date": date_str,
-            "entry_price": fill_price,
-            "initial_size": current_size,
-            "current_size": current_size
-        }, reason=f"LIMIT FILLED @ {fill_price:.2f} | Budget: {budget}$")
-        
-        return f"FILLED @ {fill_price:.2f} ({current_size} Stk)"
-
-    def _check_exit_conditions(
-        self, 
-        trade: dict, 
-        candle: pd.Series,
-        df_history: pd.DataFrame, 
-        repository: TradeRepository
-    ) -> str | None:
-        """Prüft LOC, Target und TimeStop Logik."""
-        current_daily_high = float(candle['high'])
-        current_daily_close = float(candle['close'])
-        current_daily_open = float(candle['open'])
-        
-        entry_price = float(trade['entry_price'])
-        size = float(trade['current_size'])
-        target_price = float(trade.get('current_target') or 0.0)
-
-        # Days Held Calculation: Trading Days (Rows) since Entry
-        entry_date_str = trade.get('entry_date')
-        if entry_date_str:
-             # Count rows where date >= entry_date
-             trading_days_held = len(df_history[df_history['date'] >= entry_date_str])
-        else:
-             trading_days_held = 0
-
-        # Note: If today is entry day, trading_days_held is 1.
-
-        exit_reason: str | None = None
-        exit_price = 0.0
-
-        # --- Rule 1: Limit On Close (LOC) ---
-        # Exit if Close > Previous Trading Day High
-        if len(df_history) >= 2:
-            prev_candle = df_history.iloc[-2]
-            prev_high = float(prev_candle['high'])
-            
-            if current_daily_close > prev_high:
-                return self._execute_exit(trade, "LOC_HIT", current_daily_close, size, entry_price, str(candle['date']), repository)
-
-        # --- Rule 2: Take Profit (TP) ---
-        # Block TP on Entry Day. 
-        if trading_days_held > 1 and target_price > 0: 
-            if current_daily_high >= target_price:
-                exit_reason = ExitReason.TARGET_HIT
-                # Best Execution bei Gap Up
-                exit_price = max(current_daily_open, target_price) if current_daily_open > target_price else target_price
-
-        # --- Rule 3: Time Stop ---
-        # If no exit reason yet, Check Time Stop
-        if not exit_reason and trading_days_held > self.TIME_STOP_DAYS:
-            exit_reason = ExitReason.TIME_STOP
-            exit_price = current_daily_close
-
-        if exit_reason:
-            return self._execute_exit(trade, exit_reason, exit_price, size, entry_price, str(candle['date']), repository)
-            
-        return None
-
-    def _execute_exit(
-        self, 
-        trade: dict, 
-        reason: str, 
-        exit_price: float, 
-        size: float, 
-        entry_price: float, 
-        date_str: str, 
-        repository: TradeRepository
-    ) -> str:
-        """Führt den Exit aus und berechnet PnL."""
-        pnl = (exit_price - entry_price) * size
-        
-        repository.update_trade(trade['id'], {
-            "status": TradeStatus.CLOSED,
-            "exit_reason": reason,
-            "exit_price": exit_price,
-            "exit_date": date_str,
-            "realized_pnl": pnl
-        })
-        
-        return f"{reason} @ {exit_price:.2f} (PnL: {pnl:.2f})"

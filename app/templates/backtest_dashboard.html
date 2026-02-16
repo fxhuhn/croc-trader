@@ -20,7 +20,52 @@
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.03), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
             border: none;
         }
+
+        /* Force Plotly to respect container width even if internal SVG defaults to 700px */
+        .plotly-graph-div,
+        .svg-container,
+        .main-svg {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        .user-select-none.svg-container {
+            width: 100% !important;
+        }
+
+        /* Aggressive fix for drawdown overlap */
+        #drawdown-base-container div,
+        #drawdown-kelly-container div,
+        #drawdown-base-container svg,
+        #drawdown-kelly-container svg {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        .plotly-graph-div {
+            width: 100% !important;
+        }
     </style>
+    <script>
+        // Force Plotly to re-evaluate container widths on load and resize
+        document.addEventListener('DOMContentLoaded', function () {
+            function resizeAllCharts() {
+                const plots = document.querySelectorAll('.js-plotly-plot');
+                plots.forEach(function (plot) {
+                    if (window.Plotly) {
+                        Plotly.Plots.resize(plot);
+                    }
+                });
+            }
+            // Trigger on load and window resize
+            window.addEventListener('load', resizeAllCharts);
+            window.addEventListener('resize', resizeAllCharts);
+
+            // Also trigger after a short delay to account for dynamic rendering
+            setTimeout(resizeAllCharts, 500);
+            setTimeout(resizeAllCharts, 2000);
+        });
+    </script>
 </head>
 
 <body class="bg-slate-50 min-h-screen text-slate-900">
@@ -46,18 +91,36 @@
     <!-- Main Content -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
 
-        <!-- Header -->
-        <header class="mb-10">
-            <h1 class="text-3xl font-light text-slate-900">Strategy Performance</h1>
-            <p class="text-slate-400 mt-1 font-light">Dip Buyer Strategy (2025-01-01 to 2025-??-??)</p>
+        <!-- Header with Toggle -->
+        <header
+            class="mb-10 flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-saas">
+            <div>
+                <h1 class="text-3xl font-light text-slate-900">Strategy Performance</h1>
+                <p class="text-slate-400 mt-1 font-light">Strategy Analysis Period: {{ start_date }} to {{ end_date }}
+                </p>
+            </div>
+
+            <!-- Performance Toggle -->
+            <div class="flex items-center space-x-4 mt-4 md:mt-0">
+                <span class="text-sm font-medium text-slate-500" id="label-base">Base (1%)</span>
+
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="perf-toggle" class="sr-only peer">
+                    <div
+                        class="w-14 h-7 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-blue-600">
+                    </div>
+                </label>
+
+                <span class="text-sm font-medium text-slate-400" id="label-kelly">Kelly (Optimized)</span>
+            </div>
         </header>
 
         <!-- KPI Grid -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-10">
 
-            <!-- Net Profit -->
-            <article
-                class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center text-center h-56">
+            <!-- Net Profit (BASE) -->
+            <article id="metric-net-profit-base"
+                class="mode-base bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center text-center h-56">
                 <div class="flex-grow flex flex-col justify-center items-center">
                     <div class="flex items-baseline justify-center">
                         <span class="text-[#94a3b8] font-light mr-1" style="font-size: 0.65em;">$</span>
@@ -73,12 +136,33 @@
                         {{ metrics.total_trades }} Trades • Avg: ${{ "{:,.2f}".format(metrics.expectancy) }}
                     </div>
                 </div>
-                <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mt-auto">Net Profit</p>
+                <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mt-auto">Net Profit (Base)</p>
+            </article>
+
+            <!-- Net Profit (KELLY) -->
+            <article id="metric-net-profit-kelly"
+                class="mode-kelly hidden bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center text-center h-56 border-2 border-blue-100">
+                <div class="flex-grow flex flex-col justify-center items-center">
+                    <div class="flex items-baseline justify-center">
+                        <span class="text-[#94a3b8] font-light mr-1" style="font-size: 0.65em;">$</span>
+                        <span
+                            class="text-5xl font-light {{ 'text-emerald-500' if kelly_metrics.net_profit >= 0 else 'text-rose-500' }}">
+                            {{ "{:,.2f}".format(kelly_metrics.net_profit) }}
+                        </span>
+                    </div>
+                    <div class="mt-2 text-xl text-[#94a3b8] font-light" style="font-size: 0.65em;">
+                        ({{ "{:.1f}%".format(kelly_metrics.total_return * 100) }})
+                    </div>
+                    <div class="mt-1 text-xs text-blue-400 font-medium">
+                        (Simulated Optimized)
+                    </div>
+                </div>
+                <p class="text-xs font-medium text-blue-400 uppercase tracking-widest mt-auto">Net Profit (Kelly)</p>
             </article>
 
             <!-- Win Rate -->
             <article class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center h-56">
-                <div class="w-full flex-grow flex items-center justify-center -mt-4">
+                <div class="w-full relative group">
                     {{ chart_wr | safe }}
                 </div>
                 <p class="text-xs font-medium text-slate-400 uppercase tracking-widest mt-auto">Win Rate</p>
@@ -86,7 +170,7 @@
 
             <!-- Profit Factor -->
             <article class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center h-56">
-                <div class="w-full flex-grow flex items-center justify-center -mt-4">
+                <div class="w-full relative group">
                     {{ chart_pf | safe }}
                 </div>
                 <div class="flex flex-col items-center mt-auto relative group">
@@ -129,7 +213,7 @@
             <!-- System Quality -->
             <!-- System Quality -->
             <article class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center h-56">
-                <div class="w-full flex-grow flex flex-col items-center justify-center -mt-4 relative group">
+                <div class="w-full relative group">
                     {{ chart_sqn | safe }}
                     <div class="text-[10px] text-slate-300 font-light -mt-2">
                         Safe Kelly: {{ "{:.2f}".format(metrics.kelly_safe) }}
@@ -144,20 +228,27 @@
 
                     <!-- Tooltip -->
                     <div
-                        class="absolute bottom-full mb-2 w-48 p-3 bg-slate-800 text-slate-200 text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 text-left">
-                        <div class="font-semibold text-white mb-1 border-b border-slate-700 pb-1">Van Tharp Scale</div>
+                        class="absolute bottom-full mb-2 w-56 p-3 bg-slate-800 text-slate-200 text-xs rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 text-left">
+                        <div class="font-semibold text-white mb-1 border-b border-slate-700 pb-1">System Qualität (SQN)
+                        </div>
                         <div class="space-y-1">
-                            <div class="flex justify-between"><span class="text-rose-400">&lt; 1.7</span>
-                                <span>Weak</span>
+                            <div class="flex justify-between"><span class="text-rose-400">&lt; 1.0</span>
+                                <span>Unterdurchschnittlich</span>
                             </div>
-                            <div class="flex justify-between"><span class="text-amber-400">1.7 - 2.0</span>
-                                <span>Average</span>
+                            <div class="flex justify-between"><span class="text-amber-400">1.0 - 2.0</span>
+                                <span>Noch Ok</span>
                             </div>
                             <div class="flex justify-between"><span class="text-emerald-400">2.0 - 3.0</span>
-                                <span>Good</span>
+                                <span>Gut</span>
                             </div>
                             <div class="flex justify-between"><span class="text-blue-400">3.0 - 5.0</span>
-                                <span>Excellent</span>
+                                <span>Sehr gut</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-violet-400">5.0 - 7.0</span>
+                                <span>Ausgezeichnet</span>
+                            </div>
+                            <div class="flex justify-between"><span class="text-yellow-400">&gt; 7.0</span>
+                                <span>Der heilige Gral</span>
                             </div>
                         </div>
                         <!-- Arrow -->
@@ -222,14 +313,16 @@
                         <tr class="hover:bg-slate-50/50">
                             <td class="px-6 py-4 font-normal text-slate-700">Max Drawdown</td>
                             {% for m in strategy_metrics.values() %}
-                            <td class="px-6 py-4 font-light text-slate-500">{{ "{:.1f}%".format(m.max_drawdown * 100) }}
+                            <td class="px-6 py-4 font-light text-slate-500">{{ "{:.1f}%".format(m.maximum_drawdown *
+                                100) }}
                             </td>
                             {% endfor %}
                         </tr>
                         <tr class="hover:bg-slate-50/50">
                             <td class="px-6 py-4 font-normal text-slate-700">SQN</td>
                             {% for m in strategy_metrics.values() %}
-                            <td class="px-6 py-4 font-light text-slate-500">{{ "{:.2f}".format(m.sqn) }}</td>
+                            <td class="px-6 py-4 font-light text-slate-500">{{ "{:.2f}".format(m.system_quality_number)
+                                }}</td>
                             {% endfor %}
                         </tr>
                     </tbody>
@@ -238,36 +331,219 @@
         </section>
         {% endif %}
 
-        <!-- Charts Section -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-10">
+        <!-- Main Dashboard Grid -->
+        <div class="flex flex-col lg:flex-row gap-8 mb-12">
 
-            <!-- Equity Curve (Main) -->
-            <div class="lg:col-span-2 bg-white rounded-2xl p-8 shadow-saas">
-                <h3 class="text-lg font-light text-slate-800 mb-6">Equity Curve</h3>
-                <div class="w-full">
-                    {{ chart_equity | safe }}
+            <!-- Performance charts (Wide) -->
+            <div class="lg:w-2/3 bg-white rounded-2xl p-6 shadow-saas overflow-hidden" style="min-width: 0;">
+
+                <!-- Base Equity -->
+                <div class="mode-base">
+                    <h3 class="text-lg font-light text-slate-800 mb-6">Equity Curve (Base)</h3>
+                    <div class="w-full">
+                        {{ chart_equity | safe }}
+                    </div>
+                </div>
+
+                <!-- Kelly Equity -->
+                <div class="mode-kelly hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-lg font-light text-slate-800">Equity Curve (Kelly Optimized)</h3>
+                        <span
+                            class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">Simulated</span>
+                    </div>
+                    <div class="w-full">
+                        {{ chart_equity_kelly | safe }}
+                    </div>
                 </div>
             </div>
 
             <!-- Drawdown (Side) -->
-            <div class="bg-white rounded-2xl p-8 shadow-saas">
-                <h3 class="text-lg font-light text-slate-800 mb-6">Drawdown</h3>
-                <div class="w-full">
-                    {{ chart_drawdown | safe }}
-                </div>
-                <div class="mt-8 pt-6 border-t border-slate-50">
-                    <div class="flex justify-between items-center mb-4">
-                        <span class="text-sm text-slate-400 font-light">Max Drawdown</span>
-                        <span class="font-normal text-rose-500 text-lg">{{ "{:.1f}%".format(metrics.max_drawdown * 100)
-                            }}</span>
+            <!-- Charts Section (Dual Mode) -->
+            <div class="lg:w-1/3 bg-white rounded-2xl p-6 shadow-saas overflow-hidden" style="min-width: 0;">
+
+                <!-- Base Charts -->
+                <div class="mode-base space-y-8">
+                    <div>
+                        <h3 class="text-lg font-light text-slate-900 mb-4">Underwater Drawdown Analysis (Base)</h3>
+                        <div class="w-full overflow-hidden" id="drawdown-base-container">
+                            {{ chart_underwater | safe }}
+                        </div>
+                        <div class="mt-4 flex justify-between text-xs text-slate-500 px-4">
+                            <span>Max Drawdown: <strong class="text-rose-500">{{
+                                    "{:.1f}%".format(metrics.maximum_drawdown * 100) }}</strong></span>
+                            <span>Recovery Factor: <strong>{{ "{:.2f}".format(metrics.net_profit /
+                                    -metrics.maximum_drawdown) if metrics.maximum_drawdown != 0 else '∞'
+                                    }}</strong></span>
+                        </div>
                     </div>
-                    <div class="flex justify-between items-center">
-                        <span class="text-sm text-slate-400 font-light">Expectancy</span>
-                        <span class="font-normal text-slate-700 text-lg">${{ "{:,.2f}".format(metrics.expectancy)
-                            }}</span>
+                </div>
+
+                <!-- Kelly Charts -->
+                <div class="mode-kelly hidden space-y-8">
+                    <div>
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="text-lg font-light text-slate-900">Underwater Drawdown Analysis (Kelly)</h3>
+                            <span
+                                class="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">Simulated</span>
+                        </div>
+                        <div class="w-full overflow-hidden" id="drawdown-kelly-container">
+                            {{ chart_underwater_kelly | safe }}
+                        </div>
+                        <div class="mt-4 flex justify-between text-xs text-slate-500 px-4">
+                            <span>Max Drawdown: <strong class="text-rose-500">{{
+                                    "{:.1f}%".format(kelly_metrics.max_drawdown * 100) }}</strong></span>
+                            <span>(Simulated Risk)</span>
+                        </div>
                     </div>
                 </div>
+
             </div>
+
+        </div>
+
+        <!-- Regime & Safety Audit (New) -->
+        <section class="mb-10">
+            <h2 class="text-2xl font-light text-slate-900 mb-6">Regime & Safety Audit</h2>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+                <!-- 1. Regime Overlay -->
+                <article class="bg-white rounded-2xl p-8 shadow-saas">
+                    <h3 class="text-lg font-light text-slate-800 mb-4">Regime Overlay (VIX vs Equity)</h3>
+                    <p class="text-xs text-slate-400 font-light mb-6">Background shading indicates market volatility
+                        (VIX). High volatility often correlates with drawdowns.</p>
+                    <div class="w-full">
+                        {{ chart_regime | safe }}
+                    </div>
+                </article>
+
+                <!-- 2. Price of Safety -->
+                <article class="bg-white rounded-2xl p-8 shadow-saas">
+                    <h3 class="text-lg font-light text-slate-800 mb-4">Price of Safety</h3>
+                    <p class="text-xs text-slate-400 font-light mb-6">Comparison of Equity Curves: Unconstrained
+                        (Theoretical) vs Constrained (Budget) vs Safety Switch (Protected).</p>
+                    <div class="w-full">
+                        {{ chart_safety | safe }}
+                    </div>
+                </article>
+
+                <!-- 3. Exposure Heatmap -->
+                <article class="bg-white rounded-2xl p-8 shadow-saas">
+                    <h3 class="text-lg font-light text-slate-800 mb-4">Strategy Exposure Heatmap</h3>
+                    <p class="text-xs text-slate-400 font-light mb-6">Visualizes capital allocation per strategy over
+                        time. Red dashed line indicates the 100% budget cap.</p>
+                    <div class="w-full">
+                        {{ chart_exposure | safe }}
+                    </div>
+                </article>
+
+                <!-- 4. Risk / Reward Scatter -->
+                <article class="bg-white rounded-2xl p-8 shadow-saas">
+                    <h3 class="text-lg font-light text-slate-800 mb-4">Monthly Returns Distribution</h3>
+                    <p class="text-xs text-slate-400 font-light mb-6">Distribution of monthly returns. Wider spread
+                        indicates higher variance/risk.</p>
+                    <div class="w-full">
+                        {{ chart_risk | safe }}
+                    </div>
+                </article>
+
+            </div>
+        </section>
+
+        <!-- Portfolio Funnel & Trade Quality Audit -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+
+            {% if funnel_data %}
+            <!-- Portfolio Funnel -->
+            <section class="bg-white rounded-2xl p-8 shadow-saas">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-light text-slate-900">Portfolio Constitution (The Funnel)</h3>
+                    <div class="bg-indigo-50 text-indigo-700 px-4 py-2 rounded-lg text-sm font-medium">
+                        Diversification Score: <strong>{{ "{:.1f}".format(metrics.diversification_score) }}/100</strong>
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase tracking-widest text-xs font-medium">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Strategy</th>
+                                <th class="px-4 py-3 text-right">Kelly</th>
+                                <th class="px-4 py-3 text-left">Status</th>
+                                <th class="px-4 py-3 text-right">Final %</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            {% for item in funnel_data %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-4 py-3 text-slate-700 font-medium">{{ item.strategy_name }}</td>
+                                <td class="px-4 py-3 text-right text-slate-500">{{ "{:.2f}".format(item.kelly) }}</td>
+                                <td class="px-4 py-3">
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium 
+                                        {{ 'bg-emerald-100 text-emerald-800' if item.status == 'ACCEPTED' else 'bg-rose-100 text-rose-800' }}">
+                                        {{ item.status }}
+                                    </span>
+                                    {% if item.reason %}
+                                    <span class="block text-[10px] text-slate-400 mt-1">{{ item.reason }}</span>
+                                    {% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-right font-medium text-slate-900">
+                                    {{ "{:.1f}%".format(item.final_allocation * 100) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            {% endif %}
+
+            {% if quality_data %}
+            <!-- Trade Quality Audit -->
+            <section class="bg-white rounded-2xl p-8 shadow-saas">
+                <h3 class="text-lg font-light text-slate-900 mb-6">Trade Quality Audit</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase tracking-widest text-xs font-medium">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Grade</th>
+                                <th class="px-4 py-3 text-left">Trade ID</th>
+                                <th class="px-4 py-3 text-left">Weakest Link</th>
+                                <th class="px-4 py-3 text-right">Score</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            {% for trade in quality_data[:10] %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-4 py-3">
+                                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold 
+                                        {{ 'bg-emerald-100 text-emerald-600' if trade.grade in ['A+', 'A'] else 
+                                           'bg-blue-100 text-blue-600' if trade.grade == 'B' else 
+                                           'bg-amber-100 text-amber-600' if trade.grade == 'C' else 
+                                           'bg-rose-100 text-rose-600' }}">
+                                        {{ trade.grade }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-slate-600 text-xs font-mono">{{ trade.trade_id }}</td>
+                                <td class="px-4 py-3 text-slate-500 text-xs truncate max-w-[150px]">{{
+                                    trade.weakest_link }}</td>
+                                <td class="px-4 py-3 text-right font-medium text-slate-900">{{
+                                    "{:.1f}".format(trade.total_score) }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% if quality_data|length > 10 %}
+                            <tr>
+                                <td colspan="4" class="px-4 py-3 text-center text-xs text-slate-400 italic">
+                                    ... showing top 10 of {{ quality_data|length }} audits ...
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            {% endif %}
 
         </div>
 
@@ -312,6 +588,80 @@
                     </table>
                 </div>
             </section>
+
+            <!-- Stress Test Results -->
+            {% if stress_results %}
+            <section class="bg-white rounded-2xl p-8 shadow-saas col-span-full">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-lg font-light text-slate-900">Noise Sensitivity & Stress Test</h3>
+                    <span class="px-3 py-1 bg-rose-50 text-rose-600 text-xs font-medium rounded-full">Monte Carlo</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="p-4 bg-slate-50 rounded-xl">
+                        <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Avg Max Drawdown</div>
+                        <div class="text-xl font-medium text-rose-500">{{
+                            "{:.1f}%".format((stress_results.avg_max_drawdown or 0) * 100) }}</div>
+                    </div>
+                    <div class="p-4 bg-slate-50 rounded-xl">
+                        <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Worst Max Drawdown</div>
+                        <div class="text-xl font-medium text-rose-600">{{
+                            "{:.1f}%".format((stress_results.worst_max_drawdown or 0) * 100) }}</div>
+                    </div>
+                    <div class="p-4 bg-slate-50 rounded-xl">
+                        <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Failure Rate (>30% DD)</div>
+                        <div
+                            class="text-xl font-medium {{ 'text-rose-500' if (stress_results.failure_rate or 0) > 0.05 else 'text-emerald-500' }}">
+                            {{ "{:.1f}%".format((stress_results.failure_rate or 0) * 100) }}
+                        </div>
+                    </div>
+                    <div class="p-4 bg-slate-50 rounded-xl">
+                        <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Avg Final Equity</div>
+                        <div class="text-xl font-medium text-slate-900">${{
+                            "{:,.0f}".format(stress_results.avg_final_equity or 0) }}</div>
+                    </div>
+                </div>
+            </section>
+            {% endif %}
+
+            <!-- Walk-Forward Analysis -->
+            {% if wfa_results %}
+            <section class="bg-white rounded-2xl p-8 shadow-saas col-span-full">
+                <h3 class="text-lg font-light text-slate-900 mb-6">Walk-Forward Robustness</h3>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-sm">
+                        <thead class="bg-slate-50 text-slate-500 uppercase tracking-widest text-xs font-medium">
+                            <tr>
+                                <th class="px-6 py-4 text-left">Window</th>
+                                <th class="px-6 py-4 text-right">IS Kelly</th>
+                                <th class="px-6 py-4 text-right">OOS Kelly</th>
+                                <th class="px-6 py-4 text-right">OOS PF</th>
+                                <th class="px-6 py-4 text-right">Regime</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            {% for win in wfa_results %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4 text-slate-600 truncate max-w-xs">{{ win.window_label }}</td>
+                                <td class="px-6 py-4 text-right text-slate-900">{{ "{:.2f}".format(win.is_kelly) }}</td>
+                                <td
+                                    class="px-6 py-4 text-right font-medium {{ 'text-emerald-500' if (win.oos_kelly or 0) > 0 else 'text-rose-500' }}">
+                                    {{ "{:.2f}".format(win.oos_kelly or 0) }}
+                                </td>
+                                <td
+                                    class="px-6 py-4 text-right font-medium {{ 'text-emerald-500' if (win.oos_pf or 0) >= 1.0 else 'text-rose-500' }}">
+                                    {{ "{:.2f}".format(win.oos_pf or 0) }}
+                                </td>
+                                <td class="px-6 py-4 text-right text-slate-500 text-xs">
+                                    VIX: {{ "{:.1f}".format(win.avg_vix) if win.avg_vix else '-' }} |
+                                    Up: {{ "{:.0f}%".format(win.uptrend_pct * 100) if win.uptrend_pct else '-' }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            {% endif %}
 
             <!-- Top 10 Wins -->
             <section class="bg-white rounded-2xl p-8 shadow-saas">
@@ -368,6 +718,54 @@
 
     </main>
 
+    <!-- Toggle Logic -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const toggle = document.getElementById('perf-toggle');
+            const labelBase = document.getElementById('label-base');
+            const labelKelly = document.getElementById('label-kelly');
+
+            // Elements
+            const baseElements = document.querySelectorAll('.mode-base');
+            const kellyElements = document.querySelectorAll('.mode-kelly');
+
+            function updateView() {
+                if (toggle.checked) {
+                    // Kelly Mode
+                    baseElements.forEach(el => el.classList.add('hidden'));
+                    kellyElements.forEach(el => el.classList.remove('hidden'));
+
+                    labelBase.classList.remove('text-slate-900');
+                    labelBase.classList.add('text-slate-400');
+
+                    labelKelly.classList.add('text-blue-600', 'font-bold');
+                    labelKelly.classList.remove('text-slate-400');
+
+                    // Trigger plotly resize if needed
+                    window.dispatchEvent(new Event('resize'));
+
+                } else {
+                    // Base Mode
+                    kellyElements.forEach(el => el.classList.add('hidden'));
+                    baseElements.forEach(el => el.classList.remove('hidden'));
+
+                    labelKelly.classList.remove('text-blue-600', 'font-bold');
+                    labelKelly.classList.add('text-slate-400');
+
+                    labelBase.classList.add('text-slate-900');
+                    labelBase.classList.remove('text-slate-400');
+
+                    // Trigger plotly resize if needed
+                    window.dispatchEvent(new Event('resize'));
+                }
+            }
+
+            toggle.addEventListener('change', updateView);
+
+            // Init
+            updateView();
+        });
+    </script>
 </body>
 
 </html>
