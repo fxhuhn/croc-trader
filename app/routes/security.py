@@ -21,23 +21,21 @@ def require_ip_whitelist(func: Callable[..., Any]) -> Callable[..., Any]:
             logger.error("❌ SECURITY: Security config missing! Denying access (Fail-Secure).")
             return jsonify({"status": "error", "message": "Security Configuration Error"}), 500
 
-        # Security: Default to remote_addr to prevent spoofing.
-        # Only trust X-Forwarded-For if explicitly configured or in a trusted proxy environment.
-        client_ip = request.remote_addr
+        # Proxy-Aware IP Detection:
+        # 1. Use X-Forwarded-For if available (trusted proxy environment)
+        # 2. Fallback to remote_addr
+        xff = request.headers.getlist("X-Forwarded-For")
+        client_ip = xff[0].split(",")[0].strip() if xff else request.remote_addr
 
-        # Note: We keep X-Forwarded-For support but log it as potentially spoofed if not from a proxy
-        if xff := request.headers.getlist("X-Forwarded-For"):
-            actual_ip = xff[0].split(",")[0].strip()
-            if actual_ip != client_ip:
-                 logger.debug(f"IP Mismatch: Remote={client_ip}, XFF={actual_ip}")
-                 # In a hardened setup, we would only trust client_ip unless a proxy is known.
-        
         if client_ip not in whitelist:
             if mode == "block":
-                logger.warning(f"🛡️ SECURITY: Unauthorized IP blocked: {client_ip}")
+                logger.warning(f"🛡️ SECURITY: Unauthorized IP blocked: {client_ip} (Remote: {request.remote_addr})")
                 return jsonify({"status": "error", "message": "Unauthorized Access"}), 403
 
-            logger.warning(f"⚠️ SECURITY: Unauthorized IP warning: {client_ip} (Allowing in non-blocking mode)")
+            logger.warning(
+                f"⚠️ SECURITY: Unauthorized IP warning: {client_ip} (Remote: {request.remote_addr}) "
+                f"(Allowing in non-blocking mode)"
+            )
 
         return func(*args, **kwargs)
 
