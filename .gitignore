@@ -12,7 +12,7 @@ alt_*.py
 
 # Application Data & Logs
 logs/
-data/
+data/orders
 .coverage
 
 #Mac Files
