@@ -14,12 +14,12 @@ def allocator():
     (
         {"strategy": "DipBuyer", "entry_price": 100.0, "symbol": "TEST"}, 
         20, 
-        "Fixed Budget"
+        "Budget"
     ),
     (
         {"strategy": "DipBuyer", "entry_price": 2000.0, "symbol": "TEST"}, 
         1, 
-        "Fixed Budget"
+        "Budget"
     ),
     # Edge Case: DipBuyer Price > Budget
     (
@@ -37,7 +37,7 @@ def allocator():
     (
         {"strategy": "TurnoverTiming", "entry_price": 50.0, "symbol": "TEST"}, 
         40, 
-        "Fixed Budget"
+        "Budget"
     ),
     # Edge Case: Invalid Entry Price
     (
@@ -49,7 +49,7 @@ def allocator():
     (
         {"strategy": "dipbuyer", "entry_price": 100.0, "symbol": "TEST"}, 
         20, 
-        "Fixed Budget"
+        "Budget"
     ),
     # Edge Case: HoldTarget Invalid SL
     (

@@ -75,10 +75,10 @@ def test_analytics_division_by_zero_protection(
     backtest_db, market_db = database_paths
     with sqlite3.connect(backtest_db) as conn:
         conn.execute("""
-            INSERT INTO trades (id, symbol, status, realized_pnl, initial_size, entry_price, strategy) 
+            INSERT INTO trades (id, symbol, status, realized_pnl, initial_size, entry_price, strategy, exit_reason, entry_date, exit_date) 
             VALUES 
-            ('1', 'AAPL', 'CLOSED', 100.0, 10, 150.0, 'TestStrat'),
-            ('2', 'GOOG', 'CLOSED', 50.0, 5, 2000.0, 'TestStrat')
+            ('1', 'AAPL', 'CLOSED', 100.0, 10, 150.0, 'TestStrat', 'TARGET_HIT', '2024-01-01', '2024-01-02'),
+            ('2', 'GOOG', 'CLOSED', 50.0, 5, 2000.0, 'TestStrat', 'TARGET_HIT', '2024-01-03', '2024-01-04')
         """)
         
     service = BacktestAnalytics(backtest_db, market_db)
@@ -98,10 +98,10 @@ def test_kelly_bootstrapping_small_sample(database_paths: tuple[str, str]) -> No
     backtest_db, market_db = database_paths
     with sqlite3.connect(backtest_db) as conn:
         conn.execute("""
-            INSERT INTO trades (id, symbol, status, realized_pnl, initial_size, entry_price, strategy) 
+            INSERT INTO trades (id, symbol, status, realized_pnl, initial_size, entry_price, strategy, exit_reason, entry_date, exit_date) 
             VALUES 
-            ('1', 'AAPL', 'CLOSED', 100.0, 10, 150.0, 'TestStrat'),
-            ('2', 'TSLA', 'CLOSED', -50.0, 10, 200.0, 'TestStrat')
+            ('1', 'AAPL', 'CLOSED', 100.0, 10, 150.0, 'TestStrat', 'TARGET_HIT', '2024-01-01', '2024-01-02'),
+            ('2', 'TSLA', 'CLOSED', -50.0, 10, 200.0, 'TestStrat', 'STOP_LOSS', '2024-01-03', '2024-01-04')
         """)
         
     service = BacktestAnalytics(backtest_db, market_db)

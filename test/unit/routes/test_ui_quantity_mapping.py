@@ -1,8 +1,24 @@
+# filename: test_ui_quantity_mapping.py
 import pytest
-from app.routes.views import prepare_view_model
+from unittest.mock import MagicMock, patch
+from app.services.trade_manager.view_service import TradeViewService
 
-def test_active_trade_quantity_mapping():
+@pytest.fixture
+def view_service():
+    """Fixture for TradeViewService with mocked repositories."""
+    with patch("app.services.trade_manager.view_service.DatabaseSession"), \
+         patch("app.services.trade_manager.view_service.TradeRepository"), \
+         patch("app.services.trade_manager.view_service.MarketRepository") as mock_market_repo_class, \
+         patch("app.services.trade_manager.view_service._get_database_path", return_value="/tmp/test.db"):
+        
+        service = TradeViewService()
+        # Ensure we can return the mock market repo for specific price lookups
+        service.market_repository = mock_market_repo_class.return_value
+        return service
+
+def test_active_trade_quantity_mapping(view_service: TradeViewService) -> None:
     """Verify that active trades display initial_size correctly."""
+    # Arrange
     trade = {
         "status": "ACTIVE",
         "entry_price": 100.0,
@@ -10,39 +26,39 @@ def test_active_trade_quantity_mapping():
         "initial_size": 10,
         "current_size": 10,
         "current_stop_loss": 90.0,
-        "context": {},
-        "symbol": "AAPL"
+        "symbol": "AAPL",
+        "signal_context": "{}"
     }
+    view_service.market_repository.get_latest_price.return_value = 110.0
+    view_service.market_repository.get_trading_days_count.return_value = 5
     
-    # Mock Market Repository (not used for this test if prices present)
-    class MockRepo:
-        def get_latest_price(self, symbol): return 110.0
-        
-    prepare_view_model([trade], MockRepo())
+    # Act
+    view_data = view_service.prepare_trade_view(trade)
     
-    assert trade["display_size"] == 10
-    assert trade["unrealized_pnl"] == (110.0 - 100.0) * 10
-    assert trade["pnl_pct"] == 10.0
+    # Assert
+    assert view_data["display_size"] == 10
+    assert view_data["unrealized_pnl"] == (110.0 - 100.0) * 10
+    assert view_data["pnl_pct"] == 10.0
 
-def test_closed_trade_quantity_mapping():
+def test_closed_trade_quantity_mapping(view_service: TradeViewService) -> None:
     """Verify that closed trades use initial_size for quantity display even if current_size is 0."""
+    # Arrange
     trade = {
         "status": "CLOSED",
         "entry_price": 100.0,
         "exit_price": 110.0,
         "initial_size": 20,
-        "current_size": 0, # Typical for closed trades
-        "realized_pnl": 0.0, # Let view model calculate it
-        "context": {},
-        "symbol": "MSFT"
+        "current_size": 0,
+        "realized_pnl": 0.0,
+        "symbol": "MSFT",
+        "signal_context": "{}"
     }
+    view_service.market_repository.get_trading_days_count.return_value = 10
     
-    class MockRepo:
-        def get_latest_price(self, symbol): return 120.0
-
-    prepare_view_model([trade], MockRepo())
+    # Act
+    view_data = view_service.prepare_trade_view(trade)
     
-    # Check fallback PnL calculation
+    # Assert
     expected_pnl = (110.0 - 100.0) * 20
-    assert trade["realized_pnl"] == expected_pnl
-    assert trade["display_size"] == 20
+    assert view_data["realized_pnl"] == expected_pnl
+    assert view_data["display_size"] == 20
