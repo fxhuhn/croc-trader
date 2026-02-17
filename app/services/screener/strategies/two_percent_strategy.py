@@ -21,164 +21,221 @@ class TwoPercentStrategyContext(TypedDict):
 
 class TwoPercentStrategy(BaseStrategy):
     """
-    TwoPercent Strategy:
-    - Runs on Fridays at market close.
-    - EXCEPTION: If Friday is a holiday, runs on Thursday close.
-    - Entry: Limit at 99% of Setup Close.
+    Implementation of the TwoPercent trading strategy.
+    
+    Strategy Logic:
+    - Execution: Runs on Fridays at market close.
+    - Exception: If Friday is a holiday, it runs on Thursday close.
+    - Entry: Limit order at 99% of the 'Setup Close' (Friday/Thursday close).
     """
+    
     STRATEGY_IDENTIFIER = Strategies.TwoPercent
     ENTRY_LIMIT_DISCOUNT = 0.99
-    
+    DEFAULT_LOOKBACK_PERIOD = 20
+    SYMBOL = "SXRV.DE"
+
     def __init__(
         self,
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None
-    ):
+    ) -> None:
+        """
+        Initializes the TwoPercent strategy with required dependencies.
+        
+        Args:
+           trade_repository: Repository for trade persistence.
+           data_provider: Provider for market historical data.
+           telegram_bot: Optional bot for reporting signals.
+        """
         super().__init__(data_provider, telegram_bot)
         self.name = self.STRATEGY_IDENTIFIER
         self.trade_repository = trade_repository
-        self.symbol = "SXRV.DE"
         self.holiday_checker = MarketHolidayChecker()
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """
-        Executes the strategy logic to find setup candles.
-
-        Args:
-            days: Lookback periods (unused here).
-            analysis_date: The date to run the analysis FOR.
-                           If None, uses current system date.
-
+        Orchestrates the strategy execution for a given analysis date.
+        
+        This follows the Step-down Rule by delegating logic to specialized methods.
+        
         Returns:
-            int: 1 if signal was generated and persisted, 0 otherwise.
+           int: 1 if a signal was generated and saved, 0 otherwise.
         """
-        # 1. Determine "Today" (Analysis Date)
-        if analysis_date:
-            current_date_timestamp = pd.Timestamp(analysis_date)
-        else:
-            current_date_timestamp = pd.Timestamp.now().normalize()
+        analysis_timestamp = self._get_analysis_timestamp(analysis_date)
+        
+        price_history = self._fetch_price_history(analysis_timestamp)
+        if price_history.empty:
+            return 0
 
-        # 2. Get Data for SXRV.DE
-        lookback_days = 20
-        if analysis_date:
-            days_since_now = (pd.Timestamp.now() - current_date_timestamp).days
-            lookback_days = max(20, days_since_now + 20)
+        last_candle = self._get_last_valid_candle(
+            price_history, analysis_timestamp
+        )
+        if last_candle is None:
+            return 0
 
-        price_history = self.data_provider.get_symbol_history(
-            self.symbol, days=lookback_days
+        last_candle_timestamp = self._extract_timestamp(last_candle)
+        if not self._is_valid_setup_day(last_candle_timestamp):
+            return 0
+
+        close_price = self._extract_close_price(last_candle)
+        if close_price is None:
+            return 0
+
+        entry_price = self._calculate_entry_price(close_price)
+        signal_date_str = str(last_candle_timestamp.date())
+
+        if self._trade_exists(signal_date_str):
+            return 0
+
+        day_label = self._get_day_label(last_candle_timestamp)
+        self._create_trade_proposal(
+            signal_date_str, close_price, entry_price, day_label
         )
         
-        if price_history.empty:
+        self._send_signal_report(signal_date_str, close_price, entry_price)
+
+        return 1
+
+    def _get_analysis_timestamp(self, analysis_date: str | None) -> pd.Timestamp:
+        """Determines the effective timestamp for analysis."""
+        if analysis_date:
+            return pd.Timestamp(analysis_date)
+        return pd.Timestamp.now().normalize()
+
+    def _fetch_price_history(self, analysis_timestamp: pd.Timestamp) -> pd.DataFrame:
+        """Fetches historical price data with sufficient lookback."""
+        lookback = self.DEFAULT_LOOKBACK_PERIOD
+        if analysis_timestamp < pd.Timestamp.now().normalize():
+            days_ago = (pd.Timestamp.now() - analysis_timestamp).days
+            lookback = max(self.DEFAULT_LOOKBACK_PERIOD, days_ago + 20)
+
+        history = self.data_provider.get_symbol_history(
+            self.SYMBOL, days=lookback
+        )
+        
+        if history.empty:
             logger.warning(
-                "[%s] No data found for %s (Lookback: %s days)",
-                self.name, self.symbol, lookback_days
+                "[%s] No data for %s (Lookback: %d days)",
+                self.name, self.SYMBOL, lookback
             )
-            return 0
-
-        # 3. Filter/Slice Data up to analysis_date
-        if 'date' in price_history.columns:
-            price_history['date'] = pd.to_datetime(price_history['date'])
-            date_mask = price_history['date'] <= current_date_timestamp
-            dataframe_slice = price_history.loc[date_mask]
-        else:
-            if not isinstance(price_history.index, pd.DatetimeIndex):
-                logger.error(
-                    "[%s] DataFrame index is not DatetimeIndex and 'date' column missing.",
-                    self.name
-                )
-                return 0
-            dataframe_slice = price_history.loc[price_history.index <= current_date_timestamp]
-
-        if dataframe_slice.empty:
-            logger.debug("[%s] No data found up to %s", self.name, current_date_timestamp)
-            return 0
-
-        # 4. Get the "Last Candle"
-        last_candle = dataframe_slice.iloc[-1]
         
-        if 'date' in dataframe_slice.columns:
-            last_candle_timestamp = pd.Timestamp(last_candle['date'])
+        return history
+
+    def _get_last_valid_candle(
+        self, history: pd.DataFrame, analysis_timestamp: pd.Timestamp
+    ) -> pd.Series | None:
+        """Filters history up to the analysis date and returns the latest candle."""
+        if "date" in history.columns:
+            history["date"] = pd.to_datetime(history["date"])
+            mask = history["date"] <= analysis_timestamp
+            filtered = history.loc[mask]
         else:
-            last_candle_timestamp = pd.Timestamp(last_candle.name)
+            if not isinstance(history.index, pd.DatetimeIndex):
+                logger.error("[%s] Missing DatetimeIndex or 'date' column.", self.name)
+                return None
+            filtered = history.loc[history.index <= analysis_timestamp]
+
+        if filtered.empty:
+            logger.debug("[%s] No data up to %s", self.name, analysis_timestamp)
+            return None
+
+        last_candle = filtered.iloc[-1]
+        candle_date = self._extract_timestamp(last_candle).date()
+        
+        if candle_date != analysis_timestamp.date():
+            return None
             
-        last_candle_date = last_candle_timestamp.date()
+        return last_candle
 
-        # Only proceed if we have data for the requested analysis period
-        if last_candle_date != current_date_timestamp.date():
-            return 0
+    def _extract_timestamp(self, candle: pd.Series) -> pd.Timestamp:
+        """Extracts the timestamp from a candle series."""
+        if "date" in candle:
+            return pd.Timestamp(candle["date"])
+        return pd.Timestamp(candle.name)
+
+    def _is_valid_setup_day(self, timestamp: pd.Timestamp) -> bool:
+        """Checks if the given timestamp is a valid strategy execution day."""
+        weekday = timestamp.weekday()
         
-        # 5. Validate Setup Day (Friday or Thursday holiday exception)
-        is_valid_setup_day = False
-        weekday = last_candle_date.weekday()
-        
-        if weekday == 4: # Friday
-            is_valid_setup_day = True
-        elif weekday == 3: # Thursday
-            next_day_timestamp = last_candle_timestamp + pd.Timedelta(days=1)
-            if self.holiday_checker.is_holiday(next_day_timestamp.date()):
+        if weekday == 4:  # Friday
+            return True
+            
+        if weekday == 3:  # Thursday
+            next_day = (timestamp + pd.Timedelta(days=1)).date()
+            if self.holiday_checker.is_holiday(next_day):
                 logger.info(
-                    "[%s] Thursday Candle (%s) accepted because Friday is holiday.",
-                    self.name, last_candle_date
+                    "[%s] Thursday (%s) accepted (Friday holiday).",
+                    self.name, timestamp.date()
                 )
-                is_valid_setup_day = True
-        
-        if not is_valid_setup_day:
-            return 0
+                return True
+                
+        return False
 
-        # 6. Extract Price
+    def _extract_close_price(self, candle: pd.Series) -> float | None:
+        """Safely extracts the close price from a candle."""
         try:
-            close_price = float(last_candle['close'])
-            if pd.isna(close_price):
-                 logger.warning(
-                     "[%s] Close price for %s on %s is NaN.",
-                     self.name, self.symbol, last_candle_date
-                 )
-                 return 0
+            close = float(candle["close"])
+            if pd.isna(close):
+                logger.warning("[%s] Close price is NaN.", self.name)
+                return None
+            return close
         except (KeyError, ValueError, TypeError) as error:
             logger.error("[%s] Error reading close price: %s", self.name, error)
-            return 0
+            return None
 
-        # 7. Calculate Limit Entry
-        limit_entry = round(close_price * self.ENTRY_LIMIT_DISCOUNT, 2)
-        
-        # 8. Check if trade already exists
-        signal_date_string = str(last_candle_date)
-        if self.trade_repository.exists(self.symbol, self.STRATEGY_IDENTIFIER, signal_date_string):
-            return 0
+    def _calculate_entry_price(self, close_price: float) -> float:
+        """Calculates the limit entry price based on the discount."""
+        return round(close_price * self.ENTRY_LIMIT_DISCOUNT, 2)
 
-        # 9. Create Trade Proposal
+    def _trade_exists(self, date_str: str) -> bool:
+        """Checks if a trade for this strategy and date already exists."""
+        return self.trade_repository.exists(
+            self.SYMBOL, self.STRATEGY_IDENTIFIER, date_str
+        )
+
+    def _get_day_label(self, timestamp: pd.Timestamp) -> str:
+        """Returns a human-readable label for the execution day."""
+        if timestamp.weekday() == 4:
+            return "Friday"
+        return "Thursday (Holiday Exception)"
+
+    def _create_trade_proposal(
+        self, date_str: str, close: float, entry: float, day_label: str
+    ) -> None:
+        """Persists the generated signal as a trade proposal."""
         context: TwoPercentStrategyContext = {
-            "date": signal_date_string,
-            "setup_close": close_price,
-            "limit_entry": limit_entry,
-            "day": "Friday" if weekday == 4 else "Thursday (Holiday Exception)",
+            "date": date_str,
+            "setup_close": close,
+            "limit_entry": entry,
+            "day": day_label,
             "source": "screener",
         }
 
         self.trade_repository.create_trade(
-            symbol=self.symbol,
+            symbol=self.SYMBOL,
             strategy=self.STRATEGY_IDENTIFIER,
             size=0,
-            entry=limit_entry,
+            entry=entry,
             stop_loss=0.0,
             target=0.0,
-            context=dict(context) # type: ignore
+            context=dict(context)  # type: ignore
         )
-        
-        # 10. Telegram Report
-        if self.telegram_bot:
-           report_rows = [{
-               "Symbol": self.symbol,
-               "Setup Close": f"{close_price:.2f}",
-               "Limit Entry": f"{limit_entry:.2f}"
-           }]
-           report_dataframe = pd.DataFrame(report_rows)
-           self._send_telegram_report(
-               f"{self.STRATEGY_IDENTIFIER} Entries", 
-               signal_date_string, 
-               report_dataframe
-           )
 
-        return 1
+    def _send_signal_report(self, date_str: str, close: float, entry: float) -> None:
+        """Sends a notification report via Telegram if available."""
+        if not self.telegram_bot:
+            return
+
+        report_data = pd.DataFrame([{
+            "Symbol": self.SYMBOL,
+            "Setup Close": f"{close:.2f}",
+            "Limit Entry": f"{entry:.2f}"
+        }])
+        
+        self._send_telegram_report(
+            f"{self.STRATEGY_IDENTIFIER} Entries",
+            date_str,
+            report_data
+        )

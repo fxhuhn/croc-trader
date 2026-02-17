@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field
-from typing import override
+from typing import override, TypedDict
 
 import pandas as pd
 
@@ -8,6 +8,8 @@ from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....tools.symbol_lists import ExchangeSymbol
 from ....tools.market_holidays import MarketHolidayChecker
+from ....tools import indicators
+from ....tools.symbol_filter import SymbolFilter
 from ...telegram import TelegramBot
 from .base import BaseStrategy
 from ....const import Strategies
@@ -15,12 +17,29 @@ from ....const import Strategies
 logger = logging.getLogger(__name__)
 
 
+class TurnoverSignalContext(TypedDict):
+    """Metadata for the Turnover Timing signal."""
+    setup_date: str
+    setup_close: float
+    setup_candle_green: bool
+    green_candle_count: int
+    setup_sma_price: float
+    setup_turnover_sma: float
+    setup_atr: float
+    factor: float
+    indices: str
+    source: str
+    date: str
+
+
 @dataclass(frozen=True)
-class TurnoverConfig:
-    ATR_WINDOW: int = 3
+class TurnoverConfiguration:
+    """Configuration for technical analysis thresholds in Turnover Timing strategy."""
+    atr_window: int = 3
     # Entry Factors: 0.5 * ATR and 1.0 * ATR below Close
-    ENTRY_FACTORS: list[float] = field(default_factory=lambda: [0.5, 1.0])
-    SMA_WINDOW: int = 200
+    entry_factors: list[float] = field(default_factory=lambda: [0.5, 1.0])
+    sma_window: int = 200
+    minimum_lookback_days: int = 800
 
 
 class TurnoverTimingStrategy(BaseStrategy):
@@ -31,13 +50,21 @@ class TurnoverTimingStrategy(BaseStrategy):
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
-        config: TurnoverConfig = TurnoverConfig(),
-    ):
-        super().__init__(data_provider, telegram_bot)
+        config: TurnoverConfiguration = TurnoverConfiguration(),
+    ) -> None:
+        """
+        Initializes the Turnover Timing strategy.
 
-        self.name = Strategies.TurnOverTiming
+        Args:
+            trade_repository: Repository for trade persistence.
+            data_provider: Provider for market historical data.
+            telegram_bot: Optional bot for reporting signals.
+            config: Configuration parameters for technical indicators.
+        """
+        super().__init__(data_provider, telegram_bot)
         self.trade_repository = trade_repository
-        self.config = config
+        self.configuration = config
+        self.holiday_checker = MarketHolidayChecker()
 
     @override
     def run(
@@ -47,45 +74,99 @@ class TurnoverTimingStrategy(BaseStrategy):
         specific_symbols: list[str] | None = None,
     ) -> int:
         """
-        Scans for Turnover signals (Weekly Close).
-        Logic: Close < SMA200. Entry = Close - (ATR(3) * Factor).
+        Orchestrates the Turnover signals scanning process.
+
+        Logic:
+        - Setup: Weekly Close (Friday or Holiday-Thursday).
+        - Filter: Close > SMA150 and high relative turnover.
+        - Entry: Limit order at 0.5 * ATR or 1.0 * ATR below Close.
         """
-        # 1. Determine Analysis Date (Today)
-        if analysis_date:
-            analysis_datetime = pd.Timestamp(analysis_date)
-        else:
-            analysis_datetime = pd.Timestamp.now().normalize() - pd.Timedelta(days=days)
+        analysis_timestamp = self._get_analysis_timestamp(days, analysis_date)
 
-        # 2. Strict Weekly Close Check: Today must be Friday or Holiday-Thursday
-        holiday_checker = MarketHolidayChecker()
-        day_of_week = analysis_datetime.dayofweek # Monday=0, Sunday=6
-
-        is_setup_day = False
-        if day_of_week == 4: # Friday
-            is_setup_day = True
-        elif day_of_week == 3: # Thursday
-            # If Friday is a holiday, Thursday is the setup day
-            tomorrow = analysis_datetime + pd.Timedelta(days=1)
-            if holiday_checker.is_holiday(tomorrow.date()):
-                is_setup_day = True
-
-        if not is_setup_day:
+        if not self._is_setup_day(analysis_timestamp):
             return 0
 
-        # Adjust Lookback for Backtesting
-        lookback = 800
-        if analysis_date:
-             days_diff = (pd.Timestamp.now() - analysis_datetime).days
-             if days_diff > (lookback - 100):
-                 lookback = days_diff + 500 # Buffer
-
-        # 3. Compile Universe (Pre-Filtering)
+        # Compile Universe
         symbol_loader = ExchangeSymbol()
         indices_map = {
             "NDX": symbol_loader.nasdaq_100,
             "SPX": symbol_loader.sp_500,
             "RUS": symbol_loader.russell_1000,
         }
+        target_universe = self._compile_target_universe(indices_map, specific_symbols)
+
+        # Load Data
+        lookback = self._calculate_required_lookback(analysis_timestamp)
+        data_frames = self.data_provider.get_universe_daily_data(
+            target_universe, days=lookback
+        )
+        if not data_frames:
+            return 0
+
+        # Find last available trading day
+        closes = data_frames["close"].ffill()
+        if closes.empty:
+            return 0
+
+        available_dates = closes.index[closes.index <= analysis_timestamp]
+        if available_dates.empty:
+            return 0
+        last_trading_day = available_dates[-1]
+
+        if last_trading_day != analysis_timestamp:
+            logger.warning(
+                "[%s] Analysis date %s requested, but latest data is %s.",
+                self.name,
+                analysis_timestamp.date(),
+                last_trading_day.date(),
+            )
+            return 0
+
+        setup_date = last_trading_day
+
+        # Compute Indicators & Find Candidates
+        candidates = self._identify_strategy_candidates(
+            data_frames, setup_date, indices_map
+        )
+        if not candidates:
+            return 0
+
+        # Create Signals
+        count = self._process_and_store_signals(candidates, data_frames, setup_date)
+
+        # Report
+        self._report_signals_to_telegram(candidates, setup_date)
+
+        return count
+
+    def _get_analysis_timestamp(
+        self, days: int, analysis_date: str | None
+    ) -> pd.Timestamp:
+        """Determines the effective timestamp for signal generation."""
+        if analysis_date:
+            return pd.Timestamp(analysis_date).normalize()
+        return pd.Timestamp.now().normalize() - pd.Timedelta(days=days)
+
+    def _is_setup_day(self, analysis_timestamp: pd.Timestamp) -> bool:
+        """Verifies if today is Friday or a holiday-adjusted Thursday."""
+        day_of_week = analysis_timestamp.dayofweek  # Monday=0, Sunday=6
+
+        if day_of_week == 4:  # Friday
+            return True
+
+        if day_of_week == 3:  # Thursday
+            tomorrow = analysis_timestamp + pd.Timedelta(days=1)
+            if self.holiday_checker.is_holiday(tomorrow.date()):
+                return True
+
+        return False
+
+    def _compile_target_universe(
+        self,
+        indices_map: dict[str, list[str]],
+        specific_symbols: list[str] | None,
+    ) -> list[str]:
+        """Combines index symbols into a single list for screening."""
         all_symbols = set()
         for symbol_list in indices_map.values():
             all_symbols.update(symbol_list)
@@ -94,80 +175,60 @@ class TurnoverTimingStrategy(BaseStrategy):
         if specific_symbols:
             target_universe = list(set(target_universe) & set(specific_symbols))
 
-        # Load Data (Optimized)
-        data_frames = self.data_provider.get_universe_daily_data(
-            target_universe, days=lookback
-        )
-        if not data_frames:
-            return 0
+        return target_universe
 
-        # Handle missing data strictly but gracefully:
-        # Use local variables to avoid mutating shared cache
+    def _calculate_required_lookback(self, analysis_timestamp: pd.Timestamp) -> int:
+        """Calculates the necessary data lookback for indicator calculations."""
+        base_lookback = self.configuration.minimum_lookback_days
+        days_diff = (pd.Timestamp.now() - analysis_timestamp).days
+
+        if days_diff > (base_lookback - 100):
+            return days_diff + 500  # Buffer for historical runs
+        return base_lookback
+
+    def _identify_strategy_candidates(
+        self,
+        data_frames: dict[str, pd.DataFrame],
+        setup_date: pd.Timestamp,
+        indices_map: dict[str, list[str]],
+    ) -> list[dict[str, object]]:
+        """Identifies potential trading candidates across all indices."""
         closes = data_frames["close"].ffill()
         highs = data_frames["high"].ffill()
         lows = data_frames["low"].ffill()
         volumes = data_frames["volume"].fillna(0)
 
-        # 4. Find last available dataset (Avoid Look-Ahead in Backtest)
-        if closes.empty:
-            return 0
-
-        available_dates = closes.index[closes.index <= analysis_datetime]
-        if available_dates.empty:
-            return 0
-        last_trading_day = available_dates[-1]
-        
-        # Ensure we are not running on stale data (unless it's exactly the setup day)
-        if last_trading_day != analysis_datetime:
-            # If we are in the middle of a Friday, it's possible 
-            # we don't have today's Close yet.
-            # But the screener usually runs EOD.
-            logger.warning(
-                "[%s] Analysis date %s requested, but latest data is %s.",
-                self.name, analysis_datetime.date(), last_trading_day.date()
-            )
-            return 0
-
-        setup_date = last_trading_day
-
-        # 5. Compute Indicators (Vectorized)
-        required_window = 200
+        required_window = self.configuration.sma_window
         start_location = max(0, closes.index.get_loc(setup_date) - required_window)
-        
-        # Slice inputs
+
+        # Slice inputs for the calculation window
         closes_slice = closes.iloc[start_location : closes.index.get_loc(setup_date) + 1]
         highs_slice = highs.iloc[start_location : highs.index.get_loc(setup_date) + 1]
         lows_slice = lows.iloc[start_location : lows.index.get_loc(setup_date) + 1]
-        volumes_slice = volumes.iloc[start_location : volumes.index.get_loc(setup_date) + 1]
+        volumes_slice = volumes.iloc[
+            start_location : volumes.index.get_loc(setup_date) + 1
+        ]
 
-        from ....tools import indicators
-        
-        # Turnover = Close * Volume
+        # Calculate Indicators
         turnover_slice = closes_slice * volumes_slice
-
-        # Indicators
         sma_turnover_20 = indicators.calculate_sma(turnover_slice, 20)
         sma_price_150 = indicators.calculate_sma(closes_slice, 150)
-
-        # ATR Calculation (Wilder's Smoothing) w/ centralized logic
         atr_series = indicators.calculate_atr(
-            highs_slice, lows_slice, closes_slice, self.config.ATR_WINDOW
+            highs_slice, lows_slice, closes_slice, self.configuration.atr_window
         )
 
-        # Extract values for the Setup Day
+        # Extract values for Setup Day
         try:
             current_close = closes.loc[setup_date]
             current_sma_price = sma_price_150.loc[setup_date]
             current_sma_turnover = sma_turnover_20.loc[setup_date]
             current_atr = atr_series.loc[setup_date]
         except KeyError:
-            return 0
+            return []
 
-        # 6. Index & Selection Logic (Formerly Buckets)
-        candidates = []
+        candidates: list[dict[str, object]] = []
 
         for index_name, symbols_in_index in indices_map.items():
-            # Filter symbols that exist in our data and have valid data
             valid_symbols = [
                 symbol
                 for symbol in symbols_in_index
@@ -186,20 +247,21 @@ class TurnoverTimingStrategy(BaseStrategy):
                 valid_symbols, key=lambda s: current_sma_turnover[s], reverse=True
             )
 
-            # Filter out secondary share classes (e.g., GOOGL) if primary (GOOG) is present
-            from ....tools.symbol_filter import SymbolFilter
+            # Filter out secondary share classes
             ranked_by_turnover = SymbolFilter().filter_symbols(ranked_by_turnover)
 
-            # Take Top 20 (Liquid)
+            # Take Top 20 (Liquid candidates)
             top_20_liquid = ranked_by_turnover[:20]
 
-            # Filter: Close > SMA 150 (Trend) and ATR > 0
-            trend_filtered = []
-            for symbol in top_20_liquid:
-                if current_close[symbol] > current_sma_price[symbol] and current_atr[symbol] > 0:
-                    trend_filtered.append(symbol)
+            # Filter: Close > SMA 150 (Uptrend) and ATR > 0
+            trend_filtered = [
+                symbol
+                for symbol in top_20_liquid
+                if current_close[symbol] > current_sma_price[symbol]
+                and current_atr[symbol] > 0
+            ]
 
-            # Select Top 4 from the remaining list (Already sorted by Turnover)
+            # Select Top 4 from the remaining list
             final_selection = trend_filtered[:4]
 
             for symbol in final_selection:
@@ -214,114 +276,137 @@ class TurnoverTimingStrategy(BaseStrategy):
                     }
                 )
 
-        count = 0
-        signal_date_string = str(setup_date.date())
+        return candidates
 
-        # Deduplicate candidates and merge indices
-        merged_candidates = {}
+    def _process_and_store_signals(
+        self,
+        candidates: list[dict[str, object]],
+        data_frames: dict[str, pd.DataFrame],
+        setup_date: pd.Timestamp,
+    ) -> int:
+        """Deduplicates candidates and stores signals in the database."""
+        signal_count = 0
+        setup_date_str = str(setup_date.date())
+
+        # Deduplicate candidates across indices
+        merged_candidates: dict[str, dict[str, object]] = {}
         for candidate in candidates:
-            symbol = candidate["symbol"]
+            symbol = str(candidate["symbol"])
             if symbol not in merged_candidates:
                 merged_candidates[symbol] = candidate
             else:
-                existing_indices = merged_candidates[symbol]["indices"].split(", ")
-                if candidate["indices"] not in existing_indices:
-                    merged_candidates[symbol]["indices"] += f", {candidate['indices']}"
+                existing_indices = str(merged_candidates[symbol]["indices"]).split(", ")
+                if str(candidate["indices"]) not in existing_indices:
+                    merged_candidates[symbol][
+                        "indices"
+                    ] = f"{merged_candidates[symbol]['indices']}, {candidate['indices']}"
 
         unique_candidates = merged_candidates.values()
 
         for candidate in unique_candidates:
-            for factor in self.config.ENTRY_FACTORS:  # [0.5, 1.0]
+            symbol = str(candidate["symbol"])
+            close_price = float(candidate["close"])
+            atr_value = float(candidate["atr"])
+
+            for factor in self.configuration.entry_factors:
                 strategy_name = f"{self.name}_{factor}"
 
                 # Calculate Limit Entry: Close - (Factor * ATR)
-                limit_price = candidate["close"] - (candidate["atr"] * factor)
-                limit_price = round(limit_price, 2)
+                limit_price = round(close_price - (atr_value * factor), 2)
 
-                # Exists Check
                 if self.trade_repository.exists(
-                    candidate["symbol"], strategy_name, signal_date_string
+                    symbol, strategy_name, setup_date_str
                 ):
                     continue
 
-                context = {
-                    "setup_date": signal_date_string,
-                    "setup_close": candidate["close"],
+                context: TurnoverSignalContext = {
+                    "setup_date": setup_date_str,
+                    "setup_close": close_price,
                     "setup_candle_green": bool(
-                        candidate["close"]
-                        > data_frames["open"].loc[setup_date][candidate["symbol"]]
+                        close_price > data_frames["open"].loc[setup_date][symbol]
                     ),
-                    "green_candle_count": 1 if bool(
-                        candidate["close"]
-                        > data_frames["open"].loc[setup_date][candidate["symbol"]]
-                    ) else 0,
-                    "setup_sma150": candidate["sma_price"],
-                    "setup_turnover_sma20": round(candidate["sma_turnover"], 0),
-                    "setup_atr": round(candidate["atr"], 2),
+                    "green_candle_count": (
+                        1
+                        if close_price > data_frames["open"].loc[setup_date][symbol]
+                        else 0
+                    ),
+                    "setup_sma_price": float(candidate["sma_price"]),
+                    "setup_turnover_sma": round(float(candidate["sma_turnover"]), 0),
+                    "setup_atr": round(atr_value, 2),
                     "factor": factor,
-                    "indices": candidate["indices"],
+                    "indices": str(candidate["indices"]),
                     "source": "screener",
-                    "date": signal_date_string,
+                    "date": setup_date_str,
                 }
 
                 self.trade_repository.create_trade(
-                    symbol=candidate["symbol"],
+                    symbol=symbol,
                     strategy=strategy_name,
                     size=0,
                     entry=limit_price,
                     stop_loss=0.0,
                     target=0.0,
-                    context=context,
+                    context=dict(context),  # type: ignore
                 )
-                count += 1
+                signal_count += 1
 
-        # Telegram Report
-        if self.telegram_bot and unique_candidates:
-            report_rows = []
-            for item in unique_candidates:
-                entry_1 = item["close"] - (item["atr"] * 0.5)
-                entry_2 = item["close"] - (item["atr"] * 1.0)
+        return signal_count
 
-                report_rows.append(
-                    {
-                        "symbol": item["symbol"],
-                        "e1": round(entry_1, 2),
-                        "e2": round(entry_2, 2),
-                        "close": round(item["close"], 2),
-                        "atr": round(item["atr"], 2),
-                    }
-                )
+    def _report_signals_to_telegram(
+        self, candidates: list[dict[str, object]], setup_date: pd.Timestamp
+    ) -> None:
+        """Sends a consolidated signal report to Telegram."""
+        if not self.telegram_bot or not candidates:
+            return
 
-            if report_rows:
-                report_dataframe = pd.DataFrame(report_rows)
-                report_dataframe.columns = ["Symbol", "Entry 1", "Entry 2", "Close", "ATR"]
-                self._send_telegram_report(
-                    "Turnover Signals", str(setup_date.date()), report_dataframe
-                )
+        # Deduplicate for reporting
+        unique_symbols: dict[str, dict[str, object]] = {}
+        for candidate in candidates:
+            symbol = str(candidate["symbol"])
+            if symbol not in unique_symbols:
+                unique_symbols[symbol] = candidate
+
+        report_rows = []
+        for item in unique_symbols.values():
+            close_price = float(item["close"])
+            atr_value = float(item["atr"])
+
+            report_rows.append(
+                {
+                    "Symbol": item["symbol"],
+                    "Entry 0.5 ATR": round(close_price - (atr_value * 0.5), 2),
+                    "Entry 1.0 ATR": round(close_price - (atr_value * 1.0), 2),
+                    "Close": round(close_price, 2),
+                    "ATR": round(atr_value, 2),
+                }
+            )
+
+        report_dataframe = pd.DataFrame(report_rows)
+        self._send_telegram_report(
+            "Turnover Signals", str(setup_date.date()), report_dataframe
+        )
 
         return count
 
     def analyze_single_symbol(self, symbol: str) -> dict[str, object]:
         """
-        Debug method to analyze a single symbol.
-        Note: Ranking (Top 20 / Top 4) cannot be fully verified in isolation
-        as it depends on other stocks. This checks absolute criteria only.
+        Calculates indicators for a single symbol for debugging purposes.
+
+        Note:
+            Ranking (Top 20 / Top 4) cannot be fully verified in isolation
+            as it depends on other stocks. This checks absolute criteria only.
         """
-        days = 400
-        dataframe = self.data_provider.get_symbol_history(symbol, days=days)
+        days_lookback = 400
+        dataframe = self.data_provider.get_symbol_history(symbol, days=days_lookback)
         if dataframe.empty:
             return {"symbol": symbol, "error": "No data found"}
-
-        # Safe extraction helper
-        def safe_value(value_expr, default=0.0) -> float:
-            return default if pd.isna(value_expr) else float(value_expr)
 
         try:
             closes = pd.Series(dataframe["close"].values, index=dataframe["date"])
             highs = pd.Series(dataframe["high"].values, index=dataframe["date"])
             lows = pd.Series(dataframe["low"].values, index=dataframe["date"])
             volumes = pd.Series(dataframe["volume"].values, index=dataframe["date"])
-        except Exception as error:
+        except (KeyError, ValueError, TypeError) as error:
             return {"symbol": symbol, "error": f"Data Frame Error: {str(error)}"}
 
         if len(closes) < 200:
@@ -330,37 +415,40 @@ class TurnoverTimingStrategy(BaseStrategy):
                 "error": f"Not enough data (Found {len(closes)}, Need 200+)",
             }
 
-        from ....tools import indicators
-        
         turnover = closes * volumes
         sma_turnover_20 = indicators.calculate_sma(turnover, 20)
         sma_price_150 = indicators.calculate_sma(closes, 150)
 
-        # ATR (3)
+        # ATR Calculation
         atr_series = indicators.calculate_atr(
-            highs, lows, closes, self.config.ATR_WINDOW
+            highs, lows, closes, self.configuration.atr_window
         )
 
-        # Last Values
-        index = -1
-        current_close = closes.iloc[index]
-        current_sma150 = sma_price_150.iloc[index]
-        current_turnover_sma = sma_turnover_20.iloc[index]
-        current_atr = atr_series.iloc[index]
+        # Extract Last Values
+        current_close = closes.iloc[-1]
+        current_sma150 = sma_price_150.iloc[-1]
+        current_turnover_sma = sma_turnover_20.iloc[-1]
+        current_atr = atr_series.iloc[-1]
 
-        # Check
+        # Trend Logic Check
         uptrend = bool(current_close > current_sma150)
 
         return {
             "symbol": symbol,
-            "last_date": str(dataframe["date"].iloc[index].date()),
+            "last_date": str(dataframe["date"].iloc[-1].date()),
             "data_valid": True,
             "checks": {"uptrend_sma150": uptrend, "data_sufficient": True},
             "values": {
-                "close": round(safe_value(current_close), 2),
-                "sma150": round(safe_value(current_sma150), 2),
-                "turnover_sma20": int(safe_value(current_turnover_sma, 0)),
-                "atr": round(safe_value(current_atr), 2),
+                "close": round(self._extract_safe_float_value(current_close), 2),
+                "sma150": round(self._extract_safe_float_value(current_sma150), 2),
+                "turnover_sma20": int(self._extract_safe_float_value(current_turnover_sma, 0)),
+                "atr": round(self._extract_safe_float_value(current_atr), 2),
             },
             "note": "Rank logic (Top 20) requires full market scan.",
         }
+
+    def _extract_safe_float_value(self, value: object, default: float = 0.0) -> float:
+        """Safely extracts a float value from a potentially null/NaN object."""
+        if pd.isna(value):
+            return default
+        return float(value)
