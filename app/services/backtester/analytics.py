@@ -2,8 +2,6 @@ import duckdb
 import pandas as pd
 import numpy as np
 import logging
-import os
-import dataclasses
 from dataclasses import dataclass
 from typing import Any
 
@@ -115,8 +113,8 @@ class BacktestDataLoader:
         connection = duckdb.connect(database=":memory:")
         try:
             connection.sql("INSTALL sqlite; LOAD sqlite;")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("DuckDB SQLite extension loading issue (expected if pre-loaded): %s", e)
         
         # backtest.db is always SQLITE (Phase 1 persistence)
         connection.sql(f"ATTACH '{self.backtest_db}' AS backtest (TYPE SQLITE);")
@@ -562,14 +560,16 @@ class MonteCarloSimulator:
     def run_ruin_probability(self, trades_df: pd.DataFrame, initial_capital: float) -> float:
         """Calculates probability of 50% drawdown."""
         pnl_values = trades_df["net_pnl"].values
-        if len(pnl_values) < 10: return 0.0
+        if len(pnl_values) < 10:
+            return 0.0
         ruin_count = 0
         for _ in range(1000):
             shuffled = np.random.permutation(pnl_values)
             equity = initial_capital + np.cumsum(shuffled)
             peak = np.maximum.accumulate(equity)
             drawdown = (equity - peak) / peak
-            if any(drawdown < -0.5): ruin_count += 1
+            if any(drawdown < -0.5):
+                ruin_count += 1
         return ruin_count / 1000.0
 
     def run_portfolio_simulation(
@@ -1378,7 +1378,7 @@ class NoiseTester:
                 .reset_index(drop=True)
             )
             # Minimal proxy for stress run
-            metrics_obj = self.analytics.run_analysis()  # Standard run as proxy
+            metrics_obj = self.analytics.run_analysis(trades_dataframe=stress_dataframe)
             stress_results.append(
                 {
                     "max_drawdown": metrics_obj.maximum_drawdown,
@@ -1573,11 +1573,15 @@ class TradeQualityAnalyzer:
         pnl = trade.get("realized_pnl", 0.0)
         r_multiple = pnl / risk
         
-        if r_multiple > 2.0: return 20.0
-        if r_multiple > 1.0: return 18.0
-        if r_multiple > 0.0: return 15.0
-        if r_multiple > -1.0: return 10.0 # Normal loss
-        return 0.0 # Busted risk
+        if r_multiple > 2.0:
+            return 20.0
+        if r_multiple > 1.0:
+            return 18.0
+        if r_multiple > 0.0:
+            return 15.0
+        if r_multiple > -1.0:
+            return 10.0  # Normal loss
+        return 0.0  # Busted risk
 
     def _score_context(self, trade: dict, context: dict) -> float:
         # If context missing, assume neutral
@@ -1589,14 +1593,22 @@ class TradeQualityAnalyzer:
         return 15.0
 
     def _get_grade(self, score: float) -> str:
-        if score >= 97: return "A+"
-        if score >= 93: return "A"
-        if score >= 90: return "A-"
-        if score >= 87: return "B+"
-        if score >= 83: return "B"
-        if score >= 80: return "B-"
-        if score >= 70: return "C"
-        if score >= 60: return "D"
+        if score >= 97:
+            return "A+"
+        if score >= 93:
+            return "A"
+        if score >= 90:
+            return "A-"
+        if score >= 87:
+            return "B+"
+        if score >= 83:
+            return "B"
+        if score >= 80:
+            return "B-"
+        if score >= 70:
+            return "C"
+        if score >= 60:
+            return "D"
         return "F"
 
     def _score_exit(self, trade: dict) -> float:
@@ -1609,10 +1621,14 @@ class TradeQualityAnalyzer:
             max_potential = trade.get("entry_price", 0.0) * trade.get("initial_size", 0.0) * mfe
             capture_ratio = safe_divide(actual_profit, max_potential)
             
-            if capture_ratio > 0.8: return 30.0
-            elif capture_ratio > 0.6: return 25.0
-            elif capture_ratio > 0.4: return 20.0
-            else: return 10.0
+            if capture_ratio > 0.8:
+                return 30.0
+            elif capture_ratio > 0.6:
+                return 25.0
+            elif capture_ratio > 0.4:
+                return 20.0
+            else:
+                return 10.0
             
         # 2. Fallback: Exit Reason
         reason = trade.get("exit_reason", "").upper()

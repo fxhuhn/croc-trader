@@ -186,7 +186,8 @@ class TradeRepository(BaseRepository):
 
     def update_trade(self, trade_id: int, updates: dict, reason: str = None):
         """Generisches Update."""
-        if not updates: return
+        if not updates:
+            return
 
         # Enums in updates behandeln
         safe_updates = {}
@@ -206,7 +207,8 @@ class TradeRepository(BaseRepository):
 
         with self.session.connect() as conn:
             trade = self.get_trade(trade_id, conn=conn)
-            if not trade: return
+            if not trade:
+                return
 
             set_clauses = []
             values = []
@@ -220,7 +222,8 @@ class TradeRepository(BaseRepository):
                     values.append(new_val)
                     changes.append((key, old_val, new_val))
             
-            if not set_clauses: return
+            if not set_clauses:
+                return
 
             values.append(trade_id)
             sql = f"UPDATE trades SET {', '.join(set_clauses)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"

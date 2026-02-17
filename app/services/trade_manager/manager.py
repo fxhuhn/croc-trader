@@ -83,11 +83,16 @@ class TradeManager:
         # The aliases map above handles most cases. Let's add specific fallbacks if needed.
         
         # Manual Fallbacks for very messy inputs
-        if "turnover" in clean_name: return Strategies.TurnOverTiming
-        if "dip" in clean_name: return Strategies.DipBuyer
-        if "hold" in clean_name or "tp3" in clean_name: return Strategies.HoldTarget
-        if "split" in clean_name: return Strategies.SplitTarget
-        if "percent" in clean_name: return Strategies.TwoPercent
+        if "turnover" in clean_name:
+            return Strategies.TurnOverTiming
+        if "dip" in clean_name:
+            return Strategies.DipBuyer
+        if "hold" in clean_name or "tp3" in clean_name:
+            return Strategies.HoldTarget
+        if "split" in clean_name:
+            return Strategies.SplitTarget
+        if "percent" in clean_name:
+            return Strategies.TwoPercent
 
         return None
     
@@ -139,12 +144,12 @@ class TradeManager:
         try:
             # FIX: Data Loading jetzt IM try-Block, um DB-Locks abzufangen
             start_date = trade.get('entry_date')
-            if not start_date: 
-                start_date = "2024-01-01" 
+            if not start_date:
+                start_date = "2024-01-01"
 
             df_hist = self.market_repo.get_symbol_history_raw(symbol, start_date=str(start_date))
             if df_hist.empty:
-                return 
+                return
 
             result = strategy.manage_active_trade(trade, df_hist, self.trade_repository)
             
@@ -166,14 +171,16 @@ class TradeManager:
         strat_name = trade['strategy']
         strategy = self._get_strategy(strat_name)
         
-        if not strategy: return
+        if not strategy:
+            return
 
         try:
             # FIX: Data Loading jetzt IM try-Block
             # trade.get('created_at') unused
             # Puffer: Laden ab 10 Tage vor Signal
             df_hist = self.market_repo.get_symbol_history_raw(symbol, start_date="2024-01-01") 
-            if df_hist.empty: return
+            if df_hist.empty:
+                return
 
             # Letzte Kerze prüfen
             candle = df_hist.iloc[-1]

@@ -1,8 +1,6 @@
 import logging
-from typing import Any
 
 from flask import Blueprint, jsonify, render_template, request, Response
-from werkzeug.exceptions import HTTPException
 
 logger = logging.getLogger(__name__)
 errors_bp = Blueprint("errors", __name__)

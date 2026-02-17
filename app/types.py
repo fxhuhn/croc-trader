@@ -1,7 +1,6 @@
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 
-from typing import Literal, Dict, Any, Optional, List, TypedDict
+from typing import Literal, Dict, Any, TypedDict
 
 from .const import TradeStatus, ExitReason, TradeEventType, EntryReason
 

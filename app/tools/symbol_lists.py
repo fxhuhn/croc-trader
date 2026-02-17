@@ -130,10 +130,14 @@ class ExchangeSymbol:
             )
 
             # Update internal state (Atomic assignment is thread-safe in Python for lists)
-            if sp_500: self._sp_500 = sp_500
-            if nasdaq_100: self._nasdaq_100 = nasdaq_100
-            if dow_30: self._dow_30 = dow_30
-            if russell_1000: self._russell_1000 = russell_1000
+            if sp_500:
+                self._sp_500 = sp_500
+            if nasdaq_100:
+                self._nasdaq_100 = nasdaq_100
+            if dow_30:
+                self._dow_30 = dow_30
+            if russell_1000:
+                self._russell_1000 = russell_1000
 
             logger.info(
                 f"✓ Symbol refresh complete: "

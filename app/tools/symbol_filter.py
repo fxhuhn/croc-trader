@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Optional, List, Dict
 import pandas as pd
 import yfinance as yf
+import time
+from .symbol_lists import ExchangeSymbol
 
 # Setup Logger
 logger = logging.getLogger(__name__)
@@ -77,8 +79,6 @@ class SymbolFilter:
 
     def _refresh_mapping_background(self) -> None:
         """Fetches volume data for all symbols and builds preference mapping."""
-        from .symbol_lists import ExchangeSymbol
-        import time
 
         # Wait a bit for ExchangeSymbol to populate (heuristic)
         time.sleep(5) 
@@ -130,7 +130,8 @@ class SymbolFilter:
                 count += 1
                 if count % 100 == 0:
                     logger.debug("Processed %d/%d symbols for preference mapping", count, len(symbols))
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to fetch info for %s: %s", symbol, e)
                 continue
 
         if not raw_data:

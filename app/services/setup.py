@@ -6,7 +6,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from ..database.session import DatabaseSession
-from ..database.repositories.market import MarketRepository
 from ..database.repositories.trade import TradeRepository
 from ..database.repositories.signal import SignalRepository
 

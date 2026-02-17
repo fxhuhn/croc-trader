@@ -142,14 +142,16 @@ class CrocSetupStrategy(BaseStrategy):
 
         # 3. Create Price Object
         prices = PriceData.from_row(normalized)
-        if not prices: return None
+        if not prices:
+            return None
 
         # 4. Enrich Data
         self._enrich_sma(normalized, prices)
 
         # 5. Match Rule
         match = self._find_best_match(normalized)
-        if not match: return None
+        if not match:
+            return None
 
         # 6. Create Trade
         return self._create_trade(normalized, prices, match)
@@ -177,7 +179,8 @@ class CrocSetupStrategy(BaseStrategy):
 
     def _is_rule_match(self, row: dict[str, Any], rule: dict[str, Any]) -> bool:
         for key, expected_val in rule.items():
-            if key in IGNORED_METADATA_KEYS: continue
+            if key in IGNORED_METADATA_KEYS:
+                continue
             
             # Map YAML key to DB key
             db_key = key.lower()
@@ -186,7 +189,8 @@ class CrocSetupStrategy(BaseStrategy):
             elif "rsi" in db_key:
                 db_key = "rsi"
 
-            if db_key not in row: return False
+            if db_key not in row:
+                return False
             
             # Check Value
             if not self._check_value(row[db_key], expected_val):
@@ -194,7 +198,8 @@ class CrocSetupStrategy(BaseStrategy):
         return True
 
     def _check_value(self, market_val: Any, condition: Any) -> bool:
-        if market_val is None: return False
+        if market_val is None:
+            return False
         
         # Try numeric lookup
         try:
@@ -212,7 +217,8 @@ class CrocSetupStrategy(BaseStrategy):
         symbol = row.get('symbol', 'UNKNOWN')
         indices = self._get_indices_string(symbol)
         
-        if indices == "-" or prices.risk_range <= 0: return None
+        if indices == "-" or prices.risk_range <= 0:
+            return None
         
         entry = prices.high
         stop = prices.high - prices.risk_range
@@ -283,7 +289,8 @@ class CrocSetupStrategy(BaseStrategy):
         return ",".join(indices) if indices else "-"
 
     def _send_report(self, rows: list[dict[str, Any]], date: str) -> None:
-        if not self.telegram_bot: return
+        if not self.telegram_bot:
+            return
         df = pd.DataFrame(rows)
         # Select existing columns only
         cols = [c for c in ["Symbol", "Signal", "Score", "Entry", "Stop", "TP"] if c in df.columns]

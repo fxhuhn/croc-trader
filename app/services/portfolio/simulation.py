@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import List, Optional
 from .dynamic_sizing import CapacityMonitor, DynamicPositionSizer
 
 logger = logging.getLogger(__name__)
@@ -124,7 +124,8 @@ class CapacitySimulator:
                 active_map = {}
                 for t in active_trades:
                     strat = t['strategy']
-                    if strat not in active_map: active_map[strat] = []
+                    if strat not in active_map:
+                        active_map[strat] = []
                     active_map[strat].append(t)
                 monitor.update(current_date, active_map)
                 
@@ -162,7 +163,8 @@ class CapacitySimulator:
                     })
                     
                     # Update local map for same-day concurrency scaling
-                    if strategy not in active_map: active_map[strategy] = []
+                    if strategy not in active_map:
+                        active_map[strategy] = []
                     active_map[strategy].append({'dummy': True})
 
                 if equity > peak_equity: peak_equity = equity

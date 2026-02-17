@@ -1,7 +1,5 @@
 import sqlite3
 import logging
-import json
-from datetime import datetime
 from typing import Any, TypedDict
 import pandas as pd
 from ...models import BacktestMetrics, PortfolioMetrics

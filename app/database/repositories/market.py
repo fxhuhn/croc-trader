@@ -115,7 +115,8 @@ class MarketRepository(BaseRepository):
 
     def get_batch_history_raw(self, symbols: list[str], start_date: str, end_date: str) -> pd.DataFrame:
         """Lädt Historie für mehrere Symbole."""
-        if not symbols: return pd.DataFrame()
+        if not symbols:
+            return pd.DataFrame()
         placeholders = ",".join("?" for _ in symbols)
         sql = f"""
             SELECT symbol, date, open, high, low, close, volume 
@@ -135,7 +136,8 @@ class MarketRepository(BaseRepository):
         """
         Saves a list of MarketPrice objects (or tuples for backward compat).
         """
-        if not records: return
+        if not records:
+            return
         
         # Prepare Data
         # Check if first item is an object (MarketPrice) or tuple

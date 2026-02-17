@@ -1,13 +1,8 @@
-import json
 import logging
 from typing import Any
 from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.io as pio
-
-from flask import Blueprint, current_app, render_template, request
-
 
 from flask import Blueprint, current_app, render_template, request
 
@@ -20,7 +15,6 @@ from ..services.backtester.analytics import BacktestAnalytics
 from ..services.backtester.backtest_results import ResultsPersistence
 from ..services.screener.view_service import ScreenerViewService
 from ..services.trade_manager.view_service import TradeViewService
-from ..extensions import cache
 
 logger = logging.getLogger(__name__)
 views_bp = Blueprint("views", __name__)

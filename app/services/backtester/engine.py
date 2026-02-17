@@ -3,6 +3,8 @@ import pandas as pd
 from datetime import date, timedelta
 from typing import Type
 
+logger = logging.getLogger(__name__)
+
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskID
 from rich.console import Console
 from rich.live import Live
@@ -25,8 +27,6 @@ from ...services.screener.strategies.two_percent_strategy import TwoPercentStrat
 from ...services.trade_manager.strategies.two_percent_strategy import TwoPercentStrategy as TradeManagerTwoPercent
 
 from ...types import TradeStatus
-
-logger = logging.getLogger(__name__)
 
 from ...services.portfolio.manager import PortfolioManager
 

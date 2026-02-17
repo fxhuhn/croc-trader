@@ -158,7 +158,6 @@ class NDXMomentumScreener(BaseStrategy):
             val_qqq_sma = qqq_sma.loc[target_date]
             val_breadth_fast = breadth_fast.loc[target_date]
             val_breadth_slow = breadth_slow.loc[target_date]
-            val_breadth_raw = breadth_raw.loc[target_date]
             
         except KeyError:
             logger.error(f"[{self.name}] Data missing for {target_date.date()}")

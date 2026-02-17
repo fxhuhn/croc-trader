@@ -36,7 +36,6 @@ from .backtest_results import (
     FunnelData,
 )
 from app.services.portfolio.simulation import CapacitySimulator
-from app.services.portfolio.simulation import CapacitySimulator
 
 # Configure Logging to file, so console is clean for Rich
 logging.basicConfig(
@@ -155,8 +154,8 @@ def _display_safety_switch_steps(console: Console, events: list[SafetyEvent]) ->
         trigger_table.add_row(
             pd.to_datetime(event["start_date"]).strftime("%Y-%m-%d"),
             (
-                pd.to_datetime(event["end_date"]).strftime("%Y-%m-%d") 
-                if event.get("end_date") 
+                pd.to_datetime(event["end_date"]).strftime("%Y-%m-%d")
+                if event.get("end_date")
                 else "Active"
             ),
             event["reason"],
@@ -547,9 +546,12 @@ def _display_allocation_comparison(
         
         reasoning = "N/A"
         if item["status"] == "ACTIVE":
-            if delta > 2.0: reasoning = "High capacity waste"
-            elif delta < -2.0: reasoning = "High efficiency"
-            else: reasoning = "Balanced"
+            if delta > 2.0:
+                reasoning = "High capacity waste"
+            elif delta < -2.0:
+                reasoning = "High efficiency"
+            else:
+                reasoning = "Balanced"
         else:
             reasoning = item.get("reason", "Rejected")
 

@@ -109,7 +109,6 @@ class ScreenerEngine:
             except Exception as e:
                 logger.error(f"Fehler bei {strat.name}: {e}", exc_info=True)
                 results[strat.name] = 0
-                results[strat.name] = 0
         return results
 
     def get_strategy(self, name: str) -> StrategyProtocol | None:

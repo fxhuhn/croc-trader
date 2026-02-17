@@ -108,7 +108,7 @@ def test_telegram_bot_does_not_leak_token_on_error(caplog):
     """
     caplog.set_level(logging.ERROR)
     
-    secret_token = "123456:ABC-DEF-GHI-JKL"
+    secret_token = "123456:ABC-DEF-GHI-JKL"  # nosec B105
     bot = TelegramBot(token=secret_token, chat_id="987654", enabled=True)
     
     error_message = f"Failed to connect to https://api.telegram.org/bot{secret_token}/sendMessage"
@@ -120,12 +120,12 @@ def test_telegram_bot_does_not_leak_token_on_error(caplog):
 
 # --- 4. PATH TRAVERSAL CHECK ---
 
-def test_config_manager_rejects_path_traversal():
+def test_config_manager_rejects_path_traversal(tmp_path):
     """
     SECURITY: Verifies that ConfigManager doesn't allow escaping the data directory.
     """
     # Assuming ConfigManager.get_path checks for '..'
-    with patch("app.config.BASE_DIR", Path("/tmp/app")):
+    with patch("app.config.BASE_DIR", tmp_path):
         manager = ConfigManager()
         # Mocking the dictionary structure based on previous view_file (if I saw it) or standard patterns
         if hasattr(manager, "app") and hasattr(manager.app, "database"):

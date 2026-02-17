@@ -1,7 +1,7 @@
 
 import plotly.graph_objects as go
 import pandas as pd
-from typing import Tuple, List, Dict, Optional
+from typing import List, Optional
 
 # --- Palette ---
 # Constants
@@ -188,7 +188,7 @@ def generate_backtest_charts(dates: pd.Series, equity: pd.Series, drawdown: pd.S
         line=dict(color=COLOR_RED, width=1),
         fill='tozeroy',
         fillcolor='rgba(239, 68, 68, 0.2)', # Visible Red Fill
-        hovertemplate=f"<b>Drawdown</b>: %{{y:.2f}}%<extra></extra>"
+        hovertemplate="<b>Drawdown</b>: %{y:.2f}%<extra></extra>"
     ))
     
     fig_dd.update_layout(
@@ -221,19 +221,26 @@ def generate_backtest_charts(dates: pd.Series, equity: pd.Series, drawdown: pd.S
 
 def generate_profit_factor_gauge(value: float) -> str:
     # Logic: <1 Red, 1-1.5 Amber, 1.5-2 Emerald (Green), >2 Blue
-    if value < 1.0: color = COLOR_RED
-    elif value < 1.5: color = COLOR_AMBER
-    elif value < 2.0: color = COLOR_GREEN
-    else: color = COLOR_BLUE
+    if value < 1.0:
+        color = COLOR_RED
+    elif value < 1.5:
+        color = COLOR_AMBER
+    elif value < 2.0:
+        color = COLOR_GREEN
+    else:
+        color = COLOR_BLUE
     
     # Thresholds: 1.0, 1.5, 2.0
     return _generate_minimal_gauge(value, 0, 5.0, color, "", thresholds=[1.0, 1.5, 2.0])
 
 def generate_win_rate_gauge(value_pct: float) -> str:
     # Logic: <35 Red, 35-60 Amber, >60 Blue (Matches SQN visual)
-    if value_pct < 35.0: color = COLOR_RED
-    elif value_pct < 60.0: color = COLOR_AMBER
-    else: color = COLOR_BLUE
+    if value_pct < 35.0:
+        color = COLOR_RED
+    elif value_pct < 60.0:
+        color = COLOR_AMBER
+    else:
+        color = COLOR_BLUE
     
     # Thresholds: 35, 60 (Removed 75 to merge top buckets)
     return _generate_minimal_gauge(value_pct, 0, 100, color, "%", thresholds=[35.0, 60.0])
@@ -258,7 +265,8 @@ def generate_regime_overlay_chart(daily_df: pd.DataFrame) -> str:
     """
     Overlays Equity Curve (Line) with VIX (Area) and Safety Zones.
     """
-    if daily_df.empty: return "<div>No Data</div>"
+    if daily_df.empty:
+        return "<div>No Data</div>"
 
     
     fig = go.Figure()
@@ -306,8 +314,8 @@ def generate_regime_overlay_chart(daily_df: pd.DataFrame) -> str:
         hovertemplate="<b>Equity</b>: $%{y:,.0f}<extra></extra>"
     ))
     
-    # Highlight Safety Zones (where safety_active == True)
-    safety_days = dataframe[dataframe['safety_active'] == True]
+    # Highlight Safety Zones (where safety_active is True)
+    safety_days = dataframe[dataframe['safety_active']]
     if not safety_days.empty:
         fig.add_trace(go.Scatter(
             x=safety_days['date'].tolist(),

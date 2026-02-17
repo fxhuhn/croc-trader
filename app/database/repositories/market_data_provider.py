@@ -202,7 +202,8 @@ class MarketDataProvider:
 
     def get_batch_history(self, symbols: list, days: int = 100, end_date: str = None) -> dict:
         """Lädt Historie für mehrere Symbole."""
-        if not symbols: return {}
+        if not symbols:
+            return {}
         
         with self.session.connect() as conn:
             if not end_date:

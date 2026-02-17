@@ -2,6 +2,7 @@ import logging
 from ...database.repositories.trade import TradeRepository
 from ...types import TradeStatus
 from .allocator import PortfolioAllocator
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,6 @@ class PortfolioManager:
                 
                 if allocation.size > 0:
                     # 3. Update DB (Store metadata in Context)
-                    import json
                     context = json.loads(trade.get('signal_context') or "{}")
                     context['budget'] = allocation.budget_used
                     context['risk_amount'] = allocation.risk_amount

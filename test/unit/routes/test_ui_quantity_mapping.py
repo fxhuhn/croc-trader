@@ -4,12 +4,13 @@ from unittest.mock import MagicMock, patch
 from app.services.trade_manager.view_service import TradeViewService
 
 @pytest.fixture
-def view_service():
+def view_service(tmp_path):
     """Fixture for TradeViewService with mocked repositories."""
+    test_db = tmp_path / "test.db"
     with patch("app.services.trade_manager.view_service.DatabaseSession"), \
          patch("app.services.trade_manager.view_service.TradeRepository"), \
          patch("app.services.trade_manager.view_service.MarketRepository") as mock_market_repo_class, \
-         patch("app.services.trade_manager.view_service._get_database_path", return_value="/tmp/test.db"):
+         patch("app.services.trade_manager.view_service._get_database_path", return_value=str(test_db)):
         
         service = TradeViewService()
         # Ensure we can return the mock market repo for specific price lookups
