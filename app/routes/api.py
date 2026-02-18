@@ -9,6 +9,7 @@ from ..database.repositories.signal import SignalRepository
 from ..database.session import DatabaseSession
 from ..services.market.updater import MarketDataUpdater
 from ..services.market.quality import MarketQualityService
+from ..const import Strategies
 
 # Import from the separate security.py
 from .security import require_ip_whitelist
@@ -173,7 +174,7 @@ def analyze_dip_buyer() -> Response:
         if not screener_engine:
             return jsonify({"status": "error", "message": "Engine not initialized"}), 503
             
-        strategy = screener_engine.get_strategy("DipBuyer")
+        strategy = screener_engine.get_strategy(Strategies.DipBuyer)
         if not strategy:
             return jsonify(
                 {"status": "error", "message": "DipBuyer strategy not found"}
@@ -214,7 +215,7 @@ def analyze_turnover() -> Response:
         if not screener_engine:
             return jsonify({"status": "error", "message": "Engine not initialized"}), 503
             
-        strategy = screener_engine.get_strategy("TurnoverTiming")
+        strategy = screener_engine.get_strategy(Strategies.TurnOverTiming)
         if not strategy:
             return jsonify(
                 {"status": "error", "message": "TurnoverTiming strategy not found"}
@@ -225,6 +226,47 @@ def analyze_turnover() -> Response:
 
     except Exception as error:
         logger.exception(f"Error analyzing turnover symbol: {error}")
+        return jsonify({"status": "error", "message": str(error)}), 500
+
+
+@api_blueprint.route("/screener/ndx-momentum", methods=["POST"])
+@require_ip_whitelist
+def analyze_ndx_momentum() -> Response:
+    """
+    Returns the current market regime and top momentum leaders for NDX.
+    
+    Returns:
+        Response: JSON with regime status and top symbols.
+    """
+    try:
+        analysis_date = request.args.get("date")
+        
+        screener_engine = current_app.extensions.get("screener_engine")
+        if not screener_engine:
+            return jsonify({"status": "error", "message": "Engine not initialized"}), 503
+            
+        strategy = screener_engine.get_strategy(Strategies.NDXMomentum)
+        
+        if not strategy:
+            return jsonify(
+                {"status": "error", "message": "NDXMomentum strategy not found"}
+            ), 404
+            
+        # Call the new calculation method (Forced for API status check)
+        analysis = strategy.calculate_analysis(analysis_date=analysis_date, force_run=True)
+        
+        return jsonify({
+            "status": "success",
+            "date": analysis.get("date"),
+            "requested_date": analysis.get("requested_date"),
+            "is_rebalance_day": analysis.get("is_rebalance_day", False),
+            "regime": analysis.get("regime_indicators"),
+            "top_leaders": analysis.get("top_symbols", []),
+            "error": analysis.get("error")
+        }), 200
+
+    except Exception as error:
+        logger.exception(f"Error analyzing NDX Momentum: {error}")
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
