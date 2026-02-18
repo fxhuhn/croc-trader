@@ -11,6 +11,41 @@ P = ParamSpec("P")
 R = TypeVar("R", bound=Response | object)
 
 
+def _is_ip_whitelisted(client_ip: str, whitelist: list[str]) -> bool:
+    """
+    Checks if a given IP is whitelisted.
+    
+    Supports:
+    - Exact IP matches (e.g., "127.0.0.1")
+    - Wildcard ranges (e.g., "172.16.x.x" or "10.0.*.*")
+    """
+    if not whitelist:
+        return False
+
+    client_segments = client_ip.split(".")
+    
+    for pattern in whitelist:
+        if pattern == client_ip:
+            return True
+            
+        pattern_segments = pattern.split(".")
+        if len(pattern_segments) != len(client_segments):
+            continue
+            
+        matches = True
+        for p_seg, c_seg in zip(pattern_segments, client_segments):
+            if p_seg.lower() in ("x", "*"):
+                continue
+            if p_seg != c_seg:
+                matches = False
+                break
+        
+        if matches:
+            return True
+            
+    return False
+
+
 def require_ip_whitelist(
     func: Callable[P, R]
 ) -> Callable[P, Response | R]:
@@ -46,7 +81,7 @@ def require_ip_whitelist(
             else request.remote_addr
         )
 
-        if client_ip not in whitelist:
+        if not _is_ip_whitelisted(client_ip, whitelist):
             if mode == "block":
                 logger.warning(
                     f"🛡️ SECURITY: Unauthorized IP blocked: {client_ip} "
