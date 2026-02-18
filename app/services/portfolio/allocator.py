@@ -127,7 +127,7 @@ class PortfolioAllocator:
                 reason=f"Turnover Budget ({budget})"
             )
 
-        # 4. Two Percent Strategy (Fixed Budget)
+         # 4. Two Percent Strategy (Fixed Budget)
         if strategy_enum == Strategies.TwoPercent:
              budget = self._get_budget_for_strategy(Strategies.TwoPercent, BUDGET_DIP_BUYER)
              size = int(budget / entry_price)
@@ -140,7 +140,21 @@ class PortfolioAllocator:
                 risk_amount=0.0,
                 reason=f"TwoPercent Budget ({budget})"
             )
+
+        # 5. NDX Momentum (Fixed Budget)
+        if strategy_enum == Strategies.NDXMomentum:
+            budget = self._get_budget_for_strategy(Strategies.NDXMomentum, BUDGET_DIP_BUYER)
+            size = int(budget / entry_price)
+            if size < 1:
+                return AllocationResult(0, 0.0, 0.0, "Price > Budget")
+                
+            return AllocationResult(
+                size=size,
+                budget_used=budget,
+                risk_amount=0.0,
+                reason=f"NDXMomentum Budget ({budget})"
+            )
             
-        # 5. Default / Fallback
+        # 6. Default / Fallback
         logger.warning(f"[{symbol}] Unhandled Strategy Enum: {strategy_enum}")
         return AllocationResult(0, 0.0, 0.0, "Unhandled Strategy")

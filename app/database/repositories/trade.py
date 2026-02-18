@@ -109,6 +109,21 @@ class TradeRepository(BaseRepository):
         rows = self.fetch_all("SELECT DISTINCT symbol FROM trades")
         return [r["symbol"] for r in rows if r["symbol"]]
 
+    def get_all_by_strategy(self, strategy: str | Enum) -> list[dict[str, Any]]:
+        """Holt alle Trades für eine bestimmte Strategie."""
+        strategy_value = strategy.value if isinstance(strategy, Enum) else strategy
+        rows = self.fetch_all("SELECT * FROM trades WHERE strategy = ?", (strategy_value,))
+        results = []
+        for row in rows:
+            trade_dict = dict(row)
+            if trade_dict.get("signal_context"):
+                try:
+                    trade_dict["signal_context"] = json.loads(trade_dict["signal_context"])
+                except (json.JSONDecodeError, TypeError):
+                    trade_dict["signal_context"] = {}
+            results.append(trade_dict)
+        return results
+
     def create_trade(self, symbol: str, strategy: str, size: float, 
                      entry: float, stop_loss: float, target: float, context: dict) -> int:
         
@@ -131,7 +146,7 @@ class TradeRepository(BaseRepository):
             # 2. Prüfen: Gibt es diesen Trade schon? (Symbol + Strategy + Datum im JSON)
             if signal_date:
                 check_sql = """
-                    SELECT id FROM trades 
+                    SELECT id, status FROM trades 
                     WHERE symbol = ? 
                     AND strategy = ? 
                     AND json_extract(signal_context, '$.date') = ?
@@ -139,7 +154,13 @@ class TradeRepository(BaseRepository):
                 existing = conn.execute(check_sql, (symbol, strategy, signal_date)).fetchone()
                 
                 if existing:
-                    trade_id = existing[0]
+                    trade_id, current_status = existing
+                    
+                    # If the trade is already ACTIVE, we don't want to reset it!
+                    if current_status == 'ACTIVE':
+                        logger.debug(f"Trade {trade_id} for {symbol} is already ACTIVE. Skipping reset.")
+                        return trade_id
+                        
                     # UPDATE existierenden Trade (Reset auf Startbedingungen)
                     update_sql = """
                         UPDATE trades SET 
@@ -155,7 +176,7 @@ class TradeRepository(BaseRepository):
                     conn.execute(update_sql, (quantity, quantity, entry, stop_loss, target, context_json, trade_id))
                     
                     conn.execute("INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)", 
-                         (trade_id, "RESET", "OLD_STATE", "CREATED", "Backtest Re-Run"))
+                         (trade_id, "RESET", current_status, "CREATED", "Strategy Re-Sync"))
                     
                     conn.commit()
                     return trade_id

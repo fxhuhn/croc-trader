@@ -16,6 +16,7 @@ from .strategies.hold_target import HoldTargetStrategy
 from .strategies.split_target import SplitTargetStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
 from .strategies.two_percent_strategy import TwoPercentStrategy
+from .strategies.ndx_momentum import NDXMomentumTradeStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class TradeManager:
             Strategies.HoldTarget: HoldTargetStrategy(),
             Strategies.SplitTarget: SplitTargetStrategy(),
             Strategies.TwoPercent: TwoPercentStrategy(),
+            Strategies.NDXMomentum: NDXMomentumTradeStrategy(),
         }
         
         logger.info(f"TradeManager init. Registered Strategies: {list(self.strategies.keys())}")

@@ -16,6 +16,9 @@ class Strategies(StrEnum):
     TurnOverTiming_10 = 'turnover_timing_1.0'
     TurnOverTiming_05 = 'turnover_timing_0.5'
 
+    # NDX Momentum
+    NDXMomentum = 'ndx_momentum'
+
 STRATEGY_ALIASES = {
     # DipBuyer
     "dipbuyer": Strategies.DipBuyer,
@@ -56,6 +59,11 @@ STRATEGY_ALIASES = {
     "twopercentstrategy": Strategies.TwoPercent,
     "two_percent_strategy": Strategies.TwoPercent,
     
+    # NDX Momentum
+    "ndx_momentum": Strategies.NDXMomentum,
+    "ndxmomatum": Strategies.NDXMomentum,
+    "ndx momentum": Strategies.NDXMomentum,
+
     # Turnover Variants (Explicit user inputs)
     "turnover 1.0": Strategies.TurnOverTiming_10,
     "turnover 0.5": Strategies.TurnOverTiming_05,
