@@ -83,6 +83,7 @@ class ScreenerViewService:
             
         else:
             # Standard Single Strategy Fetch
+            # This now handles NDX Momentum too (stored in trades as CREATED on month-end)
             results = self.signal_repository.get_trade_candidates(
                 strategy_value, 
                 limit=limit, 
@@ -105,8 +106,15 @@ class ScreenerViewService:
             else:
                 logger.warning("No date found in signal context for %s", candidate.get("symbol"))
                 candidate["display_date"] = "-"
-
+            
             processed_results.append(candidate)
+
+        # Sort by Momentum Score DESC for NDX Momentum
+        if strategy_value == Strategies.NDXMomentum:
+            processed_results.sort(
+                key=lambda x: float(x.get("context", {}).get("momentum_score", 0.0)),
+                reverse=True
+            )
 
         return processed_results
 

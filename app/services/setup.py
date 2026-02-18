@@ -15,6 +15,13 @@ from ..services.screener import ScreenerEngine
 from ..services.telegram import TelegramBot
 from ..tools.market_holidays import MarketHolidayChecker
 
+# Strategies
+from .screener.strategies.croc_setup import CrocSetupStrategy
+from .screener.strategies.dip_buyer import DipBuyerStrategy
+from .screener.strategies.turnover_timing import TurnoverTimingStrategy
+from .screener.strategies.two_percent_strategy import TwoPercentStrategy
+from .screener.strategies.ndx_momentum import NDXMomentumScreener
+
 # Tasks importieren
 from ..tasks import run_daily_strategy_check, run_market_data_update, run_db_maintenance, run_db_backup
 
@@ -72,13 +79,43 @@ def register_services(app, config):
         except Exception as e:
             logging.error(f"Fehler beim Laden der Strategie-YAML: {e}")
 
-    # 5. Screener Engine (DI: Repos direkt übergeben)
+    # 5. Screener Engine (DI: Repos and Strategies)
+    active_strategies = [
+        DipBuyerStrategy(
+            trade_repository=trade_repository,
+            data_provider=md_provider,
+            telegram_bot=telegram,
+        ),
+        TurnoverTimingStrategy(
+            trade_repository=trade_repository,
+            data_provider=md_provider,
+            telegram_bot=telegram,
+        ),
+        CrocSetupStrategy(
+            trade_repository=trade_repository,
+            data_provider=md_provider,
+            signal_repository=signal_repository,
+            telegram_bot=telegram,
+        ),
+        TwoPercentStrategy(
+            trade_repository=trade_repository,
+            data_provider=md_provider,
+            telegram_bot=telegram,
+        ),
+        NDXMomentumScreener(
+            trade_repository=trade_repository,
+            market_data_provider=md_provider,
+            telegram_bot=telegram,
+        ),
+    ]
+
     screener = ScreenerEngine(
-        trade_repository=trade_repository,     # <--- WICHTIG: Repo statt Pfad/DB-Wrapper
-        signal_repository=signal_repository,   # <--- WICHTIG
+        trade_repository=trade_repository,
+        signal_repository=signal_repository,
         data_provider=md_provider,
-        config=loaded_config,
-        telegram_bot=telegram
+        strategies=active_strategies,
+        configuration=loaded_config,
+        telegram_bot=telegram,
     )
     app.extensions["screener_engine"] = screener
 
@@ -95,12 +132,22 @@ def configure_scheduler(app, config):
     scheduler = BackgroundScheduler()
     db_stocks = Path(config.get_db_path("stocks"))
     
-    # --- JOB 1: Marktdaten Update (Täglich 17:00 NY Time) ---
+    # --- JOB 1: Marktdaten Update (Zweimal täglich) ---
+    # a) 17:00 NY Time (EOD US)
     scheduler.add_job(
         func=run_market_data_update,
         args=[db_stocks],
         trigger=CronTrigger(hour=17, minute=0, timezone=pytz.timezone("America/New_York")),
-        id="market_data_update",
+        id="market_data_update_ny",
+        replace_existing=True
+    )
+    
+    # b) 03:00 Berlin Time (Sanitary Check / Early EU)
+    scheduler.add_job(
+        func=run_market_data_update,
+        args=[db_stocks],
+        trigger=CronTrigger(hour=3, minute=0, timezone=pytz.timezone("Europe/Berlin")),
+        id="market_data_update_berlin",
         replace_existing=True
     )
 
