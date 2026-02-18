@@ -17,8 +17,18 @@ from ....const import Strategies
 logger = logging.getLogger(__name__)
 
 
+class TurnoverCandidate(TypedDict):
+    """Metadata for potential trading candidates."""
+    symbol: str
+    close: float
+    sma_price: float
+    sma_turnover: float
+    atr: float
+    indices: str
+
+
 class TurnoverSignalContext(TypedDict):
-    """Metadata for the Turnover Timing signal."""
+    """Metadata for the Turnover Timing signal stored in the database."""
     setup_date: str
     setup_close: float
     setup_candle_green: bool
@@ -50,7 +60,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
-        config: TurnoverConfiguration = TurnoverConfiguration(),
+        configuration: TurnoverConfiguration = TurnoverConfiguration(),
     ) -> None:
         """
         Initializes the Turnover Timing strategy.
@@ -63,7 +73,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         """
         super().__init__(data_provider, telegram_bot)
         self.trade_repository = trade_repository
-        self.configuration = config
+        self.configuration = configuration
         self.holiday_checker = MarketHolidayChecker()
 
     @override
@@ -191,17 +201,21 @@ class TurnoverTimingStrategy(BaseStrategy):
         data_frames: dict[str, pd.DataFrame],
         setup_date: pd.Timestamp,
         indices_map: dict[str, list[str]],
-    ) -> list[dict[str, object]]:
-        """Identifies potential trading candidates across all indices."""
+    ) -> list[TurnoverCandidate]:
+        """
+        Identifies potential trading candidates across all indices.
+
+        Uses vectorized Pandas operations to rank by turnover and filter by trend.
+        """
         closes = data_frames["close"].ffill()
         highs = data_frames["high"].ffill()
         lows = data_frames["low"].ffill()
         volumes = data_frames["volume"].fillna(0)
 
+        # Slice inputs for calculation window (Step-down: internal helpers)
         required_window = self.configuration.sma_window
         start_location = max(0, closes.index.get_loc(setup_date) - required_window)
 
-        # Slice inputs for the calculation window
         closes_slice = closes.iloc[start_location : closes.index.get_loc(setup_date) + 1]
         highs_slice = highs.iloc[start_location : highs.index.get_loc(setup_date) + 1]
         lows_slice = lows.iloc[start_location : lows.index.get_loc(setup_date) + 1]
@@ -209,7 +223,7 @@ class TurnoverTimingStrategy(BaseStrategy):
             start_location : volumes.index.get_loc(setup_date) + 1
         ]
 
-        # Calculate Indicators
+        # Calculate Indicators (Vectorized)
         turnover_slice = closes_slice * volumes_slice
         sma_turnover_20 = indicators.calculate_sma(turnover_slice, 20)
         sma_price_150 = indicators.calculate_sma(closes_slice, 150)
@@ -217,7 +231,6 @@ class TurnoverTimingStrategy(BaseStrategy):
             highs_slice, lows_slice, closes_slice, self.configuration.atr_window
         )
 
-        # Extract values for Setup Day
         try:
             current_close = closes.loc[setup_date]
             current_sma_price = sma_price_150.loc[setup_date]
@@ -226,52 +239,52 @@ class TurnoverTimingStrategy(BaseStrategy):
         except KeyError:
             return []
 
-        candidates: list[dict[str, object]] = []
+        candidates: list[TurnoverCandidate] = []
+        symbol_filter = SymbolFilter()
 
         for index_name, symbols_in_index in indices_map.items():
-            valid_symbols = [
-                symbol
-                for symbol in symbols_in_index
-                if symbol in closes.columns
-                and not pd.isna(current_close.get(symbol))
-                and not pd.isna(current_sma_turnover.get(symbol))
-                and not pd.isna(current_sma_price.get(symbol))
-                and not pd.isna(current_atr.get(symbol))
-            ]
+            # Create a mask for valid symbols in this index
+            index_mask = [s for s in symbols_in_index if s in closes.columns]
+            if not index_mask:
+                continue
 
-            if not valid_symbols:
+            # Consolidate data for vectorized filtering
+            current_data = pd.DataFrame(
+                {
+                    "close": current_close.reindex(index_mask),
+                    "sma_price": current_sma_price.reindex(index_mask),
+                    "turnover_sma": current_sma_turnover.reindex(index_mask),
+                    "atr": current_atr.reindex(index_mask),
+                }
+            ).dropna()
+
+            if current_data.empty:
                 continue
 
             # Rank by Turnover SMA 20 (Highest first)
-            ranked_by_turnover = sorted(
-                valid_symbols, key=lambda s: current_sma_turnover[s], reverse=True
+            ranked_candidates = current_data.sort_values(
+                "turnover_sma", ascending=False
             )
 
-            # Filter out secondary share classes
-            ranked_by_turnover = SymbolFilter().filter_symbols(ranked_by_turnover)
-
-            # Take Top 20 (Liquid candidates)
-            top_20_liquid = ranked_by_turnover[:20]
+            # Filter out secondary share classes (Internal tool is not yet vectorized)
+            ranked_symbols = symbol_filter.filter_symbols(
+                ranked_candidates.index.tolist()
+            )
+            top_20_candidates = ranked_candidates.loc[ranked_symbols].head(20)
 
             # Filter: Close > SMA 150 (Uptrend) and ATR > 0
-            trend_filtered = [
-                symbol
-                for symbol in top_20_liquid
-                if current_close[symbol] > current_sma_price[symbol]
-                and current_atr[symbol] > 0
-            ]
+            final_selection = top_20_candidates.query(
+                "close > sma_price and atr > 0"
+            ).head(4)
 
-            # Select Top 4 from the remaining list
-            final_selection = trend_filtered[:4]
-
-            for symbol in final_selection:
+            for symbol, row in final_selection.iterrows():
                 candidates.append(
                     {
-                        "symbol": symbol,
-                        "close": float(current_close[symbol]),
-                        "sma_price": float(current_sma_price[symbol]),
-                        "sma_turnover": float(current_sma_turnover[symbol]),
-                        "atr": float(current_atr[symbol]),
+                        "symbol": str(symbol),
+                        "close": float(row["close"]),
+                        "sma_price": float(row["sma_price"]),
+                        "sma_turnover": float(row["turnover_sma"]),
+                        "atr": float(row["atr"]),
                         "indices": index_name,
                     }
                 )
@@ -280,11 +293,15 @@ class TurnoverTimingStrategy(BaseStrategy):
 
     def _process_and_store_signals(
         self,
-        candidates: list[dict[str, object]],
+        candidates: list[TurnoverCandidate],
         data_frames: dict[str, pd.DataFrame],
         setup_date: pd.Timestamp,
     ) -> int:
-        """Deduplicates candidates and stores signals in the database."""
+        """
+        Deduplicates candidates and stores signals in the database.
+
+        If a symbol is in multiple indices, their names are concatenated.
+        """
         signal_count = 0
         setup_date_str = str(setup_date.date())
 
@@ -346,7 +363,7 @@ class TurnoverTimingStrategy(BaseStrategy):
                     entry=limit_price,
                     stop_loss=0.0,
                     target=0.0,
-                    context=dict(context),  # type: ignore
+                    context=dict(context),
                 )
                 signal_count += 1
 
@@ -385,8 +402,6 @@ class TurnoverTimingStrategy(BaseStrategy):
         self._send_telegram_report(
             "Turnover Signals", str(setup_date.date()), report_dataframe
         )
-
-        return count
 
     def analyze_single_symbol(self, symbol: str) -> dict[str, object]:
         """

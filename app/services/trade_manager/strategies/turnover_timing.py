@@ -39,12 +39,26 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
     DEFAULT_SLIPPAGE: float = 0.0
     """Default slippage applied to executions."""
 
+    THURSDAY_INDEX: int = 3
+    """Zero-based index for Thursday (pd.Timestamp.dayofweek)."""
+
+    FRIDAY_INDEX: int = 4
+    """Zero-based index for Friday (pd.Timestamp.dayofweek)."""
+
     def __init__(self, strategy_name: str | None = None):
         if strategy_name:
             self.name = strategy_name
 
     def _is_green_candle(self, open_price: float, close_price: float) -> bool:
-        """Determines if a candle is green (Close > Open)."""
+        """Determines if a candle is green (Close > Open).
+
+        Args:
+            open_price: The opening price of the candle.
+            close_price: The closing price of the candle.
+
+        Returns:
+            bool: True if the closing price is greater than the opening price.
+        """
         return close_price > open_price
 
     @override
@@ -54,12 +68,21 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame | None = None,
         repository: TradeRepository | None = None,
     ) -> TradeParams:
-        """Standardizes TradeParams for turnover strategy."""
+        """Standardizes TradeParams for turnover strategy.
+
+        Args:
+            trade: The trade data dictionary.
+            dataframe_history: Optional historical market data.
+            repository: Optional trade repository.
+
+        Returns:
+            TradeParams: Object containing strategy parameters.
+        """
         return TradeParams(
             stop_loss=0.0,
             take_profit_1=0.0,
             extras={
-                "variant": trade.get("strategy", "STD"),
+                "variant": trade.get("strategy", "Standard"),
                 "current_size": float(trade.get("current_size") or 0.0),
             },
         )
@@ -72,7 +95,17 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         budget: float,
         repository: TradeRepository,
     ) -> Order | None:
-        """Generates Entry or Exit Orders based on state."""
+        """Generates Entry or Exit Orders based on current trade state.
+
+        Args:
+            trade: The current trade data.
+            dataframe_history: Historical market data.
+            budget: Total allocated budget for the trade.
+            repository: Repository for trade updates.
+
+        Returns:
+            Order | None: The generated order or None if no action is needed.
+        """
         status = trade.get("status")
 
         # 1. Entry Order (CREATED)
@@ -132,7 +165,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                 # we generate an exit for Friday.
                 # Note: Real execution will be Friday Open (MKT) or Close (MOC).
                 # Assuming MKT for now as strict "Close" requires MOC support.
-                if day_of_week == 3:  # Thursday
+                if day_of_week == self.THURSDAY_INDEX:  # Thursday
                     return Order(
                         id=str(uuid.uuid4()),
                         symbol=trade["symbol"],
@@ -156,18 +189,28 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         repository: TradeRepository,
     ) -> str | None:
-        """Checks if the limit entry was reached on the NEXT trading day only."""
+        """Checks if the limit entry was reached on the NEXT trading day only.
+
+        Args:
+            trade: The trade data.
+            candle: The current market candle.
+            dataframe_history: Historical market data.
+            repository: Repository for trade updates.
+
+        Returns:
+            str | None: Result message or None if no entry occurred.
+        """
         limit_price = float(trade.get("entry_price") or 0.0)
 
         if limit_price <= 0:
             return None
         
         # Determine Timestamps
-        current_date_ts = pd.Timestamp(candle["date"])
-        current_date = str(current_date_ts.date())
-        signal_date_ts = self._get_signal_date(trade)
+        current_date_timestamp = pd.Timestamp(candle["date"])
+        current_date = str(current_date_timestamp.date())
+        signal_date_timestamp = self._get_signal_date(trade)
         
-        if not signal_date_ts:
+        if not signal_date_timestamp:
             return None
 
         # Count trading days strictly after signal
@@ -176,50 +219,54 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         # 1. Too early (Same day) -> count = 0
         if days_post_signal < 1:
             return None
-            
-        # 2. Too late (Expired) -> count > 1
-        if days_post_signal > 1:
-             return self._expire_trade(trade, repository, current_date)
 
-        # 3. Check Fill on the next trading day (valid) -> count == 2
-        low_price = float(candle["low"])
-        open_price = float(candle["open"])
-        
-        if low_price <= limit_price:
-            fill_price = (
-                min(open_price, limit_price)
-                if open_price < limit_price
-                else limit_price
-            )
-            # Ensure fill_price is valid
-            if fill_price <= 0:
-                return None
+        # 2. Evaluation for the first trading day after setup (Day 1)
+        if days_post_signal == 1:
+            low_price = float(candle["low"])
+            open_price = float(candle["open"])
 
-            # Update green candle count if the entry day itself is green
-            close_price = float(candle["close"])
-            raw_context = trade.get("signal_context") or "{}"
-            try:
-                context: TurnoverContext = json.loads(raw_context)
-            except json.JSONDecodeError:
-                 context = {"green_candle_count": 0}
-            
-            # Use strict helper
-            if self._is_green_candle(open_price, close_price):
-                 count = context.get("green_candle_count", 0) + 1
+            if low_price <= limit_price:
+                fill_price = (
+                    min(open_price, limit_price)
+                    if open_price < limit_price
+                    else limit_price
+                )
+                # Ensure fill_price is valid
+                if fill_price <= 0:
+                    return None
+
+                # Update green candle count if the entry day itself is green
+                close_price = float(candle["close"])
+                raw_context = trade.get("signal_context") or "{}"
+                try:
+                    context: TurnoverContext = json.loads(raw_context)
+                except json.JSONDecodeError:
+                    context = {"green_candle_count": 0}
+
+                # Use strict helper
+                if self._is_green_candle(open_price, close_price):
+                    count = context.get("green_candle_count", 0) + 1
+                else:
+                    count = 0
+
+                # Update context correctly
+                context["green_candle_count"] = count
+
+                return self._execute_activation(
+                    trade,
+                    repository,
+                    fill_price,
+                    "LIMIT",
+                    current_date,
+                    extra_updates={"signal_context": json.dumps(context, default=str)},
+                )
             else:
-                 count = 0
+                # Day 1 finished and price was never below limit -> Expire immediately!
+                return self._expire_trade(trade, repository, current_date)
 
-            # Update context correctly
-            context["green_candle_count"] = count
-
-            return self._execute_activation(
-                trade,
-                repository,
-                fill_price,
-                "LIMIT",
-                current_date,
-                extra_updates={"signal_context": json.dumps(context, default=str)},
-            )
+        # 3. Too late (Expired) -> count > 1
+        if days_post_signal > 1:
+            return self._expire_trade(trade, repository, current_date)
 
         return None
 
@@ -230,7 +277,16 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         repository: TradeRepository,
     ) -> str | None:
-        """Manages Exits: Multi-Day Green sequence (Next Open) or Time Stop (EOD)."""
+        """Manages Exits: Multi-Day Green sequence (Next Open) or Time Stop (EOD).
+
+        Args:
+            trade: The active trade data.
+            dataframe_history: Historical market data.
+            repository: Repository for trade updates.
+
+        Returns:
+            str | None: Result message or None if no exit occurred.
+        """
         if dataframe_history.empty:
             return None
 
@@ -280,9 +336,9 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         holiday_checker = MarketHolidayChecker()
 
         is_end_of_week = False
-        if day_of_week == 4:  # Friday
+        if day_of_week == self.FRIDAY_INDEX:  # Friday
             is_end_of_week = True
-        elif day_of_week == 3:  # Thursday
+        elif day_of_week == self.THURSDAY_INDEX:  # Thursday
             # If Friday is a holiday, Thursday is the end of the week
             tomorrow = current_date_timestamp + pd.Timedelta(days=1)
             # Use explicit date() for checker
