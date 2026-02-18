@@ -1,5 +1,4 @@
 import logging.config
-from pathlib import Path
 from flask import Flask, send_from_directory
 
 from .config import settings

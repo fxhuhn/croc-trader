@@ -1,6 +1,5 @@
 
 import pandas as pd
-import numpy as np
 
 def calculate_sma(series: pd.Series, window: int) -> pd.Series:
     """Calculates the Simple Moving Average (SMA)."""

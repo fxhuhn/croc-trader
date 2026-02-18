@@ -1,12 +1,7 @@
-import pytest
-import pandas as pd
 import json
-from datetime import date
 from unittest.mock import MagicMock
 
 from app.services.backtester.engine import BacktestEngine
-from app.services.portfolio.manager import PortfolioManager
-from app.services.portfolio.allocator import PortfolioAllocator
 from app.database.repositories.trade import TradeRepository
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.types import TradeStatus

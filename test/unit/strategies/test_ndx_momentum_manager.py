@@ -1,13 +1,11 @@
 # filename: test_ndx_momentum_manager.py
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pandas as pd
-import json
-from datetime import date
 
 from app.services.trade_manager.strategies.ndx_momentum import NDXMomentumTradeStrategy
 from app.database.repositories.trade import TradeRepository
-from app.types import TradeStatus, ExitReason
+from app.types import TradeStatus
 
 @pytest.fixture
 def mock_trade_repo() -> MagicMock:

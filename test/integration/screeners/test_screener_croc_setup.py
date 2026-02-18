@@ -1,5 +1,4 @@
 import pytest
-import sqlite3
 import json
 from unittest.mock import MagicMock, patch
 from typing import Any

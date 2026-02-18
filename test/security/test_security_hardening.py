@@ -2,7 +2,6 @@
 import pytest
 import logging
 from unittest.mock import MagicMock, patch
-from pathlib import Path
 import pandas as pd
 import requests
 

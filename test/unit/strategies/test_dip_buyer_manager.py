@@ -2,7 +2,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
-from datetime import date
 
 from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
 from app.database.repositories.trade import TradeRepository

@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar, final
+from typing import Generic, TypeVar, final
 
 import pandas as pd
 

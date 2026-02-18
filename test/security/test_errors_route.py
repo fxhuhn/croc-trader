@@ -1,7 +1,7 @@
 import pytest
 import logging
-from unittest.mock import MagicMock, patch
-from flask import Flask, Response
+from unittest.mock import patch
+from flask import Flask
 from app.routes.errors import errors_bp
 
 @pytest.fixture

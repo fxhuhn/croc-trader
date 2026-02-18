@@ -2,7 +2,6 @@
 import json
 import pytest
 from unittest.mock import MagicMock, patch, mock_open
-import pandas as pd
 from pathlib import Path
 
 from app.services.screener.strategies.croc_setup import CrocSetupStrategy, PriceData

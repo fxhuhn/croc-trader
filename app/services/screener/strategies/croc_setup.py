@@ -206,7 +206,8 @@ class CrocSetupStrategy(BaseStrategy):
             val = float(market_val)
             cond_key = str(condition).lower().strip()
             handler = CONDITION_HANDLERS.get(cond_key)
-            if handler: return handler(val)
+            if handler:
+                return handler(val)
         except (ValueError, TypeError):
             pass
             
@@ -281,9 +282,12 @@ class CrocSetupStrategy(BaseStrategy):
     def _get_indices_string(self, symbol: str) -> str:
         # Simplified for brevity
         indices = []
-        if symbol in self.exchange_symbols.sp_500: indices.append("SPX")
-        if symbol in self.exchange_symbols.nasdaq_100: indices.append("NDX")
-        if symbol in self.exchange_symbols.dow_30: indices.append("DOW")
+        if symbol in self.exchange_symbols.sp_500:
+            indices.append("SPX")
+        if symbol in self.exchange_symbols.nasdaq_100:
+            indices.append("NDX")
+        if symbol in self.exchange_symbols.dow_30:
+            indices.append("DOW")
         if symbol in self.exchange_symbols.russell_1000: 
             indices.append("RUS")
         return ",".join(indices) if indices else "-"

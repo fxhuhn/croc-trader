@@ -2,7 +2,7 @@
 import pytest
 import sqlite3
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pandas as pd
 from app.services.backtester.engine import BacktestEngine
 

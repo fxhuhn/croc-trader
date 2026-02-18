@@ -409,7 +409,8 @@ def generate_exposure_heatmap(daily_df: pd.DataFrame, pressure_pct: float = 0.0)
     """
     Stacked Area Chart of Exposure per Strategy + Overflow (Ghost Layer).
     """
-    if daily_df.empty: return "<div>No Data</div>"
+    if daily_df.empty:
+        return "<div>No Data</div>"
 
     
     fig = go.Figure()
@@ -525,7 +526,8 @@ def generate_risk_reward_scatter(daily_df: pd.DataFrame) -> str:
     """
     Monthly Scatter Plot: Return vs MaxDD.
     """
-    if daily_df.empty: return "<div>No Data</div>"
+    if daily_df.empty:
+        return "<div>No Data</div>"
     
     try:
         # Resample to Monthly
@@ -534,8 +536,10 @@ def generate_risk_reward_scatter(daily_df: pd.DataFrame) -> str:
         dataframe.set_index('date', inplace=True)
         
         # Pandas < 2.2 uses 'M', >= 2.2 uses 'ME'
-        try: monthly = dataframe['equity'].resample('ME').last()
-        except ValueError: monthly = dataframe['equity'].resample('M').last()
+        try:
+            monthly = dataframe['equity'].resample('ME').last()
+        except ValueError:
+            monthly = dataframe['equity'].resample('M').last()
         
         if monthly.empty: 
              return "<div>No Data (Insufficient History)</div>"

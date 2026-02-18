@@ -1,7 +1,6 @@
 import pytest
 import pandas as pd
-from unittest.mock import MagicMock, patch
-from datetime import date
+from unittest.mock import MagicMock
 
 from app.services.screener.strategies.two_percent_strategy import TwoPercentStrategy
 from app.database.repositories.trade import TradeRepository

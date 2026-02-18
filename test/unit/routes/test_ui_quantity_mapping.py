@@ -1,6 +1,6 @@
 # filename: test_ui_quantity_mapping.py
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from app.services.trade_manager.view_service import TradeViewService
 
 @pytest.fixture

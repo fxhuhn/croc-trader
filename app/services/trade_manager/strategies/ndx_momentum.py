@@ -1,8 +1,8 @@
 import logging
-from typing import override, final, Any
+from typing import override, final
 import pandas as pd
 
-from ....types import TradeStatus, ExitReason, TradeData
+from ....types import TradeStatus, TradeData
 from ....const import Strategies
 from ....models import TradeParams, Order, OrderLeg
 from ....database.repositories.trade import TradeRepository

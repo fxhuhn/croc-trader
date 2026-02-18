@@ -3,11 +3,10 @@ import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 import json
-from datetime import date
 
 from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
 from app.database.repositories.trade import TradeRepository
-from app.types import TradeStatus, ExitReason
+from app.types import TradeStatus
 
 @pytest.fixture
 def mock_trade_repo() -> MagicMock:

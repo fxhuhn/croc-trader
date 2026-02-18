@@ -4,7 +4,7 @@ import json
 from unittest.mock import MagicMock
 from app.services.trade_manager.strategies.split_target import SplitTargetStrategy
 from app.database.repositories.trade import TradeRepository
-from app.types import TradeStatus, ExitReason
+from app.types import TradeStatus
 
 @pytest.fixture
 def strategy():

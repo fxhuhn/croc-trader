@@ -1,7 +1,7 @@
 import pytest
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 from app.services.portfolio.manager import PortfolioManager
-from app.services.portfolio.allocator import PortfolioAllocator, AllocationResult
+from app.services.portfolio.allocator import PortfolioAllocator
 
 # --- Allocator Tests ---
 

@@ -4,7 +4,7 @@ import pandas as pd
 from typing import override, final, Any
 
 from ....database.repositories.trade import TradeRepository
-from ....types import TradeStatus, ExitReason
+from ....types import ExitReason
 from ....models import Order, TradeParams, OrderLeg
 from ....tools.market_holidays import MarketHolidayChecker
 from .abstract import BaseTradeStrategy

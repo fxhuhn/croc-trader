@@ -2,7 +2,6 @@
 import pytest
 import pandas as pd
 from unittest.mock import MagicMock, patch
-from datetime import datetime, date
 
 from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
 from app.database.repositories.trade import TradeRepository
@@ -77,8 +76,8 @@ def create_history(data: list[tuple[str, float, float, float, float]]) -> pd.Dat
     Format: (date, open, high, low, close)
     """
     rows = []
-    for d, o, h, l, c in data:
-        rows.append(create_candle(d, o, h, l, c))
+    for d, o, h, low_val, c in data:
+        rows.append(create_candle(d, o, h, low_val, c))
     
     df = pd.DataFrame(rows)
     df["date"] = pd.to_datetime(df["date"])
@@ -227,7 +226,6 @@ def test_check_entry_respects_holidays_checks_next_business_day(
     # 20th (2) -> Count = 2. valid.
     history = pd.DataFrame([signal_candle, current_candle])
 
-    mock_checker = MagicMock()
     # is_holiday returns True for 2026-01-19 (Mon), False for others
     def mock_is_holiday(d):
         return str(d) == "2026-01-19" # Holiday

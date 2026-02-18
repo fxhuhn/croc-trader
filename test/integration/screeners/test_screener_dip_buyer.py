@@ -2,7 +2,6 @@ import pytest
 import pandas as pd
 import numpy as np
 from unittest.mock import MagicMock, patch
-from datetime import datetime
 
 from app.services.screener.strategies.dip_buyer import DipBuyerStrategy
 from app.database.repositories.trade import TradeRepository
@@ -264,7 +263,7 @@ def test_run_historical_date_slicing(strategy, mock_provider, mock_repo):
 
 def test_run_auto_date_detection(strategy, mock_provider):
     """Test that strategies uses the last DB date if no date is provided."""
-    dates = pd.date_range(end="2025-02-01", periods=5, freq='B')
+    pd.date_range(end="2025-02-01", periods=5, freq='B')
     data = create_market_data(length=5, end_date="2025-02-01")
     
     mock_provider.get_universe_daily_data.return_value = data
@@ -281,7 +280,7 @@ def test_run_auto_date_detection(strategy, mock_provider):
 def test_run_with_gap_in_data(strategy, mock_provider):
     """Test fallback when requested date > last db date (Gap Scenario)."""
     # DB Data ends on Jan 10
-    dates = pd.date_range(end="2025-01-10", periods=5, freq='B')
+    pd.date_range(end="2025-01-10", periods=5, freq='B')
     data = create_market_data(length=5, end_date="2025-01-10")
     
     mock_provider.get_universe_daily_data.return_value = data

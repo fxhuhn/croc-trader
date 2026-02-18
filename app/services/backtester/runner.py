@@ -4,7 +4,6 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import TypedDict
 
 import pandas as pd
 import numpy as np
@@ -24,16 +23,13 @@ from .analytics import (
     WalkForwardAnalyzer,
     PerformancePeriods,
     TradeQualityAnalyzer,
-    DiversificationAnalyzer,
-    RegimeDetector,
-    EquityDiagnostics
+    DiversificationAnalyzer
 )
 from .engine import BacktestEngine
 from .backtest_results import (
     ResultsPersistence,
     SafetyEvent,
     SimulationImpact,
-    FunnelData,
 )
 from app.services.portfolio.simulation import CapacitySimulator
 
@@ -379,7 +375,8 @@ def _display_period_analysis(console: Console, period_metrics: pd.DataFrame):
     windows = sorted(period_metrics["window_trades"].unique())
     for window in windows:
         subset = period_metrics[period_metrics["window_trades"] == window]
-        if subset.empty: continue
+        if subset.empty:
+            continue
         
         table.add_row(
             f"{window}-Trade Rolling",

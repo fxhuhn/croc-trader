@@ -2,9 +2,8 @@ import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 import numpy as np
-from datetime import datetime
 
-from app.services.screener.strategies.ndx_momentum import NDXMomentumScreener, NDXMomentumConfiguration
+from app.services.screener.strategies.ndx_momentum import NDXMomentumScreener
 from app.database.repositories.trade import TradeRepository
 from app.database.repositories.market_data_provider import MarketDataProvider
 

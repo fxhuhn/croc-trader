@@ -2,7 +2,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
-from datetime import date
 
 from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
 from app.database.repositories.trade import TradeRepository

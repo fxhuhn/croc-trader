@@ -239,7 +239,7 @@ def test_manage_active_trade_stop_priority(
     df_history = create_history(100, 115, 85, 100)
     
     # Act
-    result = strategy.manage_active_trade(base_trade_data, df_history, mock_repository)
+    strategy.manage_active_trade(base_trade_data, df_history, mock_repository)
     
     # Assert
     args, _ = mock_repository.update_trade.call_args

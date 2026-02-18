@@ -2,7 +2,7 @@ import logging
 import threading
 import json
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 import pandas as pd
 
 # Setup Logger

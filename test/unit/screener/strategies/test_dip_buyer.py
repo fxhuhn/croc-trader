@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import numpy as np
 
-from app.services.screener.strategies.dip_buyer import DipBuyerStrategy, DipBuyerConfig
+from app.services.screener.strategies.dip_buyer import DipBuyerStrategy
 from app.database.repositories.trade import TradeRepository
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.services.telegram import TelegramBot

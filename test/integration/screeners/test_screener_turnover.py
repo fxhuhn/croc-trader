@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 from app.services.screener.strategies.turnover_timing import TurnoverTimingStrategy
 from app.database.repositories.trade import TradeRepository
 from app.database.repositories.market_data_provider import MarketDataProvider
-from app.tools.symbol_lists import ExchangeSymbol
 
 # --- FIXTURES ---
 

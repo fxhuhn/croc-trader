@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import TypedDict, Any
+from typing import Any
 from pathlib import Path
 from datetime import date
 
@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from flask import current_app
 
-from ...const import Strategies, STRATEGY_ALIASES, TradeStatus, TargetColumn, IndexAliases, ExitReason
+from ...const import Strategies, STRATEGY_ALIASES, TradeStatus, TargetColumn, IndexAliases
 from ...database.repositories.trade import TradeRepository
 from ...database.repositories.market import MarketRepository
 from ...database.session import DatabaseSession

@@ -1,6 +1,5 @@
 # filename: test_analytics_math.py
 import pytest
-import numpy as np
 import pandas as pd
 from app.services.backtester.analytics import (
     safe_divide,

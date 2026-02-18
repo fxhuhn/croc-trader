@@ -1,7 +1,6 @@
 import pytest
 import pandas as pd
-import numpy as np
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from app.services.backtester.analytics import MetricsCalculator, BacktestAnalytics
 from app.models import BacktestMetrics
 

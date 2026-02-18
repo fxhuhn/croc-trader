@@ -3,7 +3,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
 import numpy as np
-from datetime import date
 
 from app.services.screener.strategies.turnover_timing import (
     TurnoverTimingStrategy,
@@ -11,7 +10,6 @@ from app.services.screener.strategies.turnover_timing import (
 )
 from app.database.repositories.trade import TradeRepository
 from app.database.repositories.market_data_provider import MarketDataProvider
-from app.tools.market_holidays import MarketHolidayChecker
 
 @pytest.fixture
 def mock_trade_repository() -> MagicMock:

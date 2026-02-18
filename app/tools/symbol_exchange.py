@@ -1,6 +1,5 @@
 import json
 import logging
-from collections import Counter
 
 import requests
 

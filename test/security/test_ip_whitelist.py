@@ -1,4 +1,3 @@
-import pytest
 from app.routes.security import _is_ip_whitelisted
 
 def test_is_ip_whitelisted_exact_match():

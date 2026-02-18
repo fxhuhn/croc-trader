@@ -1,6 +1,5 @@
 import pytest
 import pandas as pd
-import numpy as np
 from app.tools import metrics
 
 def test_calculate_win_rate_basic():

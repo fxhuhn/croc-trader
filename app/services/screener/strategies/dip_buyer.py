@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 from dataclasses import dataclass
-from typing import ClassVar, override, TypedDict
+from typing import override, TypedDict
 
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository

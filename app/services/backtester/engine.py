@@ -1,16 +1,9 @@
 import logging
 import pandas as pd
-from datetime import date, timedelta
-from typing import Type
 
-logger = logging.getLogger(__name__)
-
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskID
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 from rich.console import Console
 from rich.live import Live
-from rich.panel import Panel
-from rich.layout import Layout
-from rich.table import Table
 
 from ...database.repositories.trade import TradeRepository
 from ...database.repositories.market_data_provider import MarketDataProvider
@@ -29,6 +22,9 @@ from ...services.trade_manager.strategies.two_percent_strategy import TwoPercent
 from ...types import TradeStatus
 
 from ...services.portfolio.manager import PortfolioManager
+
+logger = logging.getLogger(__name__)
+
 
 class BacktestEngine:
     """
@@ -138,7 +134,7 @@ class BacktestEngine:
         )
         task_id = progress.add_task("[cyan]Running Backtest...", total=total_days, date=self.start_date.date())
         
-        with Live(progress, console=self.console, refresh_per_second=10) as live:
+        with Live(progress, console=self.console, refresh_per_second=10):
             for sim_date in self.market_dates:
                 self.current_date = sim_date
                 date_str = sim_date.strftime("%Y-%m-%d")
@@ -232,4 +228,3 @@ class BacktestEngine:
                 df_slice.reset_index(), 
                 self.trade_repository
             )
-

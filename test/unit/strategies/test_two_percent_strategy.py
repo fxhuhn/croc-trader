@@ -2,7 +2,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
-from datetime import date, datetime
 
 from app.services.screener.strategies.two_percent_strategy import TwoPercentStrategy as ScreenerStrategy
 from app.services.trade_manager.strategies.two_percent_strategy import TwoPercentStrategy as ManagerStrategy
@@ -46,12 +45,12 @@ def create_candle(date_str: str, close: float, open_price: float = None, high: f
     """Creates a mock candle as a pandas Series."""
     o = open_price if open_price is not None else close
     h = high if high is not None else close
-    l = low if low is not None else close
+    low_val = low if low is not None else close
     return pd.Series({
         "date": pd.Timestamp(date_str),
         "open": o,
         "high": h,
-        "low": l,
+        "low": low_val,
         "close": close
     }, name=pd.Timestamp(date_str))
 

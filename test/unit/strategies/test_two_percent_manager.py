@@ -2,11 +2,10 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import pandas as pd
-from datetime import date
 
 from app.services.trade_manager.strategies.two_percent_strategy import TwoPercentStrategy
 from app.database.repositories.trade import TradeRepository
-from app.types import TradeStatus, ExitReason
+from app.types import TradeStatus
 
 @pytest.fixture
 def mock_trade_repo() -> MagicMock:
@@ -66,7 +65,7 @@ def test_check_entry_missed_window_expiration(strategy, mock_trade_repo):
     candle = pd.Series({"open": 105.0, "low": 101.0, "date": pd.Timestamp("2026-02-16")}, name=pd.Timestamp("2026-02-16"))
     
     with patch.object(strategy, "_get_trading_days_post_signal", return_value=1):
-        result = strategy.check_entry(trade, candle, pd.DataFrame([candle]), mock_trade_repo)
+        strategy.check_entry(trade, candle, pd.DataFrame([candle]), mock_trade_repo)
         assert mock_trade_repo.update_trade.call_args[0][1]["status"] == TradeStatus.INVALID
 
 def test_manage_active_tp_hit(strategy, mock_trade_repo):

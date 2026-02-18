@@ -2,7 +2,6 @@
 import sqlite3
 import pytest
 import duckdb
-import pandas as pd
 import numpy as np
 from pathlib import Path
 from app.services.backtester.analytics import BacktestAnalytics, BacktestMetrics

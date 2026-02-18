@@ -1,9 +1,8 @@
 # filename: test_split_target.py
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import pandas as pd
 import json
-from datetime import date
 
 from app.services.trade_manager.strategies.split_target import SplitTargetStrategy
 from app.database.repositories.trade import TradeRepository
@@ -143,5 +142,5 @@ def test_generate_orders_multi_bracket(strategy, mock_trade_repo):
     assert len(orders.exits) == 3 # SL, TP1, TP3
     
     # Check TP1 quantity (should be half)
-    tp1_leg = next(l for l in orders.exits if l.price == 110.0)
+    tp1_leg = next(leg for leg in orders.exits if leg.price == 110.0)
     assert tp1_leg.quantity == 10
