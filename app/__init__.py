@@ -1,5 +1,6 @@
 import logging.config
-from flask import Flask
+from pathlib import Path
+from flask import Flask, send_from_directory
 
 from .config import settings
 from .extensions import cache
@@ -58,6 +59,30 @@ def create_app(config_object=settings):
     # 5. Blueprints registrieren
     # Hier wird nur noch der Haupt-Aggregator registriert
     app.register_blueprint(main_bp)
+
+    # 6. Icons root routes
+    @app.route('/favicon.ico')
+    def favicon():
+        return send_from_directory(
+            app.static_folder,
+            'favicon.ico',
+            mimetype='image/vnd.microsoft.icon'
+        )
+
+    @app.route('/apple-touch-icon-precomposed.png')
+    def apple_touch_icon():
+        return send_from_directory(
+            app.static_folder,
+            'apple-touch-icon-precomposed.png',
+            mimetype='image/png'
+        )
+
+    @app.route('/robots.txt')
+    def robots_txt():
+        return send_from_directory(
+            app.static_folder,
+            'robots.txt'
+        )
 
     logging.info("🚀 Croc-Trader App initialized (Aggregated Routes).")
     return app
