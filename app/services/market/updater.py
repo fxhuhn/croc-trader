@@ -64,7 +64,7 @@ class MarketDataUpdater:
         # Full Reload: Since 2022
         # Incremental: Last 10 days (safety buffer)
         start_date = (
-            "2022-01-01"
+            "2021-01-01"
             if full_reload
             else (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
         )
