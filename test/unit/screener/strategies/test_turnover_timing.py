@@ -34,7 +34,7 @@ def strategy(
     return TurnoverTimingStrategy(
         trade_repository=mock_trade_repository,
         data_provider=mock_market_data_provider,
-        config=TurnoverConfiguration()
+        configuration=TurnoverConfiguration()
     )
 
 @pytest.fixture
@@ -134,17 +134,63 @@ def test_extract_safe_float_value_handles_anomalies(strategy: TurnoverTimingStra
     assert strategy._extract_safe_float_value(np.nan, default=1.0) == 1.0
     assert strategy._extract_safe_float_value(123.45) == 123.45
 
-def test_compile_target_universe_handles_duplicates(strategy: TurnoverTimingStrategy) -> None:
-    """Verifies universe compilation removes duplicates across multiple indices."""
+def test_compile_target_universe_with_specific_symbols(strategy: TurnoverTimingStrategy) -> None:
+    """Verifies that specific symbols filter the target universe."""
     # Arrange
-    index_constituents = {
-        "IDX1": ["AAPL", "MSFT"],
-        "IDX2": ["MSFT", "GOOG"]
-    }
+    index_constituents = {"IDX": ["AAPL", "MSFT", "GOOG"]}
+    specific = ["AAPL", "TSLA"]
     
     # Act
-    universe = strategy._compile_target_universe(index_constituents, specific_symbols=None)
+    universe = strategy._compile_target_universe(index_constituents, specific_symbols=specific)
     
     # Assert
-    assert len(universe) == 3
-    assert set(universe) == {"AAPL", "MSFT", "GOOG"}
+    assert universe == ["AAPL"]
+
+def test_analyze_single_symbol_success(strategy: TurnoverTimingStrategy, mock_market_data_provider: MagicMock) -> None:
+    """Tests the single symbol debug analysis method."""
+    # Arrange
+    symbol = "AAPL"
+    # Create an uptrend: last close 120, SMA150 will be around 100
+    df = pd.DataFrame({
+        "date": pd.date_range("2024-01-01", periods=250, freq="B"),
+        "open": [100.0] * 250,
+        "high": [125.0] * 250,
+        "low": [95.0] * 250,
+        "close": [100.0] * 249 + [120.0],
+        "volume": [1000000] * 250
+    })
+    mock_market_data_provider.get_symbol_history.return_value = df
+    
+    # Act
+    result = strategy.analyze_single_symbol(symbol)
+    
+    # Assert
+    assert result["symbol"] == symbol
+    assert result["data_valid"] is True
+    assert result["checks"]["uptrend_sma150"] is True
+
+def test_identify_strategy_candidates_keyerror_handling(strategy: TurnoverTimingStrategy) -> None:
+    """Tests that candidates identification handles KeyError (missing dates/columns) gracefully."""
+    # Arrange
+    # Missing 'high', 'low', 'volume'
+    data = {"close": pd.DataFrame({"AAPL": [100.0]}, index=[pd.Timestamp("2024-01-01")])}
+    setup_date = pd.Timestamp("2024-01-02")
+    
+    # Act & Assert
+    with pytest.raises(KeyError):
+        strategy._identify_strategy_candidates(data, setup_date, {})
+
+def test_run_last_trading_day_mismatch(strategy: TurnoverTimingStrategy, mock_market_data_provider: MagicMock) -> None:
+    """Tests that run() returns 0 if the latest data date doesn't match analysis date."""
+    # Arrange
+    analysis_date = "2026-02-13" # Friday
+    # Data only goes up to Thursday
+    dates = pd.to_datetime(["2026-02-12"])
+    df = pd.DataFrame({"AAPL": [100.0]}, index=dates)
+    mock_market_data_provider.get_universe_daily_data.return_value = {"close": df}
+    
+    # Act
+    result = strategy.run(analysis_date=analysis_date)
+    
+    # Assert
+    assert result == 0
