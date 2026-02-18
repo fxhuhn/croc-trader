@@ -117,6 +117,9 @@ def view_screener_overview() -> str:
     count_twopercent = len(
         signals_repository.get_trade_candidates(Strategies.TwoPercent, limit=100)
     )
+    count_ndx_momentum = len(
+        signals_repository.get_trade_candidates(Strategies.NDXMomentum, limit=100)
+    )
 
     return render_template(
         "screener.html",
@@ -124,6 +127,7 @@ def view_screener_overview() -> str:
         count_dip=count_dip,
         count_turnover=count_turnover,
         count_twopercent=count_twopercent,
+        count_ndx_momentum=count_ndx_momentum,
     )
 
 def generate_sparkline(dates: list, prices: list, is_positive: bool) -> str:
@@ -197,6 +201,7 @@ def view_trades_overview() -> str:
         "Dip Buyer": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "Turnover": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "Two Percent": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "NDX Momentum": {"count": 0, "pnl": 0.0, "invested": 0.0},
     }
 
     croc_group = [Strategies.CrocSetup, Strategies.HoldTarget, Strategies.SplitTarget, "croc"]
@@ -215,6 +220,8 @@ def view_trades_overview() -> str:
             label = "Turnover"
         elif strat_key == Strategies.TwoPercent:
             label = "Two Percent"
+        elif strat_key == Strategies.NDXMomentum:
+            label = "NDX Momentum"
         else:
             label = str(trade.get("strategy", "Unknown"))
 
@@ -231,8 +238,8 @@ def view_trades_overview() -> str:
     # Prepare Data for Donut Chart
     allocation_labels = list(strategy_stats.keys())
     allocation_values = [data["invested"] for data in strategy_stats.values()]
-    # Custom colors: Blue, Purple, Orange, Slate...
-    palette = ["#2563eb", "#8b5cf6", "#f97316", "#64748b"]
+    # Custom colors: Blue, Purple, Orange, Slate, Emerald...
+    palette = ["#2563eb", "#8b5cf6", "#f97316", "#64748b", "#10b981"]
 
     allocation_chart_html = service.generate_donut_chart(
         allocation_labels, allocation_values, palette
@@ -279,6 +286,14 @@ def view_screener_twopercent() -> str:
     service = _get_screener_view_service()
     results = service.get_candidates(Strategies.TwoPercent, limit=limit)
     return render_template("screener_twopercent.html", results=results)
+
+@views_bp.route("/screener/ndx-momentum", methods=["GET"])
+def view_screener_ndx_momentum() -> str:
+    """Displays the NDX Momentum screener results."""
+    limit = request.args.get("limit", 50, type=int)
+    service = _get_screener_view_service()
+    results = service.get_candidates(Strategies.NDXMomentum, limit=limit)
+    return render_template("screener_ndx_momentum.html", results=results)
 
 
 # 3. Trades Details
@@ -452,6 +467,30 @@ def view_trades_turnover() -> str:
         performance_variants=list(variant_stats.values())
     )
 
+
+@views_bp.route("/trades/ndx-momentum", methods=["GET"])
+def view_trades_ndx_momentum() -> str:
+    """Displays the NDX Momentum trade history and active positions."""
+    limit = request.args.get("limit", 100, type=int)
+    service = _get_trade_view_service()
+    
+    active = service.get_trades(strategies=Strategies.NDXMomentum, status=TradeStatus.ACTIVE)
+    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
+    
+    closed = service.get_trades(strategies=Strategies.NDXMomentum, status=TradeStatus.CLOSED)
+    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
+
+    summary_metrics = service.get_portfolio_summary(active)
+    history_groups = service.group_trades_history(closed)
+
+    return render_template(
+        "trades_ndx_momentum.html",
+        active_trades=active,
+        closed_trades=closed,
+        history_groups=history_groups,
+        summary=summary_metrics
+    )
 
 
 @views_bp.route("/trades/twopercent", methods=["GET"])

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NDX Momentum Screener</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    boxShadow: { 'saas': '0 4px 20px rgba(0, 0, 0, 0.05)' }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer components {
+            .glass-nav { @apply bg-white/80 backdrop-blur-md border-b border-slate-200/60; }
+            .badge-bull { @apply bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-xs font-bold; }
+            .badge-bear { @apply bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded text-xs font-bold; }
+            .roc-pos { @apply text-emerald-600; }
+            .roc-neg { @apply text-rose-600; }
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+
+    <nav class="glass-nav fixed top-0 w-full z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex h-16 items-center justify-between">
+                <div class="flex items-center">
+                    <a href="/screener" class="text-slate-500 hover:text-slate-900 mr-4">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </a>
+                    <span class="text-xl font-medium text-slate-900 tracking-tight">NDX Momentum</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+        <div class="bg-white rounded-2xl shadow-saas overflow-hidden border border-slate-200/60">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-semibold text-slate-900">Top 5 Momentum Portfolio</h2>
+                    <p class="text-sm text-slate-500">Nasdaq 100 Momentum Leaderboard</p>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/50 text-slate-500 text-xs uppercase tracking-wider">
+                            <th class="px-6 py-4 font-semibold">Datum</th>
+                            <th class="px-6 py-4 font-semibold">Symbol</th>
+                            <th class="px-6 py-4 font-semibold text-right">ROC 1M</th>
+                            <th class="px-6 py-4 font-semibold text-right">ROC 3M</th>
+                            <th class="px-6 py-4 font-semibold text-right">ROC 6M</th>
+                            <th class="px-6 py-4 font-semibold text-right">ROC 12M</th>
+                            <th class="px-6 py-4 font-semibold text-right bg-blue-50/30 text-blue-700">SUM(ROC)</th>
+                            <th class="px-6 py-4 font-semibold text-center">Market Breadth</th>
+                            <th class="px-6 py-4 font-semibold text-center">QQQ Regime</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-sm">
+                        {% for res in results %}
+                        <tr class="hover:bg-slate-50/50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap text-slate-500 font-mono">
+                                {{ res.context.actual_analysis_date or res.display_date }}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="font-bold text-slate-900">{{ res.symbol }}</div>
+                            </td>
+                            <td
+                                class="px-6 py-4 text-right font-mono {{ 'roc-pos' if res.context.roc_1 > 0 else 'roc-neg' }}">
+                                {{ "%+.2f"|format(res.context.roc_1) }}%
+                            </td>
+                            <td
+                                class="px-6 py-4 text-right font-mono {{ 'roc-pos' if res.context.roc_3 > 0 else 'roc-neg' }}">
+                                {{ "%+.2f"|format(res.context.roc_3) }}%
+                            </td>
+                            <td
+                                class="px-6 py-4 text-right font-mono {{ 'roc-pos' if res.context.roc_6 > 0 else 'roc-neg' }}">
+                                {{ "%+.2f"|format(res.context.roc_6) }}%
+                            </td>
+                            <td
+                                class="px-6 py-4 text-right font-mono {{ 'roc-pos' if res.context.roc_12 > 0 else 'roc-neg' }}">
+                                {{ "%+.2f"|format(res.context.roc_12) }}%
+                            </td>
+                            <td class="px-6 py-4 text-right font-bold font-mono bg-blue-50/10 text-blue-600">
+                                {{ "%+.2f"|format(res.context.momentum_score) }}
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                {% if res.context.breadth_regime == 'BULL' %}
+                                <span class="badge-bull">BULL</span>
+                                {% else %}
+                                <span class="badge-bear">BEAR</span>
+                                {% endif %}
+                            </td>
+                            <td class="px-6 py-4 text-center">
+                                {% if res.context.qqq_regime == 'BULL' %}
+                                <span class="badge-bull">BULL</span>
+                                {% else %}
+                                <span class="badge-bear">BEAR</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% if not results %}
+                <div class="p-12 text-center">
+                    <div
+                        class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-50 text-slate-400 mb-4">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                    <p class="text-slate-500">Keine Signale gefunden.</p>
+                </div>
+                {% endif %}
+            </div>
+
+            <div class="p-4 bg-slate-50/50 border-t border-slate-100 text-xxs text-slate-400 italic">
+                Hinweis: Die Signale werden monatlich aktualisiert und zeigen die Top 5 Momentum-Werte des Nasdaq 100.
+            </div>
+        </div>
+    </main>
+</body>
+
+</html>
