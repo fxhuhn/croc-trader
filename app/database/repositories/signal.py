@@ -126,9 +126,9 @@ class SignalRepository(BaseRepository):
         exchange = data.get('exchange')
         timestamp = data.get('timestamp') or data.get('date')
         
-        # Auch hier: INSERT OR IGNORE verhindert Crashes bei doppelten Webhooks
+        # Use INSERT OR REPLACE to allow updating signals (e.g. monthly rebalance updates)
         sql = """
-            INSERT OR IGNORE INTO croc (symbol, timeframe, signal, timestamp, exchange, data)
+            INSERT OR REPLACE INTO croc (symbol, timeframe, signal, timestamp, exchange, data)
             VALUES (?, ?, ?, ?, ?, ?)
         """
         
@@ -137,11 +137,31 @@ class SignalRepository(BaseRepository):
         ))
         return cursor.lastrowid
 
-    def get_unprocessed_signals(self, limit=100) -> list[dict]:
-        """Liest aus dem Enriched View."""
-        sql = "SELECT * FROM view_signals_enriched ORDER BY timestamp DESC LIMIT ?"
-        rows = self.fetch_all(sql, (limit,))
-        return [dict(row) for row in rows]
+    def get_unprocessed_signals(self, limit: int = 100) -> list[dict]:
+        """Holt unverarbeitete Signale aus der croc-Tabelle."""
+        # Note: 'processed' column is not in original schema, assuming it might be added 
+        # or we just get the latest signals. Given current schema, we'll just get latest.
+        sql = "SELECT symbol, signal, timestamp, data FROM croc ORDER BY timestamp DESC LIMIT ?"
+        return self.fetch_all(sql, (limit,))
+
+    def get_by_timestamp(self, signal_name: str, timestamp: str) -> list[dict]:
+        """Holt Signale für einen bestimmten Zeitstempel und Strategie."""
+        sql = "SELECT * FROM croc WHERE signal = ? AND timestamp = ?"
+        rows = self.fetch_all(sql, (signal_name, timestamp))
+        
+        results = []
+        for row in rows:
+            r = dict(row)
+            # Parse signal context from data payload
+            if r.get("data"):
+                try:
+                    # In our SignalRepository, 'data' is the full JSON encoded dict
+                    payload = json.loads(r["data"])
+                    r["context"] = payload.get("context", {})
+                except (json.JSONDecodeError, TypeError):
+                    r["context"] = {}
+            results.append(r)
+        return results
     
     def get_signal_by_id(self, signal_id: int) -> dict:
         sql = "SELECT * FROM view_signals_enriched WHERE id = ?"

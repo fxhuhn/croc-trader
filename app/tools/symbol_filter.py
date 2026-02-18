@@ -1,11 +1,12 @@
+import json
 import logging
 import threading
-import json
+import time
 from pathlib import Path
-from typing import Optional, List, Dict
+
 import pandas as pd
 import yfinance as yf
-import time
+
 from .symbol_lists import ExchangeSymbol
 
 # Setup Logger
@@ -18,22 +19,23 @@ CACHE_FILE = CACHE_DIR / "preferred_symbols.json"
 class SymbolFilter:
     """
     Singleton class to filter generic symbols based on volume/popularity.
+
     Example: Prefer GOOG over GOOGL if GOOG has higher volume.
     Loads mapping in background and caches it to disk.
     """
 
-    _instance: Optional["SymbolFilter"] = None
+    _instance: "SymbolFilter | None" = None
     _initialized: bool = False
-    _lock = threading.Lock()
+    _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls):
+    def __new__(cls) -> "SymbolFilter":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if SymbolFilter._initialized:
             return
 
@@ -41,155 +43,183 @@ class SymbolFilter:
             if SymbolFilter._initialized:
                 return
 
-            self._mapping: Dict[str, List[str]] = {} # Winner -> [Losers]
+            self._mapping: dict[str, list[str]] = {}  # Winner -> [Losers]
             
             # 1. Try to load from cache
             self._load_from_cache()
 
             # 2. Start background thread to refresh mapping
-            # We need a list of symbols to filter. 
-            # Ideally, we get this from ExchangeSymbol, but that might be empty initially.
-            # We will lazy-load or periodically refresh based on ExchangeSymbol.all
-            # For now, we start a thread that waits for ExchangeSymbol to be ready or just runs.
             threading.Thread(target=self._refresh_mapping_background, daemon=True).start()
 
             SymbolFilter._initialized = True
 
     def _load_from_cache(self) -> None:
-        """Loads preferred symbol mapping from local cache."""
+        """
+        Loads preferred symbol mapping from local cache.
+
+        Reads the JSON mapping file and updates the internal state.
+        Errors are logged but do not crash the initialization.
+        """
         if not CACHE_FILE.exists():
             return
 
         try:
-            with open(CACHE_FILE, "r", encoding="utf-8") as f:
-                self._mapping = json.load(f)
-            logger.info("✓ Loaded symbol preference mapping with %d rules", len(self._mapping))
-        except Exception as e:
-            logger.error("Failed to load symbol preference cache: %s", e)
+            with CACHE_FILE.open("r", encoding="utf-8") as cache_file:
+                self._mapping = json.load(cache_file)
+            logger.info(
+                "✓ Loaded symbol preference mapping with %d rules", len(self._mapping)
+            )
+        except Exception as error:
+            logger.error("Failed to load symbol preference cache: %s", error)
 
     def _save_to_cache(self) -> None:
-        """Saves current mapping to local cache."""
+        """
+        Saves current mapping to local cache.
+
+        Writes the internal mapping to disk in JSON format.
+        Creates parent directories if necessary.
+        """
         try:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            with open(CACHE_FILE, "w", encoding="utf-8") as f:
-                json.dump(self._mapping, f, indent=2)
+            with CACHE_FILE.open("w", encoding="utf-8") as cache_file:
+                json.dump(self._mapping, cache_file, indent=2)
             logger.info("✓ Symbol preference cache saved to %s", CACHE_FILE)
-        except Exception as e:
-            logger.error("Failed to save symbol preference cache: %s", e)
+        except Exception as error:
+            logger.error("Failed to save symbol preference cache: %s", error)
 
     def _refresh_mapping_background(self) -> None:
-        """Fetches volume data for all symbols and builds preference mapping."""
+        """
+        Fetches volume data for all symbols and builds preference mapping.
 
+        Orchestrates the background process of gathering ticker metadata
+        and identifying preferred symbols (winners) based on liquidity.
+        """
         # Wait a bit for ExchangeSymbol to populate (heuristic)
-        time.sleep(5) 
-        
-        exchange = ExchangeSymbol()
-        all_symbols = exchange.all
-        
+        time.sleep(5)
+
+        exchange: ExchangeSymbol = ExchangeSymbol()
+        all_symbols: list[str] = exchange.all
+
         if not all_symbols:
             logger.warning("No symbols found in ExchangeSymbol to build filter mapping.")
             return
 
-        logger.info("Starting background symbol preference analysis for %d symbols...", len(all_symbols))
-        
+        logger.info(
+            "Starting background symbol preference analysis for %d symbols...",
+            len(all_symbols),
+        )
+
         try:
-            new_mapping = self._build_mapping(all_symbols)
+            new_mapping: dict[str, list[str]] = self._build_mapping(all_symbols)
             if new_mapping:
                 self._mapping = new_mapping
                 self._save_to_cache()
-                logger.info("✓ Symbol preference analysis complete. Found %d duplicate groups.", len(self._mapping))
-        except Exception as e:
-            logger.error("Symbol preference analysis failed: %s", e)
+                logger.info(
+                    "✓ Symbol preference analysis complete. Found %d duplicate groups.",
+                    len(self._mapping),
+                )
+            else:
+                logger.warning(
+                    "Symbol preference analysis returned no results or was aborted."
+                )
+        except Exception as error:
+            logger.error("Symbol preference analysis failed: %s", error)
 
-    def _build_mapping(self, symbols: List[str]) -> Dict[str, List[str]]:
+    def _build_mapping(self, symbols: list[str]) -> dict[str, list[str]]:
         """
-        Fetches metadata and determines winners.
-        """
-        raw_data = []
-        # Chunking to avoid overwhelming yfinance? 
-        # yfinance can handle multiple tickers string, but 'info' is usually per ticker.
-        # We'll do it sequentially or batched. For >2000 symbols this is SLOW.
-        # We only do this if we really need to.
-        # Optimization: Only fetch if we don't have a cache?
-        # Or just do it. The user asked for "background thread".
+        Fetches metadata and determines winner symbols for duplicate companies.
 
-        count = 0
+        Args:
+            symbols: A list of tickers to evaluate.
+
+        Returns:
+            A dictionary mapping winner symbols to lists of excluded (loser) tickers.
+        """
+        raw_metadata_list: list[dict] = []
+        processed_count: int = 0
+
         for symbol in symbols:
             try:
-                # This is IO bound and slow. 
-                # Ideally we use batch endpoint if available, but yfinance Ticker("A B C").tickers is an option.
-                # But extracting 'longName' and 'averageVolume' from bulk might be tricky.
-                # Let's stick to simple loop for robustness in background.
-                info = yf.Ticker(symbol).info
-                raw_data.append({
-                    'symbol': symbol,
-                    # Fallback to shortName or symbol if longName missing
-                    'longName': info.get('longName') or info.get('shortName') or symbol,
-                    'averageVolume': info.get('averageVolume', 0)
-                })
-                count += 1
-                if count % 100 == 0:
-                    logger.debug("Processed %d/%d symbols for preference mapping", count, len(symbols))
-            except Exception as e:
-                logger.warning("Failed to fetch info for %s: %s", symbol, e)
+                ticker_metadata: dict = yf.Ticker(symbol).info
+                raw_metadata_list.append(
+                    {
+                        "symbol": symbol,
+                        "longName": ticker_metadata.get("longName")
+                        or ticker_metadata.get("shortName")
+                        or symbol,
+                        "averageVolume": ticker_metadata.get("averageVolume", 0),
+                    }
+                )
+                processed_count += 1
+                if processed_count % 100 == 0:
+                    logger.debug(
+                        "Processed %d/%d symbols for preference mapping",
+                        processed_count,
+                        len(symbols),
+                    )
+            except Exception as error:
+                error_message: str = str(error)
+                if "Too Many Requests" in error_message or "429" in error_message:
+                    logger.error(
+                        "ERROR: Yahoo Finance rate limit (429) hit. "
+                        "Aborting refresh to preserve existing cache."
+                    )
+                    return {}
+
+                logger.warning("Failed to fetch info for %s: %s", symbol, error)
                 continue
 
-        if not raw_data:
+        if not raw_metadata_list:
             return {}
 
-        df = pd.DataFrame(raw_data)
-        
+        metadata_dataframe: pd.DataFrame = pd.DataFrame(raw_metadata_list)
+
         # Filter duplicates based on Name
-        # We are looking for DIFFERENT symbols that share the SAME Corp Name
-        duplicates = df[df.duplicated(subset=['longName'], keep=False)]
-        
+        duplicates: pd.DataFrame = metadata_dataframe[
+            metadata_dataframe.duplicated(subset=["longName"], keep=False)
+        ]
+
         if duplicates.empty:
             return {}
 
         # Sort by Name (asc) and Volume (desc) -> Winner is first
-        duplicates = duplicates.sort_values(['longName', 'averageVolume'], ascending=[True, False])
+        duplicates = duplicates.sort_values(
+            ["longName", "averageVolume"], ascending=[True, False]
+        )
 
-        mapping = {}
-        for _, group in duplicates.groupby('longName', sort=False):
+        mapping: dict[str, list[str]] = {}
+        for _, group in duplicates.groupby("longName", sort=False):
             if len(group) > 1:
-                winner = group['symbol'].iloc[0]
-                losers = group['symbol'].iloc[1:].tolist()
-                mapping[winner] = losers
-        
+                winner_ticker: str = group["symbol"].iloc[0]
+                loser_tickers: list[str] = group["symbol"].iloc[1:].tolist()
+                mapping[winner_ticker] = loser_tickers
+
         return mapping
 
-    def filter_symbols(self, candidates: List[str]) -> List[str]:
+    def filter_symbols(self, candidates: list[str]) -> list[str]:
         """
-        Filters the candidate list.
-        If a 'Loser' is present, check if its 'Winner' is also present (or if we just hate losers?).
-        
-        Strategy:
-        If we have a mapping Winner -> [Losers], and we see a Loser in candidates:
-        - If Winner is ALSO in candidates, definitely drop Loser.
-        - If Winner is NOT in candidates, do we keep Loser? 
-          User said: "if key goog from filter_symbols exists delete the values like googl if applicable"
-          Context: "perform these kind of filtering at the end of _filter_market_state" (which implies we have a list of valid signals).
-          
-        Interpretation: Only show the BEST symbol for the company if multiple are signalled.
-        So: Drop Loser ONLY IF Winner is in candidates.
-        """
-        candidates_set = set(candidates)
-        to_remove = set()
+        Analyzes a list of symbols and removes less liquid duplicates.
 
-        for winner, losers in self._mapping.items():
-            # Check if any loser matches a candidate
-            for loser in losers:
-                if loser in candidates_set:
-                    # Found a loser. Is the winner also here?
-                    if winner in candidates_set:
-                        to_remove.add(loser)
-                    # Use Case 2: Maybe we simply NEVER want the loser if we prefer the winner generally?
-                    # But if the winner didn't trigger a signal (e.g. slight price diff), maybe we take the loser?
-                    # SAFE BET: Only drop if we have a better alternative (Winner) in the list.
-        
-        return [c for c in candidates if c not in to_remove]
+        Drops "loser" tickers (e.g., GOOGL) only if their preferred "winner"
+        counterpart (e.g., GOOG) is also present in the candidate list.
+
+        Args:
+            candidates: A list of ticker symbols to filter.
+
+        Returns:
+            A filtered list containing only the preferred tickers.
+        """
+        candidates_set: set[str] = set(candidates)
+        to_remove: set[str] = set()
+
+        for winner_ticker, loser_tickers in self._mapping.items():
+            for loser_ticker in loser_tickers:
+                if loser_ticker in candidates_set and winner_ticker in candidates_set:
+                    to_remove.add(loser_ticker)
+
+        return [candidate for candidate in candidates if candidate not in to_remove]
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    f = SymbolFilter()
-    print("Filter initialized. Waiting for background thread won't work well in script unless we sleep.")
+    filter_instance: SymbolFilter = SymbolFilter()
+    logger.info("SymbolFilter initialized for stand-alone testing.")
