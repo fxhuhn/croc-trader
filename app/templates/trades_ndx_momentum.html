@@ -1,214 +1,237 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NDX Momentum Strategy</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap"
-        rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
+{% block head %}
+<title>NDX Momentum Strategy</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+<style>
+    body {
+        font-family: 'Inter', sans-serif;
+    }
 
-        .badge-bull {
-            @apply bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-100;
-        }
+    .badge-bull {
+        @apply bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-emerald-100;
+    }
 
-        .badge-bear {
-            @apply bg-rose-50 text-rose-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-rose-100;
-        }
-    </style>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        emerald: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#10b981', 600: '#059669', 700: '#047857' },
-                        rose: { 50: '#fff1f2', 100: '#ffe4e6', 500: '#f43f5e', 600: '#e11d48', 700: '#be123c' }
-                    }
+    .badge-bear {
+        @apply bg-rose-50 text-rose-700 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-rose-100;
+    }
+</style>
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    emerald: { 50: '#ecfdf5', 100: '#d1fae5', 500: '#10b981', 600: '#059669', 700: '#047857' },
+                    rose: { 50: '#fff1f2', 100: '#ffe4e6', 500: '#f43f5e', 600: '#e11d48', 700: '#be123c' }
                 }
             }
         }
-    </script>
-</head>
+    }
+</script>
+{% endblock %}
 
-<body class="bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900">
+{% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}
 
-    <div class="max-w-6xl mx-auto">
-        <!-- Header & Navigation -->
-        <header class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-2xl font-bold text-slate-800">NDX Momentum</h1>
-                <p class="text-slate-400 text-sm font-medium">Monthly Rebalancing Strategy</p>
+{% block content %}
+<!-- NAVIGATION (Sticky, Glassmorphism) -->
+<nav class="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-100/50 transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <!-- Brand -->
+            <div class="flex items-center gap-8">
+                <a href="/trades/ndx-momentum" class="text-xl font-semibold tracking-tight text-slate-900">
+                    NDX Momentum
+                </a>
+                <!-- Links -->
+                <div class="hidden md:flex items-center space-x-1">
+                    <a href="/trades/ndx-momentum"
+                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Trades
+                    </a>
+                    <a href="/screener/ndx-momentum"
+                        class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Screener
+                    </a>
+                </div>
             </div>
-
-            <nav class="bg-white p-1 rounded-xl border border-slate-200 shadow-sm flex">
-                <a href="/trades/ndx-momentum"
-                    class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-700 transition-colors">
-                    Trades
-                </a>
-                <a href="/screener/ndx-momentum"
-                    class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
-                    Screener
-                </a>
-                <a href="/trades"
-                    class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
+            <!-- Dashboard Link -->
+            <div class="flex items-center">
+                <a href="/trades" class="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
                     Dashboard
                 </a>
-            </nav>
-        </header>
-
-        <!-- KPI Cards -->
-        <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
-                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-blue-500">
-                    <i data-lucide="wallet" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Invested</p>
-                    <p class="text-2xl font-black text-slate-900">${{ "{:,.0f}".format(summary.invested) }}</p>
-                </div>
-            </article>
-
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
-                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-blue-500">
-                    <i data-lucide="activity" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Positions</p>
-                    <p class="text-2xl font-black text-slate-900">{{ active_trades|length }}</p>
-                </div>
-            </article>
-
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
-                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-blue-500">
-                    <i data-lucide="trending-up" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total PnL</p>
-                    <p
-                        class="text-2xl font-black {{ 'text-emerald-500' if summary.open_pnl >= 0 else 'text-rose-500' }}">
-                        {{ "{:+,.2f}".format(summary.open_pnl) }} $
-                    </p>
-                </div>
-            </article>
-        </section>
-
-        <!-- Active Trades Table -->
-        {% if active_trades %}
-        <section class="mb-12">
-            <h2 class="text-lg font-bold text-slate-800 mb-4">Active Positions</h2>
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-sm text-left">
-                    <thead>
-                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                            <th class="px-6 py-4">Date</th>
-                            <th class="px-6 py-4">Symbol</th>
-                            <th class="px-6 py-4 text-right">Qty</th>
-                            <th class="px-6 py-4 text-right">Entry Price</th>
-                            <th class="px-6 py-4 text-right">PnL</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">
-                        {% for t in active_trades %}
-                        <tr class="hover:bg-slate-50/50 transition-colors group">
-                            <td class="px-6 py-4 text-slate-500 font-mono text-xs">{{ t.display_entry }}</td>
-                            <td class="px-6 py-4">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-black text-slate-700">{{ t.symbol }}</span>
-                                    <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}" target="_blank"
-                                        class="text-slate-400 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100">
-                                        <i data-lucide="external-link" class="w-3 h-3"></i>
-                                    </a>
-                                </div>
-                            </td>
-                            <td class="px-6 py-4 text-right text-slate-500 font-mono">{{ t.initial_size | int }}</td>
-                            <td class="px-6 py-4 text-right font-mono text-slate-500">${{
-                                "{:,.2f}".format(t.entry_price) }}</td>
-                            <td class="px-6 py-4 text-right">
-                                <div
-                                    class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
-                                    {{ "{:+,.2f}".format(t.unrealized_pnl) }} $
-                                </div>
-                                <div class="text-xs font-medium text-slate-400">{{ "{:+.2f}".format(t.pnl_pct) }}%</div>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
             </div>
-        </section>
-        {% endif %}
-
-        <!-- History -->
-        {% if closed_trades %}
-        <section>
-            <h2 class="text-lg font-bold text-slate-800 mb-4">Trade History (Last 100)</h2>
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-sm text-left">
-                    <thead>
-                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                            <th class="px-6 py-4 font-normal">Date</th>
-                            <th class="px-6 py-4 font-normal">Symbol</th>
-                            <th class="px-6 py-4 font-normal text-right">Qty</th>
-                            <th class="px-6 py-4 font-normal text-right">Entry</th>
-                            <th class="px-6 py-4 font-normal text-right">Exit</th>
-                            <th class="px-6 py-4 font-normal text-right">PnL</th>
-                            <th class="px-6 py-4 font-normal text-right">Reason</th>
-                        </tr>
-                    </thead>
-                    {% for group in history_groups %}
-                    <tbody class="border-b border-slate-100 last:border-0 hover:bg-slate-50/30 transition-colors">
-                        {% for t in group.trades %}
-                        <tr class="group">
-                            <!-- Date: Exit (Bold) + Entry (Small) -->
-                            <td class="px-6 py-3 text-slate-500 align-top">
-                                {% if loop.first or t.display_exit != loop.previtem.display_exit %}
-                                <div class="text-slate-900 font-bold">{{ t.display_exit }} <span
-                                        class="text-xs text-slate-400 font-normal">({{ t.days_held }}d)</span></div>
-                                {% endif %}
-
-                                {% if loop.first %}
-                                <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-1">In: {{
-                                    group.entry_date }}</div>
-                                {% endif %}
-                            </td>
-
-                            <td class="px-6 py-3 font-black text-slate-700 align-top">{{ t.symbol }}</td>
-                            <td class="px-6 py-3 text-right text-slate-500 font-mono align-top">{{ t.initial_size | int
-                                }}</td>
-                            <td class="px-6 py-3 text-right text-slate-400 font-mono align-top">${{
-                                "{:,.2f}".format(t.entry_price) }}</td>
-                            <td class="px-6 py-3 text-right text-slate-700 font-mono align-top">${{
-                                "{:,.2f}".format(t.exit_price) }}</td>
-                            <td class="px-6 py-3 text-right align-top">
-                                <div
-                                    class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }}">
-                                    {{ "{:+,.2f}".format(t.realized_pnl) }} $
-                                </div>
-                                <div class="text-xs font-medium text-slate-400">{{ "{:+.2f}".format(t.pnl_pct) }}%</div>
-                            </td>
-                            <td class="px-6 py-3 text-right align-top">
-                                <span
-                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                                    {{ t.exit_reason }}
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                    {% endfor %}
-                </table>
-            </div>
-        </section>
-        {% endif %}
+        </div>
     </div>
+</nav>
 
-    <script> lucide.createIcons(); </script>
-</body>
+<!-- MAIN CONTENT -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
 
-</html>
+    <!-- KPI Cards -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-blue-500">
+                <i data-lucide="wallet" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Invested</p>
+                <p class="text-2xl font-black text-slate-900">${{ "{:,.0f}".format(summary.invested) }}</p>
+            </div>
+        </article>
+
+        <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-blue-500">
+                <i data-lucide="activity" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Positions</p>
+                <p class="text-2xl font-black text-slate-900">{{ active_trades|length }}</p>
+            </div>
+        </article>
+
+        <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-blue-500">
+                <i data-lucide="trending-up" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total PnL</p>
+                <p class="text-2xl font-black {{ 'text-emerald-500' if summary.open_pnl >= 0 else 'text-rose-500' }}">
+                    {{ "{:+,.2f}".format(summary.open_pnl) }} $
+                </p>
+            </div>
+        </article>
+    </section>
+
+    <!-- Active Trades Table -->
+    {% if active_trades %}
+    <section class="mb-12">
+        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <i data-lucide="zap" class="w-5 h-5 text-indigo-500"></i> Active Positions
+        </h2>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm text-left">
+                <thead>
+                    <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                        <th class="px-6 py-4">Date</th>
+                        <th class="px-6 py-4">Symbol</th>
+                        <th class="px-6 py-4 text-right">Qty</th>
+                        <th class="px-6 py-4 text-right">Entry Price</th>
+                        <th class="px-6 py-4 text-right">PnL</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                    {% for t in active_trades %}
+                    <tr class="hover:bg-slate-50/50 transition-colors group">
+                        <td class="px-6 py-4 text-slate-500 font-mono text-xs">{{ t.display_entry }}</td>
+                        <td class="px-6 py-4">
+                            <div class="flex items-center gap-2">
+                                <span class="font-black text-slate-700">{{ t.symbol }}</span>
+                                <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}" target="_blank"
+                                    class="text-slate-400 hover:text-indigo-500 transition-colors group-hover:opacity-100">
+                                    <i data-lucide="external-link" class="w-3 h-3"></i>
+                                </a>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 text-right text-slate-500 font-mono">{{ t.initial_size | int }}</td>
+                        <td class="px-6 py-4 text-right font-mono text-slate-500">${{
+                            "{:,.2f}".format(t.entry_price) }}</td>
+                        <td class="px-6 py-4 text-right">
+                            <div
+                                class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
+                                {{ "{:+,.2f}".format(t.unrealized_pnl) }} $
+                            </div>
+                            <div class="text-xs font-medium text-slate-400">{{ "{:+.2f}".format(t.pnl_pct) }}%</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- History -->
+    {% if history_groups %}
+    <section>
+        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <i data-lucide="history" class="w-5 h-5 text-indigo-500"></i> Trade History (Last 100)
+        </h2>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm text-left">
+                <thead>
+                    <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                        <th class="px-6 py-4 font-normal">Date</th>
+                        <th class="px-6 py-4 font-normal">Symbol</th>
+                        <th class="px-6 py-4 font-normal text-right">Qty</th>
+                        <th class="px-6 py-4 font-normal text-right">Entry</th>
+                        <th class="px-6 py-4 font-normal text-right">Exit</th>
+                        <th class="px-6 py-4 font-normal text-right">PnL</th>
+                        <th class="px-6 py-4 font-normal text-right">Reason</th>
+                    </tr>
+                </thead>
+                {% for group in history_groups %}
+                <tbody class="border-b border-slate-100 last:border-0 hover:bg-slate-50/30 transition-colors">
+                    {% for t in group.trades %}
+                    <tr class="group">
+                        <!-- Date: Exit (Bold) + Entry (Small) -->
+                        <td class="px-6 py-3 text-slate-500 align-top">
+                            {% if loop.first or t.display_exit != loop.previtem.display_exit %}
+                            <div class="text-slate-900 font-bold">{{ t.display_exit }} <span
+                                    class="text-xs text-slate-400 font-normal">({{ t.days_held }}d)</span></div>
+                            {% endif %}
+
+                            {% if loop.first %}
+                            <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-1">In: {{
+                                group.entry_date }}</div>
+                            {% endif %}
+                        </td>
+
+                        <td class="px-6 py-3 align-top">
+                            {% if loop.first %}
+                            <div class="font-black text-slate-700 text-lg leading-tight">{{ group.symbol }}</div>
+                            <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                                {{ group.display_index or 'NDX' }}
+                            </div>
+                            {% endif %}
+                        </td>
+                        <td class="px-6 py-3 text-right text-slate-500 font-mono align-top">{{ t.initial_size | int
+                            }}</td>
+                        <td class="px-6 py-3 text-right text-slate-400 font-mono align-top">${{
+                            "{:,.2f}".format(t.entry_price) }}</td>
+                        <td class="px-6 py-3 text-right text-slate-700 font-mono align-top">${{
+                            "{:,.2f}".format(t.exit_price) }}</td>
+                        <td class="px-6 py-3 text-right align-top">
+                            <div class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }}">
+                                {{ "{:+,.2f}".format(t.realized_pnl) }} $
+                            </div>
+                            <div class="text-xs font-medium text-slate-400">{{ "{:+.2f}".format(t.pnl_pct) }}%</div>
+                        </td>
+                        <td class="px-6 py-3 text-right align-top">
+                            <span
+                                class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                                {{ t.exit_reason }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% endfor %}
+                <tfoot class="bg-slate-50 border-t border-slate-200">
+                    <tr>
+                        <td colspan="5"
+                            class="px-6 py-4 text-right font-bold text-slate-500 uppercase tracking-widest text-xs">
+                            Total History PnL</td>
+                        <td
+                            class="px-6 py-4 text-right font-black text-lg {{ 'text-emerald-500' if closed_summary.total_pnl >= 0 else 'text-rose-500' }}">
+                            {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
+                        </td>
+                        <td class="bg-slate-50"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </section>
+    {% endif %}
+</main>
+{% endblock %}

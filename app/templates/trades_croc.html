@@ -1,384 +1,382 @@
-<!DOCTYPE html>
-<html lang="en">
+{% extends "base.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Croc Strategy</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap"
-        rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-    </style>
-</head>
+{% block head %}
+<title>Croc Strategy</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+<style>
+    body {
+        font-family: 'Inter', sans-serif;
+    }
+</style>
+{% endblock %}
 
-<body class="bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900">
+{% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}
 
-    <div class="max-w-6xl mx-auto">
-        <!-- Header & Navigation -->
-        <header class="flex justify-between items-center mb-8">
-            <div>
-                <h1 class="text-2xl font-bold text-slate-800">Croc Strategy</h1>
-                <p class="text-slate-400 text-sm font-medium">Precision Trading Dashboard</p>
+{% block content %}
+<!-- NAVIGATION (Sticky, Glassmorphism) -->
+<nav class="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-100/50 transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <!-- Brand -->
+            <div class="flex items-center gap-8">
+                <a href="/trades/croc" class="text-xl font-semibold tracking-tight text-slate-900">
+                    Croc
+                </a>
+                <!-- Links -->
+                <div class="hidden md:flex items-center space-x-1">
+                    <a href="/trades/croc"
+                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Trades
+                    </a>
+                    <a href="/screener/croc"
+                        class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Screener
+                    </a>
+                </div>
             </div>
-
-            <nav class="bg-white p-1 rounded-xl border border-slate-200 shadow-sm flex">
-                <a href="/trades/croc"
-                    class="px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-700 transition-colors">
-                    Trades
-                </a>
-                <a href="/screener/croc"
-                    class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
-                    Screener
-                </a>
-                <a href="/"
-                    class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:text-slate-700 transition-colors">
+            <!-- Dashboard Link -->
+            <div class="flex items-center">
+                <a href="/trades" class="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
                     Dashboard
                 </a>
-            </nav>
-        </header>
-
-        <!-- KPI Cards -->
-        <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
-                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
-                    <i data-lucide="wallet" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Invested</p>
-                    <p class="text-2xl font-black text-slate-900">${{ "{:,.0f}".format(summary.invested) }}</p>
-                </div>
-            </article>
-
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
-                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
-                    <i data-lucide="activity" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Active Positions</p>
-                    <p class="text-2xl font-black text-slate-900">{{ active_trades|length }}</p>
-                </div>
-            </article>
-
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
-                <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
-                    <i data-lucide="trending-up" class="w-6 h-6"></i>
-                </div>
-                <div>
-                    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Open PnL</p>
-                    <p
-                        class="text-2xl font-black {{ 'text-emerald-500' if summary.open_pnl >= 0 else 'text-rose-500' }}">
-                        {{ "{:+,.2f}".format(summary.open_pnl) }} $
-                    </p>
-                </div>
-            </article>
-        </section>
-
-        <!-- Active Trades Section (Grouped) -->
-        <!-- Active Trades Table -->
-        {% if active_trades %}
-        <section class="mb-12">
-            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <i data-lucide="zap" class="w-5 h-5 text-indigo-500"></i> Active Trades
-            </h2>
-
-            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                                <th class="px-6 py-4 font-normal">Date</th>
-                                <th class="px-6 py-4 font-normal">Symbol</th>
-                                <th class="px-6 py-4 font-normal">Signal</th>
-                                <th class="px-6 py-4 font-normal">Index</th>
-                                <th class="px-6 py-4 font-normal text-right">Days</th>
-                                <th class="px-6 py-4 font-normal text-right">Qty</th>
-                                <th class="px-6 py-4 font-normal text-right">Entry</th>
-                                <th class="px-6 py-4 font-normal text-right">SL</th>
-                                <th class="px-6 py-4 font-normal text-right">TP1</th>
-                                <th class="px-6 py-4 font-normal text-right">TP3</th>
-                                <th class="px-6 py-4 font-normal text-right">PnL</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-50">
-                            {% for t in active_trades %}
-                            <tr class="hover:bg-slate-50/50 transition-colors">
-                                <!-- Date -->
-                                <td class="px-6 py-3 font-mono text-slate-500">{{ t.display_entry }}</td>
-
-                                <!-- Symbol -->
-                                <td class="px-6 py-3 font-bold text-slate-700">
-                                    <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}" target="_blank"
-                                        class="hover:text-indigo-500 transition-colors flex items-center gap-1">
-                                        {{ t.symbol }}
-                                        <i data-lucide="external-link" class="w-3 h-3 text-slate-300"></i>
-                                    </a>
-                                </td>
-
-                                <!-- Signal -->
-                                <td class="px-6 py-3 text-slate-500">
-                                    <span class="text-xs font-bold text-indigo-500">
-                                        {{ (t.context.original_signal or t.context.match_rule.Signal or
-                                        t.strategy).replace('Croc_', '') }}
-                                    </span>
-                                </td>
-
-                                <!-- Index -->
-                                <td class="px-6 py-3 text-slate-500">
-                                    <span
-                                        class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
-                                        {{ t.context.indices or '-' }}
-                                    </span>
-                                </td>
-
-                                <!-- Days -->
-                                <td class="px-6 py-3 text-right text-slate-500">{{ t.days_held }}</td>
-
-                                <!-- Qty -->
-                                <td class="px-6 py-3 text-right font-mono text-slate-500">{{ t.current_size|int }}</td>
-
-                                <!-- Entry -->
-                                <td class="px-6 py-3 text-right font-mono text-slate-500">{{
-                                    "{:,.2f}".format(t.entry_price) }}</td>
-
-                                <!-- SL -->
-                                <td class="px-6 py-3 text-right font-mono text-rose-500/80">{{
-                                    "{:,.2f}".format(t.current_stop_loss) }}</td>
-
-                                <!-- TP1 -->
-                                <td class="px-6 py-3 text-right font-mono text-emerald-500/80">
-                                    {{ "{:,.2f}".format(t.context.tp1|float) if t.context.tp1 else '-' }}
-                                </td>
-
-                                <!-- TP3 -->
-                                <td class="px-6 py-3 text-right font-mono text-emerald-500/80">
-                                    {{ "{:,.2f}".format(t.context.tp3|float) if t.context.tp3 else '-' }}
-                                </td>
-
-                                <!-- PnL -->
-                                <td
-                                    class="px-6 py-3 text-right font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
-                                    {{ "{:+,.2f}".format(t.unrealized_pnl) }} $
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
             </div>
-        </section>
-        {% endif %}
-
-        <!-- Stats Grid (Index + Signal) -->
-        <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-            <!-- Index Performance -->
-            <div>
-                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                    <i data-lucide="layers" class="w-5 h-5 text-indigo-500"></i> Index
-                </h2>
-                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                                <th class="px-6 py-4 font-normal">Index</th>
-                                <th class="px-6 py-4 font-normal text-right">W — L</th>
-                                <th class="px-6 py-4 font-normal text-right">Avg</th>
-                                <th class="px-6 py-4 font-normal text-right">PnL</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-50">
-                            {% for row in index_stats.values() %}
-                            {% if row.win > 0 or row.loss > 0 %}
-                            <tr class="hover:bg-slate-50/50 transition-colors">
-                                <td class="px-6 py-3 font-medium text-slate-700">{{ row.name }}</td>
-                                <td class="px-6 py-3 text-right text-slate-500">
-                                    <span class="text-emerald-500/80 font-bold">{{ row.win }}</span> — <span
-                                        class="text-rose-500/90 font-bold">{{ row.loss }}</span>
-                                </td>
-                                <td class="px-6 py-3 text-right font-medium text-slate-400">
-                                    {{ "{:+,.0f}".format(row.average_pnl) }}
-                                </td>
-                                <td
-                                    class="px-6 py-3 text-right font-medium {{ 'text-emerald-500/80' if row.pnl >= 0 else 'text-rose-500/90' }}">
-                                    {{ "{:+.0f}".format(row.pnl) }}
-                                </td>
-                            </tr>
-                            {% endif %}
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Signal Performance -->
-            <div>
-                <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                    <i data-lucide="zap" class="w-5 h-5 text-indigo-500"></i> Signals
-                </h2>
-                <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                                <th class="px-6 py-4 font-normal">Signal</th>
-                                <th class="px-6 py-4 font-normal text-right">W — L</th>
-                                <th class="px-6 py-4 font-normal text-right">Avg</th>
-                                <th class="px-6 py-4 font-normal text-right">PnL</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-50">
-                            {% for sig_name, stats in signal_stats.items() %}
-                            <tr class="hover:bg-slate-50/50 transition-colors">
-                                <td class="px-6 py-3 font-medium text-slate-600">{{ sig_name }}</td>
-                                <td class="px-6 py-3 text-right text-slate-500">
-                                    <span class="text-emerald-500/80 font-bold">{{ stats.win }}</span> — <span
-                                        class="text-rose-500/90 font-bold">{{ stats.loss }}</span>
-                                </td>
-                                <td class="px-6 py-3 text-right font-medium text-slate-400">
-                                    {{ "{:+,.0f}".format(stats.average_pnl) }}
-                                </td>
-                                <td
-                                    class="px-6 py-3 text-right font-medium {{ 'text-emerald-500/80' if stats.pnl >= 0 else 'text-rose-500/90' }}">
-                                    {{ "{:+.0f}".format(stats.pnl) }}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <!-- Trade History -->
-        <section>
-            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <i data-lucide="history" class="w-5 h-5 text-indigo-500"></i> Trade History
-            </h2>
-
-            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead>
-                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                                <th class="px-6 py-4 font-normal">Date</th>
-                                <th class="px-6 py-4 font-normal">Symbol</th>
-                                <th class="px-6 py-4 font-normal">Signal</th>
-                                <th class="px-6 py-4 font-normal">Strategy</th>
-                                <th class="px-6 py-4 font-normal text-right">Qty</th>
-                                <th class="px-6 py-4 font-normal text-right">Entry</th>
-                                <th class="px-6 py-4 font-normal text-right">Exit</th>
-                                <th class="px-6 py-4 font-normal text-right">PnL</th>
-                                <th class="px-6 py-4 font-normal text-right">Reason</th>
-                            </tr>
-                        </thead>
-                        {% for group in history_groups %}
-                        <tbody class="border-b border-slate-100 last:border-0 hover:bg-slate-50/30 transition-colors">
-                            {% for t in group.trades %}
-                            <tr class="group">
-                                <td class="px-6 py-3 text-slate-500 align-top">
-                                    {% if loop.first or t.display_exit != loop.previtem.display_exit %}
-                                    <div class="text-slate-900 font-bold">{{ t.display_exit }} <span
-                                            class="text-xs text-slate-400 font-normal">({{ t.days_held }}d)</span></div>
-                                    {% endif %}
-                                    {% if loop.first %}
-                                    <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-1">In: {{
-                                        group.entry_date }}</div>
-                                    {% endif %}
-                                </td>
-
-                                <td class="px-6 py-3 align-top">
-                                    {% if loop.first %}
-                                    <div class="font-black text-slate-700 text-lg leading-tight">{{ group.symbol }}
-                                    </div>
-                                    <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">{{
-                                        group.display_index }}</div>
-                                    {% endif %}
-                                </td>
-
-                                <td class="px-6 py-3 text-slate-500 align-top">
-                                    <span class="text-slate-600 font-bold text-xs">{{ t.context.original_signal or
-                                        t.context.match_rule.Signal or '-'
-                                        }}</span>
-                                </td>
-
-                                <td class="px-6 py-3 text-slate-500 align-top">
-                                    <span class="text-slate-400 text-xs">{{ t.strategy.replace('Croc_', '') }}</span>
-                                </td>
-
-                                <td class="px-6 py-3 text-right font-mono text-slate-500 align-top">{{
-                                    t.initial_size|int }}</td>
-
-                                <td class="px-6 py-3 text-right font-mono text-slate-400 align-top">{{
-                                    "{:,.2f}".format(t.entry_price|float) }}</td>
-                                <td class="px-6 py-3 text-right font-mono text-slate-700 align-top">{{
-                                    "{:,.2f}".format(t.exit_price|float) }}</td>
-                                <td
-                                    class="px-6 py-3 text-right font-bold align-top {{ 'text-emerald-500/80' if t.realized_pnl >= 0 else 'text-rose-500/90' }}">
-                                    {{ "{:+,.2f}".format(t.realized_pnl) }}
-                                </td>
-                                <td class="px-6 py-3 text-right align-top">
-                                    {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in
-                                    t.exit_reason %}
-                                    <span
-                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50">
-                                        {{ t.exit_reason }}
-                                    </span>
-                                    {% elif 'STOP_LOSS' in t.exit_reason %}
-                                    <span
-                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50">
-                                        {{ t.exit_reason }}
-                                    </span>
-                                    {% else %}
-                                    <span
-                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-50 text-slate-400 border border-slate-100">
-                                        {{ t.exit_reason }}
-                                    </span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                        {% endfor %}
-                        <tfoot class="bg-slate-50 border-t border-slate-200">
-                            <tr>
-                                <td colspan="4"
-                                    class="px-6 py-4 text-right font-bold text-slate-500 uppercase tracking-widest text-xs">
-                                    Total History Metrics</td>
-                                <td class="px-6 py-4 text-right">
-                                    <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Avg /
-                                        Trade</div>
-                                    <div
-                                        class="text-sm font-bold {{ 'text-emerald-500' if closed_summary.average_pnl >= 0 else 'text-rose-500' }}">
-                                        {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $
-                                    </div>
-                                </td>
-                                <td class="px-6 py-4 text-right">
-                                    <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Total PnL
-                                    </div>
-                                    <div
-                                        class="text-lg font-black {{ 'text-emerald-500' if closed_summary.total_pnl >= 0 else 'text-rose-500' }}">
-                                        {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
-                                    </div>
-                                </td>
-                                <td></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
-        </section>
-
-        <footer class="mt-12 text-center text-slate-400 text-sm mb-8">
-            <p>&copy; 2026 Croc Trader System. Premium SaaS Edition.</p>
-        </footer>
+        </div>
     </div>
+</nav>
 
-    <script>
-        lucide.createIcons();
-    </script>
-</body>
+<!-- MAIN CONTENT -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
 
-</html>
+    <!-- KPI Cards -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
+                <i data-lucide="wallet" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Invested</p>
+                <p class="text-2xl font-black text-slate-900">${{ "{:,.0f}".format(summary.invested) }}</p>
+            </div>
+        </article>
+
+        <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
+                <i data-lucide="activity" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Active Positions</p>
+                <p class="text-2xl font-black text-slate-900">{{ active_trades|length }}</p>
+            </div>
+        </article>
+
+        <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
+                <i data-lucide="trending-up" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Open PnL</p>
+                <p class="text-2xl font-black {{ 'text-emerald-500' if summary.open_pnl >= 0 else 'text-rose-500' }}">
+                    {{ "{:+,.2f}".format(summary.open_pnl) }} $
+                </p>
+            </div>
+        </article>
+    </section>
+
+    <!-- Active Trades Section (Grouped) -->
+    {% if active_trades %}
+    <section class="mb-12">
+        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <i data-lucide="zap" class="w-5 h-5 text-indigo-500"></i> Active Trades
+        </h2>
+
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <th class="px-6 py-4 font-normal">Date</th>
+                            <th class="px-6 py-4 font-normal">Symbol</th>
+                            <th class="px-6 py-4 font-normal">Signal</th>
+                            <th class="px-6 py-4 font-normal">Index</th>
+                            <th class="px-6 py-4 font-normal text-right">Days</th>
+                            <th class="px-6 py-4 font-normal text-right">Qty</th>
+                            <th class="px-6 py-4 font-normal text-right">Entry</th>
+                            <th class="px-6 py-4 font-normal text-right">SL</th>
+                            <th class="px-6 py-4 font-normal text-right">TP1</th>
+                            <th class="px-6 py-4 font-normal text-right">TP3</th>
+                            <th class="px-6 py-4 font-normal text-right">PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        {% for t in active_trades %}
+                        <tr class="hover:bg-slate-50/50 transition-colors">
+                            <!-- Date -->
+                            <td class="px-6 py-3 font-mono text-slate-500">{{ t.display_entry }}</td>
+
+                            <!-- Symbol -->
+                            <td class="px-6 py-3 font-bold text-slate-700">
+                                <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}" target="_blank"
+                                    class="hover:text-indigo-500 transition-colors flex items-center gap-1">
+                                    {{ t.symbol }}
+                                    <i data-lucide="external-link" class="w-3 h-3 text-slate-300"></i>
+                                </a>
+                            </td>
+
+                            <!-- Signal -->
+                            <td class="px-6 py-3 text-slate-500">
+                                <span class="text-xs font-bold text-indigo-500">
+                                    {{ (t.context.original_signal or t.context.match_rule.Signal or
+                                    t.strategy).replace('Croc_', '') }}
+                                </span>
+                            </td>
+
+                            <!-- Index -->
+                            <td class="px-6 py-3 text-slate-500">
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                                    {{ t.context.indices or '-' }}
+                                </span>
+                            </td>
+
+                            <!-- Days -->
+                            <td class="px-6 py-3 text-right text-slate-500">{{ t.days_held }}</td>
+
+                            <!-- Qty -->
+                            <td class="px-6 py-3 text-right font-mono text-slate-500">{{ t.current_size|int }}</td>
+
+                            <!-- Entry -->
+                            <td class="px-6 py-3 text-right font-mono text-slate-500">{{
+                                "{:,.2f}".format(t.entry_price) }}</td>
+
+                            <!-- SL -->
+                            <td class="px-6 py-3 text-right font-mono text-rose-500/80">{{
+                                "{:,.2f}".format(t.current_stop_loss) }}</td>
+
+                            <!-- TP1 -->
+                            <td class="px-6 py-3 text-right font-mono text-emerald-500/80">
+                                {{ "{:,.2f}".format(t.context.tp1|float) if t.context.tp1 else '-' }}
+                            </td>
+
+                            <!-- TP3 -->
+                            <td class="px-6 py-3 text-right font-mono text-emerald-500/80">
+                                {{ "{:,.2f}".format(t.context.tp3|float) if t.context.tp3 else '-' }}
+                            </td>
+
+                            <!-- PnL -->
+                            <td
+                                class="px-6 py-3 text-right font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
+                                {{ "{:+,.2f}".format(t.unrealized_pnl) }} $
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+    {% endif %}
+
+    <!-- Stats Grid (Index + Signal) -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+        <!-- Index Performance -->
+        <div>
+            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <i data-lucide="layers" class="w-5 h-5 text-indigo-500"></i> Index
+            </h2>
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <th class="px-6 py-4 font-normal">Index</th>
+                            <th class="px-6 py-4 font-normal text-right">W — L</th>
+                            <th class="px-6 py-4 font-normal text-right">Avg</th>
+                            <th class="px-6 py-4 font-normal text-right">PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        {% for row in index_stats.values() %}
+                        {% if row.win > 0 or row.loss > 0 %}
+                        <tr class="hover:bg-slate-50/50 transition-colors">
+                            <td class="px-6 py-3 font-medium text-slate-700">{{ row.name }}</td>
+                            <td class="px-6 py-3 text-right text-slate-500">
+                                <span class="text-emerald-500/80 font-bold">{{ row.win }}</span> — <span
+                                    class="text-rose-500/90 font-bold">{{ row.loss }}</span>
+                            </td>
+                            <td class="px-6 py-3 text-right font-medium text-slate-400">
+                                {{ "{:+,.0f}".format(row.average_pnl) }}
+                            </td>
+                            <td
+                                class="px-6 py-3 text-right font-medium {{ 'text-emerald-500/80' if row.pnl >= 0 else 'text-rose-500/90' }}">
+                                {{ "{:+.0f}".format(row.pnl) }}
+                            </td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Signal Performance -->
+        <div>
+            <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                <i data-lucide="zap" class="w-5 h-5 text-indigo-500"></i> Signals
+            </h2>
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <th class="px-6 py-4 font-normal">Signal</th>
+                            <th class="px-6 py-4 font-normal text-right">W — L</th>
+                            <th class="px-6 py-4 font-normal text-right">Avg</th>
+                            <th class="px-6 py-4 font-normal text-right">PnL</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        {% for sig_name, stats in signal_stats.items() %}
+                        <tr class="hover:bg-slate-50/50 transition-colors">
+                            <td class="px-6 py-3 font-medium text-slate-600">{{ sig_name }}</td>
+                            <td class="px-6 py-3 text-right text-slate-500">
+                                <span class="text-emerald-500/80 font-bold">{{ stats.win }}</span> — <span
+                                    class="text-rose-500/90 font-bold">{{ stats.loss }}</span>
+                            </td>
+                            <td class="px-6 py-3 text-right font-medium text-slate-400">
+                                {{ "{:+,.0f}".format(stats.average_pnl) }}
+                            </td>
+                            <td
+                                class="px-6 py-3 text-right font-medium {{ 'text-emerald-500/80' if stats.pnl >= 0 else 'text-rose-500/90' }}">
+                                {{ "{:+.0f}".format(stats.pnl) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- Trade History -->
+    <section>
+        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <i data-lucide="history" class="w-5 h-5 text-indigo-500"></i> Trade History
+        </h2>
+
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <th class="px-6 py-4 font-normal">Date</th>
+                            <th class="px-6 py-4 font-normal">Symbol</th>
+                            <th class="px-6 py-4 font-normal">Signal</th>
+                            <th class="px-6 py-4 font-normal">Strategy</th>
+                            <th class="px-6 py-4 font-normal text-right">Qty</th>
+                            <th class="px-6 py-4 font-normal text-right">Entry</th>
+                            <th class="px-6 py-4 font-normal text-right">Exit</th>
+                            <th class="px-6 py-4 font-normal text-right">PnL</th>
+                            <th class="px-6 py-4 font-normal text-right">Reason</th>
+                        </tr>
+                    </thead>
+                    {% for group in history_groups %}
+                    <tbody class="border-b border-slate-100 last:border-0 hover:bg-slate-50/30 transition-colors">
+                        {% for t in group.trades %}
+                        <tr class="group">
+                            <td class="px-6 py-3 text-slate-500 align-top">
+                                {% if loop.first or t.display_exit != loop.previtem.display_exit %}
+                                <div class="text-slate-900 font-bold">{{ t.display_exit }} <span
+                                        class="text-xs text-slate-400 font-normal">({{ t.days_held }}d)</span></div>
+                                {% endif %}
+                                {% if loop.first %}
+                                <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-1">In: {{
+                                    group.entry_date }}</div>
+                                {% endif %}
+                            </td>
+
+                            <td class="px-6 py-3 align-top">
+                                {% if loop.first %}
+                                <div class="font-black text-slate-700 text-lg leading-tight">{{ group.symbol }}
+                                </div>
+                                <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">{{
+                                    group.display_index }}</div>
+                                {% endif %}
+                            </td>
+
+                            <td class="px-6 py-3 text-slate-500 align-top">
+                                <span class="text-slate-600 font-bold text-xs">{{ t.context.original_signal or
+                                    t.context.match_rule.Signal or '-'
+                                    }}</span>
+                            </td>
+
+                            <td class="px-6 py-3 text-slate-500 align-top">
+                                <span class="text-slate-400 text-xs">{{ t.strategy.replace('Croc_', '') }}</span>
+                            </td>
+
+                            <td class="px-6 py-3 text-right font-mono text-slate-500 align-top">{{
+                                t.initial_size|int }}</td>
+
+                            <td class="px-6 py-3 text-right font-mono text-slate-400 align-top">{{
+                                "{:,.2f}".format(t.entry_price|float) }}</td>
+                            <td class="px-6 py-3 text-right font-mono text-slate-700 align-top">{{
+                                "{:,.2f}".format(t.exit_price|float) }}</td>
+                            <td
+                                class="px-6 py-3 text-right font-bold align-top {{ 'text-emerald-500/80' if t.realized_pnl >= 0 else 'text-rose-500' }}">
+                                {{ "{:+,.2f}".format(t.realized_pnl) }}
+                            </td>
+                            <td class="px-6 py-3 text-right align-top">
+                                {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in
+                                t.exit_reason %}
+                                <span
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50">
+                                    {{ t.exit_reason }}
+                                </span>
+                                {% elif 'STOP_LOSS' in t.exit_reason %}
+                                <span
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50">
+                                    {{ t.exit_reason }}
+                                </span>
+                                {% else %}
+                                <span
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-50 text-slate-400 border border-slate-100">
+                                    {{ t.exit_reason }}
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    {% endfor %}
+                    <tfoot class="bg-slate-50 border-t border-slate-200">
+                        <tr>
+                            <td colspan="4"
+                                class="px-6 py-4 text-right font-bold text-slate-500 uppercase tracking-widest text-xs">
+                                Total History Metrics</td>
+                            <td class="px-6 py-4 text-right">
+                                <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Avg /
+                                    Trade</div>
+                                <div
+                                    class="text-sm font-bold {{ 'text-emerald-500' if closed_summary.average_pnl >= 0 else 'text-rose-500' }}">
+                                    {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-right">
+                                <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Total PnL
+                                </div>
+                                <div
+                                    class="text-lg font-black {{ 'text-emerald-500' if closed_summary.total_pnl >= 0 else 'text-rose-500' }}">
+                                    {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
+                                </div>
+                            </td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <footer class="mt-12 text-center text-slate-400 text-sm mb-8">
+        <p>&copy; 2026 Croc Trader System. Premium SaaS Edition.</p>
+    </footer>
+</main>
+{% endblock %}

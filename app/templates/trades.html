@@ -1,275 +1,266 @@
-<!DOCTYPE html>
-<html lang="en" class="antialiased text-slate-900 bg-slate-50">
+{% extends "base.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts: Inter -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="apple-touch-icon-precomposed"
-        href="{{ url_for('static', filename='apple-touch-icon-precomposed.png') }}">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    boxShadow: {
-                        'saas': '0 20px 25px -5px rgba(0, 0, 0, 0.03), 0 10px 10px -5px rgba(0, 0, 0, 0.02)',
-                    },
-                    colors: {
-                        slate: {
-                            50: '#F8FAFC',
-                        }
+{% block head %}
+<title>Portfolio</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: {
+                    sans: ['Inter', 'sans-serif'],
+                },
+                boxShadow: {
+                    'saas': '0 20px 25px -5px rgba(0, 0, 0, 0.03), 0 10px 10px -5px rgba(0, 0, 0, 0.02)',
+                },
+                colors: {
+                    slate: {
+                        50: '#F8FAFC',
                     }
                 }
             }
         }
-    </script>
-    <!-- Plotly.js (loaded via CDN as fallback if not bundled) -->
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-</head>
+    }
+</script>
+<!-- Plotly.js (loaded via CDN as fallback if not bundled) -->
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+{% endblock %}
 
-<body class="bg-slate-50 min-h-screen pb-20">
+{% block body_class %}bg-slate-50 min-h-screen pb-20{% endblock %}
 
-    <!-- NAVIGATION (Sticky, Glassmorphism) -->
-    <nav class="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-100/50 transition-all">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <!-- Brand -->
-                <div class="flex items-center gap-8">
-                    <a href="/trades" class="text-xl font-semibold tracking-tight text-slate-900">
-                        Portfolio
+{% block content %}
+<!-- NAVIGATION (Sticky, Glassmorphism) -->
+<nav class="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-100/50 transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <!-- Brand -->
+            <div class="flex items-center gap-8">
+                <a href="/trades" class="text-xl font-semibold tracking-tight text-slate-900">
+                    Portfolio
+                </a>
+                <!-- Links -->
+                <div class="hidden md:flex items-center space-x-1">
+                    <a href="/trades"
+                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Dashboard
                     </a>
-                    <!-- Links -->
-                    <div class="hidden md:flex items-center space-x-1">
-                        <a href="/trades"
-                            class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-                            Dashboard
-                        </a>
-                        <a href="/screener"
-                            class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-                            Screener
-                        </a>
-                    </div>
+                    <a href="/screener"
+                        class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Screener
+                    </a>
                 </div>
             </div>
         </div>
-    </nav>
+    </div>
+</nav>
 
-    <!-- MAIN CONTENT -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+<!-- MAIN CONTENT -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
 
-        <!-- KPI CARDS (2 Large Cards) -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Active Trades -->
-            <article
-                class="bg-white rounded-2xl p-8 shadow-saas flex flex-col justify-center items-center text-center h-48 border border-white/50">
-                <div class="flex-grow flex items-center justify-center">
-                    <span class="text-6xl font-light text-slate-900 tracking-tighter tabular-nums">
-                        {{ summary.count }}
+    <!-- KPI CARDS (2 Large Cards) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Active Trades -->
+        <article
+            class="bg-white rounded-2xl p-8 shadow-saas flex flex-col justify-center items-center text-center h-48 border border-white/50">
+            <div class="flex-grow flex items-center justify-center">
+                <span class="text-6xl font-light text-slate-900 tracking-tighter tabular-nums">
+                    {{ summary.count }}
+                </span>
+            </div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mt-auto">Active Trades</p>
+        </article>
+
+        <!-- Total PnL -->
+        <article
+            class="bg-white rounded-2xl p-8 shadow-saas flex flex-col justify-center items-center text-center h-48 border border-white/50">
+            <div class="flex-grow flex items-center justify-center">
+                <span
+                    class="text-6xl font-light tracking-tighter tabular-nums {{ 'text-emerald-500' if summary.open_pnl >= 0 else 'text-rose-500' }}">
+                    {{ "%+.2f"|format(summary.open_pnl) }} <span
+                        class="text-2xl font-normal text-slate-400 align-top mt-2 inline-block">$</span>
+                </span>
+            </div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mt-auto">Total PnL</p>
+        </article>
+    </div>
+
+    <!-- STRATEGY SECTION (Grid 1/3 + 2/3) -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Strategy Allocation (Donut) -->
+        <article
+            class="lg:col-span-1 bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center relative h-80">
+            <!-- Donut Chart -->
+            <div class="w-full h-full flex items-center justify-center relative">
+                {{ donut_html | safe }}
+
+                <!-- Center Overlay For Total Invested -->
+                <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span class="text-2xl font-medium text-slate-700 tracking-tight">
+                        {{ "{:,.0f}".format(summary.invested) }}
                     </span>
                 </div>
-                <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mt-auto">Active Trades</p>
-            </article>
+            </div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mt-2">Strategy Allocation</p>
+        </article>
 
-            <!-- Total PnL -->
-            <article
-                class="bg-white rounded-2xl p-8 shadow-saas flex flex-col justify-center items-center text-center h-48 border border-white/50">
-                <div class="flex-grow flex items-center justify-center">
-                    <span
-                        class="text-6xl font-light tracking-tighter tabular-nums {{ 'text-emerald-500' if summary.open_pnl >= 0 else 'text-rose-500' }}">
-                        {{ "%+.2f"|format(summary.open_pnl) }} <span
-                            class="text-2xl font-normal text-slate-400 align-top mt-2 inline-block">$</span>
-                    </span>
-                </div>
-                <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mt-auto">Total PnL</p>
-            </article>
-        </div>
-
-        <!-- STRATEGY SECTION (Grid 1/3 + 2/3) -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-            <!-- Strategy Allocation (Donut) -->
-            <article
-                class="lg:col-span-1 bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center relative h-80">
-                <!-- Donut Chart -->
-                <div class="w-full h-full flex items-center justify-center relative">
-                    {{ donut_html | safe }}
-
-                    <!-- Center Overlay For Total Invested -->
-                    <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <span class="text-2xl font-medium text-slate-700 tracking-tight">
-                            {{ "{:,.0f}".format(summary.invested) }}
-                        </span>
-                    </div>
-                </div>
-                <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest mt-2">Strategy Allocation</p>
-            </article>
-
-            <!-- Strategy Performance (List) -->
-            <article class="lg:col-span-2 bg-white rounded-2xl p-8 shadow-saas flex flex-col h-80">
-                <header class="flex justify-between items-center mb-6">
-                    <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Strategy Performance</h3>
-                </header>
-
-                <div class="flex-grow space-y-4 overflow-y-auto pr-2">
-                    {% for name, stats in strategy_stats.items() %}
-                    {% set link_url = '#' %}
-                    {% if "Croc" in name %} {% set link_url = '/trades/croc' %}
-                    {% elif "Dip" in name %} {% set link_url = '/trades/dip-buyer' %}
-                    {% elif "Turnover" in name %} {% set link_url = '/trades/turnover' %}
-                    {% elif "Percent" in name %} {% set link_url = '/trades/twopercent' %}
-                    {% elif "Momentum" in name %} {% set link_url = '/trades/ndx-momentum' %}
-                    {% endif %}
-
-                    <a href="{{ link_url }}"
-                        class="group flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-blue-100 hover:bg-slate-50 transition-all hover:-translate-y-0.5 block">
-                        <div class="flex items-center gap-4">
-                            <!-- Icon Placeholder based on strategy -->
-                            <div
-                                class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
-                                {% if "Croc" in name %}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
-                                    fill="currentColor">
-                                    <path fill-rule="evenodd"
-                                        d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                                {% elif "Dip" in name %}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
-                                    fill="currentColor">
-                                    <path fill-rule="evenodd"
-                                        d="M12 13a1 1 0 100 2h5a1 1 0 001-1V9a1 1 0 10-2 0v2.586l-4.293-4.293a1 1 0 00-1.414 0L8 9.586 4.293 5.879a1 1 0 00-1.414 1.414l5 5a1 1 0 001.414 0L11 9.414 14.586 13H12z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                                {% elif "Percent" in name %}
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
-                                    stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                                    <path stroke-linecap="round" stroke-linejoin="round"
-                                        d="M9 14.25l6-6m4.5 3a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 4.5c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008v-.015z" />
-                                </svg>
-                                {% elif "Momentum" in name %}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none"
-                                    stroke="currentColor" stroke-width="2" stroke-linecap="round"
-                                    stroke-linejoin="round">
-                                    <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-                                    <polyline points="17 6 23 6 23 12"></polyline>
-                                </svg>
-                                {% else %}
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
-                                    fill="currentColor">
-                                    <path fill-rule="evenodd"
-                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                                {% endif %}
-                            </div>
-                            <div>
-                                <h4 class="text-sm font-semibold text-slate-900">{{ name }}</h4>
-                                <span class="text-xs text-slate-400 font-medium">{{ stats.count }} Trades</span>
-                            </div>
-                        </div>
-                        <div class="text-right">
-                            <div
-                                class="text-lg font-medium tabular-nums {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }}">
-                                {{ "%+.2f"|format(stats.pnl) }} $
-                            </div>
-                        </div>
-                    </a>
-                    {% endfor %}
-                </div>
-            </article>
-        </div>
-
-        <!-- ACTIVE TRADES TABLE -->
-        {% if active_trades %}
-        <section class="bg-white rounded-2xl shadow-saas overflow-hidden border border-slate-100">
-            <header class="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white">
-                <h2 class="text-lg font-semibold text-slate-900">Active Trades</h2>
-                <!-- No filter button as requested -->
+        <!-- Strategy Performance (List) -->
+        <article class="lg:col-span-2 bg-white rounded-2xl p-8 shadow-saas flex flex-col h-80">
+            <header class="flex justify-between items-center mb-6">
+                <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Strategy Performance</h3>
             </header>
 
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr>
-                            <th
-                                class="px-8 py-4 bg-white text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                                Asset</th>
-                            <th
-                                class="px-6 py-4 bg-white text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                                Strategy</th>
+            <div class="flex-grow space-y-4 overflow-y-auto pr-2">
+                {% for name, stats in strategy_stats.items() %}
+                {% set link_url = '#' %}
+                {% if "Croc" in name %} {% set link_url = '/trades/croc' %}
+                {% elif "Dip" in name %} {% set link_url = '/trades/dip-buyer' %}
+                {% elif "Turnover" in name %} {% set link_url = '/trades/turnover' %}
+                {% elif "Percent" in name %} {% set link_url = '/trades/twopercent' %}
+                {% elif "Momentum" in name %} {% set link_url = '/trades/ndx-momentum' %}
+                {% endif %}
 
-                            <th
-                                class="px-6 py-4 bg-white text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                                Entry</th>
-                            <th
-                                class="px-8 py-4 bg-white text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100 text-right">
-                                PnL</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">
-                        {% for t in active_trades %}
-                        <tr class="hover:bg-slate-50/80 transition-colors group">
-                            <!-- ASSET -->
-                            <td class="px-8 py-5 align-middle">
-                                <div class="flex flex-col">
-                                    <span
-                                        class="text-base font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{{
-                                        t.symbol }}</span>
-                                </div>
-                            </td>
-
-                            <!-- STRATEGY -->
-                            <td class="px-6 py-5 align-middle">
-                                <span
-                                    class="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
-                                    {{ t.strategy }}
-                                </span>
-                            </td>
-
-                            <!-- ENTRY -->
-                            <td class="px-6 py-5 align-middle">
-                                <span class="text-sm font-medium text-slate-500 tabular-nums">{{ t.display_entry
-                                    }}</span>
-                            </td>
-
-                            <!-- PNL -->
-                            <td class="px-8 py-5 align-middle text-right">
-                                <span
-                                    class="text-sm font-medium tabular-nums {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
-                                    {{ "%+.2f"|format(t.unrealized_pnl) }} $
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-
-            <!-- FOOTER -->
-            <div class="px-8 py-6 border-t border-slate-100 bg-slate-50/50 text-center">
-                <a href="#"
-                    class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">
-                    Show all trades ({{ active_trades|length }})
-                    <svg xmlns="http://www.w3.org/2000/svg" class="ml-1 h-4 w-4" viewBox="0 0 20 20"
-                        fill="currentColor">
-                        <path fill-rule="evenodd"
-                            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                            clip-rule="evenodd" />
-                    </svg>
+                <a href="{{ link_url }}"
+                    class="group flex items-center justify-between p-4 rounded-xl border border-slate-100 hover:border-blue-100 hover:bg-slate-50 transition-all hover:-translate-y-0.5 block">
+                    <div class="flex items-center gap-4">
+                        <!-- Icon Placeholder based on strategy -->
+                        <div
+                            class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                            {% if "Croc" in name %}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
+                                fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            {% elif "Dip" in name %}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
+                                fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M12 13a1 1 0 100 2h5a1 1 0 001-1V9a1 1 0 10-2 0v2.586l-4.293-4.293a1 1 0 00-1.414 0L8 9.586 4.293 5.879a1 1 0 00-1.414 1.414l5 5a1 1 0 001.414 0L11 9.414 14.586 13H12z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            {% elif "Percent" in name %}
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5"
+                                stroke="currentColor" class="w-5 h-5">
+                                <path stroke-linecap="round" stroke-linejoin="round"
+                                    d="M9 14.25l6-6m4.5 3a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 4.5c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008v-.015z" />
+                            </svg>
+                            {% elif "Momentum" in name %}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                                <polyline points="17 6 23 6 23 12"></polyline>
+                            </svg>
+                            {% else %}
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
+                                fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            {% endif %}
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-semibold text-slate-900">{{ name }}</h4>
+                            <span class="text-xs text-slate-400 font-medium">{{ stats.count }} Trades</span>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <div
+                            class="text-lg font-medium tabular-nums {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }}">
+                            {{ "%+.2f"|format(stats.pnl) }} $
+                        </div>
+                    </div>
                 </a>
+                {% endfor %}
             </div>
-        </section>
-        {% endif %}
+        </article>
+    </div>
 
-    </main>
+    <!-- ACTIVE TRADES TABLE -->
+    {% if active_trades %}
+    <section class="bg-white rounded-2xl shadow-saas overflow-hidden border border-slate-100">
+        <header class="px-8 py-6 border-b border-slate-100 flex items-center justify-between bg-white">
+            <h2 class="text-lg font-semibold text-slate-900">Active Trades</h2>
+            <!-- No filter button as requested -->
+        </header>
 
-</body>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr>
+                        <th
+                            class="px-8 py-4 bg-white text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                            Asset</th>
+                        <th
+                            class="px-6 py-4 bg-white text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                            Strategy</th>
 
-</html>
+                        <th
+                            class="px-6 py-4 bg-white text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                            Entry</th>
+                        <th
+                            class="px-8 py-4 bg-white text-xs font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100 text-right">
+                            PnL</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                    {% for t in active_trades %}
+                    <tr class="hover:bg-slate-50/80 transition-colors group">
+                        <!-- ASSET -->
+                        <td class="px-8 py-5 align-middle">
+                            <div class="flex flex-col">
+                                <span
+                                    class="text-base font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{{
+                                    t.symbol }}</span>
+                            </div>
+                        </td>
+
+                        <!-- STRATEGY -->
+                        <td class="px-6 py-5 align-middle">
+                            <span
+                                class="inline-flex items-center rounded-md bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">
+                                {{ t.strategy }}
+                            </span>
+                        </td>
+
+                        <!-- ENTRY -->
+                        <td class="px-6 py-5 align-middle">
+                            <span class="text-sm font-medium text-slate-500 tabular-nums">{{ t.display_entry
+                                }}</span>
+                        </td>
+
+                        <!-- PNL -->
+                        <td class="px-8 py-5 align-middle text-right">
+                            <span
+                                class="text-sm font-medium tabular-nums {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
+                                {{ "%+.2f"|format(t.unrealized_pnl) }} $
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- FOOTER -->
+        <div class="px-8 py-6 border-t border-slate-100 bg-slate-50/50 text-center">
+            <a href="#"
+                class="inline-flex items-center text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors">
+                Show all trades ({{ active_trades|length }})
+                <svg xmlns="http://www.w3.org/2000/svg" class="ml-1 h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd"
+                        d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                        clip-rule="evenodd" />
+                </svg>
+            </a>
+        </div>
+    </section>
+    {% endif %}
+
+</main>
+{% endblock %}
