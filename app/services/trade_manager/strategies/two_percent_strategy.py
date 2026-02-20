@@ -4,7 +4,7 @@ import pandas as pd
 from typing import override, final, Any
 
 from ....database.repositories.trade import TradeRepository
-from ....types import ExitReason
+from ....types import ExitReason, TradeData
 from ....models import Order, TradeParams, OrderLeg
 from ....tools.market_holidays import MarketHolidayChecker
 from .abstract import BaseTradeStrategy
@@ -33,9 +33,9 @@ class TwoPercentStrategy(BaseTradeStrategy):
         self.holiday_checker = MarketHolidayChecker()
 
     @override
-    def get_current_params(
+    def get_current_parameters(
         self, 
-        trade: dict[str, Any], 
+        trade: TradeData, 
         dataframe_history: pd.DataFrame | None = None, 
         repository: TradeRepository | None = None
     ) -> TradeParams | None:
@@ -138,53 +138,79 @@ class TwoPercentStrategy(BaseTradeStrategy):
         open_price = float(candle['open'])
         low_price = float(candle['low'])
         date_string = str(candle['date'])
+        current_date_obj = pd.Timestamp(candle['date']).date()
 
-        # 0. Date/Session Validation
-        # Rules: 
-        # - Day 0 (Signal Day): Too early.
-        # - Day 1 (Next Trading Day): STRICT Entry Window.
-        # - Day > 1: Too late, invalidate.
+        # 0. Session & Holiday Validation
         days_passed = self._get_trading_days_post_signal(trade, dataframe_history)
-        
         if days_passed == 0:
-            # Too early (Signal Day)
             return None
         
-        date_string = str(candle["date"])
-        if days_passed > 1:
-            # Too late: Missed the entry window
-            return self._reject_setup(
-                trade, repository, date_string, "Missed Entry Window"
-            )
-        
-        # Check Fill (Day 1)
-        # 1. Gap Down Check: Open below Limit -> Fill at Open
-        if open_price < limit_price:
-            return self._execute_activation(
-                trade, 
-                repository, 
-                open_price, 
-                "Gap Down (Open < Limit)", 
-                date_string
-            )
-        
-        # 2. Normal Check: Low below Limit -> Fill at Limit
-        if low_price <= limit_price:
-            return self._execute_activation(
-                trade, 
-                repository, 
-                limit_price, 
-                "Limit Hit", 
-                date_string
-            )
+        signal_date = self._get_signal_date(trade)
+        if not signal_date:
+            return None
+
+        # Determine "Calendar Day 1" (Expected Monday)
+        calendar_day_1 = (signal_date + pd.Timedelta(days=1)).date()
+        if calendar_day_1.weekday() >= 5: # Skip Weekend
+            calendar_day_1 = (signal_date + pd.Timedelta(days=3)).date()
             
-        # 3. Invalidation: If it didn't fill on Day 1, it's invalid
-        return self._invalidate_trade(
-            trade,
-            repository,
-            low_price,
-            limit_price,
-            date_string
+        is_today_holiday = self.holiday_checker.is_holiday(current_date_obj)
+        was_day_1_holiday = self.holiday_checker.is_holiday(calendar_day_1)
+
+        # 1. Day 1 Processing (Strict Entry Window)
+        if days_passed == 1:
+            # Check Fill (Gap Down)
+            if open_price < limit_price:
+                return self._execute_activation(
+                    trade, repository, open_price, "Gap Down (Open < Limit)", date_string
+                )
+            
+            # Check Fill (Limit Hit)
+            if low_price <= limit_price:
+                return self._execute_activation(
+                    trade, repository, limit_price, "Limit Hit", date_string
+                )
+            
+            # No Fill on Day 1:
+            # If it's a holiday, keep alive for Tuesday.
+            if is_today_holiday:
+                return None
+                
+            # Not a holiday and no fill -> Invalidate
+            return self._reject_setup(
+                trade, repository, date_string, "Missed Entry Window (Day 1)"
+            )
+
+        # 2. Day 2 Processing (Only allowed if Day 1 was a holiday)
+        if days_passed == 2 and was_day_1_holiday:
+            # Check Fill (Gap Down)
+            if open_price < limit_price:
+                return self._execute_activation(
+                    trade, 
+                    repository, 
+                    open_price, 
+                    "Gap Down (Tuesday-after-Holiday)", 
+                    date_string
+                )
+            
+            # Check Fill (Limit Hit)
+            if low_price <= limit_price:
+                return self._execute_activation(
+                    trade, 
+                    repository, 
+                    limit_price, 
+                    "Limit Hit (Tuesday-after-Holiday)", 
+                    date_string
+                )
+            
+            # No fill on Tuesday after Monday holiday -> Invalidate
+            return self._reject_setup(
+                trade, repository, date_string, "Missed Entry Window (Day 2)"
+            )
+
+        # 3. Everything else: Too late
+        return self._reject_setup(
+            trade, repository, date_string, "Missed Entry Window (Stale Signal)"
         )
 
     @override
