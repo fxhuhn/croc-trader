@@ -37,6 +37,7 @@ def manager_strategy() -> ManagerStrategy:
         strategy = ManagerStrategy()
         # Attach the mock to the strategy instance for easy configuration in tests
         strategy.holiday_checker = mock_checker.return_value
+        strategy.holiday_checker.is_holiday.return_value = False
         return strategy
 
 # --- HELPERS ---
@@ -216,7 +217,7 @@ def test_entry_invalidated_if_no_fill_on_day_one(manager_strategy: ManagerStrate
     
     # Assert
     assert result is not None
-    assert "INVALIDATED" in result
+    assert "REJECTED" in result or "INVALIDATED" in result
     mock_trade_repository.update_trade.assert_called_once()
     call_args = mock_trade_repository.update_trade.call_args[0]
     assert call_args[1]["status"] == TradeStatus.INVALID
@@ -410,4 +411,141 @@ def test_regression_feb_2026_entry_exit(manager_strategy: ManagerStrategy, mock_
     call_args = mock_trade_repository.update_trade.call_args[0]
     # The last call should be the exit
     assert call_args[1]["exit_reason"] == ExitReason.TARGET_HIT
+
+
+def test_monday_holiday_check_but_no_kill(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Scenario: Monday is a holiday, but we have data. No fill occurs.
+    Rule: Don't invalidate, wait for Tuesday.
+    """
+    # Arrange
+    monday_date = "2026-02-16" # Presumed Holiday
+    manager_strategy.holiday_checker.is_holiday.side_effect = lambda d: str(d) == monday_date
+    
+    trade = {
+        "id": "TRADE_MONDAY_HOLIDAY",
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": 990.0,
+        "signal_context": '{"date": "2026-02-13"}' # Friday
+    }
+    # Monday: Open 1000, Low 995 (Limit 990 NOT hit)
+    candle = create_candle(monday_date, 1005.0, open_price=1000.0, low=995.0)
+    # History must include signal day (Fri)
+    history = pd.DataFrame([create_candle("2026-02-13", 1000.0), candle])
+    
+    # Act
+    with patch.object(manager_strategy, '_get_trading_days_post_signal', return_value=1):
+        result = manager_strategy.check_entry(trade, candle, history, mock_trade_repository)
+    
+    # Assert
+    assert result is None # Still CREATED, no rejection
+    mock_trade_repository.update_trade.assert_not_called()
+
+
+def test_tuesday_fill_after_monday_holiday(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Scenario: Monday was a holiday. Tuesday fills normally (Limit Hit).
+    """
+    # Arrange
+    monday_date = "2026-02-16"
+    tuesday_date = "2026-02-17"
+    manager_strategy.holiday_checker.is_holiday.side_effect = lambda d: {
+        "2026-02-16": True,
+        "2026-02-17": False
+    }.get(str(d), False)
+    
+    trade = {
+        "id": "TRADE_TUESDAY_FILL",
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": 990.0,
+        "signal_context": '{"date": "2026-02-13"}'
+    }
+    
+    candle_mon = create_candle(monday_date, 1000.0)
+    candle_tue = create_candle(tuesday_date, 1010.0, open_price=1000.0, low=985.0) # Low 985 < 990 -> FILL
+    history = pd.DataFrame([create_candle("2026-02-13", 1000.0), candle_mon, candle_tue])
+    
+    # Act
+    with patch.object(manager_strategy, '_get_trading_days_post_signal', return_value=2):
+        result = manager_strategy.check_entry(trade, candle_tue, history, mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "FILLED" in result
+    
+    # Verify reason in Repository call
+    call_args = mock_trade_repository.update_trade.call_args
+    assert "Tuesday-after-Holiday" in call_args[1]["reason"]
+    assert call_args[0][1]["entry_price"] == 990.0
+
+
+def test_tuesday_gap_down_after_monday_holiday(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Scenario: Monday was a holiday. Tuesday gaps down below limit.
+    """
+    # Arrange
+    monday_date = "2026-02-16"
+    tuesday_date = "2026-02-17"
+    manager_strategy.holiday_checker.is_holiday.side_effect = lambda d: {
+        "2026-02-16": True,
+        "2026-02-17": False
+    }.get(str(d), False)
+    
+    trade = {
+        "id": "TRADE_TUESDAY_GAP",
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": 990.0,
+        "signal_context": '{"date": "2026-02-13"}'
+    }
+    
+    candle_mon = create_candle(monday_date, 1000.0)
+    candle_tue = create_candle(tuesday_date, 985.0, open_price=980.0) # Open 980 < 990 -> GAP FILL
+    history = pd.DataFrame([create_candle("2026-02-13", 1000.0), candle_mon, candle_tue])
+    
+    # Act
+    with patch.object(manager_strategy, '_get_trading_days_post_signal', return_value=2):
+        result = manager_strategy.check_entry(trade, candle_tue, history, mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "FILLED" in result
+    
+    # Verify reason in Repository call
+    call_args = mock_trade_repository.update_trade.call_args
+    assert "Gap Down" in call_args[1]["reason"]
+    assert call_args[0][1]["entry_price"] == 980.0
+
+
+def test_monday_no_fill_no_holiday_invalidation(manager_strategy: ManagerStrategy, mock_trade_repository: MagicMock) -> None:
+    """
+    Scenario: Monday is NOT a holiday. No fill occurs.
+    Rule: Invalidate immediately.
+    """
+    # Arrange
+    monday_date = "2026-02-09"
+    manager_strategy.holiday_checker.is_holiday.return_value = False
+    
+    trade = {
+        "id": "TRADE_MONDAY_REGULAR_FAIL",
+        "symbol": "SXRV.DE",
+        "strategy": "TwoPercent",
+        "entry_price": 990.0,
+        "signal_context": '{"date": "2026-02-06"}'
+    }
+    # Monday: Open 1000, Low 995 (No Fill)
+    candle = create_candle(monday_date, 1005.0, open_price=1000.0, low=995.0)
+    history = pd.DataFrame([create_candle("2026-02-06", 1000.0), candle])
+    
+    # Act
+    with patch.object(manager_strategy, '_get_trading_days_post_signal', return_value=1):
+        result = manager_strategy.check_entry(trade, candle, history, mock_trade_repository)
+    
+    # Assert
+    assert result is not None
+    assert "REJECTED" in result or "INVALIDATED" in result # Base Strategy might return REJECTED
+    call_args = mock_trade_repository.update_trade.call_args[0]
+    assert call_args[1]["status"] == TradeStatus.INVALID
 

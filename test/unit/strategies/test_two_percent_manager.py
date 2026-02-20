@@ -62,7 +62,7 @@ def test_check_entry_missed_window_expiration(strategy, mock_trade_repo):
         "signal_context": '{"date": "2026-02-13"}'
     }
     # Low 101. Must provide 'open' as well.
-    candle = pd.Series({"open": 105.0, "low": 101.0, "date": pd.Timestamp("2026-02-16")}, name=pd.Timestamp("2026-02-16"))
+    candle = pd.Series({"open": 105.0, "low": 101.0, "date": pd.Timestamp("2026-02-09")}, name=pd.Timestamp("2026-02-09"))
     
     with patch.object(strategy, "_get_trading_days_post_signal", return_value=1):
         strategy.check_entry(trade, candle, pd.DataFrame([candle]), mock_trade_repo)
