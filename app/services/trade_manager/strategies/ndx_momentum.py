@@ -28,7 +28,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
     DEFAULT_BUDGET: float = 2000.0
 
     @override
-    def get_current_params(
+    def get_current_parameters(
         self, 
         trade: TradeData, 
         dataframe_history: pd.DataFrame | None = None, 
@@ -51,7 +51,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             extras={
                 "momentum_score": self._get_context_value(trade, "momentum_score"),
                 "qqq_regime": self._get_context_value(trade, "qqq_regime"),
-                "regime": self._get_context_value(trade, "regime"),
+                "regime": f"{self._get_context_value(trade, 'regime')} (UNUSED)",
                 "signal_date": self._get_context_value(trade, "date")
             }
         )
@@ -67,9 +67,11 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         """
         Evaluates and executes entry for a candidate trade.
         
-        This method checks for market regime favorability and ensures no
-        duplicate positions exist before activating a trade at the current
-        market open.
+        This method checks for market regime favorability (QQQ SMA Filter) 
+        and ensures no duplicate positions exist before activating a trade 
+        at the current market open.
+        
+        Note: The breadth-based combined regime is currently ignored.
         
         Args:
             trade: The candidate trade data.
@@ -80,13 +82,13 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         Returns:
             A string describing the activation status or None if no entry occurred.
         """
-        # 1. Regime Check (Combined signal from screener)
-        current_regime = self._get_context_value(trade, "regime")
+        # 1. Regime Check (Using QQQ SMA Filter, ignoring Breadth)
+        qqq_regime = self._get_context_value(trade, "qqq_regime")
         symbol = trade.get("symbol")
         
-        if current_regime != "BULL":
+        if qqq_regime != "BULL":
             return self._reject_setup(
-                trade, repository, str(candle["date"]), f"Combined Regime: {current_regime}"
+                trade, repository, str(candle["date"]), f"QQQ Regime: {qqq_regime}"
             )
 
         # 2. Duplicate Check (Active positions in the same strategy)
@@ -98,11 +100,17 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
                 )
 
         # 3. Execution (Market On Open)
+        # We ensure at least one trading day has passed since the signal
+        # to avoid look-ahead bias (entering on the same day as the screen).
+        trading_days_passed = self._get_trading_days_post_signal(trade, dataframe_history)
+        if trading_days_passed < 1:
+            return None
+
         date_string = str(candle["date"])
         fill_price = float(candle["open"])
         
         return self._execute_activation(
-            trade, repository, fill_price, "REBAL_ENTRY", date_string
+            trade, repository, fill_price, "REBALANCE_ENTRY", date_string
         )
 
     @override
@@ -143,33 +151,42 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         symbol = trade.get("symbol")
         
         # 1. Fetch latest "Rebalance Winners" from the trades table
-        all_strategy_trades = repository.get_all_by_strategy(self.name)
-        if not all_strategy_trades:
-            return None
+        # We use a primitive cache on the strategy instance to avoid O(N^2) 
+        # lookups during a full portfolio rebalance on the same day.
+        cache_key = f"latest_leaders_{date_string}"
+        if not hasattr(self, "_rebalance_cache") or self._rebalance_cache.get("key") != cache_key:
+            all_strategy_trades = repository.get_all_by_strategy(self.name)
+            if not all_strategy_trades:
+                return None
+                
+            latest_signal_date = "0000-00-00"
+            leaders_symbols = set()
             
-        # Group by context date to find the latest rebalance batch
-        latest_signal_date = "0000-00-00"
-        leaders_symbols = set()
+            for historical_trade in all_strategy_trades:
+                context_date_value = self._get_context_value(historical_trade, "date") or "0000-00-00"
+                if context_date_value > latest_signal_date:
+                    latest_signal_date = context_date_value
+                    leaders_symbols = {historical_trade["symbol"]}
+                elif context_date_value == latest_signal_date:
+                    leaders_symbols.add(historical_trade["symbol"])
+            
+            self._rebalance_cache = {
+                "key": cache_key,
+                "latest_signal_date": latest_signal_date,
+                "leaders_symbols": leaders_symbols
+            }
         
-        for historical_trade in all_strategy_trades:
-            signal_context = historical_trade.get("signal_context", {})
-            context_date_value = signal_context.get("date", "0000-00-00")
-            if context_date_value > latest_signal_date:
-                latest_signal_date = context_date_value
-                leaders_symbols = {historical_trade["symbol"]}
-            elif context_date_value == latest_signal_date:
-                leaders_symbols.add(historical_trade["symbol"])
+        latest_signal_date = self._rebalance_cache["latest_signal_date"]
+        leaders_symbols = self._rebalance_cache["leaders_symbols"]
         
-        # 2. Check if current trade belongs to the latest batch
-        current_signal_context = trade.get("signal_context", {})
-        current_signal_date = current_signal_context.get("date", "0000-00-00")
-        
-        if current_signal_date < latest_signal_date or symbol not in leaders_symbols:
-            logger.info("[%s] Symbol %s dropped in rebalance (Current:%s < Latest:%s)", 
-                        self.name, symbol, current_signal_date, latest_signal_date)
+        # 2. Check if current trade symbol is still in the latest batch of leaders
+        # We only exit if the symbol is NOT in the latest winners list.
+        # This allows positions to persist across months without unnecessary turnover.
+        if symbol not in leaders_symbols:
+            logger.info("[%s] Symbol %s dropped from leaders list in rebalance", self.name, symbol)
             exit_price = float(current_candle["open"])
             return self._close_trade(
-                trade, repository, exit_price, "REBAL_EXIT", date_string
+                trade, repository, exit_price, "REBALANCE_EXIT", date_string
             )
             
         return None
@@ -216,7 +233,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             type="MKT",
             price=0.0,
             quantity=shares_quantity,
-            tif="OPG"
+            time_in_force="OPG"
         )
         
         return Order(

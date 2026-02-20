@@ -21,7 +21,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
     name = Strategies.HoldTarget
 
     @override
-    def get_current_params(
+    def get_current_parameters(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
@@ -235,7 +235,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
             type="STP",
             price=entry_price,
             quantity=quantity,
-            tif="DAY"
+            time_in_force="DAY"
         )
         
         exits = []
@@ -247,7 +247,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 type="STP",
                 price=stop_loss,
                 quantity=quantity,
-                tif="GTC"
+                time_in_force="GTC"
             ))
         else:
             logger.warning(f"[{symbol}] Missing stop loss for HoldTarget.")
@@ -261,7 +261,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 type="LMT",
                 price=target_price,
                 quantity=quantity,
-                tif="GTC"
+                time_in_force="GTC"
             ))
 
         return Order(

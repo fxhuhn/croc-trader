@@ -62,7 +62,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         return close_price > open_price
 
     @override
-    def get_current_params(
+    def get_current_parameters(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,

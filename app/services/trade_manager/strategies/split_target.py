@@ -27,7 +27,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
     name = Strategies.SplitTarget
 
     @override
-    def get_current_params(
+    def get_current_parameters(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
@@ -349,7 +349,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
             type="STP",
             price=entry_price,
             quantity=quantity,
-            tif="DAY"
+            time_in_force="DAY"
         )
         
         exits = []
@@ -361,7 +361,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 type="STP",
                 price=stop_loss,
                 quantity=quantity,
-                tif="GTC"
+                time_in_force="GTC"
             ))
             
         # 4. Exit 2: TP1 (50%)
@@ -373,7 +373,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                     type="LMT",
                     price=take_profit_1,
                     quantity=quantity_half,
-                    tif="GTC"
+                    time_in_force="GTC"
                 ))
         
         # 5. Exit 3: TP3 (Remaining)
@@ -385,7 +385,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                     type="LMT",
                     price=take_profit_3,
                     quantity=quantity_rem,
-                    tif="GTC"
+                    time_in_force="GTC"
                 ))
 
         return Order(

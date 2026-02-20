@@ -84,7 +84,7 @@ class BaseTradeStrategy(ABC):
         raise NotImplementedError("Subclasses must implement generate_orders")
 
     @abstractmethod
-    def get_current_params(
+    def get_current_parameters(
         self,
         trade: dict[str, Any],
         dataframe_history: pd.DataFrame | None,
@@ -101,7 +101,7 @@ class BaseTradeStrategy(ABC):
         Returns:
             TradeParams | None: The calculated trade parameters.
         """
-        raise NotImplementedError("Subclasses must implement get_current_params")
+        raise NotImplementedError("Subclasses must implement get_current_parameters")
 
     # --- Shared Logic & Helpers (DRY) ---
 
@@ -126,10 +126,16 @@ class BaseTradeStrategy(ABC):
     def _get_context_value(self, trade: dict[str, Any], key: str) -> Any | None:
         """Helper to extract values from the JSON signal_context."""
         try:
-            context_str = trade.get("signal_context")
-            if not context_str:
+            context_data = trade.get("signal_context")
+            if not context_data:
                 return None
-            context = json.loads(context_str)
+            
+            # If already a dict, use it directly (Repository might have parsed it)
+            if isinstance(context_data, dict):
+                return context_data.get(key)
+                
+            # Otherwise parse from JSON string
+            context = json.loads(context_data)
             return context.get(key)
         except (json.JSONDecodeError, TypeError):
             return None

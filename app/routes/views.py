@@ -422,13 +422,7 @@ def view_trades_turnover() -> str:
     active_groups = service.group_trades_by_symbol(active)
     
     # Stats
-    summary_metrics = service.get_portfolio_summary(active)
-    stats = {
-        "invested": summary_metrics["invested"],
-        "open_positions": summary_metrics["count"],
-        "open_pnl": summary_metrics["open_pnl"],
-    }
-    
+    summary = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
     
     # Aggregations
@@ -459,10 +453,11 @@ def view_trades_turnover() -> str:
 
     return render_template(
         "trades_turnover.html", 
-        stats=stats,
-        active_trades=active_groups,  # Confirmed mapping based on analysis
+        summary=summary,
+        active_trades=active_groups,  
         history_groups=history_groups,
-        history_summary=closed_summary,
+        closed_trades=closed,
+        closed_summary=closed_summary,
         performance_index=list(index_stats.values()),
         performance_variants=list(variant_stats.values())
     )
@@ -481,7 +476,8 @@ def view_trades_ndx_momentum() -> str:
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
-    summary_metrics = service.get_portfolio_summary(active)
+    summary = service.get_portfolio_summary(active)
+    closed_summary = service.get_closed_summary(closed)
     history_groups = service.group_trades_history(closed)
 
     return render_template(
@@ -489,7 +485,8 @@ def view_trades_ndx_momentum() -> str:
         active_trades=active,
         closed_trades=closed,
         history_groups=history_groups,
-        summary=summary_metrics
+        summary=summary,
+        closed_summary=closed_summary
     )
 
 
@@ -506,7 +503,7 @@ def view_trades_twopercent() -> str:
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
-    summary_metrics = service.get_portfolio_summary(active)
+    summary = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
     
     active_groups = service.group_trades_by_symbol(active)
@@ -518,7 +515,7 @@ def view_trades_twopercent() -> str:
         active_groups=active_groups,
         closed_trades=closed,
         history_groups=history_groups,
-        summary=summary_metrics,
+        summary=summary,
         closed_summary=closed_summary,
         index_stats={},  # Standard compatibility
     )

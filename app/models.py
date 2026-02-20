@@ -25,7 +25,7 @@ class OrderLeg:
     type: "OrderType"
     price: float
     quantity: int | None = None
-    tif: "TimeInForce" = "DAY"
+    time_in_force: "TimeInForce" = "DAY"
 
 @dataclass
 class Order:

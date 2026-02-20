@@ -25,12 +25,12 @@ class DipBuyerStrategy(BaseTradeStrategy):
     TIME_STOP_DAYS: int = 8
     
     @override
-    def get_current_params(
+    def get_current_parameters(
         self, 
         trade: TradeData, 
         dataframe_history: pd.DataFrame | None = None, 
         repository: TradeRepository | None = None
-    ) -> TradeParams:
+    ) -> TradeParams | None:
         """Extracts current strategy parameters for display.
 
         Args:
@@ -235,7 +235,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
             type="LMT",
             price=entry_price,
             quantity=quantity,
-            tif="DAY"
+            time_in_force="DAY"
         )
         
         exits = []
@@ -246,7 +246,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 type="LOC",
                 price=target_price,
                 quantity=quantity,
-                tif="DAY"
+                time_in_force="DAY"
             ))
 
         return Order(
