@@ -19,6 +19,7 @@ class TurnoverContext(TypedDict, total=False):
     """Context structure for Turnover Strategy signal data."""
 
     green_candle_count: int
+    last_processed_date: str
 
 
 @final
@@ -87,6 +88,51 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             },
         )
 
+    def _parse_turnover_context(self, trade: TradeData) -> TurnoverContext:
+        """
+        Safely extracts and parses the TurnoverContext from the trade JSON.
+        
+        Args:
+            trade: The active or created trade data.
+            
+        Returns:
+            TurnoverContext: The parsed dictionary containing context data.
+        """
+        raw_context = trade.get("signal_context") or "{}"
+        try:
+            return json.loads(raw_context)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to decode signal_context for trade {trade.get('id')}: {e}")
+            return {"green_candle_count": 0}
+
+    def _create_exit_order(self, symbol: str, quantity: int) -> Order:
+        """Generates an immediate Market Sell Order."""
+        return Order(
+            id=str(uuid.uuid4()),
+            symbol=symbol,
+            quantity=quantity,
+            mode="Exit",
+            entry=None,
+            exits=[
+                OrderLeg(
+                    action="SELL", type="MKT", price=0.0, quantity=quantity
+                )
+            ],
+        )
+
+    def _create_entry_order(self, symbol: str, quantity: int, entry_price: float) -> Order:
+        """Generates a Limit Buy Entry Order."""
+        return Order(
+            id=str(uuid.uuid4()),
+            symbol=symbol,
+            quantity=quantity,
+            mode="Entry",
+            entry=OrderLeg(
+                action="BUY", type="LMT", price=entry_price, quantity=quantity
+            ),
+            exits=[],
+        )
+
     @override
     def generate_orders(
         self,
@@ -118,21 +164,11 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             if quantity < 1:
                 return None
 
-            return Order(
-                id=str(uuid.uuid4()),
-                symbol=trade["symbol"],
-                quantity=quantity,
-                mode="Entry",
-                entry=OrderLeg(
-                    action="BUY", type="LMT", price=entry_price, quantity=quantity
-                ),
-                exits=[],
-            )
+            return self._create_entry_order(trade["symbol"], quantity, entry_price)
 
         # 2. Exit Order (ACTIVE)
         if status == "ACTIVE":
-            raw_context = trade.get("signal_context") or "{}"
-            context: TurnoverContext = json.loads(raw_context)
+            context = self._parse_turnover_context(trade)
             green_candle_count = context.get("green_candle_count", 0)
             quantity = int(trade.get("current_size") or 0)
 
@@ -141,18 +177,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
             # a) Green Sequence Exit (TRIGGERED)
             if green_candle_count >= 2:
-                return Order(
-                    id=str(uuid.uuid4()),
-                    symbol=trade["symbol"],
-                    quantity=quantity,
-                    mode="Exit",
-                    entry=None,
-                    exits=[
-                        OrderLeg(
-                            action="SELL", type="MKT", price=0.0, quantity=quantity
-                        )
-                    ],
-                )
+                return self._create_exit_order(trade["symbol"], quantity)
 
             # b) Friday Time Stop
             if not dataframe_history.empty:
@@ -166,18 +191,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                 # Note: Real execution will be Friday Open (MKT) or Close (MOC).
                 # Assuming MKT for now as strict "Close" requires MOC support.
                 if day_of_week == self.THURSDAY_INDEX:  # Thursday
-                    return Order(
-                        id=str(uuid.uuid4()),
-                        symbol=trade["symbol"],
-                        quantity=quantity,
-                        mode="Exit",
-                        entry=None,
-                        exits=[
-                            OrderLeg(
-                                action="SELL", type="MKT", price=0.0, quantity=quantity
-                            )
-                        ],
-                    )
+                    return self._create_exit_order(trade["symbol"], quantity)
 
         return None
 
@@ -204,18 +218,18 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
         if limit_price <= 0:
             return None
-        
+
         # Determine Timestamps
         current_date_timestamp = pd.Timestamp(candle["date"])
         current_date = str(current_date_timestamp.date())
         signal_date_timestamp = self._get_signal_date(trade)
-        
+
         if not signal_date_timestamp:
             return None
 
         # Count trading days strictly after signal
         days_post_signal = self._get_trading_days_post_signal(trade, dataframe_history)
-        
+
         # 1. Too early (Same day) -> count = 0
         if days_post_signal < 1:
             return None
@@ -236,21 +250,16 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                     return None
 
                 # Update green candle count if the entry day itself is green
+                # Crucial bug fix: Do not inherit screener setup's green candle state.
                 close_price = float(candle["close"])
-                raw_context = trade.get("signal_context") or "{}"
-                try:
-                    context: TurnoverContext = json.loads(raw_context)
-                except json.JSONDecodeError:
-                    context = {"green_candle_count": 0}
-
+                context = self._parse_turnover_context(trade)
+                
                 # Use strict helper
-                if self._is_green_candle(open_price, close_price):
-                    count = context.get("green_candle_count", 0) + 1
-                else:
-                    count = 0
+                count = 1 if self._is_green_candle(open_price, close_price) else 0
 
                 # Update context correctly
                 context["green_candle_count"] = count
+                context["last_processed_date"] = current_date
 
                 return self._execute_activation(
                     trade,
@@ -297,11 +306,12 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         # Rule: If count >= 2, exit at current candle OPEN (Next Open Rule).
         # Otherwise, update count based on current candle color.
 
-        raw_context = trade.get("signal_context") or "{}"
-        try:
-             context: TurnoverContext = json.loads(raw_context)
-        except json.JSONDecodeError:
-             context = {"green_candle_count": 0}
+        context = self._parse_turnover_context(trade)
+        
+        # Idempotency check: Do not process the same candle twice
+        last_processed_date = context.get("last_processed_date")
+        if last_processed_date == date_string:
+            return None
 
         green_candle_count = context.get("green_candle_count", 0)
 
@@ -317,13 +327,16 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
         # Update Count for the NEXT day
         # Use strict helper
-        if self._is_green_candle(float(current_candle["open"]), float(current_candle["close"])):
+        if self._is_green_candle(
+            float(current_candle["open"]), float(current_candle["close"])
+        ):
             green_candle_count += 1
         else:
             green_candle_count = 0
 
         # Persist Count back to context
         context["green_candle_count"] = green_candle_count
+        context["last_processed_date"] = date_string
         repository.update_trade(
             trade["id"],
             {"signal_context": json.dumps(context, default=str)},
