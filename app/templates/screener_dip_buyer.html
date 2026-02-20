@@ -1,83 +1,148 @@
 {% extends "base.html" %}
 
 {% block head %}
-<title>📉 DipBuyer Signale</title>
+<title>DipBuyer Screener</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
 <style>
-    .price {
-        font-family: monospace;
-        font-weight: bold;
-    }
-
-    .limit-buy {
-        color: #27ae60;
-    }
-
-    .limit-loc {
-        color: #d35400;
-    }
-
-    .tv-link {
-        text-decoration: none;
-        font-weight: 600;
-        color: #2c3e50;
+    body {
+        font-family: 'Inter', sans-serif;
     }
 </style>
 {% endblock %}
 
+{% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}
+
 {% block content %}
-<div class="container-fluid" style="max-width: 1400px;">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 style="color: #2980b9;">📉 DipBuyer Signale</h1>
-        <div class="btn-group">
-            <a href="/screener" class="btn btn-outline-secondary">Screener Übersicht</a>
-            <a href="/trades/dip-buyer" class="btn btn-primary">Zu den Trades</a>
-            <a href="/" class="btn btn-secondary">Home</a>
+<!-- NAVIGATION (Sticky, Glassmorphism) -->
+<nav class="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-100/50 transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <!-- Brand -->
+            <div class="flex items-center gap-8">
+                <a href="/screener/dip-buyer" class="text-xl font-semibold tracking-tight text-slate-900">
+                    Dip Buyer
+                </a>
+                <!-- Links -->
+                <div class="hidden md:flex items-center space-x-1">
+                    <a href="/trades/dip-buyer"
+                        class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Trades
+                    </a>
+                    <a href="/screener/dip-buyer"
+                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Screener
+                    </a>
+                </div>
+            </div>
+            <!-- Dashboard Link -->
+            <div class="flex items-center">
+                <a href="/screener" class="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
+                    Dashboard
+                </a>
+            </div>
         </div>
     </div>
+</nav>
 
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead style="background-color: #2980b9; color: white;">
-                        <tr>
-                            <th>Datum</th>
-                            <th>Symbol</th>
-                            <th>Index</th>
-                            <th>Entry (Limit)</th>
-                            <th>LOC Threshold</th>
-                            <th>Score</th>
-                            <th>Close</th>
-                            <th>ATR (5)</th>
+<!-- MAIN CONTENT -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+
+    <!-- Signals Section (Table) -->
+    <section class="mb-12">
+        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <i data-lucide="zap" class="w-5 h-5 text-indigo-500"></i> Signals
+        </h2>
+
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <th class="px-6 py-4 font-normal">Date</th>
+                            <th class="px-6 py-4 font-normal">Symbol</th>
+                            <th class="px-6 py-4 font-normal">Index</th>
+                            <th class="px-6 py-4 font-normal text-right">Entry (Limit)</th>
+                            <th class="px-6 py-4 font-normal text-right">LOC</th>
+                            <th class="px-6 py-4 font-normal text-right">Score</th>
+                            <th class="px-6 py-4 font-normal text-right">Close</th>
+                            <th class="px-6 py-4 font-normal text-right">ATR</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody class="divide-y divide-slate-50">
                         {% for row in results %}
-                        <tr>
-                            <td>{{ row.display_date }}</td>
-                            <td><a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" class="tv-link"
-                                    target="_blank">{{ row.symbol }} ↗</a></td>
-                            <td><span class="badge bg-light text-dark border">{{ row.context.get('indices', '-')
-                                    }}</span>
+                        <tr class="hover:bg-slate-50/50 transition-colors group">
+                            <!-- Date -->
+                            <td class="px-6 py-3 font-medium text-slate-700 whitespace-nowrap">
+                                {{ row.display_date }}
                             </td>
-                            <td class="price limit-buy">{{ "%.2f"|format(row.entry_price) if row.entry_price else '-' }}
-                                $</td>
-                            <td class="price limit-loc">
-                                {% if row.context.get('threshold_loc') %}{{ "%.2f"|format(row.context.threshold_loc)
-                                }}{% else
-                                %}-{% endif %}
+
+                            <!-- Symbol -->
+                            <td class="px-6 py-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-black text-slate-700">{{ row.symbol }}</span>
+                                    <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
+                                        class="text-slate-400 hover:text-indigo-500 transition-colors">
+                                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                                    </a>
+                                </div>
                             </td>
-                            <td><b>{{ row.setup_score }}</b></td>
-                            <td class="text-muted">{{ "%.2f"|format(row.context.get('close')) if
-                                row.context.get('close') else
-                                '-' }}</td>
-                            <td>{{ "%.2f"|format(row.context.get('atr5')) if row.context.get('atr5') else '-' }}</td>
+
+                            <!-- Index -->
+                            <td class="px-6 py-3">
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200">
+                                    {{ row.context.get('indices', '-') }}
+                                </span>
+                            </td>
+
+                            <!-- Entry (Limit) -->
+                            <td class="px-6 py-3 text-right font-mono text-emerald-600 font-medium">
+                                {% if row.entry_price %}
+                                {{ "{:,.2f}".format(row.entry_price|float) }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+
+                            <!-- LOC Threshold -->
+                            <td class="px-6 py-3 text-right font-mono text-amber-600 font-medium">
+                                {% if row.context.get('threshold_loc') %}
+                                {{ "{:,.2f}".format(row.context.threshold_loc|float) }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+
+                            <!-- Score -->
+                            <td class="px-6 py-3 text-right font-bold text-slate-800">
+                                {{ row.setup_score }}
+                            </td>
+
+                            <!-- Close -->
+                            <td class="px-6 py-3 text-right font-mono text-slate-500">
+                                {% if row.context.get('close') %}
+                                {{ "{:,.2f}".format(row.context.get('close')|float) }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+
+                            <!-- ATR (5) -->
+                            <td class="px-6 py-3 text-right font-mono text-slate-500">
+                                {% if row.context.get('atr5') %}
+                                {{ "{:,.2f}".format(row.context.get('atr5')|float) }}
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-    </div>
-</div>
+    </section>
+
+</main>
 {% endblock %}
