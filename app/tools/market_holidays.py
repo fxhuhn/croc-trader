@@ -50,7 +50,7 @@ class MarketHolidayChecker:
             if self._initialized:
                 return
 
-            logger.info("Initializing MarketHolidayChecker...")
+            logger.debug("Initializing MarketHolidayChecker...")
             
             self._holidays: dict[datetime.date, str] = {}
             
@@ -66,7 +66,7 @@ class MarketHolidayChecker:
             self._load_holidays()
             self._initialized = True
             
-            logger.info(f"✓ MarketHolidayChecker initialized with {len(self._holidays)} holidays")
+            logger.debug(f"✓ MarketHolidayChecker initialized with {len(self._holidays)} holidays")
 
     def _load_holidays(self) -> None:
         """Loads holidays from the YAML file into memory."""

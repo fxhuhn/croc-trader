@@ -41,7 +41,7 @@ class ExchangeSymbol:
             if ExchangeSymbol._initialized:
                 return
 
-            logger.info("Initializing ExchangeSymbol singleton...")
+            logger.debug("Initializing ExchangeSymbol singleton...")
 
             # Initialize empty lists
             self._sp_500: list[str] = []
@@ -62,7 +62,7 @@ class ExchangeSymbol:
     def _load_from_cache(self) -> None:
         """Loads symbol lists from local JSON cache if available."""
         if not CACHE_FILE.exists():
-            logger.info("No symbol cache found at %s", CACHE_FILE)
+            logger.debug("No symbol cache found at %s", CACHE_FILE)
             return
 
         try:
@@ -74,7 +74,7 @@ class ExchangeSymbol:
             self._dow_30 = data.get("dow_30", [])
             self._russell_1000 = data.get("russell_1000", [])
             
-            logger.info("✓ Loaded symbols from cache: SPX=%d, NDX=%d, DOW=%d, RUI=%d",
+            logger.debug("✓ Loaded symbols from cache: SPX=%d, NDX=%d, DOW=%d, RUI=%d",
                         len(self._sp_500), len(self._nasdaq_100), 
                         len(self._dow_30), len(self._russell_1000))
         except Exception as e:
@@ -92,13 +92,13 @@ class ExchangeSymbol:
             }
             with open(CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
-            logger.info("✓ Symbol cache saved to %s", CACHE_FILE)
+            logger.debug("✓ Symbol cache saved to %s", CACHE_FILE)
         except Exception as e:
             logger.error("Failed to save symbol cache: %s", e)
 
     def _refresh_data(self) -> None:
         """Background task to fetch fresh data from Wikipedia."""
-        logger.info("Starting background symbol refresh...")
+        logger.debug("Starting background symbol refresh...")
         
         try:
             # 1. S&P 500
@@ -139,7 +139,7 @@ class ExchangeSymbol:
             if russell_1000:
                 self._russell_1000 = russell_1000
 
-            logger.info(
+            logger.debug(
                 f"✓ Symbol refresh complete: "
                 f"S&P 500={len(self._sp_500)}, "
                 f"NASDAQ-100={len(self._nasdaq_100)}, "
@@ -160,7 +160,7 @@ class ExchangeSymbol:
         indem geprüft wird, ob eine der 'search_columns' existiert.
         """
         try:
-            logger.info(f"Fetching {name} from {url}...")
+            logger.debug(f"Fetching {name} from {url}...")
 
             # Alle Tabellen der Seite laden
             try:

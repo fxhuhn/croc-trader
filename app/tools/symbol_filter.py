@@ -66,7 +66,7 @@ class SymbolFilter:
         try:
             with CACHE_FILE.open("r", encoding="utf-8") as cache_file:
                 self._mapping = json.load(cache_file)
-            logger.info(
+            logger.debug(
                 "✓ Loaded symbol preference mapping with %d rules", len(self._mapping)
             )
         except Exception as error:
@@ -83,7 +83,7 @@ class SymbolFilter:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
             with CACHE_FILE.open("w", encoding="utf-8") as cache_file:
                 json.dump(self._mapping, cache_file, indent=2)
-            logger.info("✓ Symbol preference cache saved to %s", CACHE_FILE)
+            logger.debug("✓ Symbol preference cache saved to %s", CACHE_FILE)
         except Exception as error:
             logger.error("Failed to save symbol preference cache: %s", error)
 
@@ -104,7 +104,7 @@ class SymbolFilter:
             logger.warning("No symbols found in ExchangeSymbol to build filter mapping.")
             return
 
-        logger.info(
+        logger.debug(
             "Starting background symbol preference analysis for %d symbols...",
             len(all_symbols),
         )
@@ -114,7 +114,7 @@ class SymbolFilter:
             if new_mapping:
                 self._mapping = new_mapping
                 self._save_to_cache()
-                logger.info(
+                logger.debug(
                     "✓ Symbol preference analysis complete. Found %d duplicate groups.",
                     len(self._mapping),
                 )
