@@ -10,14 +10,17 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class TradeParams:
     """General container for strategy-specific state parameters."""
+
     stop_loss: float
     take_profit_1: float | None = None
     take_profit_2: float | None = None
     take_profit_3: float | None = None
     extras: dict = field(default_factory=dict)
+
 
 @dataclass
 class OrderLeg:
@@ -26,6 +29,7 @@ class OrderLeg:
     price: float
     quantity: int | None = None
     time_in_force: "TimeInForce" = "DAY"
+
 
 @dataclass
 class Order:
@@ -40,15 +44,18 @@ class Order:
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
 
+
 @dataclass
 class CrocContext:
     high: float
     low: float
 
+
 @dataclass(frozen=True)
 class SQNClassification:
     label: str
     color: str
+
 
 @dataclass(frozen=True)
 class BacktestMetrics:
@@ -63,29 +70,30 @@ class BacktestMetrics:
     system_quality_number: float
     average_win: float
     average_loss: float
-    
+
     # Efficiency
     average_maximum_adverse_excursion: float
     average_maximum_favorable_excursion: float
-    
+
     # Robustness
     risk_of_ruin: float
-    
+
     # Comparison
     benchmark_return: float
     strategy_return: float
-    
+
     # Kelly
     kelly_mean: float
     kelly_std: float
     kelly_safe: float
-    
+
     # Advanced
     market_exposure_pct: float
     risk_adjusted_benchmark: float
-    exposure_efficiency: float 
+    exposure_efficiency: float
     return_over_maximum_drawdown: float
     diversification_score: float
+
 
 @dataclass(frozen=True)
 class PortfolioMetrics:
@@ -101,18 +109,19 @@ class PortfolioMetrics:
     uncapped_max_total_exposure: float
     uncapped_leveraged_max_drawdown: float
     max_trades_per_strategy: dict[str, int] = field(default_factory=dict)
-    
+
     # Days at Max Concurrency
     max_concurrent_trades_days: int = 0
     max_trades_per_strategy_days: dict[str, int] = field(default_factory=dict)
-    
+
     # Percentile-Based Sizing (Phase 1)
     percentile_95_concurrent_trades: float = 0.0
     percentile_95_trades_per_strategy: dict[str, float] = field(default_factory=dict)
-    
+
     # Capacity Ratios (Phase 7)
     global_capacity_ratio: float = 1.0
     strategy_capacity_ratios: dict[str, float] = field(default_factory=dict)
+
 
 @dataclass
 class CrocSignal:
@@ -250,6 +259,7 @@ class MarketPrice:
     Immutable representation of a daily price bar.
     Strictly typed and validated upon creation via factory.
     """
+
     symbol: str
     date: str  # YYYY-MM-DD
     open: float
@@ -274,7 +284,7 @@ class MarketPrice:
         # Ensure date format is correct (Yahoo often gives Timestamp)
         d_val = row.get("date")
         if hasattr(d_val, "strftime"):
-             d_str = d_val.strftime("%Y-%m-%d")
+            d_str = d_val.strftime("%Y-%m-%d")
         else:
             # Fallback for string or index-based date passed as column
             d_str = str(d_val) if d_val else datetime.now().strftime("%Y-%m-%d")

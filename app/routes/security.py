@@ -14,7 +14,7 @@ R = TypeVar("R", bound=Response | object)
 def _is_ip_whitelisted(client_ip: str, whitelist: list[str]) -> bool:
     """
     Checks if a given IP is whitelisted.
-    
+
     Supports:
     - Exact IP matches (e.g., "127.0.0.1")
     - Wildcard ranges (e.g., "172.16.x.x" or "10.0.*.*")
@@ -23,15 +23,15 @@ def _is_ip_whitelisted(client_ip: str, whitelist: list[str]) -> bool:
         return False
 
     client_segments = client_ip.split(".")
-    
+
     for pattern in whitelist:
         if pattern == client_ip:
             return True
-            
+
         pattern_segments = pattern.split(".")
         if len(pattern_segments) != len(client_segments):
             continue
-            
+
         matches = True
         for p_seg, c_seg in zip(pattern_segments, client_segments):
             if p_seg.lower() in ("x", "*"):
@@ -39,22 +39,21 @@ def _is_ip_whitelisted(client_ip: str, whitelist: list[str]) -> bool:
             if p_seg != c_seg:
                 matches = False
                 break
-        
+
         if matches:
             return True
-            
+
     return False
 
 
-def require_ip_whitelist(
-    func: Callable[P, R]
-) -> Callable[P, Response | R]:
+def require_ip_whitelist(func: Callable[P, R]) -> Callable[P, Response | R]:
     """
     Decorator to restrict access to whitelisted IP addresses.
-    
-    Checks the client IP against the whitelist defined in the application 
+
+    Checks the client IP against the whitelist defined in the application
     configuration. Supports proxy-aware IP detection via X-Forwarded-For.
     """
+
     @wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Response | R:
         configuration = current_app.config["APP_CONFIG"]
@@ -64,11 +63,12 @@ def require_ip_whitelist(
             whitelist = security_configuration.whitelist
             mode = security_configuration.mode
         except AttributeError:
-            logger.error(
-                "❌ SECURITY: Security configuration missing! Denying access."
-            )
+            logger.error("❌ SECURITY: Security configuration missing! Denying access.")
             return jsonify(
-                {"status": "error", "message": "Security Configuration Error"}
+                {
+                    "status": "error",
+                    "message": "Security Configuration Error",
+                }
             ), 500
 
         # Proxy-Aware IP Detection:
@@ -76,8 +76,8 @@ def require_ip_whitelist(
         # 2. Fallback to remote_addr
         x_forwarded_for = request.headers.getlist("X-Forwarded-For")
         client_ip = (
-            x_forwarded_for[0].split(",")[0].strip() 
-            if x_forwarded_for 
+            x_forwarded_for[0].split(",")[0].strip()
+            if x_forwarded_for
             else request.remote_addr
         )
 
@@ -88,7 +88,10 @@ def require_ip_whitelist(
                     f"(Remote: {request.remote_addr})"
                 )
                 return jsonify(
-                    {"status": "error", "message": "Unauthorized Access"}
+                    {
+                        "status": "error",
+                        "message": "Unauthorized Access",
+                    }
                 ), 403
 
             logger.warning(

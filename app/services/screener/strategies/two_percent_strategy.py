@@ -11,24 +11,27 @@ from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
+
 class TwoPercentStrategyContext(TypedDict):
     """Context data for the TwoPercent signal."""
+
     date: str
     setup_close: float
     limit_entry: float
     day: str
     source: str
 
+
 class TwoPercentStrategy(BaseStrategy):
     """
     Implementation of the TwoPercent trading strategy.
-    
+
     Strategy Logic:
     - Execution: Runs on Fridays at market close.
     - Exception: If Friday is a holiday, it runs on Thursday close.
     - Entry: Limit order at 99% of the 'Setup Close' (Friday/Thursday close).
     """
-    
+
     STRATEGY_IDENTIFIER = Strategies.TwoPercent
     ENTRY_LIMIT_DISCOUNT = 0.99
     DEFAULT_LOOKBACK_PERIOD = 20
@@ -38,11 +41,11 @@ class TwoPercentStrategy(BaseStrategy):
         self,
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
-        telegram_bot: TelegramBot | None = None
+        telegram_bot: TelegramBot | None = None,
     ) -> None:
         """
         Initializes the TwoPercent strategy with required dependencies.
-        
+
         Args:
            trade_repository: Repository for trade persistence.
            data_provider: Provider for market historical data.
@@ -57,21 +60,19 @@ class TwoPercentStrategy(BaseStrategy):
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """
         Orchestrates the strategy execution for a given analysis date.
-        
+
         This follows the Step-down Rule by delegating logic to specialized methods.
-        
+
         Returns:
            int: 1 if a signal was generated and saved, 0 otherwise.
         """
         analysis_timestamp = self._get_analysis_timestamp(analysis_date)
-        
+
         price_history = self._fetch_price_history(analysis_timestamp)
         if price_history.empty:
             return 0
 
-        last_candle = self._get_last_valid_candle(
-            price_history, analysis_timestamp
-        )
+        last_candle = self._get_last_valid_candle(price_history, analysis_timestamp)
         if last_candle is None:
             return 0
 
@@ -93,7 +94,7 @@ class TwoPercentStrategy(BaseStrategy):
         self._create_trade_proposal(
             signal_date_str, close_price, entry_price, day_label
         )
-        
+
         self._send_signal_report(signal_date_str, close_price, entry_price)
 
         return 1
@@ -111,16 +112,16 @@ class TwoPercentStrategy(BaseStrategy):
             days_ago = (pd.Timestamp.now() - analysis_timestamp).days
             lookback = max(self.DEFAULT_LOOKBACK_PERIOD, days_ago + 20)
 
-        history = self.data_provider.get_symbol_history(
-            self.SYMBOL, days=lookback
-        )
-        
+        history = self.data_provider.get_symbol_history(self.SYMBOL, days=lookback)
+
         if history.empty:
             logger.warning(
                 "[%s] No data for %s (Lookback: %d days)",
-                self.name, self.SYMBOL, lookback
+                self.name,
+                self.SYMBOL,
+                lookback,
             )
-        
+
         return history
 
     def _get_last_valid_candle(
@@ -143,10 +144,10 @@ class TwoPercentStrategy(BaseStrategy):
 
         last_candle = filtered.iloc[-1]
         candle_date = self._extract_timestamp(last_candle).date()
-        
+
         if candle_date != analysis_timestamp.date():
             return None
-            
+
         return last_candle
 
     def _extract_timestamp(self, candle: pd.Series) -> pd.Timestamp:
@@ -158,19 +159,20 @@ class TwoPercentStrategy(BaseStrategy):
     def _is_valid_setup_day(self, timestamp: pd.Timestamp) -> bool:
         """Checks if the given timestamp is a valid strategy execution day."""
         weekday = timestamp.weekday()
-        
+
         if weekday == 4:  # Friday
             return True
-            
+
         if weekday == 3:  # Thursday
             next_day = (timestamp + pd.Timedelta(days=1)).date()
             if self.holiday_checker.is_holiday(next_day):
                 logger.info(
                     "[%s] Thursday (%s) accepted (Friday holiday).",
-                    self.name, timestamp.date()
+                    self.name,
+                    timestamp.date(),
                 )
                 return True
-                
+
         return False
 
     def _extract_close_price(self, candle: pd.Series) -> float | None:
@@ -220,7 +222,7 @@ class TwoPercentStrategy(BaseStrategy):
             entry=entry,
             stop_loss=0.0,
             target=0.0,
-            context=dict(context)  # type: ignore
+            context=dict(context),  # type: ignore
         )
 
     def _send_signal_report(self, date_str: str, close: float, entry: float) -> None:
@@ -228,14 +230,16 @@ class TwoPercentStrategy(BaseStrategy):
         if not self.telegram_bot:
             return
 
-        report_data = pd.DataFrame([{
-            "Symbol": self.SYMBOL,
-            "Setup Close": f"{close:.2f}",
-            "Limit Entry": f"{entry:.2f}"
-        }])
-        
+        report_data = pd.DataFrame(
+            [
+                {
+                    "Symbol": self.SYMBOL,
+                    "Setup Close": f"{close:.2f}",
+                    "Limit Entry": f"{entry:.2f}",
+                }
+            ]
+        )
+
         self._send_telegram_report(
-            f"{self.STRATEGY_IDENTIFIER} Entries",
-            date_str,
-            report_data
+            f"{self.STRATEGY_IDENTIFIER} Entries", date_str, report_data
         )

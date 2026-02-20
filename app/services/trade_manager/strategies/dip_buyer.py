@@ -10,26 +10,27 @@ from .abstract import BaseTradeStrategy
 
 logger = logging.getLogger(__name__)
 
+
 @final
 class DipBuyerStrategy(BaseTradeStrategy):
     """Dip Buyer Strategy: Enters on weakness via Limit Order.
-    
+
     Attributes:
         name: Strategy identifier.
         DEFAULT_BUDGET: Default capital allocation for the trade.
         TIME_STOP_DAYS: Maximum holding period in trading days.
     """
-    
+
     name = Strategies.DipBuyer
     DEFAULT_BUDGET: float = 2000.0
     TIME_STOP_DAYS: int = 8
-    
+
     @override
     def get_current_parameters(
-        self, 
-        trade: TradeData, 
-        dataframe_history: pd.DataFrame | None = None, 
-        repository: TradeRepository | None = None
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame | None = None,
+        repository: TradeRepository | None = None,
     ) -> TradeParams | None:
         """Extracts current strategy parameters for display.
 
@@ -42,21 +43,21 @@ class DipBuyerStrategy(BaseTradeStrategy):
             TradeParams: Extracted parameters for UI display.
         """
         return TradeParams(
-            stop_loss=0.0, # No stop loss
+            stop_loss=0.0,  # No stop loss
             take_profit_1=float(trade.get("current_target") or 0.0),
             extras={
                 "entry_limit": float(trade.get("entry_price") or 0.0),
-                "current_size": float(trade.get("current_size") or 0.0)
-            }
+                "current_size": float(trade.get("current_size") or 0.0),
+            },
         )
 
     @override
     def check_entry(
-        self, 
-        trade: TradeData, 
-        candle: pd.Series, 
-        dataframe_history: pd.DataFrame, 
-        repository: TradeRepository
+        self,
+        trade: TradeData,
+        candle: pd.Series,
+        dataframe_history: pd.DataFrame,
+        repository: TradeRepository,
     ) -> str | None:
         """Checks if the limit entry was reached.
 
@@ -81,11 +82,11 @@ class DipBuyerStrategy(BaseTradeStrategy):
         # 1. Date/Session Validation
         # Rules: Skip signal day (Day 0), Entry on Next Day (Day 1), Invalidate if Day > 1
         days_passed = self._get_trading_days_post_signal(trade, dataframe_history)
-        
+
         if days_passed == 0:
             # Too early (Signal Day)
             return None
-        
+
         date_string = str(candle["date"])
         if days_passed > 1:
             # Too late: Missed the entry window
@@ -114,10 +115,10 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
     @override
     def manage_active_trade(
-        self, 
-        trade: TradeData, 
-        dataframe_history: pd.DataFrame, 
-        repository: TradeRepository
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        repository: TradeRepository,
     ) -> str | None:
         """Manages exits: LOC, Target, and Time Stop.
 
@@ -136,11 +137,11 @@ class DipBuyerStrategy(BaseTradeStrategy):
         """
         if dataframe_history.empty:
             return None
-        
+
         candle = dataframe_history.iloc[-1]
-        date_string = str(candle['date'])
-        current_date_obj = pd.Timestamp(candle['date'])
-        
+        date_string = str(candle["date"])
+        current_date_obj = pd.Timestamp(candle["date"])
+
         # 1. Day Check
         entry_date_str = trade.get("entry_date")
         is_entry_day = False
@@ -148,14 +149,14 @@ class DipBuyerStrategy(BaseTradeStrategy):
             entry_date = pd.Timestamp(entry_date_str).date()
             if current_date_obj.date() < entry_date:
                 return None
-            is_entry_day = (current_date_obj.date() == entry_date)
+            is_entry_day = current_date_obj.date() == entry_date
 
         # 2. Target Logic (Take Profit)
         # Rule: Target can NOT be hit on entry day.
-        target_price = float(trade.get('current_target') or 0.0)
-        high_price = float(candle['high'])
-        open_price = float(candle['open'])
-        
+        target_price = float(trade.get("current_target") or 0.0)
+        high_price = float(candle["high"])
+        open_price = float(candle["open"])
+
         if not is_entry_day and target_price > 0 and high_price >= target_price:
             exit_price = max(open_price, target_price)
             return self._close_trade(
@@ -168,7 +169,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
             prev_candle = dataframe_history.iloc[-2]
             prev_high = float(prev_candle["high"])
             close_price = float(candle["close"])
-            
+
             if close_price > prev_high:
                 return self._close_trade(
                     trade, repository, close_price, "LOC_HIT", date_string
@@ -195,11 +196,11 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
     @override
     def generate_orders(
-        self, 
-        trade: TradeData, 
-        dataframe_history: pd.DataFrame, 
-        budget: float, 
-        repository: TradeRepository
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        repository: TradeRepository,
     ) -> Order | None:
         """Generates an Order object for IBKR export.
 
@@ -212,20 +213,20 @@ class DipBuyerStrategy(BaseTradeStrategy):
         Returns:
             Order | None: Order descriptor if valid.
         """
-        symbol = trade.get('symbol', 'UNKNOWN')
-        entry_price = float(trade.get('entry_price') or 0.0)
-        
+        symbol = trade.get("symbol", "UNKNOWN")
+        entry_price = float(trade.get("entry_price") or 0.0)
+
         if entry_price <= 0:
             return None
 
         # 1. Quantity Calculation
-        db_size = float(trade.get('initial_size') or 0.0)
+        db_size = float(trade.get("initial_size") or 0.0)
         if db_size > 0:
             quantity = int(db_size)
         else:
-            trade_budget = float(trade.get('budget') or budget or self.DEFAULT_BUDGET)
+            trade_budget = float(trade.get("budget") or budget or self.DEFAULT_BUDGET)
             quantity = int(trade_budget / entry_price)
-        
+
         if quantity <= 0:
             return None
 
@@ -235,19 +236,21 @@ class DipBuyerStrategy(BaseTradeStrategy):
             type="LMT",
             price=entry_price,
             quantity=quantity,
-            time_in_force="DAY"
+            time_in_force="DAY",
         )
-        
+
         exits = []
-        target_price = float(trade.get('current_target') or 0.0)
+        target_price = float(trade.get("current_target") or 0.0)
         if target_price > 0:
-            exits.append(OrderLeg(
-                action="SELL",
-                type="LOC",
-                price=target_price,
-                quantity=quantity,
-                time_in_force="DAY"
-            ))
+            exits.append(
+                OrderLeg(
+                    action="SELL",
+                    type="LOC",
+                    price=target_price,
+                    quantity=quantity,
+                    time_in_force="DAY",
+                )
+            )
 
         return Order(
             id=f"{symbol}_{self.name}",
@@ -256,5 +259,5 @@ class DipBuyerStrategy(BaseTradeStrategy):
             mode="BRACKET",
             entry=entry_leg,
             exits=exits,
-            last_status="CREATED"
+            last_status="CREATED",
         )

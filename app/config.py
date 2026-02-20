@@ -245,26 +245,28 @@ class ConfigManager:
         filename = self.app.database.files.get(key)
         if not filename:
             return self.db_root_path / f"MISSING_CONFIG_{key}"
-        
+
         target_path = (self.db_root_path / filename).resolve()
-        
+
         # Security: Prevent Path Traversal
         if not str(target_path).startswith(str(self.db_root_path.resolve())):
             logger.error(f"❌ SECURITY: Path Traversal Attempt blocked: {filename}")
             raise ValueError(f"Insecure path detected: {filename}")
-            
+
         return target_path
 
     def get_folder(self, key: str) -> Path:
         """Abruf für Ordner mit Traversal-Schutz."""
         foldername = self.app.database.folders.get(key, key)
         target_path = (self.db_root_path / foldername).resolve()
-        
+
         # Security: Prevent Path Traversal
         if not str(target_path).startswith(str(self.db_root_path.resolve())):
-            logger.error(f"❌ SECURITY: Path Traversal Attempt blocked in folder: {foldername}")
+            logger.error(
+                f"❌ SECURITY: Path Traversal Attempt blocked in folder: {foldername}"
+            )
             raise ValueError(f"Insecure folder path detected: {foldername}")
-            
+
         target_path.mkdir(parents=True, exist_ok=True)
         return target_path
 

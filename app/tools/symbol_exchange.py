@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 CACHE_FILE = CACHE_DIR / "symbol_exchange.json"
 
+
 class SymbolExchange:
     """
     Singleton class to manage symbol-to-exchange mapping.
@@ -39,12 +40,14 @@ class SymbolExchange:
                 return
 
             self._mapping: dict[str, str] = {}  # Symbol -> Exchange
-            
+
             # 1. Try to load from cache
             self._load_from_cache()
 
             # 2. Start background thread to refresh mapping
-            threading.Thread(target=self._refresh_mapping_background, daemon=True).start()
+            threading.Thread(
+                target=self._refresh_mapping_background, daemon=True
+            ).start()
 
             SymbolExchange._initialized = True
 
@@ -68,7 +71,9 @@ class SymbolExchange:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
             with CACHE_FILE.open("w", encoding="utf-8") as cache_file:
                 json.dump(self._mapping, cache_file, indent=2)
-            logger.debug("✓ Symbol-exchange cache saved up to %d symbols", len(self._mapping))
+            logger.debug(
+                "✓ Symbol-exchange cache saved up to %d symbols", len(self._mapping)
+            )
         except Exception as error:
             logger.error("Failed to save symbol-exchange cache: %s", error)
 
@@ -98,12 +103,17 @@ class SymbolExchange:
                 logger.debug("Loaded %d symbols for %s", len(tickers), exchange_name)
                 success_count += 1
             except Exception as e:
-                logger.warning("Failed to load %s tickers from GitHub: %s", exchange_name, e)
+                logger.warning(
+                    "Failed to load %s tickers from GitHub: %s", exchange_name, e
+                )
 
         if success_count > 0:
             self._mapping = new_mapping
             self._save_to_cache()
-            logger.debug("✓ Symbol-exchange refresh complete. Total symbols: %d", len(self._mapping))
+            logger.debug(
+                "✓ Symbol-exchange refresh complete. Total symbols: %d",
+                len(self._mapping),
+            )
         else:
             logger.error("Failed to refresh any symbol-exchange data from GitHub.")
 
@@ -118,6 +128,7 @@ class SymbolExchange:
     def mapping(self) -> dict[str, str]:
         """Returns a copy of the symbol-to-exchange mapping."""
         return self._mapping.copy()
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

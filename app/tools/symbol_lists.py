@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 CACHE_FILE = CACHE_DIR / "symbol_cache.json"
 
+
 class ExchangeSymbol:
     """
     Singleton class to fetch and cache stock symbols from Wikipedia.
@@ -68,15 +69,19 @@ class ExchangeSymbol:
         try:
             with open(CACHE_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            
+
             self._sp_500 = data.get("sp_500", [])
             self._nasdaq_100 = data.get("nasdaq_100", [])
             self._dow_30 = data.get("dow_30", [])
             self._russell_1000 = data.get("russell_1000", [])
-            
-            logger.debug("✓ Loaded symbols from cache: SPX=%d, NDX=%d, DOW=%d, RUI=%d",
-                        len(self._sp_500), len(self._nasdaq_100), 
-                        len(self._dow_30), len(self._russell_1000))
+
+            logger.debug(
+                "✓ Loaded symbols from cache: SPX=%d, NDX=%d, DOW=%d, RUI=%d",
+                len(self._sp_500),
+                len(self._nasdaq_100),
+                len(self._dow_30),
+                len(self._russell_1000),
+            )
         except Exception as e:
             logger.error("Failed to load symbol cache: %s", e)
 
@@ -88,7 +93,7 @@ class ExchangeSymbol:
                 "sp_500": self._sp_500,
                 "nasdaq_100": self._nasdaq_100,
                 "dow_30": self._dow_30,
-                "russell_1000": self._russell_1000
+                "russell_1000": self._russell_1000,
             }
             with open(CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2)
@@ -99,7 +104,7 @@ class ExchangeSymbol:
     def _refresh_data(self) -> None:
         """Background task to fetch fresh data from Wikipedia."""
         logger.debug("Starting background symbol refresh...")
-        
+
         try:
             # 1. S&P 500
             sp_500 = self._fetch_from_wikipedia(
@@ -146,7 +151,7 @@ class ExchangeSymbol:
                 f"Dow 30={len(self._dow_30)}, "
                 f"Russell 1000={len(self._russell_1000)}"
             )
-            
+
             self._save_to_cache()
 
         except Exception as e:
@@ -257,7 +262,11 @@ class ExchangeSymbol:
     @property
     def all(self) -> list[str]:
         combined = set(
-            self._dow_30 + self._nasdaq_100 + self._sp_500 + self._russell_1000 + self._special_symbols
+            self._dow_30
+            + self._nasdaq_100
+            + self._sp_500
+            + self._russell_1000
+            + self._special_symbols
         )
         return sorted(list(combined))
 
@@ -266,10 +275,11 @@ if __name__ == "__main__":
     # Configure logging to see output
     logging.basicConfig(level=logging.INFO)
     exchange = ExchangeSymbol()
-    
+
     # Wait for thread to finish to see results in a script run
     import time
+
     print("Waiting for background thread (max 30s)...")
-    time.sleep(5) 
-    
+    time.sleep(5)
+
     print(f"Total Unique Symbols: {len(exchange.all)}")

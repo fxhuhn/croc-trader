@@ -23,6 +23,7 @@ def require_lock(f):
             return f(*args, **kwargs)
         finally:
             _provider_lock.release()
+
     return wrapper
 
 

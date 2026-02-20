@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 class ScreenerViewService:
     """Service to handle data preparation and business logic for screener views.
-    
+
     Encapsulates logic for fetching candidates, parsing context, and aggregating results
     to keep view functions clean and focused on presentation.
     """
@@ -18,27 +18,29 @@ class ScreenerViewService:
     def __init__(self, signal_repository: SignalRepository):
         self.signal_repository = signal_repository
 
-    def _parse_context(self, raw_context: str | None | dict[str, Any]) -> dict[str, Any]:
+    def _parse_context(
+        self, raw_context: str | None | dict[str, Any]
+    ) -> dict[str, Any]:
         """Safely parses signal context from JSON string or returns dictionary."""
         if isinstance(raw_context, dict):
             return raw_context
-            
+
         if not raw_context:
             return {}
-            
+
         if isinstance(raw_context, str):
             try:
                 return json.loads(raw_context)
             except (json.JSONDecodeError, TypeError) as error:
-                logger.warning("Failed to parse signal context: %s. Error: %s", raw_context, error)
+                logger.warning(
+                    "Failed to parse signal context: %s. Error: %s", raw_context, error
+                )
                 return {}
-        
+
         return {}
 
     def get_candidates(
-        self, 
-        strategy: str | Strategies, 
-        limit: int = 100
+        self, strategy: str | Strategies, limit: int = 100
     ) -> list[dict[str, Any]]:
         """Fetches and prepares trade candidates for a given strategy.
 
@@ -51,69 +53,68 @@ class ScreenerViewService:
         """
         # Ensure we pass the string value of the Enum if it's an Enum
         strategy_value = str(strategy)
-        
+
         # Handle "Croc" Aggregation
-        if strategy_value.lower().startswith("croc") or strategy_value == Strategies.CrocSetup:
+        if (
+            strategy_value.lower().startswith("croc")
+            or strategy_value == Strategies.CrocSetup
+        ):
             strategies_to_fetch = [
                 str(Strategies.HoldTarget),
                 str(Strategies.SplitTarget),
-                "Croc_" # Legacy
+                "Croc_",  # Legacy
             ]
-            
+
             all_results = []
             seen_ids = set()
-            
+
             for strat in strategies_to_fetch:
                 rows = self.signal_repository.get_trade_candidates(
-                    strat,
-                    limit=limit,
-                    statuses=[TradeStatus.CREATED]
+                    strat, limit=limit, statuses=[TradeStatus.CREATED]
                 )
                 for row in rows:
-                    if row['id'] not in seen_ids:
+                    if row["id"] not in seen_ids:
                         all_results.append(row)
-                        seen_ids.add(row['id'])
-            
+                        seen_ids.add(row["id"])
+
             # Sort by created_at descending
             results = sorted(
-                all_results, 
-                key=lambda x: x.get('created_at') or "", 
-                reverse=True
+                all_results, key=lambda x: x.get("created_at") or "", reverse=True
             )[:limit]
-            
+
         else:
             # Standard Single Strategy Fetch
             # This now handles NDX Momentum too (stored in trades as CREATED on month-end)
             results = self.signal_repository.get_trade_candidates(
-                strategy_value, 
-                limit=limit, 
-                statuses=[TradeStatus.CREATED]
+                strategy_value, limit=limit, statuses=[TradeStatus.CREATED]
             )
 
         processed_results = []
         for row in results:
             candidate = dict(row)
-            
+
             # Parse Context
             raw_context = candidate.get("signal_context")
             context = self._parse_context(raw_context)
             candidate["context"] = context
-            
+
             # Standardize Date Display (Strict)
             date_val = context.get("date") or context.get("setup_date")
             if date_val:
                 candidate["display_date"] = str(date_val).split("T")[0].split(" ")[0]
             else:
-                logger.warning("No date found in signal context for %s", candidate.get("symbol"))
+                logger.warning(
+                    "No date found in signal context for %s", candidate.get("symbol")
+                )
                 candidate["display_date"] = "-"
-            
+
             processed_results.append(candidate)
 
         # Sort by Momentum Score DESC for NDX Momentum
         if strategy_value == Strategies.NDXMomentum:
             processed_results.sort(
                 key=lambda x: float(x.get("context", {}).get("momentum_score", 0.0)),
-                reverse=True
+                reverse=True,
             )
 
         return processed_results
@@ -159,26 +160,24 @@ class ScreenerViewService:
         # Fetch raw candidates using the base strategy name to catch variants
         # Assuming the repository supports LIKE matching or we pass the base strategy
         results = self.signal_repository.get_trade_candidates(
-            str(Strategies.TurnOverTiming), 
-            limit=limit, 
-            statuses=[TradeStatus.CREATED]
+            str(Strategies.TurnOverTiming), limit=limit, statuses=[TradeStatus.CREATED]
         )
-        
+
         aggregated_results: dict[str, dict[str, Any]] = {}
 
         for row in results:
             symbol = row["symbol"]
-            
+
             # Initialize aggregation bucket if needed
             if symbol not in aggregated_results:
                 aggregated_results[symbol] = {
                     "symbol": symbol,
-                    "display_date": "-", 
+                    "display_date": "-",
                     "entry_0_5": None,
                     "entry_1_0": None,
                     "close": 0.0,
                     "atr": 0.0,
-                    "index": "-"
+                    "index": "-",
                 }
 
             try:
@@ -190,17 +189,20 @@ class ScreenerViewService:
                     aggregated_results[symbol]["close"] = float(context["setup_close"])
                 if context.get("setup_atr"):
                     aggregated_results[symbol]["atr"] = float(context["setup_atr"])
-                
+
                 # Strict Date Extraction (No created_at fallback)
                 date_val = context.get("date") or context.get("setup_date")
                 if date_val:
-                     aggregated_results[symbol]["display_date"] = str(date_val).split("T")[0].split(" ")[0]
-
+                    aggregated_results[symbol]["display_date"] = (
+                        str(date_val).split("T")[0].split(" ")[0]
+                    )
 
                 # Extract and Harmonize Index
                 raw_indices = context.get("indices") or context.get("bucket")
                 if raw_indices:
-                    aggregated_results[symbol]["index"] = self.harmonize_indices(str(raw_indices))
+                    aggregated_results[symbol]["index"] = self.harmonize_indices(
+                        str(raw_indices)
+                    )
 
                 # Identify variant
                 strategy_name = row["strategy"]
@@ -213,6 +215,8 @@ class ScreenerViewService:
                     aggregated_results[symbol]["entry_1_0"] = entry_price
 
             except (ValueError, TypeError) as error:
-                logger.warning("Error aggregating turnover candidate %s: %s", symbol, error)
+                logger.warning(
+                    "Error aggregating turnover candidate %s: %s", symbol, error
+                )
 
         return list(aggregated_results.values())

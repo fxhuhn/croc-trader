@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
+
 class BaseStrategy(ABC, Generic[T]):
     name: str = "Base"
 
@@ -36,9 +37,7 @@ class BaseStrategy(ABC, Generic[T]):
         return mapper.get_exchange(symbol, default="UNKNOWN")
 
     @final
-    def _send_telegram_report(
-        self, title: str, date: str, data: pd.DataFrame
-    ) -> None:
+    def _send_telegram_report(self, title: str, date: str, data: pd.DataFrame) -> None:
         if not self.telegram_bot or data.empty:
             return
 

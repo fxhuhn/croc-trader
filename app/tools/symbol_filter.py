@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 CACHE_FILE = CACHE_DIR / "preferred_symbols.json"
 
+
 class SymbolFilter:
     """
     Singleton class to filter generic symbols based on volume/popularity.
@@ -44,12 +45,14 @@ class SymbolFilter:
                 return
 
             self._mapping: dict[str, list[str]] = {}  # Winner -> [Losers]
-            
+
             # 1. Try to load from cache
             self._load_from_cache()
 
             # 2. Start background thread to refresh mapping
-            threading.Thread(target=self._refresh_mapping_background, daemon=True).start()
+            threading.Thread(
+                target=self._refresh_mapping_background, daemon=True
+            ).start()
 
             SymbolFilter._initialized = True
 
@@ -101,7 +104,9 @@ class SymbolFilter:
         all_symbols: list[str] = exchange.all
 
         if not all_symbols:
-            logger.warning("No symbols found in ExchangeSymbol to build filter mapping.")
+            logger.warning(
+                "No symbols found in ExchangeSymbol to build filter mapping."
+            )
             return
 
         logger.debug(
@@ -218,6 +223,7 @@ class SymbolFilter:
                     to_remove.add(loser_ticker)
 
         return [candidate for candidate in candidates if candidate not in to_remove]
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

@@ -28,11 +28,11 @@ class DipBuyerConfig:
 
     # 3. Logic Thresholds
     MIN_VOLATILITY_RATIO: float = 0.03  # ATR must be > 3% of Price
-    MAX_IBS: float = 0.2          # Close in bottom 20% of High-Low range
-    MAX_ATR_RATIO_3DAY: float = -1.0      # 3-Day drop > 1 ATR (negative value)
+    MAX_IBS: float = 0.2  # Close in bottom 20% of High-Low range
+    MAX_ATR_RATIO_3DAY: float = -1.0  # 3-Day drop > 1 ATR (negative value)
 
     # 4. Exit Parameters
-    EXIT_TP_FACTOR: float = 0.8    # Target = Entry + (ATR * EXIT_TP_FACTOR)
+    EXIT_TP_FACTOR: float = 0.8  # Target = Entry + (ATR * EXIT_TP_FACTOR)
 
     # Data Fetching
     LOOKBACK_DAYS: int = 600
@@ -40,10 +40,11 @@ class DipBuyerConfig:
 
 class DipBuyerMarketState(TypedDict):
     """Represents the market state for a single symbol at a specific point in time."""
+
     close: float
     open: float
     high: float
-    high_next_target: float | None # Optional, for future use or verification
+    high_next_target: float | None  # Optional, for future use or verification
     volume: float
     sma200: float
     volume_sma: float
@@ -56,6 +57,7 @@ class DipBuyerMarketState(TypedDict):
 
 class SymbolAnalysisResult(TypedDict):
     """Return type for single symbol analysis debugging."""
+
     symbol: str
     indices: list[str]
     last_date: str
@@ -156,9 +158,7 @@ class DipBuyerStrategy(BaseStrategy):
         return self._execute_screening_pipeline(data, target_date)
 
     def _resolve_target_date(
-        self,
-        closes: pd.DataFrame,
-        analysis_date: str | None
+        self, closes: pd.DataFrame, analysis_date: str | None
     ) -> pd.Timestamp | None:
         """Resolves the correct analysis date based on data availability."""
         if analysis_date:
@@ -181,7 +181,9 @@ class DipBuyerStrategy(BaseStrategy):
                 elif target_date < closes.index[-1]:
                     available_dates = closes.index[closes.index < target_date]
                     if available_dates.empty:
-                        logger.error(f"[{self.name}] No data found before {target_date.date()}")
+                        logger.error(
+                            f"[{self.name}] No data found before {target_date.date()}"
+                        )
                         return None
                     fallback_date = available_dates[-1]
                     logger.info(
@@ -189,7 +191,7 @@ class DipBuyerStrategy(BaseStrategy):
                         f"Using: {fallback_date.date()}"
                     )
                     return fallback_date
-            
+
             return target_date
 
         # Default: Last available date
@@ -200,13 +202,11 @@ class DipBuyerStrategy(BaseStrategy):
         return last_date
 
     def _execute_screening_pipeline(
-        self,
-        data: dict[str, pd.DataFrame],
-        target_date: pd.Timestamp
+        self, data: dict[str, pd.DataFrame], target_date: pd.Timestamp
     ) -> int:
         """Calculates signals and processes valid trades."""
         signals_dataframe = self._calculate_signals(data, target_date)
-        
+
         if signals_dataframe.empty:
             logger.debug(f"[{self.name}] No signals found for {target_date.date()}.")
             return 0
@@ -214,10 +214,10 @@ class DipBuyerStrategy(BaseStrategy):
         # --- Symbol Filtering Integration ---
         # Filter out secondary class shares (e.g., maintain GOOG, drop GOOGL) if both are present
         from ....tools.symbol_filter import SymbolFilter
-        
+
         candidates = signals_dataframe.index.tolist()
         filtered_candidates = SymbolFilter().filter_symbols(candidates)
-        
+
         if len(candidates) != len(filtered_candidates):
             removed = set(candidates) - set(filtered_candidates)
             logger.info(f"[{self.name}] Filtered out secondary symbols: {removed}")
@@ -262,21 +262,21 @@ class DipBuyerStrategy(BaseStrategy):
         )
         if not slices:
             return pd.DataFrame()
-            
+
         (closes_slice, highs_slice, lows_slice, volumes_slice, opens_slice) = slices
 
         # --- Indicator Calculation ---
         indicators = self._compute_indicators(
             closes_slice, highs_slice, lows_slice, volumes_slice
         )
-        
+
         # --- Market State Construction ---
         # Current Row Index (Relative to slice)
         index = len(closes_slice) - 1
         previous_index = index - 1
-        
+
         if previous_index < 0:
-             return pd.DataFrame()
+            return pd.DataFrame()
 
         # We construct a Dict of Series representing the "Current Row" and "Previous Row"
         current_market_state = {
@@ -292,12 +292,12 @@ class DipBuyerStrategy(BaseStrategy):
             "ibs": indicators["ibs"].iloc[index],
             "volatility_ratio": indicators["volatility_ratio"].iloc[index],
             # Setup score is derived from technicals (lower ratio = bigger dip = better)
-            "setup_score": indicators["atr_ratio_3day"].iloc[index] * -1
+            "setup_score": indicators["atr_ratio_3day"].iloc[index] * -1,
         }
 
         previous_market_state = {
             "close": closes_slice.iloc[previous_index],
-            "open": opens_slice.iloc[previous_index]
+            "open": opens_slice.iloc[previous_index],
         }
 
         # --- Filter Application ---
@@ -310,23 +310,26 @@ class DipBuyerStrategy(BaseStrategy):
         lows: pd.DataFrame,
         volumes: pd.DataFrame,
         opens: pd.DataFrame,
-        current_location: int
-    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame] | None:
+        current_location: int,
+    ) -> (
+        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]
+        | None
+    ):
         """Slices the dataframes to the required calculation window."""
         required_window = 250
         start_loc = max(0, current_location - required_window)
         # Python slicing excludes upper bound, so +1
         end_loc = current_location + 1
-        
+
         if start_loc >= end_loc:
-             return None
+            return None
 
         return (
             closes.iloc[start_loc:end_loc],
             highs.iloc[start_loc:end_loc],
             lows.iloc[start_loc:end_loc],
             volumes.iloc[start_loc:end_loc],
-            opens.iloc[start_loc:end_loc] # Added opens to slice for consistency
+            opens.iloc[start_loc:end_loc],  # Added opens to slice for consistency
         )
 
     def _compute_indicators(
@@ -368,11 +371,9 @@ class DipBuyerStrategy(BaseStrategy):
             "volatility_ratio": volatility_ratio,
         }
 
-    def _filter_market_state(
-        self, current: dict, previous: dict
-    ) -> pd.DataFrame:
+    def _filter_market_state(self, current: dict, previous: dict) -> pd.DataFrame:
         """Applies configuration rules to filter candidates."""
-        
+
         # 1. Liquidity & Price
         mask = (current["volume_sma"] > self.config.MIN_VOLUME) & (
             current["close"] > self.config.MIN_PRICE
@@ -438,7 +439,9 @@ class DipBuyerStrategy(BaseStrategy):
                     "close": round(signal_row["close"], 2),
                     "volume": float(signal_row["volume"]),
                     "atr5": round(signal_row["atr"], 2),
-                    "atr_r3": round(signal_row["atr_ratio_3day"], 2), # Maintained key for template
+                    "atr_r3": round(
+                        signal_row["atr_ratio_3day"], 2
+                    ),  # Maintained key for template
                     "ibs": round(signal_row["ibs"], 2),
                     "sma200": round(signal_row["sma200"], 2),
                     "indices": ",".join(indices),

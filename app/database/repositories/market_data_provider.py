@@ -32,18 +32,20 @@ class MarketDataProvider:
         # Reuse existing logic but store it
         # We assume universe is all symbols in DB or we fetch all.
         try:
-             start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
-             with self.session.connect() as conn:
-                 # Fetch EVERYTHING
-                 query = "SELECT date, symbol, open, high, low, close, volume FROM market_prices WHERE date >= ? AND timeframe='1D' ORDER BY date ASC"
-                 df = pd.read_sql_query(query, conn, params=(start_date,))
-                 
-             if not df.empty:
-                 self._in_memory_cache = self._pivot_data(df)
-                 self._cache_lookback = days
-                 logger.info(f"[MarketData] Cache Warm! Loaded {len(df)} rows.")
-             else:
-                 logger.warning("[MarketData] Preload returned empty.")
+            start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime(
+                "%Y-%m-%d"
+            )
+            with self.session.connect() as conn:
+                # Fetch EVERYTHING
+                query = "SELECT date, symbol, open, high, low, close, volume FROM market_prices WHERE date >= ? AND timeframe='1D' ORDER BY date ASC"
+                df = pd.read_sql_query(query, conn, params=(start_date,))
+
+            if not df.empty:
+                self._in_memory_cache = self._pivot_data(df)
+                self._cache_lookback = days
+                logger.info(f"[MarketData] Cache Warm! Loaded {len(df)} rows.")
+            else:
+                logger.warning("[MarketData] Preload returned empty.")
         except Exception as e:
             logger.error(f"[MarketData] Preload Failed: {e}")
 
@@ -52,7 +54,7 @@ class MarketDataProvider:
         """
         Lädt OHLCV Daten für alle Symbole und pivotiert sie.
         Das Ergebnis wird gecacht (LRU).
-        
+
         :param days: Anzahl der Tage für den Lookback (z.B. 400).
         """
         # Check explicit memory cache first
@@ -85,7 +87,9 @@ class MarketDataProvider:
 
         return self._pivot_data(df)
 
-    def get_universe_daily_data(self, symbols: list[str], days: int) -> MarketDataDict | None:
+    def get_universe_daily_data(
+        self, symbols: list[str], days: int
+    ) -> MarketDataDict | None:
         """
         Lädt Daten nur für eine spezifische Liste von Symbolen (Pre-Filtering).
         Nutzt Memory Cache wenn verfügbar.
@@ -100,17 +104,19 @@ class MarketDataProvider:
             for col, df in self._in_memory_cache.items():
                 available_cols = [s for s in symbols if s in df.columns]
                 if available_cols:
-                    filtered[col] = df[available_cols] # Slice columns
+                    filtered[col] = df[available_cols]  # Slice columns
                 else:
-                     filtered[col] = pd.DataFrame(index=df.index)
+                    filtered[col] = pd.DataFrame(index=df.index)
             return filtered
 
         start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
-        logger.info(f"[MarketData] Lade Universe-Daten ({len(symbols)} Symbole, {days}d)...")
-        
+        logger.info(
+            f"[MarketData] Lade Universe-Daten ({len(symbols)} Symbole, {days}d)..."
+        )
+
         all_dfs = []
-        chunk_size = 500 # Safe limit for SQLite variables
-        
+        chunk_size = 500  # Safe limit for SQLite variables
+
         try:
             with self.session.connect() as conn:
                 for i in range(0, len(symbols), chunk_size):
@@ -128,16 +134,16 @@ class MarketDataProvider:
                     params = tuple(chunk) + (start_date,)
                     chunk_df = pd.read_sql_query(query, conn, params=params)
                     if not chunk_df.empty:
-                         all_dfs.append(chunk_df)
-                         
+                        all_dfs.append(chunk_df)
+
         except Exception as e:
             logger.error(f"[MarketData] Universe Fetch Fehler: {e}")
             return None
-            
+
         if not all_dfs:
             logger.warning("[MarketData] Keine Daten für Universe gefunden.")
             return None
-            
+
         full_df = pd.concat(all_dfs, ignore_index=True)
         return self._pivot_data(full_df)
 
@@ -171,14 +177,14 @@ class MarketDataProvider:
                 data = {}
                 # Start date filter
                 cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
-                
+
                 has_data = False
                 for col in ["open", "high", "low", "close", "volume"]:
                     if symbol in self._in_memory_cache[col].columns:
-                         series = self._in_memory_cache[col][symbol]
-                         data[col] = series[series.index >= cutoff]
-                         has_data = True
-                
+                        series = self._in_memory_cache[col][symbol]
+                        data[col] = series[series.index >= cutoff]
+                        has_data = True
+
                 if has_data:
                     df = pd.DataFrame(data)
                     df.index.name = "date"
@@ -186,36 +192,43 @@ class MarketDataProvider:
             except Exception as e:
                 logger.warning(f"Failed to extract {symbol} from cache: {e}")
                 # Fallback to DB
-        
+
         # Da BaseRepository SQL erlaubt (Layer-Grenze), ist das hier ok.
         with self.session.connect() as conn:
             # end_date not used in query
-            start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
-            
+            start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime(
+                "%Y-%m-%d"
+            )
+
             df = pd.read_sql_query(
                 "SELECT date, open, high, low, close, volume FROM market_prices WHERE symbol = ? AND date >= ? AND timeframe='1D' ORDER BY date ASC",
-                conn, params=(symbol, start_date)
+                conn,
+                params=(symbol, start_date),
             )
             if not df.empty:
                 df["date"] = pd.to_datetime(df["date"])
             return df
 
-    def get_batch_history(self, symbols: list, days: int = 100, end_date: str = None) -> dict:
+    def get_batch_history(
+        self, symbols: list, days: int = 100, end_date: str = None
+    ) -> dict:
         """Lädt Historie für mehrere Symbole."""
         if not symbols:
             return {}
-        
+
         with self.session.connect() as conn:
             if not end_date:
                 end_date = pd.Timestamp.now().strftime("%Y-%m-%d")
-            start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
-            
+            start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=days)).strftime(
+                "%Y-%m-%d"
+            )
+
             placeholders = ",".join("?" for _ in symbols)
             sql = f"""SELECT symbol, date, open, high, low, close, volume FROM market_prices 
                       WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ? AND timeframe='1D' ORDER BY date ASC"""
-            
+
             df = pd.read_sql(sql, conn, params=symbols + [start_date, end_date])
-            
+
         res = {}
         if not df.empty:
             df["date"] = pd.to_datetime(df["date"])
@@ -233,7 +246,7 @@ class MarketDataProvider:
                 ORDER BY date ASC
             """
             rows = conn.execute(query, (start_date, end_date)).fetchall()
-            
+
         return [pd.Timestamp(r[0]) for r in rows]
 
     def get_latest_date(self) -> str | None:

@@ -6,7 +6,7 @@ from contextlib import contextmanager
 class DatabaseSession:
     BUSY_TIMEOUT = 30000  # Increased to 30s for high concurrency
     JOURNAL_MODE = "WAL"
-    
+
     def __init__(self, db_path: str):
         self.db_path = db_path
 

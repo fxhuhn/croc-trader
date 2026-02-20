@@ -22,24 +22,28 @@ class MarketDataUpdater:
     Load: Save to Database (via Repository).
     """
 
-    def __init__(self, session_factory: DatabaseSession, signals_session: DatabaseSession | None = None):
+    def __init__(
+        self,
+        session_factory: DatabaseSession,
+        signals_session: DatabaseSession | None = None,
+    ):
         self.session = session_factory
         self.repo = MarketRepository(self.session)
-        
+
         # Use provided signals session or Fallback (graceful degradation if not provided, though ideally required)
-        # If signals_session is None, TradeRepository might fail if used. 
+        # If signals_session is None, TradeRepository might fail if used.
         # But we handle this via dependency injection now.
         if signals_session:
             self.trade_repository = TradeRepository(signals_session)
         else:
             # Fallback: Try to use the same session (legacy behavior, but mostly wrong for dual-db setup)
-            # Or better: initializing it with None and checking before use? 
+            # Or better: initializing it with None and checking before use?
             # For now, let's assume if it's not provided, we might not be able to fetch traded symbols.
             # But to keep 'self.trade_repository' valid type-wise:
-            self.trade_repository = TradeRepository(self.session) 
+            self.trade_repository = TradeRepository(self.session)
 
         self.provider = YahooDataProvider()
-        
+
         # Ensure schema exists
         self.repo.init_schema()
 
@@ -70,16 +74,18 @@ class MarketDataUpdater:
         )
 
         total_records = 0
-        
+
         # 3. Batch Processing
         for i in range(0, len(symbols), BATCH_SIZE):
             batch_symbols = symbols[i : i + BATCH_SIZE]
             try:
-                processed_count = self._process_batch(batch_symbols, start_date, full_reload)
+                processed_count = self._process_batch(
+                    batch_symbols, start_date, full_reload
+                )
                 total_records += processed_count
-                
+
                 # Rate Limiting / Politeness
-                time.sleep(0.5) 
+                time.sleep(0.5)
 
             except Exception as e:
                 logger.error(f"Critical Error in Batch {i}: {e}", exc_info=True)
@@ -89,28 +95,30 @@ class MarketDataUpdater:
 
     def _get_symbols_to_process(self, specific: list[str] | None) -> list[str]:
         ignored = self.repo.get_ignored_symbols()
-        
+
         if specific:
             candidates = set(specific)
         else:
             # Combine known DB symbols + Exchange Lists + Traded Symbols
-            candidates = set(ExchangeSymbol().all).union(
-                set(self.repo.get_all_known_symbols())
-            ).union(
-                set(self.trade_repository.get_all_traded_symbols())
+            candidates = (
+                set(ExchangeSymbol().all)
+                .union(set(self.repo.get_all_known_symbols()))
+                .union(set(self.trade_repository.get_all_traded_symbols()))
             )
-            
+
         # Filter Ignored
         final_list = list(candidates - ignored)
         return final_list
 
-    def _process_batch(self, batch: list[str], start_date: str, full_reload: bool) -> int:
+    def _process_batch(
+        self, batch: list[str], start_date: str, full_reload: bool
+    ) -> int:
         """
         Fetches and saves a single batch. Returns count of saved records.
         """
         # Fetch Raw Data
         df_batch, failures = self.provider.fetch_batch_raw(batch, start_date)
-        
+
         # Handle Failures
         if failures and full_reload:
             for f in failures:
@@ -122,28 +130,28 @@ class MarketDataUpdater:
 
         # Transform & Collect
         bulk_data: list[MarketPrice] = []
-        
+
         for symbol in batch:
             # Extract single symbol DataFrame
             df_sym = self.provider.extract_symbol_data(df_batch, symbol)
-            
+
             if df_sym.empty:
                 continue
 
             # Parse Rows
             # Lowercase columns for standardized access
             df_sym.columns = df_sym.columns.str.lower()
-            
+
             # Clean
             df_sym.dropna(subset=["close"], inplace=True)
-            
+
             for date_idx, row in df_sym.iterrows():
                 try:
                     # Prepare row dict with date
                     row_dict = row.to_dict()
                     # date_idx is typically Timestamp
-                    row_dict["date"] = date_idx 
-                    
+                    row_dict["date"] = date_idx
+
                     price_model = MarketPrice.from_yahoo(symbol, row_dict)
                     bulk_data.append(price_model)
                 except ValueError as ve:
@@ -154,5 +162,5 @@ class MarketDataUpdater:
         # Persist
         if bulk_data:
             self.repo.save_bulk_prices(bulk_data)
-            
+
         return len(bulk_data)

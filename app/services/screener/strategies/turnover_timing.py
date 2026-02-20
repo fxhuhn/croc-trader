@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class TurnoverCandidate(TypedDict):
     """Metadata for potential trading candidates."""
+
     symbol: str
     close: float
     sma_price: float
@@ -29,6 +30,7 @@ class TurnoverCandidate(TypedDict):
 
 class TurnoverSignalContext(TypedDict):
     """Metadata for the Turnover Timing signal stored in the database."""
+
     setup_date: str
     setup_close: float
     setup_candle_green: bool
@@ -45,6 +47,7 @@ class TurnoverSignalContext(TypedDict):
 @dataclass(frozen=True)
 class TurnoverConfiguration:
     """Configuration for technical analysis thresholds in Turnover Timing strategy."""
+
     atr_window: int = 3
     # Entry Factors: 0.5 * ATR and 1.0 * ATR below Close
     entry_factors: list[float] = field(default_factory=lambda: [0.5, 1.0])
@@ -216,7 +219,9 @@ class TurnoverTimingStrategy(BaseStrategy):
         required_window = self.configuration.sma_window
         start_location = max(0, closes.index.get_loc(setup_date) - required_window)
 
-        closes_slice = closes.iloc[start_location : closes.index.get_loc(setup_date) + 1]
+        closes_slice = closes.iloc[
+            start_location : closes.index.get_loc(setup_date) + 1
+        ]
         highs_slice = highs.iloc[start_location : highs.index.get_loc(setup_date) + 1]
         lows_slice = lows.iloc[start_location : lows.index.get_loc(setup_date) + 1]
         volumes_slice = volumes.iloc[
@@ -314,9 +319,9 @@ class TurnoverTimingStrategy(BaseStrategy):
             else:
                 existing_indices = str(merged_candidates[symbol]["indices"]).split(", ")
                 if str(candidate["indices"]) not in existing_indices:
-                    merged_candidates[symbol][
-                        "indices"
-                    ] = f"{merged_candidates[symbol]['indices']}, {candidate['indices']}"
+                    merged_candidates[symbol]["indices"] = (
+                        f"{merged_candidates[symbol]['indices']}, {candidate['indices']}"
+                    )
 
         unique_candidates = merged_candidates.values()
 
@@ -331,9 +336,7 @@ class TurnoverTimingStrategy(BaseStrategy):
                 # Calculate Limit Entry: Close - (Factor * ATR)
                 limit_price = round(close_price - (atr_value * factor), 2)
 
-                if self.trade_repository.exists(
-                    symbol, strategy_name, setup_date_str
-                ):
+                if self.trade_repository.exists(symbol, strategy_name, setup_date_str):
                     continue
 
                 context: TurnoverSignalContext = {
@@ -456,7 +459,9 @@ class TurnoverTimingStrategy(BaseStrategy):
             "values": {
                 "close": round(self._extract_safe_float_value(current_close), 2),
                 "sma150": round(self._extract_safe_float_value(current_sma150), 2),
-                "turnover_sma20": int(self._extract_safe_float_value(current_turnover_sma, 0)),
+                "turnover_sma20": int(
+                    self._extract_safe_float_value(current_turnover_sma, 0)
+                ),
                 "atr": round(self._extract_safe_float_value(current_atr), 2),
             },
             "note": "Rank logic (Top 20) requires full market scan.",

@@ -43,10 +43,8 @@ class MarketQualityService:
                 logger.warning(
                     f"Repair Check: {len(outdated)} outdated, {len(shallow)} shallow history."
                 )
-                logger.warning(
-                    f"Starte Repair für {len(repair_candidates)} Symbole."
-                )
-                
+                logger.warning(f"Starte Repair für {len(repair_candidates)} Symbole.")
+
                 # Trigger Update for these specific symbols (Full Reload necessary to fix history)
                 self.updater.run_update(
                     full_reload=True, specific_symbols=list(repair_candidates)

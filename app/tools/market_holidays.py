@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 class HolidayConfig(TypedDict):
     """Type definition for the holidays YAML structure."""
+
     holidays: dict[str, str]
 
 
@@ -51,9 +52,9 @@ class MarketHolidayChecker:
                 return
 
             logger.debug("Initializing MarketHolidayChecker...")
-            
+
             self._holidays: dict[datetime.date, str] = {}
-            
+
             # Determine path if not provided
             if yaml_path is None:
                 # Assuming app/tools/market_holidays.py -> ../../data/holidays.yaml
@@ -65,8 +66,10 @@ class MarketHolidayChecker:
 
             self._load_holidays()
             self._initialized = True
-            
-            logger.debug(f"✓ MarketHolidayChecker initialized with {len(self._holidays)} holidays")
+
+            logger.debug(
+                f"✓ MarketHolidayChecker initialized with {len(self._holidays)} holidays"
+            )
 
     def _load_holidays(self) -> None:
         """Loads holidays from the YAML file into memory."""
@@ -76,7 +79,9 @@ class MarketHolidayChecker:
                 # We do not raise here to allow the app to run (maybe without holiday checks),
                 # but in strict mode we might want to raise. For now, log error.
                 # Per user rules: Critical errors -> Raise. Missing config file IS critical if we rely on it.
-                raise FileNotFoundError(f"Critical: Holidays configuration file missing at {self.yaml_path}")
+                raise FileNotFoundError(
+                    f"Critical: Holidays configuration file missing at {self.yaml_path}"
+                )
 
             with open(self.yaml_path, "r", encoding="utf-8") as f:
                 data: HolidayConfig = yaml.safe_load(f)
@@ -146,6 +151,7 @@ class MarketHolidayChecker:
                     f"Invalid date string provided: {date_check}. Expected YYYY-MM-DD."
                 )
         raise TypeError(f"Unsupported date type: {type(date_check)}")
+
 
 if __name__ == "__main__":
     # Simple test

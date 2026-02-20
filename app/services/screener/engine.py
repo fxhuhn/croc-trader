@@ -9,14 +9,17 @@ from .protocols import StrategyProtocol
 
 logger = logging.getLogger(__name__)
 
+
 class ScreenerConfiguration(TypedDict, total=False):
     """Configuration for the screening process."""
+
     strategy_ranking: list[str]
+
 
 class ScreenerEngine:
     """
     Orchestrates the execution of multiple trading strategies for screening.
-    
+
     This engine follows the Open-Closed Principle by allowing strategies to be
     registered dynamically rather than being hardcoded in the constructor.
     """
@@ -32,7 +35,7 @@ class ScreenerEngine:
     ) -> None:
         """
         Initializes the ScreenerEngine with required repositories and strategies.
-        
+
         Args:
             trade_repository: Repository for trade-related database operations.
             signal_repository: Repository for signal-related database operations.
@@ -55,7 +58,7 @@ class ScreenerEngine:
     def register_strategy(self, strategy: StrategyProtocol) -> None:
         """
         Registers a new strategy to the engine.
-        
+
         Args:
             strategy: An object implementing the StrategyProtocol.
         """
@@ -67,11 +70,11 @@ class ScreenerEngine:
     ) -> dict[str, int]:
         """
         Executes all registered strategies and returns the hit count per strategy.
-        
+
         Args:
             days: Lookback period for screening (0 for latest data).
             strategy_filter: Optional name to run only a specific strategy.
-            
+
         Returns:
             dict[str, int]: A mapping of strategy names to their respective signal hits.
         """
@@ -82,11 +85,11 @@ class ScreenerEngine:
         if days == 0:
             self.data_provider.clear_cache()
             global_analysis_date = self.data_provider.get_latest_date()
-            
+
             if global_analysis_date:
                 logger.info(
-                    "[ScreenerEngine] Global Analysis Date detected: %s", 
-                    global_analysis_date
+                    "[ScreenerEngine] Global Analysis Date detected: %s",
+                    global_analysis_date,
                 )
             else:
                 logger.warning(
@@ -104,18 +107,20 @@ class ScreenerEngine:
                 logger.error("Error executing strategy %s: %s", strategy.name, error)
                 results[strategy.name] = 0
             except Exception:
-                logger.exception("Critical unexpected error in strategy %s", strategy.name)
+                logger.exception(
+                    "Critical unexpected error in strategy %s", strategy.name
+                )
                 results[strategy.name] = 0
-                
+
         return results
 
     def get_strategy(self, name: str) -> StrategyProtocol | None:
         """
         Finds a registered strategy by its name.
-        
+
         Args:
             name: The name of the strategy to find.
-            
+
         Returns:
             StrategyProtocol | None: The found strategy or None if not registered.
         """

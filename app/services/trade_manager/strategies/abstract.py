@@ -17,6 +17,7 @@ class BaseTradeStrategy(ABC):
     Interface and Base Class for all trading strategies.
     Provides shared logic for trade activation, exit management, and position sizing.
     """
+
     DEFAULT_BUDGET: float = 2000.0
 
     @abstractmethod
@@ -115,7 +116,9 @@ class BaseTradeStrategy(ABC):
         Returns:
             pd.Timestamp | None: The signal date if found.
         """
-        date_value = self._get_context_value(trade, "date") or self._get_context_value(trade, "setup_date")
+        date_value = self._get_context_value(trade, "date") or self._get_context_value(
+            trade, "setup_date"
+        )
         if date_value:
             try:
                 return pd.Timestamp(date_value)
@@ -129,11 +132,11 @@ class BaseTradeStrategy(ABC):
             context_data = trade.get("signal_context")
             if not context_data:
                 return None
-            
+
             # If already a dict, use it directly (Repository might have parsed it)
             if isinstance(context_data, dict):
                 return context_data.get(key)
-                
+
             # Otherwise parse from JSON string
             context = json.loads(context_data)
             return context.get(key)
@@ -208,26 +211,28 @@ class BaseTradeStrategy(ABC):
         size = float(trade.get("initial_size") or trade.get("current_size") or 0.0)
         if size <= 0:
             stop_loss = float(trade.get("current_stop_loss") or 0.0)
-            
+
             # 1. Try Risk-Based sizing (if SL exists)
             if stop_loss > 0 and fill_price > stop_loss:
                 risk_amount = float(
-                    self._get_context_value(trade, "risk_amount") 
-                    or trade.get("risk_amount") 
+                    self._get_context_value(trade, "risk_amount")
+                    or trade.get("risk_amount")
                     or 100.0
                 )
                 size = self._calculate_position_size(fill_price, stop_loss, risk_amount)
-            
+
             # 2. Try Budget-Based sizing (if size still 0 or no SL)
             if size <= 0 and fill_price > 0:
                 budget = float(
-                    self._get_context_value(trade, "budget") 
-                    or trade.get("budget") 
+                    self._get_context_value(trade, "budget")
+                    or trade.get("budget")
                     or self.DEFAULT_BUDGET
                 )
                 size = int(budget / fill_price)
                 if size > 0:
-                    logger.debug(f"Using budget-based sizing ({budget}) for {trade.get('symbol')}")
+                    logger.debug(
+                        f"Using budget-based sizing ({budget}) for {trade.get('symbol')}"
+                    )
 
         if size <= 0:
             return "ERROR: Zero Size"
@@ -276,16 +281,16 @@ class BaseTradeStrategy(ABC):
         if size <= 0:
             if stop_loss > 0 and fill_price > stop_loss:
                 risk_amount = float(
-                    self._get_context_value(trade, "risk_amount") 
-                    or trade.get("risk_amount") 
+                    self._get_context_value(trade, "risk_amount")
+                    or trade.get("risk_amount")
                     or 100.0
                 )
                 size = self._calculate_position_size(fill_price, stop_loss, risk_amount)
-            
+
             if size <= 0:
                 budget = float(
-                    self._get_context_value(trade, "budget") 
-                    or trade.get("budget") 
+                    self._get_context_value(trade, "budget")
+                    or trade.get("budget")
                     or self.DEFAULT_BUDGET
                 )
                 size = int(budget / fill_price)

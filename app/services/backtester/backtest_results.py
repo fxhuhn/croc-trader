@@ -270,11 +270,11 @@ class ResultsPersistence:
             # --- Schema Migration (Auto-Healing) ---
             # If we failed to delete the DB (locked), we might be working with an old schema.
             # We explicitly check for new columns and add them if missing.
-            
+
             # 1. backtest_runs: comprehensive check
             cursor.execute("PRAGMA table_info(backtest_runs)")
             existing_columns = {info[1] for info in cursor.fetchall()}
-            
+
             new_columns = {
                 "risk_of_ruin": "REAL",
                 "average_win": "REAL",
@@ -287,27 +287,31 @@ class ResultsPersistence:
                 "risk_adjusted_benchmark": "REAL",
                 "exposure_efficiency": "REAL",
                 "return_over_max_drawdown": "REAL",
-                "diversification_score": "REAL"
+                "diversification_score": "REAL",
             }
-            
+
             for col, dtype in new_columns.items():
                 if col not in existing_columns:
-                    cursor.execute(f"ALTER TABLE backtest_runs ADD COLUMN {col} {dtype}")
-                
+                    cursor.execute(
+                        f"ALTER TABLE backtest_runs ADD COLUMN {col} {dtype}"
+                    )
+
             # 2. strategy_metrics: risk_of_ruin and others if needed
             cursor.execute("PRAGMA table_info(strategy_metrics)")
             existing_strat_columns = {info[1] for info in cursor.fetchall()}
-            
+
             new_strat_columns = {
                 "risk_of_ruin": "REAL",
                 "average_win": "REAL",
                 "average_loss": "REAL",
-                "market_exposure_pct": "REAL"
+                "market_exposure_pct": "REAL",
             }
-            
+
             for col, dtype in new_strat_columns.items():
                 if col not in existing_strat_columns:
-                    cursor.execute(f"ALTER TABLE strategy_metrics ADD COLUMN {col} {dtype}")
+                    cursor.execute(
+                        f"ALTER TABLE strategy_metrics ADD COLUMN {col} {dtype}"
+                    )
 
             connection.commit()
 
@@ -337,7 +341,8 @@ class ResultsPersistence:
             cursor = connection.cursor()
 
             # 1. Main Run Summary
-            cursor.execute("""
+            cursor.execute(
+                """
                 INSERT INTO backtest_runs (
                     start_date, end_date, total_trades, win_rate, 
                     profit_factor, net_profit, expectancy, maximum_drawdown,
@@ -347,45 +352,74 @@ class ResultsPersistence:
                     risk_adjusted_benchmark, exposure_efficiency, 
                     return_over_max_drawdown, diversification_score
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                start_date, end_date, metrics.total_trades, metrics.win_rate,
-                metrics.profit_factor, metrics.net_profit, metrics.expectancy, 
-                metrics.maximum_drawdown, metrics.sharpe_ratio, 
-                metrics.system_quality_number, metrics.kelly_safe, 
-                metrics.strategy_return, metrics.benchmark_return,
-                metrics.risk_of_ruin, metrics.average_win, metrics.average_loss,
-                metrics.average_maximum_adverse_excursion,
-                metrics.average_maximum_favorable_excursion,
-                metrics.kelly_mean, metrics.kelly_std, metrics.market_exposure_pct,
-                metrics.risk_adjusted_benchmark, metrics.exposure_efficiency,
-                metrics.return_over_maximum_drawdown, diversification_score
-            ))
+            """,
+                (
+                    start_date,
+                    end_date,
+                    metrics.total_trades,
+                    metrics.win_rate,
+                    metrics.profit_factor,
+                    metrics.net_profit,
+                    metrics.expectancy,
+                    metrics.maximum_drawdown,
+                    metrics.sharpe_ratio,
+                    metrics.system_quality_number,
+                    metrics.kelly_safe,
+                    metrics.strategy_return,
+                    metrics.benchmark_return,
+                    metrics.risk_of_ruin,
+                    metrics.average_win,
+                    metrics.average_loss,
+                    metrics.average_maximum_adverse_excursion,
+                    metrics.average_maximum_favorable_excursion,
+                    metrics.kelly_mean,
+                    metrics.kelly_std,
+                    metrics.market_exposure_pct,
+                    metrics.risk_adjusted_benchmark,
+                    metrics.exposure_efficiency,
+                    metrics.return_over_maximum_drawdown,
+                    diversification_score,
+                ),
+            )
             run_id = cursor.lastrowid
             if run_id is None:
                 raise ValueError("Failed to retrieve last inserted run_id.")
 
             # 2. Strategy Metrics
             if strategy_metrics:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT INTO strategy_metrics (
                         run_id, strategy_name, total_trades, win_rate, 
                         profit_factor, net_profit, maximum_drawdown, sqn, 
                         kelly_safe, risk_of_ruin, average_win, average_loss,
                         market_exposure_pct
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    (
-                        run_id, name, met.total_trades, met.win_rate,
-                        met.profit_factor, met.net_profit, met.maximum_drawdown, 
-                        met.system_quality_number, met.kelly_safe,
-                        met.risk_of_ruin, met.average_win, met.average_loss,
-                        met.market_exposure_pct
-                    ) for name, met in strategy_metrics.items()
-                ])
+                """,
+                    [
+                        (
+                            run_id,
+                            name,
+                            met.total_trades,
+                            met.win_rate,
+                            met.profit_factor,
+                            met.net_profit,
+                            met.maximum_drawdown,
+                            met.system_quality_number,
+                            met.kelly_safe,
+                            met.risk_of_ruin,
+                            met.average_win,
+                            met.average_loss,
+                            met.market_exposure_pct,
+                        )
+                        for name, met in strategy_metrics.items()
+                    ],
+                )
 
             # 3. Portfolio Kelly
             if portfolio_kelly:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO portfolio_simulations (
                         run_id, combined_mean_kelly, safe_kelly_25, 
                         suggested_multiplier, leveraged_max_drawdown, max_total_exposure,
@@ -393,172 +427,209 @@ class ResultsPersistence:
                         uncapped_multiplier, uncapped_max_total_exposure, 
                         uncapped_leveraged_max_drawdown
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    run_id, portfolio_kelly.combined_mean_kelly, 
-                    portfolio_kelly.safe_kelly_25, portfolio_kelly.suggested_multiplier, 
-                    portfolio_kelly.leveraged_max_drawdown,
-                    portfolio_kelly.max_total_exposure,
-                    portfolio_kelly.correlation_fail_rate,
-                    portfolio_kelly.max_concurrent_trades,
-                    portfolio_kelly.uncapped_multiplier,
-                    portfolio_kelly.uncapped_max_total_exposure,
-                    portfolio_kelly.uncapped_leveraged_max_drawdown
-                ))
+                """,
+                    (
+                        run_id,
+                        portfolio_kelly.combined_mean_kelly,
+                        portfolio_kelly.safe_kelly_25,
+                        portfolio_kelly.suggested_multiplier,
+                        portfolio_kelly.leveraged_max_drawdown,
+                        portfolio_kelly.max_total_exposure,
+                        portfolio_kelly.correlation_fail_rate,
+                        portfolio_kelly.max_concurrent_trades,
+                        portfolio_kelly.uncapped_multiplier,
+                        portfolio_kelly.uncapped_max_total_exposure,
+                        portfolio_kelly.uncapped_leveraged_max_drawdown,
+                    ),
+                )
 
             # 4. Walk Forward
             if walk_forward_df is not None and not walk_forward_df.empty:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT INTO walk_forward_windows (
                         run_id, window_label, is_kelly, oos_kelly, oos_pf, 
                         avg_vix, uptrend_pct, degradation, recommendation
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    (
-                        run_id,
-                        row.get("Window"),
-                        row.get("IS_Kelly"),
-                        row.get("OOS_Kelly"),
-                        row.get("OOS_PF"),
-                        row.get("Avg_VIX"),
-                        row.get("Uptrend_Pct"),
-                        row.get("Degradation"),
-                        row.get("Recommendation")
-                    )
-                    for row in walk_forward_df.to_dict("records")
-                ])
+                """,
+                    [
+                        (
+                            run_id,
+                            row.get("Window"),
+                            row.get("IS_Kelly"),
+                            row.get("OOS_Kelly"),
+                            row.get("OOS_PF"),
+                            row.get("Avg_VIX"),
+                            row.get("Uptrend_Pct"),
+                            row.get("Degradation"),
+                            row.get("Recommendation"),
+                        )
+                        for row in walk_forward_df.to_dict("records")
+                    ],
+                )
 
             # 5. Stress Test
             if stress_test_results:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO stress_tests (
                         run_id, avg_max_drawdown, worst_max_drawdown, 
                         failure_rate, avg_final_equity
                     ) VALUES (?, ?, ?, ?, ?)
-                """, (
-                    run_id, stress_test_results.get("avg_max_drawdown"), 
-                    stress_test_results.get("worst_max_drawdown"),
-                    stress_test_results.get("failure_rate"),
-                    stress_test_results.get("avg_equity")
-                ))
+                """,
+                    (
+                        run_id,
+                        stress_test_results.get("avg_max_drawdown"),
+                        stress_test_results.get("worst_max_drawdown"),
+                        stress_test_results.get("failure_rate"),
+                        stress_test_results.get("avg_equity"),
+                    ),
+                )
 
             # 6. Granular Equity Curves
             if daily_equity_curves is not None and not daily_equity_curves.empty:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT INTO equity_curves (
                         run_id, date, equity, drawdown_pct, is_benchmark, strategy_name
                     ) VALUES (?, ?, ?, ?, ?, ?)
-                """, [
-                    (
-                        run_id, 
-                        str(row["date"]), 
-                        row["equity"], 
-                        row["drawdown_pct"], 
-                        int(row.get("is_benchmark", 0)), 
-                        row.get("strategy_name")
-                    )
-                    for row in daily_equity_curves.to_dict("records")
-                ])
+                """,
+                    [
+                        (
+                            run_id,
+                            str(row["date"]),
+                            row["equity"],
+                            row["drawdown_pct"],
+                            int(row.get("is_benchmark", 0)),
+                            row.get("strategy_name"),
+                        )
+                        for row in daily_equity_curves.to_dict("records")
+                    ],
+                )
 
             # 7. Regime Data
             if regime_data is not None and not regime_data.empty:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT INTO regime_data (
                         run_id, date, vix_close, safety_active, trigger_reason
                     ) VALUES (?, ?, ?, ?, ?)
-                """, [
-                    (
-                        run_id, 
-                        str(row["date"]), 
-                        row["vix_close"], 
-                        int(row["safety_active"]),
-                        row.get("trigger_reason", "")
-                    )
-                    for row in regime_data.to_dict("records")
-                ])
+                """,
+                    [
+                        (
+                            run_id,
+                            str(row["date"]),
+                            row["vix_close"],
+                            int(row["safety_active"]),
+                            row.get("trigger_reason", ""),
+                        )
+                        for row in regime_data.to_dict("records")
+                    ],
+                )
 
             # 8. Exposure Data
             if strategy_exposures is not None and not strategy_exposures.empty:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT INTO exposure_data (
                         run_id, date, strategy_name, exposure_value
                     ) VALUES (?, ?, ?, ?)
-                """, [
-                    (
-                        run_id, 
-                        str(row["date"]), 
-                        row["strategy_name"], 
-                        row["exposure_value"]
-                    )
-                    for row in strategy_exposures.to_dict("records")
-                ])
+                """,
+                    [
+                        (
+                            run_id,
+                            str(row["date"]),
+                            row["strategy_name"],
+                            row["exposure_value"],
+                        )
+                        for row in strategy_exposures.to_dict("records")
+                    ],
+                )
 
             # 9. Safety Impact & Events
             if safety_impact:
-                cursor.execute("""
+                cursor.execute(
+                    """
                     INSERT INTO safety_switch_impact (
                         run_id, final_equity, theoretical_equity, saved_loss, 
                         opportunity_cost, net_efficiency
                     ) VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    run_id,
-                    safety_impact.get("final_equity"),
-                    safety_impact.get("theoretical_equity"),
-                    safety_impact.get("saved_loss"),
-                    safety_impact.get("opportunity_cost"),
-                    safety_impact.get("net_efficiency"),
-                ))
+                """,
+                    (
+                        run_id,
+                        safety_impact.get("final_equity"),
+                        safety_impact.get("theoretical_equity"),
+                        safety_impact.get("saved_loss"),
+                        safety_impact.get("opportunity_cost"),
+                        safety_impact.get("net_efficiency"),
+                    ),
+                )
 
                 events = safety_impact.get("events", [])
                 if events:
-                    cursor.executemany("""
+                    cursor.executemany(
+                        """
                         INSERT INTO safety_switch_events (
                             run_id, start_date, end_date, trigger_reason, 
                             duration_days, saved_profit
                         ) VALUES (?, ?, ?, ?, ?, ?)
-                    """, [
-                        (
-                            run_id,
-                            str(ev["start_date"]),
-                            str(ev.get("end_date", "")),
-                            ev["reason"],
-                            ev["days"],
-                            ev["saved_profit"]
-                        )
-                        for ev in events
-                    ])
+                    """,
+                        [
+                            (
+                                run_id,
+                                str(ev["start_date"]),
+                                str(ev.get("end_date", "")),
+                                ev["reason"],
+                                ev["days"],
+                                ev["saved_profit"],
+                            )
+                            for ev in events
+                        ],
+                    )
 
             # 10. Portfolio Funnel
             if funnel_data:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT INTO portfolio_funnel (
                         run_id, strategy_name, kelly, raw_share, status, 
                         reason, final_allocation
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, [
-                    (
-                        run_id, item["name"], item["kelly"], item["raw_share"],
-                        item["status"], item["reason"], item["final_allocation"]
-                    )
-                    for item in funnel_data
-                ])
+                """,
+                    [
+                        (
+                            run_id,
+                            item["name"],
+                            item["kelly"],
+                            item["raw_share"],
+                            item["status"],
+                            item["reason"],
+                            item["final_allocation"],
+                        )
+                        for item in funnel_data
+                    ],
+                )
 
             # 11. Trade Quality
             if quality_df is not None and not quality_df.empty:
-                cursor.executemany("""
+                cursor.executemany(
+                    """
                     INSERT INTO trade_quality_scores (
                         run_id, trade_id, total_score, grade, weakest_link, profit
                     ) VALUES (?, ?, ?, ?, ?, ?)
-                """, [
-                    (
-                        run_id,
-                        str(row.get("trade_id")),
-                        row.get("total_score"),
-                        row.get("grade"),
-                        row.get("weakest_link"),
-                        row.get("profit")
-                    )
-                    for row in quality_df.to_dict("records")
-                ])
+                """,
+                    [
+                        (
+                            run_id,
+                            str(row.get("trade_id")),
+                            row.get("total_score"),
+                            row.get("grade"),
+                            row.get("weakest_link"),
+                            row.get("profit"),
+                        )
+                        for row in quality_df.to_dict("records")
+                    ],
+                )
 
             connection.commit()
             return run_id
@@ -575,7 +646,7 @@ class ResultsPersistence:
         """Retrieves all stored metrics for a specific run."""
         with self._get_connection() as connection:
             cursor = connection.cursor()
-            
+
             # 1. Summary
             cursor.execute("SELECT * FROM backtest_runs WHERE id = ?", (run_id,))
             row = cursor.fetchone()
@@ -588,12 +659,16 @@ class ResultsPersistence:
             strategies = [dict(row) for row in cursor.fetchall()]
 
             # 3. Kelly / Portfolio
-            cursor.execute("SELECT * FROM portfolio_simulations WHERE run_id = ?", (run_id,))
+            cursor.execute(
+                "SELECT * FROM portfolio_simulations WHERE run_id = ?", (run_id,)
+            )
             row = cursor.fetchone()
             portfolio = dict(row) if row else {}
 
             # 4. WFA
-            cursor.execute("SELECT * FROM walk_forward_windows WHERE run_id = ?", (run_id,))
+            cursor.execute(
+                "SELECT * FROM walk_forward_windows WHERE run_id = ?", (run_id,)
+            )
             wfa = [dict(row) for row in cursor.fetchall()]
 
             # 5. Stress
@@ -604,31 +679,35 @@ class ResultsPersistence:
             # 6. Granular Time Series (for Charts)
             cursor.execute(
                 "SELECT date, equity, drawdown_pct, is_benchmark, strategy_name "
-                "FROM equity_curves WHERE run_id = ? ORDER BY date ASC", 
-                (run_id,)
+                "FROM equity_curves WHERE run_id = ? ORDER BY date ASC",
+                (run_id,),
             )
             equity_curves = [dict(row) for row in cursor.fetchall()]
 
             cursor.execute(
                 "SELECT date, vix_close, safety_active, trigger_reason "
-                "FROM regime_data WHERE run_id = ? ORDER BY date ASC", 
-                (run_id,)
+                "FROM regime_data WHERE run_id = ? ORDER BY date ASC",
+                (run_id,),
             )
             regime_data = [dict(row) for row in cursor.fetchall()]
 
             cursor.execute(
                 "SELECT date, strategy_name, exposure_value "
-                "FROM exposure_data WHERE run_id = ? ORDER BY date ASC", 
-                (run_id,)
+                "FROM exposure_data WHERE run_id = ? ORDER BY date ASC",
+                (run_id,),
             )
             exposure_data = [dict(row) for row in cursor.fetchall()]
 
             # 7. Safety Impact
-            cursor.execute("SELECT * FROM safety_switch_impact WHERE run_id = ?", (run_id,))
+            cursor.execute(
+                "SELECT * FROM safety_switch_impact WHERE run_id = ?", (run_id,)
+            )
             row = cursor.fetchone()
             safety_impact = dict(row) if row else {}
 
-            cursor.execute("SELECT * FROM safety_switch_events WHERE run_id = ?", (run_id,))
+            cursor.execute(
+                "SELECT * FROM safety_switch_events WHERE run_id = ?", (run_id,)
+            )
             events = [dict(row) for row in cursor.fetchall()]
             if safety_impact:
                 safety_impact["events"] = events
@@ -638,7 +717,9 @@ class ResultsPersistence:
             funnel = [dict(row) for row in cursor.fetchall()]
 
             # 9. Quality
-            cursor.execute("SELECT * FROM trade_quality_scores WHERE run_id = ?", (run_id,))
+            cursor.execute(
+                "SELECT * FROM trade_quality_scores WHERE run_id = ?", (run_id,)
+            )
             quality = [dict(row) for row in cursor.fetchall()]
 
             return {

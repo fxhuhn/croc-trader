@@ -17,13 +17,13 @@ from ...database.repositories.trade import TradeRepository
 from ...database.session import DatabaseSession
 from .analytics import (
     BacktestAnalytics,
-    BacktestMetrics, 
-    PortfolioMetrics, 
-    NoiseTester, 
+    BacktestMetrics,
+    PortfolioMetrics,
+    NoiseTester,
     WalkForwardAnalyzer,
     PerformancePeriods,
     TradeQualityAnalyzer,
-    DiversificationAnalyzer
+    DiversificationAnalyzer,
 )
 from .engine import BacktestEngine
 from .backtest_results import (
@@ -59,7 +59,7 @@ def _display_performance_table(
     table.add_column("Value", style="magenta")
 
     table.add_row("Total Trades", str(performance_metrics.total_trades))
-    table.add_row("Win Rate", f"{performance_metrics.win_rate*100:.1f}%")
+    table.add_row("Win Rate", f"{performance_metrics.win_rate * 100:.1f}%")
     table.add_row("Profit Factor", f"{performance_metrics.profit_factor:.2f}")
     table.add_row("Net Profit", f"${performance_metrics.net_profit:,.2f}")
     table.add_row("Expectancy", f"${performance_metrics.expectancy:.2f}")
@@ -69,15 +69,15 @@ def _display_performance_table(
         f"[bold green]{performance_metrics.kelly_safe:.2f}[/bold green]",
     )
     table.add_row("SQN", f"{performance_metrics.system_quality_number:.2f}")
-    table.add_row("Max Drawdown", f"{performance_metrics.maximum_drawdown*100:.1f}%")
+    table.add_row("Max Drawdown", f"{performance_metrics.maximum_drawdown * 100:.1f}%")
 
     console.print(table)
 
     # Benchmark
     console.print(
         Panel(
-            f"Strategy: [green]{performance_metrics.strategy_return*100:.1f}%[/green] "
-            f"vs SPY: [yellow]{benchmark_return*100:.1f}%[/yellow]",
+            f"Strategy: [green]{performance_metrics.strategy_return * 100:.1f}%[/green] "
+            f"vs SPY: [yellow]{benchmark_return * 100:.1f}%[/yellow]",
             title="Benchmark Comparison",
         )
     )
@@ -106,14 +106,17 @@ def _display_strategy_breakdown(
     # Define metrics to show
     rows = [
         ("Total Trades", lambda metrics: str(metrics.total_trades)),
-        ("Win Rate", lambda metrics: f"{metrics.win_rate*100:.1f}%"),
+        ("Win Rate", lambda metrics: f"{metrics.win_rate * 100:.1f}%"),
         ("Profit Factor", lambda metrics: f"{metrics.profit_factor:.2f}"),
         ("Net Profit", lambda metrics: f"${metrics.net_profit:,.2f}"),
         ("Kelly (Safe)", lambda metrics: f"{metrics.kelly_safe:.2f}"),
         ("SQN", lambda metrics: f"{metrics.system_quality_number:.2f}"),
-        ("Max Drawdown", lambda metrics: f"{metrics.maximum_drawdown*100:.1f}%"),
-        ("Exposure", lambda metrics: f"{metrics.market_exposure_pct*100:.1f}%"),
-        ("Risk-Adj Ret", lambda metrics: f"{metrics.risk_adjusted_benchmark*100:.1f}% (Ben)"),
+        ("Max Drawdown", lambda metrics: f"{metrics.maximum_drawdown * 100:.1f}%"),
+        ("Exposure", lambda metrics: f"{metrics.market_exposure_pct * 100:.1f}%"),
+        (
+            "Risk-Adj Ret",
+            lambda metrics: f"{metrics.risk_adjusted_benchmark * 100:.1f}% (Ben)",
+        ),
         ("Eff (Exp)", lambda metrics: f"{metrics.exposure_efficiency:.2f}"),
         ("Ret/DD", lambda metrics: f"{metrics.return_over_maximum_drawdown:.2f}"),
     ]
@@ -165,31 +168,31 @@ def _display_safety_switch_steps(console: Console, events: list[SafetyEvent]) ->
 def _display_impact_analysis(console: Console, simulation: SimulationImpact) -> None:
     """Displays the Safety Switch Impact Analysis Scorecard."""
     console.print("\n[bold blue]--- Safety Switch Impact Analysis ---[/bold blue]")
-    
+
     table = Table(title="Impact Analysis (Saved Loss vs Opp. Cost)")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", style="magenta")
-    
+
     table.add_row(
-        "Saved Loss (Drawdown Avoided)", 
-        f"[bold green]${simulation['saved_loss']:,.2f}[/bold green]"
+        "Saved Loss (Drawdown Avoided)",
+        f"[bold green]${simulation['saved_loss']:,.2f}[/bold green]",
     )
     table.add_row(
-        "Opportunity Cost (Missed Profit)", 
-        f"[bold red]${simulation['opportunity_cost']:,.2f}[/bold red]"
+        "Opportunity Cost (Missed Profit)",
+        f"[bold red]${simulation['opportunity_cost']:,.2f}[/bold red]",
     )
-    
+
     table.add_row(
-        "Margin Interest Paid", 
-        f"[bold yellow]${simulation.get('margin_interest_paid', 0.0):,.2f}[/bold yellow]"
+        "Margin Interest Paid",
+        f"[bold yellow]${simulation.get('margin_interest_paid', 0.0):,.2f}[/bold yellow]",
     )
-    
+
     efficiency_style = "bold green" if simulation["net_efficiency"] > 0 else "bold red"
     table.add_row(
-        "Net Efficiency", 
-        f"[{efficiency_style}]${simulation['net_efficiency']:,.2f}[/{efficiency_style}]"
+        "Net Efficiency",
+        f"[{efficiency_style}]${simulation['net_efficiency']:,.2f}[/{efficiency_style}]",
     )
-    
+
     console.print(table)
 
 
@@ -205,7 +208,9 @@ def _display_switch_tournament(
     if not tournament_results:
         return
 
-    console.print("\n[bold blue]--- Switch Optimization Tournament (Winner Takes All) ---[/bold blue]")
+    console.print(
+        "\n[bold blue]--- Switch Optimization Tournament (Winner Takes All) ---[/bold blue]"
+    )
 
     table = Table(title="Safety Logic Comparison (Tournament)")
     table.add_column("Trigger Logic", style="cyan")
@@ -225,13 +230,15 @@ def _display_switch_tournament(
         table.add_row(
             str(result["logic"]),
             f"${result['total_return']:,.0f}",
-            f"{result['max_drawdown']*100:.1f}%",
+            f"{result['max_drawdown'] * 100:.1f}%",
             f"[{efficiency_style}]{efficiency_text}[/{efficiency_style}]",
             str(result["grade"]),
         )
 
     console.print(table)
-    console.print("[dim]*Net Efficiency = (Profit with Switch) - (Profit Baseline)[/dim]")
+    console.print(
+        "[dim]*Net Efficiency = (Profit with Switch) - (Profit Baseline)[/dim]"
+    )
 
 
 def _display_regime_comparison(
@@ -241,8 +248,10 @@ def _display_regime_comparison(
     if not regime_comparison:
         return
 
-    console.print("\n[bold blue]--- Regime-Specific Performance Comparison ---[/bold blue]")
-    
+    console.print(
+        "\n[bold blue]--- Regime-Specific Performance Comparison ---[/bold blue]"
+    )
+
     table = Table(title="Strategy Performance by Market Regime (Raw vs Safe)")
     table.add_column("Strategy", style="cyan")
     table.add_column("Regime", style="dim")
@@ -256,7 +265,7 @@ def _display_regime_comparison(
                 strategy_name if first else "",
                 regime,
                 f"${strategy_metrics['Return']:,.2f}",
-                str(int(strategy_metrics["Sample_Count"]))
+                str(int(strategy_metrics["Sample_Count"])),
             )
             first = False
         table.add_section()
@@ -264,13 +273,17 @@ def _display_regime_comparison(
     console.print(table)
 
 
-def _display_walk_forward_insights(console: Console, walk_forward_dataframe: pd.DataFrame) -> None:
+def _display_walk_forward_insights(
+    console: Console, walk_forward_dataframe: pd.DataFrame
+) -> None:
     """Displays Actionable WFA Insights and Recommendations."""
     if walk_forward_dataframe is None or walk_forward_dataframe.empty:
         return
 
-    console.print("\n[bold blue]--- WFA Actionable Insights & Recommendations ---[/bold blue]")
-    
+    console.print(
+        "\n[bold blue]--- WFA Actionable Insights & Recommendations ---[/bold blue]"
+    )
+
     table = Table(title="WFA Stability & Allocation Recommendations")
     table.add_column("Window", style="dim")
     table.add_column("Degradation %", style="yellow")
@@ -287,25 +300,30 @@ def _display_walk_forward_insights(console: Console, walk_forward_dataframe: pd.
             style = "bold yellow"
         elif "CRITICAL" in recommendation:
             style = "bold red"
-            
+
         table.add_row(
             row["Window"],
-            f"{row['Degradation']*100:.1f}%",
+            f"{row['Degradation'] * 100:.1f}%",
             f"{row['OOS_PF']:.2f}",
-            f"[{style}]{recommendation}[/{style}]"
+            f"[{style}]{recommendation}[/{style}]",
         )
-        
+
     console.print(table)
 
 
-def _display_portfolio_kelly(console: Console, portfolio_metrics: PortfolioMetrics) -> None:
+def _display_portfolio_kelly(
+    console: Console, portfolio_metrics: PortfolioMetrics
+) -> None:
     """Displays portfolio optimization results.
 
     Args:
         console: Rich console object.
         portfolio_metrics: Portfolio optimization metrics.
     """
-    if portfolio_metrics.safe_kelly_25 == 0 and portfolio_metrics.combined_mean_kelly == 0:
+    if (
+        portfolio_metrics.safe_kelly_25 == 0
+        and portfolio_metrics.combined_mean_kelly == 0
+    ):
         return
 
     portfolio_kelly_table = Table(title="Portfolio Optimization (Simulations)")
@@ -326,10 +344,14 @@ def _display_portfolio_kelly(console: Console, portfolio_metrics: PortfolioMetri
         f"{portfolio_metrics.percentile_95_concurrent_trades:.1f} (95th%)",
         "Global overlapping trades",
     )
-    
+
     for strategy_name, max_count in portfolio_metrics.max_trades_per_strategy.items():
-        days_at_max = portfolio_metrics.max_trades_per_strategy_days.get(strategy_name, 0)
-        p95_strat = portfolio_metrics.percentile_95_trades_per_strategy.get(strategy_name, 0.0)
+        days_at_max = portfolio_metrics.max_trades_per_strategy_days.get(
+            strategy_name, 0
+        )
+        p95_strat = portfolio_metrics.percentile_95_trades_per_strategy.get(
+            strategy_name, 0.0
+        )
         portfolio_kelly_table.add_row(
             f"  • {strategy_name}",
             f"{max_count} Peak ({days_at_max}d)",
@@ -353,8 +375,8 @@ def _display_portfolio_kelly(console: Console, portfolio_metrics: PortfolioMetri
 
     portfolio_kelly_table.add_row(
         "Leveraged MaxDD",
-        f"{portfolio_metrics.leveraged_max_drawdown*100:.1f}%",
-        f"{portfolio_metrics.uncapped_leveraged_max_drawdown*100:.1f}%",
+        f"{portfolio_metrics.leveraged_max_drawdown * 100:.1f}%",
+        f"{portfolio_metrics.uncapped_leveraged_max_drawdown * 100:.1f}%",
         "Projected Portfolio Drawdown",
     )
 
@@ -370,21 +392,21 @@ def _display_period_analysis(console: Console, period_metrics: pd.DataFrame):
     table.add_column("Avg Sharpe", style="magenta")
     table.add_column("Avg DD", style="red")
     table.add_column("Win Rate Stability", style="green")
-    
+
     # Aggregating for display
     windows = sorted(period_metrics["window_trades"].unique())
     for window in windows:
         subset = period_metrics[period_metrics["window_trades"] == window]
         if subset.empty:
             continue
-        
+
         table.add_row(
             f"{window}-Trade Rolling",
             f"{subset['sharpe_proxy'].mean():.2f}",
             f"{subset['max_drawdown_pnl'].mean():.2f}",
-            f"{subset['win_rate'].std()*100:.1f}%"
+            f"{subset['win_rate'].std() * 100:.1f}%",
         )
-    
+
     console.print(table)
 
 
@@ -397,36 +419,38 @@ def _display_quality_distribution(console: Console, quality_scores: pd.DataFrame
     table.add_column("Count", style="cyan")
     table.add_column("Avg Profit", style="green")
     table.add_column("Common Weakness", style="yellow")
-    
+
     for grade in ["A+", "A", "B", "C", "D", "F"]:
         subset = quality_scores[quality_scores["grade"] == grade]
         if subset.empty:
             continue
-        
+
         weakness_mode = subset["weakest_link"].mode()
         weakness_str = weakness_mode[0] if not weakness_mode.empty else "N/A"
-        
+
         table.add_row(
-            grade,
-            str(len(subset)),
-            f"${subset['profit'].mean():,.2f}",
-            weakness_str
+            grade, str(len(subset)), f"${subset['profit'].mean():,.2f}", weakness_str
         )
-    
+
     console.print(table)
-    
+
     if "weakest_link" in quality_scores.columns:
-        modes = quality_scores['weakest_link'].mode()
+        modes = quality_scores["weakest_link"].mode()
         if not modes.empty:
-            console.print(Panel(
-                f"[yellow]Actionable Insight:[/yellow] "
-                f"{modes[0]} is your weakest area. "
-                f"Focus on improving this component to boost overall performance."
-            ))
+            console.print(
+                Panel(
+                    f"[yellow]Actionable Insight:[/yellow] "
+                    f"{modes[0]} is your weakest area. "
+                    f"Focus on improving this component to boost overall performance."
+                )
+            )
+
 
 def _display_diversification(console: Console, score: float, matrices: dict):
     console.print("\n[bold blue]--- Diversification Analysis ---[/bold blue]")
-    console.print(f"Diversification Score: [bold magenta]{score:.1f}/100[/bold magenta]")
+    console.print(
+        f"Diversification Score: [bold magenta]{score:.1f}/100[/bold magenta]"
+    )
     # Could print matrix here if needed, but console space is limited.
 
 
@@ -442,7 +466,9 @@ def _display_portfolio_funnel(
     if not funnel_data:
         return
 
-    console.print("\n[bold blue]--- AUTOMATED PORTFOLIO ALLOCATION (KELLY OPTIMIZATION) ---[/bold blue]")
+    console.print(
+        "\n[bold blue]--- AUTOMATED PORTFOLIO ALLOCATION (KELLY OPTIMIZATION) ---[/bold blue]"
+    )
 
     table = Table(title="Portfolio Allocation (Funnel Logic)")
     table.add_column("Strategy Name", style="cyan")
@@ -482,7 +508,9 @@ def _display_portfolio_funnel(
     )
 
     console.print(table)
-    console.print("[dim]*Raw Share = Theoretical allocation without quality filters.[/dim]")
+    console.print(
+        "[dim]*Raw Share = Theoretical allocation without quality filters.[/dim]"
+    )
 
 
 def _display_capacity_ratio_analysis(
@@ -492,7 +520,9 @@ def _display_capacity_ratio_analysis(
     if not portfolio_metrics.strategy_capacity_ratios:
         return
 
-    console.print("\n[bold blue]--- Per-Strategy Capacity Ratio Analysis ---[/bold blue]")
+    console.print(
+        "\n[bold blue]--- Per-Strategy Capacity Ratio Analysis ---[/bold blue]"
+    )
 
     table = Table(title="Strategy Capacity Analysis")
     table.add_column("Strategy", style="cyan")
@@ -505,13 +535,9 @@ def _display_capacity_ratio_analysis(
         peak = portfolio_metrics.max_trades_per_strategy.get(strat, 0)
         p95 = portfolio_metrics.percentile_95_trades_per_strategy.get(strat, 0.0)
         multiplier = np.sqrt(ratio)
-        
+
         table.add_row(
-            strat,
-            str(peak),
-            f"{p95:.1f}",
-            f"{ratio:.2f}",
-            f"x{multiplier:.2f}"
+            strat, str(peak), f"{p95:.1f}", f"{ratio:.2f}", f"x{multiplier:.2f}"
         )
 
     console.print(table)
@@ -524,7 +550,9 @@ def _display_allocation_comparison(
     if not funnel_data:
         return
 
-    console.print("\n[bold blue]--- ALLOCATION COMPARISON (CURRENT vs NEW 95TH) ---[/bold blue]")
+    console.print(
+        "\n[bold blue]--- ALLOCATION COMPARISON (CURRENT vs NEW 95TH) ---[/bold blue]"
+    )
 
     table = Table(title="Portfolio Allocation Comparison")
     table.add_column("Strategy", style="cyan")
@@ -540,7 +568,7 @@ def _display_allocation_comparison(
         current = item["final_allocation"]
         new_p95 = item.get("final_allocation_p95", 0.0)
         delta = new_p95 - current
-        
+
         reasoning = "N/A"
         if item["status"] == "ACTIVE":
             if delta > 2.0:
@@ -557,19 +585,13 @@ def _display_allocation_comparison(
             f"{current:.1f}%",
             f"{new_p95:.1f}%",
             f"{delta:+.1f}pp",
-            reasoning
+            reasoning,
         )
         total_current += current
         total_new += new_p95
 
     table.add_section()
-    table.add_row(
-        "TOTAL",
-        f"{total_current:.0f}%",
-        f"{total_new:.0f}%",
-        "-",
-        "-"
-    )
+    table.add_row("TOTAL", f"{total_current:.0f}%", f"{total_new:.0f}%", "-", "-")
 
     console.print(table)
 
@@ -605,7 +627,7 @@ def _setup_resources(
     backtest_session = DatabaseSession(str(backtest_database_path))
     trade_repository = TradeRepository(backtest_session)
     trade_repository.init_schema()
-    
+
     # NEW: Clear current trades/logs so that each Run ID has its own clean set of trades
     # but the Run Summary history is preserved.
     trade_repository.clear_trades()
@@ -628,39 +650,43 @@ def _run_extended_analytics(
     """
     analytics = BacktestAnalytics(backtest_db_path, stocks_db_path)
     trades_dataframe = analytics.loader.fetch_closed_trades()
-    
+
     # --- NUCLEAR DEDUPLICATION ---
     # We enforce strict consistency here to resolve discrepancies (e.g. 2197 vs 824).
     if not trades_dataframe.empty:
         initial_count = len(trades_dataframe)
-        
+
         # 1. Ensure primary date columns are consistent datetime objects for analytics
         trades_dataframe["entry_date"] = pd.to_datetime(trades_dataframe["entry_date"])
         trades_dataframe["exit_date"] = pd.to_datetime(trades_dataframe["exit_date"])
-        
+
         # 2. Use normalized strings ONLY for identifying duplicates
         # This handles mixed precision/formats in the underlying data.
-        normalized_keys = pd.DataFrame({
-            "s": trades_dataframe["symbol"].str.strip(),
-            "st": trades_dataframe["strategy"].str.strip(),
-            "en": trades_dataframe["entry_date"].dt.strftime("%Y-%m-%d"),
-            "ex": trades_dataframe["exit_date"].dt.strftime("%Y-%m-%d")
-        })
-        
+        normalized_keys = pd.DataFrame(
+            {
+                "s": trades_dataframe["symbol"].str.strip(),
+                "st": trades_dataframe["strategy"].str.strip(),
+                "en": trades_dataframe["entry_date"].dt.strftime("%Y-%m-%d"),
+                "ex": trades_dataframe["exit_date"].dt.strftime("%Y-%m-%d"),
+            }
+        )
+
         # Apply the mask
         is_duplicate = normalized_keys.duplicated(keep="first")
         trades_dataframe = trades_dataframe[~is_duplicate].copy()
-        
+
         # 3. GHOST TRADE ELIMINATION
         # Remove trades that were never execution-active (0 PnL and non-profit exit reasons)
         # We use a small epsilon for PnL to handle float precision.
-        active_mask = (abs(trades_dataframe["realized_pnl"]) > 1e-6)
-        
+        active_mask = abs(trades_dataframe["realized_pnl"]) > 1e-6
+
         ghost_count = len(trades_dataframe) - active_mask.sum()
         if ghost_count > 0:
-            console.print(f"[yellow]Ghost Trade Elimination: Removing {ghost_count} inactive/expired signals.[/yellow]")
+            console.print(
+                f"[yellow]Ghost Trade Elimination: Removing {ghost_count} inactive/expired signals.[/yellow]"
+            )
             trades_dataframe = trades_dataframe[active_mask].copy()
-        
+
         final_count = len(trades_dataframe)
         if initial_count != final_count:
             console.print(
@@ -668,14 +694,20 @@ def _run_extended_analytics(
                 f"Using {final_count} physically executed trades for all reports."
             )
         else:
-            console.print(f"[green]Data Integrity Verified: {final_count} unique trades found.[/green]")
-    
+            console.print(
+                f"[green]Data Integrity Verified: {final_count} unique trades found.[/green]"
+            )
+
     if trades_dataframe.empty:
-        console.print("[yellow]No closed trades found. Skipping extended analytics.[/yellow]")
+        console.print(
+            "[yellow]No closed trades found. Skipping extended analytics.[/yellow]"
+        )
         return analytics, {}
 
     performance_metrics = analytics.run_analysis(trades_dataframe=trades_dataframe)
-    strategy_performance_map = analytics.run_strategy_analysis(trades_dataframe=trades_dataframe)
+    strategy_performance_map = analytics.run_strategy_analysis(
+        trades_dataframe=trades_dataframe
+    )
 
     # Simulations
     portfolio_kelly_metrics = None
@@ -721,9 +753,7 @@ def _run_extended_analytics(
     try:
         div = DiversificationAnalyzer()
         if not trades_dataframe.empty:
-            strat_map = {
-                k: v for k, v in trades_dataframe.groupby("strategy")
-            }
+            strat_map = {k: v for k, v in trades_dataframe.groupby("strategy")}
             corr = div.calculate_strategy_correlations(strat_map)
             div_score = div.calculate_diversification_score(corr)
     except Exception as e:
@@ -738,18 +768,19 @@ def _run_extended_analytics(
         "periods": period_df,
         "quality": quality_df,
         "diversification": div_score,
-        "trades_dataframe": trades_dataframe
+        "trades_dataframe": trades_dataframe,
     }
 
 
 def _load_portfolio_configuration() -> dict | None:
     """Loads portfolio.yaml if available in the runner's directory."""
     import yaml
+
     config_path = Path(__file__).parent / "portfolio.yaml"
-    
+
     if not config_path.exists():
         return None
-        
+
     try:
         with open(config_path, "r") as f:
             config = yaml.safe_load(f)
@@ -773,37 +804,45 @@ def _export_portfolio_configuration(
         equity: Initial capital for calculations.
     """
     import yaml
+
     config_path = Path(__file__).parent / "portfolio.yaml"
 
-    output = {
-        "equity": int(equity),
-        "strategies": []
-    }
+    output = {"equity": int(equity), "strategies": []}
 
     if not portfolio_metrics:
-        logger.warning("No portfolio metrics found. Using default max_trades=1 for YAML export.")
-    
+        logger.warning(
+            "No portfolio metrics found. Using default max_trades=1 for YAML export."
+        )
+
     for item in funnel_data:
         if item["status"] != "ACTIVE":
             continue
 
         name = item["name"]
-        
+
         # Static Parameters
         alloc_static = item["final_allocation"]
         quota_static = equity * (alloc_static / 100.0)
-        
+
         # Dynamic (P95) Parameters
         alloc_p95 = item.get("final_allocation_p95", alloc_static)
         quota_p95 = equity * (alloc_p95 / 100.0)
 
         # Max Trades from backtest observed concurrency
-        max_trades = portfolio_metrics.max_trades_per_strategy.get(name, 1) if portfolio_metrics else 1
+        max_trades = (
+            portfolio_metrics.max_trades_per_strategy.get(name, 1)
+            if portfolio_metrics
+            else 1
+        )
         if max_trades < 1:
             max_trades = 1
-            
+
         # 95th Percentile Max Trades
-        max_trades_p95 = portfolio_metrics.percentile_95_trades_per_strategy.get(name, 1.0) if portfolio_metrics else 1.0
+        max_trades_p95 = (
+            portfolio_metrics.percentile_95_trades_per_strategy.get(name, 1.0)
+            if portfolio_metrics
+            else 1.0
+        )
         if max_trades_p95 < 1.0:
             max_trades_p95 = 1.0
 
@@ -812,23 +851,27 @@ def _export_portfolio_configuration(
         qty_p95 = quota_p95 / max_trades_p95
 
         # Combined Entry (matches user's requested style)
-        output["strategies"].append({
-            name: [
-                {"allocation": float(round(alloc_static, 1))},
-                {"allocation_95th": float(round(alloc_p95, 1))},
-                {"quota": int(round(quota_static, 0))},
-                {"quota_95th": int(round(quota_p95, 0))},
-                {"max_trades": int(max_trades)},
-                {"max_trades_95th": float(round(max_trades_p95, 1))},
-                {"quantity": int(round(qty_static, 0))},
-                {"quantity_95th": int(round(qty_p95, 0))}
-            ]
-        })
+        output["strategies"].append(
+            {
+                name: [
+                    {"allocation": float(round(alloc_static, 1))},
+                    {"allocation_95th": float(round(alloc_p95, 1))},
+                    {"quota": int(round(quota_static, 0))},
+                    {"quota_95th": int(round(quota_p95, 0))},
+                    {"max_trades": int(max_trades)},
+                    {"max_trades_95th": float(round(max_trades_p95, 1))},
+                    {"quantity": int(round(qty_static, 0))},
+                    {"quantity_95th": int(round(qty_p95, 0))},
+                ]
+            }
+        )
 
     try:
         with open(config_path, "w") as f:
             yaml.safe_dump(output, f, sort_keys=False, default_flow_style=False)
-        logger.info("Recommended portfolio allocation (Enhanced) saved to %s", config_path)
+        logger.info(
+            "Recommended portfolio allocation (Enhanced) saved to %s", config_path
+        )
     except Exception as e:
         logger.error("Failed to export portfolio.yaml: %s", e)
 
@@ -904,28 +947,31 @@ def _display_audit_reports(
         )
         _display_switch_tournament(console, tournament_results)
 
+
 def _display_capacity_simulation(
-    console: Console, 
+    console: Console,
     trades_dataframe: pd.DataFrame,
     base_kelly: float = 0.39,
-    p95_concurrency: float = 10.0
+    p95_concurrency: float = 10.0,
 ) -> None:
     """Runs and displays capacity simulation results."""
-    console.print("\n[bold cyan]--- Capacity Simulation (Dynamic Sizing) ---[/bold cyan]")
-    
+    console.print(
+        "\n[bold cyan]--- Capacity Simulation (Dynamic Sizing) ---[/bold cyan]"
+    )
+
     simulator = CapacitySimulator(initial_capital=100000.0, n_simulations=100)
-    
+
     try:
         results_df = simulator.run(
-            trades_dataframe, 
-            base_kelly=base_kelly / 100.0 if base_kelly > 1.0 else base_kelly, 
-            p95_concurrency=p95_concurrency
+            trades_dataframe,
+            base_kelly=base_kelly / 100.0 if base_kelly > 1.0 else base_kelly,
+            p95_concurrency=p95_concurrency,
         )
-        
+
         if results_df.empty:
             console.print("[yellow]Simulation returned no results.[/yellow]")
             return
-            
+
         table = Table(title="Projected Performance (Monte Carlo)")
         table.add_column("Scenario", style="white")
         table.add_column("Median Return", style="green")
@@ -933,31 +979,35 @@ def _display_capacity_simulation(
         table.add_column("Avg Commission", style="yellow")
         table.add_column("Avg Margin Int.", style="yellow")
         table.add_column("Delta vs Static", style="cyan")
-        
+
         # Find baseline (Static) for delta calc
-        baseline_row = results_df[results_df['Scenario'] == 'A_Static']
-        base_ret = baseline_row.iloc[0]['Median Return'] if not baseline_row.empty else 0.0
-        
+        baseline_row = results_df[results_df["Scenario"] == "A_Static"]
+        base_ret = (
+            baseline_row.iloc[0]["Median Return"] if not baseline_row.empty else 0.0
+        )
+
         for _, row in results_df.iterrows():
-            ret_pct = row['Median Return'] * 100
-            dd_pct = row['Max Drawdown (95th Worst)'] * 100
-            comm = row['Avg Commission']
-            interest = row['Avg Margin Interest']
-            
-            delta_ret = (row['Median Return'] - base_ret) * 100
-            delta_str = f"{delta_ret:+.2f}%" if row['Scenario'] != 'A_Static' else "Baseline"
-            
+            ret_pct = row["Median Return"] * 100
+            dd_pct = row["Max Drawdown (95th Worst)"] * 100
+            comm = row["Avg Commission"]
+            interest = row["Avg Margin Interest"]
+
+            delta_ret = (row["Median Return"] - base_ret) * 100
+            delta_str = (
+                f"{delta_ret:+.2f}%" if row["Scenario"] != "A_Static" else "Baseline"
+            )
+
             table.add_row(
-                row['Scenario'],
+                row["Scenario"],
                 f"{ret_pct:.2f}%",
                 f"{dd_pct:.2f}%",
                 f"${comm:,.0f}",
                 f"${interest:,.0f}",
-                delta_str
+                delta_str,
             )
-            
+
         console.print(table)
-        
+
     except Exception as e:
         logger.error(f"Simulation Failed: {e}", exc_info=True)
         console.print(f"[bold red]Simulation Failed: {e}[/bold red]")
@@ -966,7 +1016,9 @@ def _display_capacity_simulation(
 def main() -> None:
     """Main execution entry point for the backtester runner."""
     parser = argparse.ArgumentParser(description="Multi-Strategy Backtest Runner")
-    parser.add_argument("--start", type=str, required=True, help="Start Date (YYYY-MM-DD)")
+    parser.add_argument(
+        "--start", type=str, required=True, help="Start Date (YYYY-MM-DD)"
+    )
     parser.add_argument("--end", type=str, required=True, help="End Date (YYYY-MM-DD)")
     parser.add_argument(
         "--stocks-db",
@@ -996,7 +1048,7 @@ def main() -> None:
         market_provider=market_provider,
         trade_repository=trade_repository,
         console=console,
-        portfolio_config=portfolio_config
+        portfolio_config=portfolio_config,
     )
 
     try:
@@ -1005,7 +1057,9 @@ def main() -> None:
 
         # 4. Starting Analytics
         console.print("\n[bold blue]--- Starting Analytics ---[/bold blue]")
-        analytics, results = _run_extended_analytics(args.backtest_db, args.stocks_db, console)
+        analytics, results = _run_extended_analytics(
+            args.backtest_db, args.stocks_db, console
+        )
 
         # Persistence
         regime_dataframe = analytics.fetch_regime_data()
@@ -1018,14 +1072,17 @@ def main() -> None:
         )
 
         funnel_data = analytics.calculate_portfolio_funnel(
-            results["strategies"], 
-            portfolio_metrics=results["portfolio"]
+            results["strategies"], portfolio_metrics=results["portfolio"]
         )
-        
+
         console.print(f"[bold red]DEBUG: Saving to DB: {args.backtest_db}[/bold red]")
         if not equity_df.empty:
-            console.print(f"[bold red]DEBUG: Equity DF Columns: {equity_df.columns}[/bold red]")
-            console.print(f"[bold red]DEBUG: Equity Strategies: {equity_df['strategy_name'].unique()}[/bold red]")
+            console.print(
+                f"[bold red]DEBUG: Equity DF Columns: {equity_df.columns}[/bold red]"
+            )
+            console.print(
+                f"[bold red]DEBUG: Equity Strategies: {equity_df['strategy_name'].unique()}[/bold red]"
+            )
         else:
             console.print("[bold red]DEBUG: Equity DF is EMPTY![/bold red]")
 
@@ -1059,7 +1116,7 @@ def main() -> None:
             robust_table.add_column("Metric", style="cyan")
             robust_table.add_column("Value", style="bold yellow")
             robust_table.add_row(
-                "Risk of Ruin", f"{results['performance'].risk_of_ruin*100:.1f}%"
+                "Risk of Ruin", f"{results['performance'].risk_of_ruin * 100:.1f}%"
             )
             console.print(robust_table)
 
@@ -1081,13 +1138,17 @@ def main() -> None:
         if "trades_dataframe" in results and not results["trades_dataframe"].empty:
             # We use Kelly Mean to allow capacity to hit leverage limits
             kelly_target = results["performance"].kelly_mean
-            p95_concurrency = results["portfolio"].percentile_95_concurrent_trades if results["portfolio"] else 10.0
-            
+            p95_concurrency = (
+                results["portfolio"].percentile_95_concurrent_trades
+                if results["portfolio"]
+                else 10.0
+            )
+
             _display_capacity_simulation(
-                console, 
+                console,
                 results["trades_dataframe"],
                 base_kelly=kelly_target,
-                p95_concurrency=p95_concurrency
+                p95_concurrency=p95_concurrency,
             )
 
         if results.get("periods") is not None:
@@ -1106,7 +1167,7 @@ def main() -> None:
         _export_portfolio_configuration(
             funnel_data=funnel_data,
             portfolio_metrics=results["portfolio"],
-            equity=100000.0  # Default equity used in allocator
+            equity=100000.0,  # Default equity used in allocator
         )
 
     except Exception as fatal_error:

@@ -19,29 +19,35 @@ from ..services.trade_manager.view_service import TradeViewService
 logger = logging.getLogger(__name__)
 views_bp = Blueprint("views", __name__)
 
+
 def _get_database_path(name: str = "signals") -> Path:
     """Retrieves the absolute path to a specific database."""
     configuration = current_app.config["APP_CONFIG"]
     return Path(configuration.get_db_path(name)).resolve()
+
 
 def _get_signal_repository() -> SignalRepository:
     """Instantiates the signal repository."""
     session = DatabaseSession(str(_get_database_path("signals")))
     return SignalRepository(session)
 
+
 def _get_screener_view_service() -> ScreenerViewService:
     """Instantiates the screener view service."""
     return ScreenerViewService(_get_signal_repository())
 
+
 def _get_trade_view_service() -> TradeViewService:
     """Instantiates the trade view service."""
     return TradeViewService()
+
 
 def _get_backtest_database_path() -> Path:
     """Retrieves the absolute path to the backtest.db."""
     # Logic to find backtest.db relative to the signals database directory
     signals_db_path = _get_database_path("signals")
     return signals_db_path.parent / "backtest.db"
+
 
 def _prepare_backtest_metrics(summary_data: dict[str, Any]) -> BacktestMetrics:
     """Maps summary dictionary data to a BacktestMetrics object.
@@ -81,8 +87,9 @@ def _prepare_backtest_metrics(summary_data: dict[str, Any]) -> BacktestMetrics:
         diversification_score=summary_data.get("diversification_score", 0.0),
     )
 
+
 def _prepare_strategy_metrics(
-    strategy_list: list[dict[str, Any]]
+    strategy_list: list[dict[str, Any]],
 ) -> dict[str, BacktestMetrics]:
     """Converts a list of strategy metrics dicts to a map of BacktestMetrics.
 
@@ -97,7 +104,9 @@ def _prepare_strategy_metrics(
         for strategy in strategy_list
     }
 
+
 # --- ROUTES ---
+
 
 # 1. Landing Pages (Übersichten)
 @views_bp.route("/screener", methods=["GET"])
@@ -108,9 +117,11 @@ def view_screener_overview() -> str:
     # Signale zählen
     # We use ScreenerViewService to benefit from aggregation logic (e.g. Croc)
     screener_service = _get_screener_view_service()
-    
+
     count_croc = len(screener_service.get_candidates(Strategies.CrocSetup, limit=100))
-    count_dip = len(signals_repository.get_trade_candidates(Strategies.DipBuyer, limit=100))
+    count_dip = len(
+        signals_repository.get_trade_candidates(Strategies.DipBuyer, limit=100)
+    )
     count_turnover = len(
         signals_repository.get_trade_candidates(Strategies.TurnOverTiming, limit=100)
     )
@@ -130,21 +141,24 @@ def view_screener_overview() -> str:
         count_ndx_momentum=count_ndx_momentum,
     )
 
+
 def generate_sparkline(dates: list, prices: list, is_positive: bool) -> str:
     """Generates a minimalistic sparkline chart (Spline, No Axes)."""
     color = "#10b981" if is_positive else "#ef4444"  # Emerald-500 or Rose-500
     fill_color = "rgba(16, 185, 129, 0.1)" if is_positive else "rgba(239, 68, 68, 0.1)"
 
     figure = go.Figure()
-    figure.add_trace(go.Scatter(
-        x=dates,
-        y=prices,
-        mode="lines",
-        line=dict(color=color, width=2, shape="spline", smoothing=1.3),
-        fill="tozeroy",
-        fillcolor=fill_color,
-        hoverinfo="skip"
-    ))
+    figure.add_trace(
+        go.Scatter(
+            x=dates,
+            y=prices,
+            mode="lines",
+            line=dict(color=color, width=2, shape="spline", smoothing=1.3),
+            fill="tozeroy",
+            fillcolor=fill_color,
+            hoverinfo="skip",
+        )
+    )
 
     figure.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
@@ -154,23 +168,28 @@ def generate_sparkline(dates: list, prices: list, is_positive: bool) -> str:
         yaxis=dict(visible=False),
         showlegend=False,
         height=50,
-        width=120
+        width=120,
     )
     return figure.to_html(
         full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
     )
 
+
 def generate_donut_chart(labels: list, values: list, colors: list) -> str:
     """Generates a clean donut chart for strategy allocation."""
-    figure = go.Figure(data=[go.Pie(
-        labels=labels,
-        values=values,
-        hole=0.8,
-        textinfo="none",
-        hoverinfo="label+percent+value",
-        marker=dict(colors=colors),
-        sort=False
-    )])
+    figure = go.Figure(
+        data=[
+            go.Pie(
+                labels=labels,
+                values=values,
+                hole=0.8,
+                textinfo="none",
+                hoverinfo="label+percent+value",
+                marker=dict(colors=colors),
+                sort=False,
+            )
+        ]
+    )
 
     figure.update_layout(
         margin=dict(l=0, r=0, t=0, b=0),
@@ -181,6 +200,7 @@ def generate_donut_chart(labels: list, values: list, colors: list) -> str:
     return figure.to_html(
         full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
     )
+
 
 @views_bp.route("/trades", methods=["GET"])
 @views_bp.route("/trades/", methods=["GET"])
@@ -204,13 +224,22 @@ def view_trades_overview() -> str:
         "NDX Momentum": {"count": 0, "pnl": 0.0, "invested": 0.0},
     }
 
-    croc_group = [Strategies.CrocSetup, Strategies.HoldTarget, Strategies.SplitTarget, "croc"]
-    turnover_group = [Strategies.TurnOverTiming, Strategies.TurnOverTiming_05, Strategies.TurnOverTiming_10]
+    croc_group = [
+        Strategies.CrocSetup,
+        Strategies.HoldTarget,
+        Strategies.SplitTarget,
+        "croc",
+    ]
+    turnover_group = [
+        Strategies.TurnOverTiming,
+        Strategies.TurnOverTiming_05,
+        Strategies.TurnOverTiming_10,
+    ]
 
     for trade in active_trades:
         # Resolve strategy via service to get the Enum value string
         strat_key = service.resolve_strategy(trade)
-        
+
         # Robust grouping
         if strat_key in croc_group:
             label = "Croc Setup"
@@ -230,7 +259,7 @@ def view_trades_overview() -> str:
 
         strategy_stats[label]["count"] += 1
         strategy_stats[label]["pnl"] += trade.get("unrealized_pnl", 0.0)
-        
+
         entry_price = float(trade.get("entry_price") or 0.0)
         initial_size = float(trade.get("initial_size") or 0.0)
         strategy_stats[label]["invested"] += entry_price * initial_size
@@ -263,6 +292,7 @@ def view_screener_croc() -> str:
     results = service.get_candidates("Croc_", limit=limit)
     return render_template("screener_croc.html", results=results)
 
+
 @views_bp.route("/screener/dip-buyer", methods=["GET"])
 def view_screener_dip_buyer() -> str:
     """Displays the Dip Buyer screener results."""
@@ -270,6 +300,7 @@ def view_screener_dip_buyer() -> str:
     service = _get_screener_view_service()
     results = service.get_candidates(Strategies.DipBuyer, limit=limit)
     return render_template("screener_dip_buyer.html", results=results)
+
 
 @views_bp.route("/screener/turnover", methods=["GET"])
 def view_screener_turnover() -> str:
@@ -279,6 +310,7 @@ def view_screener_turnover() -> str:
     results = service.get_turnover_candidates(limit=limit)
     return render_template("screener_turnover.html", results=results)
 
+
 @views_bp.route("/screener/twopercent", methods=["GET"])
 def view_screener_twopercent() -> str:
     """Displays the Two Percent Screener with trade candidates."""
@@ -286,6 +318,7 @@ def view_screener_twopercent() -> str:
     service = _get_screener_view_service()
     results = service.get_candidates(Strategies.TwoPercent, limit=limit)
     return render_template("screener_twopercent.html", results=results)
+
 
 @views_bp.route("/screener/ndx-momentum", methods=["GET"])
 def view_screener_ndx_momentum() -> str:
@@ -304,8 +337,13 @@ def view_trades_croc() -> str:
     service = _get_trade_view_service()
 
     # Filtering
-    croc_group = [Strategies.CrocSetup, Strategies.HoldTarget, Strategies.SplitTarget, "croc"]
-    
+    croc_group = [
+        Strategies.CrocSetup,
+        Strategies.HoldTarget,
+        Strategies.SplitTarget,
+        "croc",
+    ]
+
     active = service.get_trades(strategies=croc_group, status=TradeStatus.ACTIVE)
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
 
@@ -316,7 +354,7 @@ def view_trades_croc() -> str:
     # Summaries
     summary_metrics = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
-    
+
     # Aggregations
     index_stats = service.get_index_stats(closed)
     active_groups = service.group_trades_by_symbol(active)
@@ -326,7 +364,7 @@ def view_trades_croc() -> str:
     signal_stats = {}
     for trade in closed:
         raw_signal = (
-            trade["context"].get("original_signal") 
+            trade["context"].get("original_signal")
             or trade["context"].get("match_rule", {}).get("Signal")
             or trade["strategy"]
         )
@@ -340,7 +378,9 @@ def view_trades_croc() -> str:
 
     # Add Avg PnL
     for value in signal_stats.values():
-        value["average_pnl"] = value["pnl"] / value["count"] if value["count"] > 0 else 0.0
+        value["average_pnl"] = (
+            value["pnl"] / value["count"] if value["count"] > 0 else 0.0
+        )
 
     sorted_signals = dict(
         sorted(signal_stats.items(), key=lambda item: item[1]["count"], reverse=True)
@@ -358,26 +398,31 @@ def view_trades_croc() -> str:
         signal_stats=sorted_signals,
     )
 
+
 @views_bp.route("/trades/dip-buyer", methods=["GET"])
 def view_trades_dip_buyer() -> str:
     limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
-    
-    active = service.get_trades(strategies=Strategies.DipBuyer, status=TradeStatus.ACTIVE)
+
+    active = service.get_trades(
+        strategies=Strategies.DipBuyer, status=TradeStatus.ACTIVE
+    )
     # Sort by Entry Date Descending
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-    
+
     # Inject Max Days for Time Stop Visualization
     for trade in active:
         trade["max_days"] = 7
-        
-    closed = service.get_trades(strategies=Strategies.DipBuyer, status=TradeStatus.CLOSED)
+
+    closed = service.get_trades(
+        strategies=Strategies.DipBuyer, status=TradeStatus.CLOSED
+    )
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
     summary_metrics = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
-    
+
     index_stats = service.get_index_stats(closed)
     # active_groups removed as we use flat table now
     history_groups = service.group_trades_history(closed)
@@ -399,41 +444,57 @@ def view_trades_turnover() -> str:
     limit = request.args.get("limit", 200, type=int)
     service = _get_trade_view_service()
 
-    turnover_group = [Strategies.TurnOverTiming, Strategies.TurnOverTiming_05, Strategies.TurnOverTiming_10]
-    
+    turnover_group = [
+        Strategies.TurnOverTiming,
+        Strategies.TurnOverTiming_05,
+        Strategies.TurnOverTiming_10,
+    ]
+
     active = service.get_trades(strategies=turnover_group, status=TradeStatus.ACTIVE)
-    
+
     # Inject Max Days for Visualization (Mon-Fri = 5 days)
     for trade in active:
         trade["max_days"] = 5
-    
+
     # Fetch CLOSED Trades EXCLUDING Expired ones
     closed = service.get_trades(
-        strategies=turnover_group, 
+        strategies=turnover_group,
         status=TradeStatus.CLOSED,
-        exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED]
+        exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
     )
-    
+
     # Sort Closed: Exit Date desc, then Symbol
     closed.sort(key=lambda x: (x["exit_date"] or "", x["symbol"]), reverse=True)
     closed = closed[:limit]
 
     # Active Groups
     active_groups = service.group_trades_by_symbol(active)
-    
+
     # Stats
     summary = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
-    
+
     # Aggregations
     index_stats = service.get_index_stats(closed)
-    
+
     # Variant Stats
     variant_stats = {
-        "Turnover 0.5": {"name": "Turnover 0.5", "count": 0, "win": 0, "loss": 0, "pnl": 0.0},
-        "Turnover 1.0": {"name": "Turnover 1.0", "count": 0, "win": 0, "loss": 0, "pnl": 0.0}
+        "Turnover 0.5": {
+            "name": "Turnover 0.5",
+            "count": 0,
+            "win": 0,
+            "loss": 0,
+            "pnl": 0.0,
+        },
+        "Turnover 1.0": {
+            "name": "Turnover 1.0",
+            "count": 0,
+            "win": 0,
+            "loss": 0,
+            "pnl": 0.0,
+        },
     }
-    
+
     for trade in closed:
         strategy_name = str(trade.get("strategy") or "")
         variant_key = None
@@ -444,7 +505,7 @@ def view_trades_turnover() -> str:
 
         if variant_key:
             service._update_stat(variant_stats[variant_key], trade["realized_pnl"])
-            
+
     # Calc Averages for Variants
     for item in variant_stats.values():
         item["average_pnl"] = item["pnl"] / item["count"] if item["count"] > 0 else 0.0
@@ -452,14 +513,14 @@ def view_trades_turnover() -> str:
     history_groups = service.group_trades_history(closed)
 
     return render_template(
-        "trades_turnover.html", 
+        "trades_turnover.html",
         summary=summary,
-        active_trades=active_groups,  
+        active_trades=active_groups,
         history_groups=history_groups,
         closed_trades=closed,
         closed_summary=closed_summary,
         performance_index=list(index_stats.values()),
-        performance_variants=list(variant_stats.values())
+        performance_variants=list(variant_stats.values()),
     )
 
 
@@ -468,11 +529,15 @@ def view_trades_ndx_momentum() -> str:
     """Displays the NDX Momentum trade history and active positions."""
     limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
-    
-    active = service.get_trades(strategies=Strategies.NDXMomentum, status=TradeStatus.ACTIVE)
+
+    active = service.get_trades(
+        strategies=Strategies.NDXMomentum, status=TradeStatus.ACTIVE
+    )
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-    
-    closed = service.get_trades(strategies=Strategies.NDXMomentum, status=TradeStatus.CLOSED)
+
+    closed = service.get_trades(
+        strategies=Strategies.NDXMomentum, status=TradeStatus.CLOSED
+    )
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
@@ -486,7 +551,7 @@ def view_trades_ndx_momentum() -> str:
         closed_trades=closed,
         history_groups=history_groups,
         summary=summary,
-        closed_summary=closed_summary
+        closed_summary=closed_summary,
     )
 
 
@@ -496,16 +561,20 @@ def view_trades_twopercent() -> str:
     limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
 
-    active = service.get_trades(strategies=Strategies.TwoPercent, status=TradeStatus.ACTIVE)
+    active = service.get_trades(
+        strategies=Strategies.TwoPercent, status=TradeStatus.ACTIVE
+    )
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-    
-    closed = service.get_trades(strategies=Strategies.TwoPercent, status=TradeStatus.CLOSED)
+
+    closed = service.get_trades(
+        strategies=Strategies.TwoPercent, status=TradeStatus.CLOSED
+    )
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
     summary = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
-    
+
     active_groups = service.group_trades_by_symbol(active)
     history_groups = service.group_trades_history(closed)
 
@@ -519,6 +588,7 @@ def view_trades_twopercent() -> str:
         closed_summary=closed_summary,
         index_stats={},  # Standard compatibility
     )
+
 
 @views_bp.route("/backtest", methods=["GET"])
 def view_backtest_dashboard() -> str:
@@ -593,6 +663,7 @@ def view_backtest_dashboard() -> str:
         worst_trades=trade_lists["worst"],
     )
 
+
 def _generate_dashboard_charts(
     analytics: BacktestAnalytics,
     main_metrics: BacktestMetrics,
@@ -647,7 +718,10 @@ def _generate_dashboard_charts(
     safety_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Safety"]
 
     # 3. Generate individual charts
-    chart_equity_base, chart_drawdown_base = ("<div>No Data</div>", "<div>No Data</div>")
+    chart_equity_base, chart_drawdown_base = (
+        "<div>No Data</div>",
+        "<div>No Data</div>",
+    )
     if not base_equity.empty:
         chart_equity_base, chart_drawdown_base = generate_backtest_charts(
             base_equity["date"],
@@ -657,7 +731,10 @@ def _generate_dashboard_charts(
             id_prefix="base",
         )
 
-    chart_equity_kelly, chart_drawdown_kelly = ("<div>No Data</div>", "<div>No Data</div>")
+    chart_equity_kelly, chart_drawdown_kelly = (
+        "<div>No Data</div>",
+        "<div>No Data</div>",
+    )
     if not kelly_equity.empty:
         chart_equity_kelly, chart_drawdown_kelly = generate_backtest_charts(
             kelly_equity["date"],
@@ -674,10 +751,7 @@ def _generate_dashboard_charts(
     # FIX: Merge 'equity' from base_equity into regime_input for the overlay chart
     if not base_equity.empty:
         regime_input = pd.merge(
-            regime_input, 
-            base_equity[["date", "equity"]], 
-            on="date", 
-            how="left"
+            regime_input, base_equity[["date", "equity"]], on="date", how="left"
         )
     else:
         regime_input["equity"] = 0.0

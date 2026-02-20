@@ -11,6 +11,7 @@ from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
+
 @final
 class HoldTargetStrategy(BaseTradeStrategy):
     """
@@ -18,6 +19,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
     Aims to ride large trends (3R or more) with a breakout entry.
     Inherits shared logic from BaseTradeStrategy.
     """
+
     name = Strategies.HoldTarget
 
     @override
@@ -25,7 +27,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
-        repository: TradeRepository | None = None
+        repository: TradeRepository | None = None,
     ) -> TradeParams:
         """
         Calculates current strategy parameters for display/logging.
@@ -40,12 +42,12 @@ class HoldTargetStrategy(BaseTradeStrategy):
         """
         # Note: realized_pnl is kept as is per user requirement
         return TradeParams(
-            stop_loss=float(trade.get('current_stop_loss') or 0.0),
-            take_profit_1=float(trade.get('current_target') or 0.0),
+            stop_loss=float(trade.get("current_stop_loss") or 0.0),
+            take_profit_1=float(trade.get("current_target") or 0.0),
             extras={
-                "entry_limit": float(trade.get('entry_price') or 0.0),
-                "current_size": float(trade.get('current_size') or 0.0)
-            }
+                "entry_limit": float(trade.get("entry_price") or 0.0),
+                "current_size": float(trade.get("current_size") or 0.0),
+            },
         )
 
     @override
@@ -54,7 +56,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository
+        repository: TradeRepository,
     ) -> str | None:
         """
         Checks for a breakout entry (Stop Buy) and validates the stop loss.
@@ -68,30 +70,30 @@ class HoldTargetStrategy(BaseTradeStrategy):
         Returns:
             str | None: A status message if filled or invalidated, otherwise None.
         """
-        entry_price = float(trade.get('entry_price') or 0.0)
-        stop_loss = float(trade.get('current_stop_loss') or 0.0)
-        
+        entry_price = float(trade.get("entry_price") or 0.0)
+        stop_loss = float(trade.get("current_stop_loss") or 0.0)
+
         if entry_price <= 0:
             return None
 
-        current_date_obj = pd.Timestamp(candle['date'])
-        date_string = str(candle['date'])
-        
+        current_date_obj = pd.Timestamp(candle["date"])
+        date_string = str(candle["date"])
+
         # 1. Signal Date Validation
         signal_date = self._get_signal_date(trade)
-        if signal_date: 
+        if signal_date:
             # Entry must occur STRICTLY AFTER the signal date
             if current_date_obj.date() <= signal_date.date():
                 return None
-            
+
             # Expiration Check (5 Calendar Days)
             if (current_date_obj.date() - signal_date.date()).days > 5:
                 return self._expire_trade(trade, repository, date_string)
 
         # 2. Market Data
-        high_price = float(candle['high'])
-        low_price = float(candle['low'])
-        open_price = float(candle['open'])
+        high_price = float(candle["high"])
+        low_price = float(candle["low"])
+        open_price = float(candle["open"])
 
         # 3. Entry Logic (Stop Buy)
         filled, fill_price, reason = False, 0.0, ""
@@ -104,7 +106,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
             filled, fill_price, reason = True, entry_price, EntryReason.BREAKOUT
 
         # 4. Stop Loss / Invalidation Check
-        is_stop_hit = (stop_loss > 0 and low_price <= stop_loss)
+        is_stop_hit = stop_loss > 0 and low_price <= stop_loss
 
         if filled:
             if is_stop_hit:
@@ -116,21 +118,21 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 return self._execute_activation(
                     trade, repository, fill_price, reason, date_string
                 )
-        
+
         if is_stop_hit:
-             # Setup Invalidated (Stop hit before Entry)
-             return self._invalidate_trade(
-                 trade, repository, low_price, stop_loss, date_string
-             )
+            # Setup Invalidated (Stop hit before Entry)
+            return self._invalidate_trade(
+                trade, repository, low_price, stop_loss, date_string
+            )
 
         return None
 
     @override
     def manage_active_trade(
-        self, 
-        trade: TradeData, 
-        dataframe_history: pd.DataFrame, 
-        repository: TradeRepository
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        repository: TradeRepository,
     ) -> str | None:
         """
         Manages exits for active trades: Stop Loss vs. Target.
@@ -147,11 +149,11 @@ class HoldTargetStrategy(BaseTradeStrategy):
             return None
 
         candle = dataframe_history.iloc[-1]
-        current_date_obj = pd.Timestamp(candle['date'])
-        date_string = str(candle['date'])
-        
+        current_date_obj = pd.Timestamp(candle["date"])
+        date_string = str(candle["date"])
+
         # 1. Day-Trading Check (Allow same-day exit)
-        entry_date_str = trade.get('entry_date')
+        entry_date_str = trade.get("entry_date")
         if entry_date_str:
             entry_date = pd.Timestamp(entry_date_str)
             # Only block if date is strictly BEFORE entry date (sanity check)
@@ -159,20 +161,20 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 return None
 
         # 2. Current Parameters
-        stop_loss = float(trade.get('current_stop_loss') or 0.0)
-        target = float(trade.get('current_target') or 0.0)
-        
+        stop_loss = float(trade.get("current_stop_loss") or 0.0)
+        target = float(trade.get("current_target") or 0.0)
+
         # 3. Market Data
-        low_price = float(candle['low'])
-        high_price = float(candle['high'])
-        open_price = float(candle['open'])
+        low_price = float(candle["low"])
+        high_price = float(candle["high"])
+        open_price = float(candle["open"])
 
         # 4. Stop Loss Logic (Check first)
         if stop_loss > 0 and low_price <= stop_loss:
             exit_price = stop_loss
             if open_price < stop_loss:
-                exit_price = open_price # Gap down execution
-            
+                exit_price = open_price  # Gap down execution
+
             return self._close_trade(
                 trade, repository, exit_price, ExitReason.STOP_LOSS, date_string
             )
@@ -181,7 +183,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         if target > 0 and high_price >= target:
             exit_price = target
             if open_price > target:
-                exit_price = open_price # Gap up execution (Benefit)
+                exit_price = open_price  # Gap up execution (Benefit)
 
             return self._close_trade(
                 trade, repository, exit_price, ExitReason.TARGET_HIT, date_string
@@ -195,7 +197,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
-        repository: TradeRepository
+        repository: TradeRepository,
     ) -> Order | None:
         """
         Generates an Order object for IBKR export.
@@ -209,21 +211,23 @@ class HoldTargetStrategy(BaseTradeStrategy):
         Returns:
             Order | None: The generated bracket order or None.
         """
-        symbol = trade.get('symbol', 'UNKNOWN')
-        entry_price = float(trade.get('entry_price') or 0.0)
-        stop_loss = float(trade.get('current_stop_loss') or 0.0)
-        
+        symbol = trade.get("symbol", "UNKNOWN")
+        entry_price = float(trade.get("entry_price") or 0.0)
+        stop_loss = float(trade.get("current_stop_loss") or 0.0)
+
         if entry_price <= 0:
             logger.warning(f"[{symbol}] Invalid Entry Price: {entry_price}")
             return None
 
         # 1. Centralized Quantity Calculation
-        database_size = float(trade.get('initial_size') or 0.0)
+        database_size = float(trade.get("initial_size") or 0.0)
         if database_size > 0:
             quantity = int(database_size)
         else:
-            risk_amount = float(trade.get('risk_amount') or 100.0)
-            quantity = self._calculate_position_size(entry_price, stop_loss, risk_amount)
+            risk_amount = float(trade.get("risk_amount") or 100.0)
+            quantity = self._calculate_position_size(
+                entry_price, stop_loss, risk_amount
+            )
 
         if quantity <= 0:
             logger.warning(f"[{symbol}] Calculated quantity is 0 or invalid SL setup.")
@@ -235,34 +239,38 @@ class HoldTargetStrategy(BaseTradeStrategy):
             type="STP",
             price=entry_price,
             quantity=quantity,
-            time_in_force="DAY"
+            time_in_force="DAY",
         )
-        
+
         exits = []
-        
+
         # 3. Exit 1: Stop Loss (Mandatory)
         if stop_loss > 0:
-            exits.append(OrderLeg(
-                action="SELL",
-                type="STP",
-                price=stop_loss,
-                quantity=quantity,
-                time_in_force="GTC"
-            ))
+            exits.append(
+                OrderLeg(
+                    action="SELL",
+                    type="STP",
+                    price=stop_loss,
+                    quantity=quantity,
+                    time_in_force="GTC",
+                )
+            )
         else:
             logger.warning(f"[{symbol}] Missing stop loss for HoldTarget.")
             return None
 
         # 4. Exit 2: Target (Optional)
-        target_price = float(trade.get('current_target') or 0.0)
+        target_price = float(trade.get("current_target") or 0.0)
         if target_price > 0:
-            exits.append(OrderLeg(
-                action="SELL",
-                type="LMT",
-                price=target_price,
-                quantity=quantity,
-                time_in_force="GTC"
-            ))
+            exits.append(
+                OrderLeg(
+                    action="SELL",
+                    type="LMT",
+                    price=target_price,
+                    quantity=quantity,
+                    time_in_force="GTC",
+                )
+            )
 
         return Order(
             id=f"{symbol}_{self.name}",
@@ -271,5 +279,5 @@ class HoldTargetStrategy(BaseTradeStrategy):
             mode="BRACKET",
             entry=entry_leg,
             exits=exits,
-            last_status="CREATED"
+            last_status="CREATED",
         )
