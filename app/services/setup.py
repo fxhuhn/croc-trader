@@ -45,9 +45,14 @@ def register_services(app, config):
 
     # 1.6 Symbol Filter (Background Init)
     from ..tools.symbol_filter import SymbolFilter
-    # Initialize singleton to start background thread/cache loading
+    from ..tools.symbol_exchange import SymbolExchange
+    
+    # Initialize singletons to start background thread/cache loading
     symbol_filter = SymbolFilter() 
     app.extensions["symbol_filter"] = symbol_filter
+    
+    symbol_exchange = SymbolExchange()
+    app.extensions["symbol_exchange"] = symbol_exchange
 
     # 2. Market Data Infrastructure (Read-Side)
     stocks_session = DatabaseSession(str(db_stocks))
