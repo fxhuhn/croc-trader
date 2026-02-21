@@ -36,7 +36,7 @@ LOGGING_CONFIG = {
         },
         "gunicorn.access": {
             "handlers": ["console"],
-            "level": "INFO",
+            "level": "WARNING",
             "propagate": False,
         },
     },
