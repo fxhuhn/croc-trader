@@ -150,6 +150,7 @@ class ScreenerViewService:
         """Fetches and aggregates Turnover Timing candidates.
 
         Aggregates multiple signal variations (e.g., 0.5 vs 1.0) for the same symbol.
+        Uses the 20-day Average Dollar Volume (Turnover SMA 20) for ranking.
 
         Args:
             limit: Maximum number of candidates to fetch.
@@ -177,6 +178,7 @@ class ScreenerViewService:
                     "entry_1_0": None,
                     "close": 0.0,
                     "atr": 0.0,
+                    "dollar_volume": 0.0,
                     "index": "-",
                 }
 
@@ -189,6 +191,10 @@ class ScreenerViewService:
                     aggregated_results[symbol]["close"] = float(context["setup_close"])
                 if context.get("setup_atr"):
                     aggregated_results[symbol]["atr"] = float(context["setup_atr"])
+                if context.get("setup_turnover_sma"):
+                    aggregated_results[symbol]["dollar_volume"] = float(
+                        context["setup_turnover_sma"]
+                    )
 
                 # Strict Date Extraction (No created_at fallback)
                 date_val = context.get("date") or context.get("setup_date")
@@ -219,4 +225,11 @@ class ScreenerViewService:
                     "Error aggregating turnover candidate %s: %s", symbol, error
                 )
 
-        return list(aggregated_results.values())
+        # Sort by Dollar Volume (Turnover SMA 20) descending
+        sorted_candidates = sorted(
+            aggregated_results.values(),
+            key=lambda x: float(x.get("dollar_volume") or 0.0),
+            reverse=True,
+        )
+
+        return sorted_candidates
