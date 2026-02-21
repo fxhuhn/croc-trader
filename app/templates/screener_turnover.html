@@ -2,81 +2,141 @@
 
 {% block head %}
 <title>Turnover Signale</title>
-<style>
-    .price {
-        font-family: monospace;
-        font-weight: bold;
-    }
-</style>
 {% endblock %}
 
+{% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}
+
 {% block content %}
-<div class="container-fluid" style="max-width: 1200px;">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 style="color: #d35400;">Turnover Timing Signale</h1>
-        <div class="btn-group">
-            <a href="/screener" class="btn btn-outline-secondary">Screener Übersicht</a>
-            <a href="/trades/turnover" class="btn btn-warning text-white">Zu den Trades</a>
-            <a href="/" class="btn btn-secondary">Home</a>
+<!-- NAVIGATION (Sticky, Glassmorphism) -->
+<nav class="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-100/50 transition-all">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+            <!-- Brand -->
+            <div class="flex items-center gap-8">
+                <a href="/screener/turnover" class="text-xl font-semibold tracking-tight text-slate-900">
+                    Turnover
+                </a>
+                <!-- Links -->
+                <div class="hidden md:flex items-center space-x-1">
+                    <a href="/trades/turnover"
+                        class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Trades
+                    </a>
+                    <a href="/screener/turnover"
+                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                        Screener
+                    </a>
+                </div>
+            </div>
+            <!-- Dashboard Link -->
+            <div class="flex items-center">
+                <a href="/screener" class="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
+                    Dashboard
+                </a>
+            </div>
         </div>
     </div>
+</nav>
 
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead style="background-color: #d35400; color: white;">
-                        <tr>
-                            <th>Datum</th>
-                            <th>Symbol</th>
-                            <th>Index</th>
-                            <th>Entry Limit (1.0)</th>
-                            <th>Entry Limit (0.5)</th>
-                            <th>Close</th>
-                            <th>ATR</th>
+<!-- MAIN CONTENT -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+
+    <!-- Signals Section (Table) -->
+    <section class="mb-12">
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead>
+                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <th class="px-6 py-4 font-normal">Datum</th>
+                            <th class="px-6 py-4 font-normal">Symbol</th>
+                            <th class="px-6 py-4 font-normal">Index</th>
+                            <th class="px-6 py-4 font-normal text-right">Limit (1.0)</th>
+                            <th class="px-6 py-4 font-normal text-right">Limit (0.5)</th>
+                            <th class="px-6 py-4 font-normal text-right">Close</th>
+                            <th class="px-6 py-4 font-normal text-right">ATR</th>
+                            <th class="px-6 py-4 font-normal text-right">Dollar-Volume</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody class="divide-y divide-slate-50">
                         {% for row in results %}
-                        <tr>
-                            <td>{{ row.display_date }}</td>
-                            <td>
-                                <b>
-                                    <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
-                                        style="text-decoration: none; color: inherit;">
-                                        {{ row.symbol }} ↗
-                                    </a>
-                                </b>
+                        <tr class="hover:bg-slate-50/50 transition-colors group">
+                            <!-- Date -->
+                            <td class="px-6 py-3 font-medium text-slate-700 whitespace-nowrap">
+                                {{ row.display_date }}
                             </td>
-                            <td><span class="badge bg-light text-dark border">{{ row.index }}</span></td>
+
+                            <!-- Symbol -->
+                            <td class="px-6 py-3">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-black text-slate-700">{{ row.symbol }}</span>
+                                    <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
+                                        class="text-slate-400 hover:text-indigo-500 transition-colors">
+                                        <i data-lucide="external-link" class="w-3 h-3"></i>
+                                    </a>
+                                </div>
+                            </td>
+
+                            <!-- Index -->
+                            <td class="px-6 py-3">
+                                <span
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
+                                    {{ row.index }}
+                                </span>
+                            </td>
+
                             <!-- Entry 1.0 -->
-                            <td class="price">
+                            <td class="px-6 py-3 text-right font-mono text-slate-500">
                                 {% if row.entry_1_0 %}
                                 {{ "%.2f"|format(row.entry_1_0) }}
                                 {% else %}
-                                <span class="text-muted">-</span>
+                                <span class="text-slate-300">-</span>
                                 {% endif %}
                             </td>
+
                             <!-- Entry 0.5 -->
-                            <td class="price">
+                            <td class="px-6 py-3 text-right font-mono text-slate-500">
                                 {% if row.entry_0_5 %}
                                 {{ "%.2f"|format(row.entry_0_5) }}
                                 {% else %}
-                                <span class="text-muted">-</span>
+                                <span class="text-slate-300">-</span>
                                 {% endif %}
                             </td>
-                            <td class="price">{{ "%.2f"|format(row.close) }}</td>
-                            <td>{{ "%.2f"|format(row.atr) }}</td>
+
+                            <!-- Close -->
+                            <td class="px-6 py-3 text-right font-mono text-slate-500">
+                                {{ "%.2f"|format(row.close) }}
+                            </td>
+
+                            <!-- ATR -->
+                            <td class="px-6 py-3 text-right font-mono text-slate-400">
+                                {{ "%.2f"|format(row.atr) }}
+                            </td>
+
+                            <!-- Dollar Volume -->
+                            <td class="px-6 py-3 text-right text-slate-400 font-medium">
+                                {% set dv = row.get('dollar_volume', 0) %}
+                                {% if dv >= 1000000000 %}
+                                {{ "%.2f"|format(dv / 1000000000) }}B
+                                {% elif dv >= 1000000 %}
+                                {{ "%.0f"|format(dv / 1000000) }}M
+                                {% else %}
+                                {{ "{:,.0f}".format(dv) }}
+                                {% endif %}
+                            </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center py-4 text-muted">Keine aktuellen Signale</td>
+                            <td colspan="8" class="px-6 py-12 text-center text-slate-400 italic">
+                                Keine aktuellen Signale
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
         </div>
-    </div>
-</div>
+    </section>
+
+</main>
 {% endblock %}

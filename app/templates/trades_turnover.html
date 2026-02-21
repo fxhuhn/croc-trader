@@ -195,6 +195,21 @@
                         {% endif %}
                         {% endfor %}
                     </tbody>
+                    <tfoot class="bg-slate-50 border-t border-slate-200">
+                        <tr class="font-semibold">
+                            <td class="px-6 py-4 text-slate-900">Total (Unique)</td>
+                            <td class="px-6 py-4 text-right text-slate-500">
+                                {{ closed_summary.count }} Trades
+                            </td>
+                            <td
+                                class="px-6 py-4 text-right {{ 'text-emerald-500' if closed_summary.total_pnl >= 0 else 'text-rose-500' }}">
+                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
+                            </td>
+                            <td class="px-6 py-4 text-right text-slate-500">
+                                {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $
+                            </td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
@@ -334,6 +349,15 @@
                                 {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
                             </td>
                             <td class="bg-slate-50"></td>
+                        </tr>
+                        <tr>
+                            <td colspan="5"
+                                class="px-6 py-2 text-right font-bold text-slate-400 uppercase tracking-widest text-xs">
+                                Avg per Trade</td>
+                            <td class="px-6 py-2 text-right font-bold text-slate-500">
+                                {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $
+                            </td>
+                            <td></td>
                         </tr>
                     </tfoot>
                 </table>
