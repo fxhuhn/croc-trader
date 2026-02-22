@@ -96,6 +96,12 @@ def create_app(config_object=settings):
         )
 
     @app.route("/apple-touch-icon.png")
+    @app.route("/apple-touch-icon-120x120.png")
+    @app.route("/apple-touch-icon-120x120-precomposed.png")
+    @app.route("/apple-touch-icon-152x152.png")
+    @app.route("/apple-touch-icon-152x152-precomposed.png")
+    @app.route("/apple-touch-icon-180x180.png")
+    @app.route("/apple-touch-icon-180x180-precomposed.png")
     def apple_touch_icon():
         return send_from_directory(
             app.static_folder, "apple-touch-icon.png", mimetype="image/png"
