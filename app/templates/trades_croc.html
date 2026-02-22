@@ -352,12 +352,12 @@
                     {% endfor %}
                     <tfoot class="bg-slate-50 border-t border-slate-200">
                         <tr>
-                            <td colspan="4"
+                            <td colspan="6"
                                 class="px-6 py-4 text-right font-bold text-slate-500 uppercase tracking-widest text-xs">
                                 Total History Metrics</td>
                             <td class="px-6 py-4 text-right">
-                                <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Avg /
-                                    Trade</div>
+                                <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Avg / Trade
+                                </div>
                                 <div
                                     class="text-sm font-bold {{ 'text-emerald-500' if closed_summary.average_pnl >= 0 else 'text-rose-500' }}">
                                     {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $

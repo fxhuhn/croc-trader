@@ -347,7 +347,8 @@ def view_trades_croc() -> str:
     active = service.get_trades(strategies=croc_group, status=TradeStatus.ACTIVE)
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
 
-    closed = service.get_trades(strategies=croc_group, status=TradeStatus.CLOSED)
+    closed_all = service.get_trades(strategies=croc_group, status=TradeStatus.CLOSED)
+    closed = [trade for trade in closed_all if trade.get("exit_reason") != "EXPIRED"]
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
