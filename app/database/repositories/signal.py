@@ -176,6 +176,43 @@ class SignalRepository(BaseRepository):
         sql = "SELECT symbol, signal, timestamp, data FROM croc ORDER BY timestamp DESC LIMIT ?"
         return self.fetch_all(sql, (limit,))
 
+    def get_unique_signal_attributes(self) -> dict[str, set[str]]:
+        """Holt alle historisch verfügbaren Werte für Signal und weitere Attribute aus der Datenbank."""
+        sql = """
+            SELECT 
+                signal,
+                json_extract(data, '$.status') as status,
+                json_extract(data, '$.kerze') as kerze,
+                json_extract(data, '$.wolke') as wolke,
+                json_extract(data, '$.trend') as trend,
+                json_extract(data, '$.setter') as setter,
+                json_extract(data, '$.welle') as welle
+            FROM croc 
+            WHERE data IS NOT NULL OR signal IS NOT NULL
+        """
+        rows = self.fetch_all(sql)
+        
+        attributes = {
+            "Signal": set(),
+            "Status": set(),
+            "Kerze": set(),
+            "Wolke": set(),
+            "Trend": set(),
+            "Setter": set(),
+            "Welle": set(),
+        }
+        
+        for row in rows:
+            for yaml_key, db_key in zip(
+                ["Signal", "Status", "Kerze", "Wolke", "Trend", "Setter", "Welle"],
+                ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"]
+            ):
+                val = row[db_key]
+                if val is not None:
+                    attributes[yaml_key].add(str(val))
+                    
+        return attributes
+
     def get_by_timestamp(self, signal_name: str, timestamp: str) -> list[dict]:
         """Holt Signale für einen bestimmten Zeitstempel und Strategie."""
         sql = "SELECT * FROM croc WHERE signal = ? AND timestamp = ?"
@@ -237,7 +274,7 @@ class SignalRepository(BaseRepository):
 
     def get_trade_candidates(
         self,
-        strategy_prefix: str | Strategies,
+        strategy_prefix: str | Strategies | list[str | Strategies],
         limit: int = 100,
         statuses: list[TradeStatus | str] | None = None,
     ) -> list[dict]:
@@ -246,7 +283,7 @@ class SignalRepository(BaseRepository):
         Parst automatisch das 'signal_context' JSON Feld.
 
         Args:
-            strategy_prefix: z.B. 'Croc' oder Strategies.DipBuyer
+            strategy_prefix: z.B. 'Croc' oder Strategies.DipBuyer oder eine Liste ['split_target', 'hold_target']
             limit: Anzahl der Ergebnisse
             statuses: Liste von Status-Enums/Strings (Standard: [TradeStatus.CREATED])
         """
@@ -257,15 +294,22 @@ class SignalRepository(BaseRepository):
         status_list = [str(s) for s in statuses]
         status_placeholders = ", ".join("?" for _ in status_list)
 
+        if isinstance(strategy_prefix, (list, tuple)):
+            strat_list = [str(s).lower() for s in strategy_prefix]
+            strat_placeholders = ", ".join("?" for _ in strat_list)
+            strategy_filter = f"LOWER(strategy) IN ({strat_placeholders})"
+            params = tuple(status_list) + tuple(strat_list) + (limit,)
+        else:
+            strategy_filter = "LOWER(strategy) LIKE LOWER(?)"
+            params = tuple(status_list) + (f"{strategy_prefix}%", limit)
+
         sql = f"""
             SELECT * FROM trades 
             WHERE status IN ({status_placeholders})
-            AND LOWER(strategy) LIKE LOWER(?)
+            AND {strategy_filter}
             ORDER BY created_at DESC 
             LIMIT ?
         """
-
-        params = tuple(status_list) + (f"{strategy_prefix}%", limit)
         rows = self.fetch_all(sql, params)
 
         results = []

@@ -18,11 +18,12 @@ from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
-# --- CONSTANTS ---
 IGNORED_METADATA_KEYS: Final[set[str]] = {
     "Signal",
     "Exit",
     "Score",
+    "Base_Score",
+    "Multiplier",
     "Status",
     "R_Hist",
     "Risk_95",

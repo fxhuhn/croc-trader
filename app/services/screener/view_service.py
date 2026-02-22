@@ -85,9 +85,15 @@ class ScreenerViewService:
         else:
             # Standard Single Strategy Fetch
             # This now handles NDX Momentum too (stored in trades as CREATED on month-end)
-            results = self.signal_repository.get_trade_candidates(
-                strategy_value, limit=limit, statuses=[TradeStatus.CREATED]
-            )
+            if isinstance(strategy, list):
+                # Using the newly updated repository method that supports lists
+                results = self.signal_repository.get_trade_candidates(
+                    strategy, limit=limit, statuses=[TradeStatus.CREATED]
+                )
+            else:
+                results = self.signal_repository.get_trade_candidates(
+                    strategy_value, limit=limit, statuses=[TradeStatus.CREATED]
+                )
 
         processed_results = []
         for row in results:
