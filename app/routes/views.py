@@ -710,11 +710,19 @@ def view_backtest_dashboard() -> str:
     # 7. Rendering
     trade_lists = analytics.get_trade_lists()
 
+    safety_impact = run_data.get("safety_impact", {})
+    final_eq = safety_impact.get("final_equity", 100_000.0)
+    kelly_metrics_view = {
+        "net_profit": final_eq - 100_000.0,
+        "total_return": (final_eq - 100_000.0) / 100_000.0,
+        "max_drawdown": portfolio_metrics.get("leveraged_max_drawdown", 0.0) if portfolio_metrics else 0.0
+    }
+
     return render_template(
         "backtest_dashboard.html",
         run_id=run_identifier,
         metrics=main_metrics,
-        kelly_metrics=portfolio_metrics,
+        kelly_metrics=kelly_metrics_view,
         strategy_metrics=strategy_metrics_map,
         wfa_results=run_data.get("wfa", []),
         stress_results=run_data.get("stress", {}),
