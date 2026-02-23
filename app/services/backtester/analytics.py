@@ -1321,7 +1321,7 @@ class BacktestAnalytics:
         initial_capital: float | None = None,
     ) -> pd.DataFrame:
         capital = initial_capital or self.INITIAL_CAPITAL
-        return self.loader.fetch_benchmark_equity(symbol, start_date, end_date, capital)
+        return self.loader.fetch_benchmark_data(symbol, start_date, end_date, capital)
 
     def get_equity_curve(self, initial_capital: float | None = None) -> pd.DataFrame:
         """Calculates a rolling equity curve for the dashboard."""

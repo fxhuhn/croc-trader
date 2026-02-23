@@ -372,8 +372,8 @@ def generate_regime_overlay_chart(daily_df: pd.DataFrame) -> str:
         )
     )
 
-    # Highlight Safety Zones (where safety_active is True)
-    safety_days = dataframe[dataframe["safety_active"]]
+    # Highlight Safety Zones (where safety_active is True or 1)
+    safety_days = dataframe[dataframe["safety_active"] == 1]
     if not safety_days.empty:
         fig.add_trace(
             go.Scatter(
