@@ -52,26 +52,29 @@
     <section class="mb-12">
 
         <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
+            <div class="overflow-x-auto no-scrollbar relative shadow-indicator">
+                <table class="w-full text-sm text-left border-separate border-spacing-0">
                     <thead>
-                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                            <th class="px-6 py-4 font-normal">Datum</th>
-                            <th class="px-6 py-4 font-normal">Symbol</th>
-                            <th class="px-6 py-4 font-normal text-right">Close</th>
-                            <th class="px-6 py-4 font-normal text-right">Entry (Limit)</th>
+                        <tr class="text-xs md:text-sm text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <th class="px-3 md:px-6 py-4 font-normal whitespace-nowrap">Datum</th>
+                            <th
+                                class="px-3 md:px-6 py-4 font-normal sticky-col sticky-col-header border-r border-slate-100 whitespace-nowrap">
+                                Symbol</th>
+                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Close</th>
+                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Entry (Limit)</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
                         {% for row in results %}
                         <tr class="hover:bg-slate-50/50 transition-colors group">
                             <!-- Date -->
-                            <td class="px-6 py-3 font-medium text-slate-700 whitespace-nowrap">
+                            <td class="px-3 md:px-6 py-3 font-medium text-slate-700 text-sm whitespace-nowrap">
                                 {{ row.display_date }}
                             </td>
 
                             <!-- Symbol -->
-                            <td class="px-6 py-3">
+                            <td
+                                class="px-3 md:px-6 py-3 sticky-col border-r border-slate-100 text-sm whitespace-nowrap bg-white group-hover:bg-slate-50/50 transition-colors">
                                 <div class="flex items-center gap-2">
                                     <span class="font-black text-slate-700">{{ row.symbol }}</span>
                                     <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
@@ -82,7 +85,7 @@
                             </td>
 
                             <!-- Freitag Close -->
-                            <td class="px-6 py-3 text-right font-mono text-slate-500">
+                            <td class="px-3 md:px-6 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap">
                                 {% if row.context.get('setup_close') %}
                                 {{ "{:,.2f}".format(row.context.get('setup_close')|float) }}
                                 {% else %}
@@ -91,7 +94,8 @@
                             </td>
 
                             <!-- Entry Limit -->
-                            <td class="px-6 py-3 text-right font-mono text-emerald-600 font-medium">
+                            <td
+                                class="px-3 md:px-6 py-3 text-right font-mono text-emerald-600 font-medium text-sm whitespace-nowrap">
                                 {% if row.context.get('limit_entry') %}
                                 {{ "{:,.2f}".format(row.context.get('limit_entry')|float) }}
                                 {% else %}
@@ -101,7 +105,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="4" class="px-6 py-12 text-center text-slate-400 italic">
+                            <td colspan="4" class="px-3 md:px-6 py-12 text-center text-slate-400 italic text-sm">
                                 Keine aktuellen Signale
                             </td>
                         </tr>
