@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, TypedDict
 from pathlib import Path
 import pandas as pd
 import plotly.graph_objects as go
@@ -109,15 +109,31 @@ def _prepare_strategy_metrics(
 
 
 # 1. Landing Pages (Übersichten)
-@views_bp.route("/screener", methods=["GET"])
-def view_screener_overview() -> str:
-    """Displays the overview page for all available screeners."""
-    signals_repository = _get_signal_repository()
+class StrategyOverview(TypedDict):
+    """Represents a strategy summary for the screener dashboard."""
+    id: str
+    name: str
+    desc: str
+    icon: str
+    count: int
+    is_active: bool
 
+
+def _get_strategy_overview(
+    signals_repository: SignalRepository,
+    screener_service: ScreenerViewService
+) -> list[StrategyOverview]:
+    """
+    Fetches the overview data for all trading strategies.
+    
+    Args:
+        signals_repository: The initialized signal repository.
+        screener_service: The initialized screener view service.
+        
+    Returns:
+        list[StrategyOverview]: A list containing strategy details and signal counts.
+    """
     # Signale zählen
-    # We use ScreenerViewService to benefit from aggregation logic (e.g. Croc)
-    screener_service = _get_screener_view_service()
-
     count_croc = len(screener_service.get_candidates(Strategies.CrocSetup, limit=100))
     count_dip = len(
         signals_repository.get_trade_candidates(Strategies.DipBuyer, limit=100)
@@ -131,14 +147,62 @@ def view_screener_overview() -> str:
     count_ndx_momentum = len(
         signals_repository.get_trade_candidates(Strategies.NDXMomentum, limit=100)
     )
+    
+    return [
+        {
+            "id": "croc",
+            "name": "Croc Setup",
+            "desc": "Trendfolge-Signale basierend auf Wochen- und Tageschart-Momentum.",
+            "icon": "arrow-up",
+            "count": count_croc,
+            "is_active": count_croc > 0
+        },
+        {
+            "id": "dip-buyer",
+            "name": "Dip Buyer",
+            "desc": "Kurzfristige Mean-Reversion Setups für Indizes.",
+            "icon": "trending-up",
+            "count": count_dip,
+            "is_active": count_dip > 0
+        },
+        {
+            "id": "turnover",
+            "name": "Turnover Timing",
+            "desc": "Saisonale Effekte zum Monatsende und Rebalancing.",
+            "icon": "refresh-cw",
+            "count": count_turnover,
+            "is_active": count_turnover > 0
+        },
+        {
+            "id": "twopercent",
+            "name": "Two Percent",
+            "desc": "Intraday Mean-Reversion bei extremen Bewegungen.",
+            "icon": "percent",
+            "count": count_twopercent,
+            "is_active": count_twopercent > 0
+        },
+        {
+            "id": "ndx-momentum",
+            "name": "NDX Momentum",
+            "desc": "Top 5 Momentum Leaderboard des Nasdaq 100.",
+            "icon": "zap",
+            "count": count_ndx_momentum,
+            "is_active": count_ndx_momentum > 0
+        }
+    ]
+
+
+@views_bp.route("/screener", methods=["GET"])
+def view_screener_overview() -> str:
+    """Displays the overview page for all available screeners."""
+    signals_repository = _get_signal_repository()
+    screener_service = _get_screener_view_service()
+
+    strategies = _get_strategy_overview(signals_repository, screener_service)
 
     return render_template(
         "screener.html",
-        count_croc=count_croc,
-        count_dip=count_dip,
-        count_turnover=count_turnover,
-        count_twopercent=count_twopercent,
-        count_ndx_momentum=count_ndx_momentum,
+        strategies=strategies,
     )
 
 
