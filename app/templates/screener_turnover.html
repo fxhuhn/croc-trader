@@ -1,8 +1,6 @@
 {% extends "base.html" %}
 
-{% block head %}
-<title>Turnover Signale</title>
-{% endblock %}
+{% block title %}Turnover Signale{% endblock %}
 
 {% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}
 
@@ -44,30 +42,33 @@
     <!-- Signals Section (Table) -->
     <section class="mb-12">
         <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
+            <div class="overflow-x-auto no-scrollbar relative shadow-indicator">
+                <table class="w-full text-sm text-left border-separate border-spacing-0">
                     <thead>
-                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                            <th class="px-6 py-4 font-normal">Datum</th>
-                            <th class="px-6 py-4 font-normal">Symbol</th>
-                            <th class="px-6 py-4 font-normal">Index</th>
-                            <th class="px-6 py-4 font-normal text-right">Limit (1.0)</th>
-                            <th class="px-6 py-4 font-normal text-right">Limit (0.5)</th>
-                            <th class="px-6 py-4 font-normal text-right">Close</th>
-                            <th class="px-6 py-4 font-normal text-right">ATR</th>
-                            <th class="px-6 py-4 font-normal text-right">Dollar-Volume</th>
+                        <tr class="text-xs md:text-sm text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <th class="px-3 md:px-6 py-4 font-normal whitespace-nowrap">Datum</th>
+                            <th
+                                class="px-3 md:px-6 py-4 font-normal sticky-col sticky-col-header border-r border-slate-100 whitespace-nowrap">
+                                Symbol</th>
+                            <th class="px-3 md:px-6 py-4 font-normal whitespace-nowrap">Index</th>
+                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Limit (1.0)</th>
+                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Limit (0.5)</th>
+                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Close</th>
+                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">ATR</th>
+                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Dollar-Volume</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
                         {% for row in results %}
                         <tr class="hover:bg-slate-50/50 transition-colors group">
                             <!-- Date -->
-                            <td class="px-6 py-3 font-medium text-slate-700 whitespace-nowrap">
+                            <td class="px-3 md:px-6 py-3 font-medium text-slate-700 text-sm whitespace-nowrap">
                                 {{ row.display_date }}
                             </td>
 
                             <!-- Symbol -->
-                            <td class="px-6 py-3">
+                            <td
+                                class="px-3 md:px-6 py-3 sticky-col border-r border-slate-100 text-sm whitespace-nowrap bg-white group-hover:bg-slate-50/50 transition-colors">
                                 <div class="flex items-center gap-2">
                                     <span class="font-black text-slate-700">{{ row.symbol }}</span>
                                     <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
@@ -78,7 +79,7 @@
                             </td>
 
                             <!-- Index -->
-                            <td class="px-6 py-3">
+                            <td class="px-3 md:px-6 py-3 text-sm whitespace-nowrap">
                                 <span
                                     class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">
                                     {{ row.index }}
@@ -86,7 +87,7 @@
                             </td>
 
                             <!-- Entry 1.0 -->
-                            <td class="px-6 py-3 text-right font-mono text-slate-500">
+                            <td class="px-3 md:px-6 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap">
                                 {% if row.entry_1_0 %}
                                 {{ "%.2f"|format(row.entry_1_0) }}
                                 {% else %}
@@ -95,7 +96,7 @@
                             </td>
 
                             <!-- Entry 0.5 -->
-                            <td class="px-6 py-3 text-right font-mono text-slate-500">
+                            <td class="px-3 md:px-6 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap">
                                 {% if row.entry_0_5 %}
                                 {{ "%.2f"|format(row.entry_0_5) }}
                                 {% else %}
@@ -104,17 +105,18 @@
                             </td>
 
                             <!-- Close -->
-                            <td class="px-6 py-3 text-right font-mono text-slate-500">
+                            <td class="px-3 md:px-6 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap">
                                 {{ "%.2f"|format(row.close) }}
                             </td>
 
                             <!-- ATR -->
-                            <td class="px-6 py-3 text-right font-mono text-slate-400">
+                            <td class="px-3 md:px-6 py-3 text-right font-mono text-slate-400 text-sm whitespace-nowrap">
                                 {{ "%.2f"|format(row.atr) }}
                             </td>
 
                             <!-- Dollar Volume -->
-                            <td class="px-6 py-3 text-right text-slate-400 font-medium">
+                            <td
+                                class="px-3 md:px-6 py-3 text-right text-slate-400 font-medium text-sm whitespace-nowrap">
                                 {% set dv = row.get('dollar_volume', 0) %}
                                 {% if dv >= 1000000000 %}
                                 {{ "%.2f"|format(dv / 1000000000) }}B
@@ -127,7 +129,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="8" class="px-6 py-12 text-center text-slate-400 italic">
+                            <td colspan="8" class="px-3 md:px-6 py-12 text-center text-slate-400 italic text-sm">
                                 Keine aktuellen Signale
                             </td>
                         </tr>
