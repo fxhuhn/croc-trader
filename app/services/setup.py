@@ -105,19 +105,32 @@ def register_services(app, config):
             db_attributes = signal_repository.get_unique_signal_attributes()
             check_keys = ["Signal", "Status", "Kerze", "Wolke", "Trend", "Setter", "Welle"]
             
+            # Signals to ignore for now
+            IGNORED_SIGNALS = {"bull_schwarz", "bull_1"}
+            
             for key in check_keys:
                 required_values = set()
                 if isinstance(ranking_data, list):
-                    required_values = {
-                        str(item[key]) for item in ranking_data 
-                        if isinstance(item, dict) and key in item
-                    }
+                    for item in ranking_data:
+                        if isinstance(item, dict) and key in item:
+                            val = str(item[key]).strip()
+                            if key == "Signal":
+                                # Handle cases like 'bull_1 (NEU)' or 'Red Green Rocket (RGR)'
+                                if " (" in val:
+                                    val = val.split(" (")[0].strip()
+                                if val in IGNORED_SIGNALS:
+                                    continue
+                            required_values.add(val)
                 elif isinstance(ranking_data, dict):
                     if key == "Signal":
-                        required_values = {
-                            str(signal_name) for signal_name, rules in ranking_data.items()
-                            if isinstance(rules, dict) and "Score" in rules
-                        }
+                        for signal_name, rules in ranking_data.items():
+                            if isinstance(rules, dict) and ("Score" in rules or "SQN" in rules):
+                                val = str(signal_name).strip()
+                                if " (" in val:
+                                    val = val.split(" (")[0].strip()
+                                if val in IGNORED_SIGNALS:
+                                    continue
+                                required_values.add(val)
                     else:
                         required_values = {
                             str(rules[key]) for rules in ranking_data.values()
