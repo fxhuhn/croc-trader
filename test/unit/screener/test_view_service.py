@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
 from app.services.screener.view_service import ScreenerViewService
-from app.const import Strategies, TradeStatus
+from app.const import Strategies
 
 @pytest.fixture
 def mock_signal_repository():
