@@ -18,19 +18,18 @@ from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
-IGNORED_METADATA_KEYS: Final[set[str]] = {
-    "Signal",
-    "Exit",
-    "Score",
-    "Base_Score",
-    "Multiplier",
-    "Status",
-    "R_Hist",
-    "Risk_95",
-    "R_2026",
-    "R_4W_Trend",
-    "Avg_Days",
-    "TimeExit",
+# Positive list of technical fields used for matching
+MATCHING_CONDITION_KEYS: Final[set[str]] = {
+    "status",
+    "kerze",
+    "wolke",
+    "trend",
+    "setter",
+    "welle",
+    "deluxe",
+    "rsi_zone",
+    "sma_20_cluster",
+    "sma_200_cluster",
 }
 
 # Optimized Condition Lookup
@@ -132,20 +131,44 @@ class CrocSetupStrategy(BaseStrategy):
         if not signals:
             return 0
 
-        report_rows = []
+        # 1. Find all matching signal candidates
+        candidates = []
         for row in signals:
-            trade = self._process_single_signal(dict(row))
+            item = self._find_candidate(dict(row))
+            if item:
+                candidates.append(item)
+
+        # 2. Sort all candidates by SQN / MaxDD Ratio (High to Low)
+        def _get_sort_score(c: dict[str, Any]) -> float:
+            rule = c["match"]
+            sqn = float(rule.get("SQN", rule.get("Score", 0.0)))
+            max_dd = float(rule.get("MaxDD", 0.0))
+            return (sqn / max_dd) if max_dd > 0 else 0.0
+
+        sorted_candidates = sorted(
+            candidates,
+            key=_get_sort_score,
+            reverse=True,
+        )
+
+        # 3. Limit to top 3 and create trades
+        report_rows = []
+        for c in sorted_candidates[:3]:
+            trade = self._create_trade(c["normalized"], c["prices"], c["match"])
             if trade:
                 report_rows.append(trade)
 
         logger.info(f"🐊 [{self.name}] Created {len(report_rows)} trades.")
 
         if self.telegram_bot and report_rows:
+            # Sort report rows by date for cleaner log
+            report_rows.sort(key=lambda x: x.get("Symbol", ""))
             self._send_report(report_rows, analysis_date or "LIVE")
 
         return len(report_rows)
 
-    def _process_single_signal(self, row: dict[str, Any]) -> dict[str, Any] | None:
+    def _find_candidate(self, row: dict[str, Any]) -> dict[str, Any] | None:
+        """Finds a matching rule for a signal but does not create a trade yet."""
         # 1. Parse JSON data from DB
         try:
             signal_data = (
@@ -171,8 +194,7 @@ class CrocSetupStrategy(BaseStrategy):
         if not match:
             return None
 
-        # 6. Create Trade
-        return self._create_trade(normalized, prices, match)
+        return {"normalized": normalized, "prices": prices, "match": match}
 
     def _enrich_sma(self, row: dict[str, Any], prices: PriceData) -> None:
         if prices.sma_20 > 0:
@@ -183,27 +205,43 @@ class CrocSetupStrategy(BaseStrategy):
             ) * 100
 
     def _find_best_match(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        signal_name = row.get("signal")
-        candidates = [r for r in self.ranking_rules if r.get("Signal") == signal_name]
+        signal_name = str(row.get("signal", ""))
+        
+        candidates = []
+        for rule in self.ranking_rules:
+            rule_signal = str(rule.get("Signal", ""))
+            # Extract base signal name if it contains a parenthetical suffix like (NEU)
+            base_rule_signal = rule_signal.split(" (")[0].strip() if " (" in rule_signal else rule_signal.strip()
+            
+            if base_rule_signal == signal_name or base_rule_signal == signal_name.split(" (")[0].strip():
+                candidates.append(rule)
 
         best_match = None
         best_score = -float("inf")
+        best_rule_length = 0
 
         for rule in candidates:
             if self._is_rule_match(row, rule):
-                score = float(rule.get("Score", 0.0))
-                if score > best_score:
+                # Prefer SQN over Score if available
+                score = float(rule.get("SQN", rule.get("Score", 0.0)))
+                rule_length = len([k for k in rule.keys() if k.lower() in MATCHING_CONDITION_KEYS])
+                
+                # If score is better, or if score is equal but rule is more specific (more conditions)
+                if score > best_score or (score == best_score and rule_length > best_rule_length):
                     best_match = rule
                     best_score = score
+                    best_rule_length = rule_length
+                    
         return best_match
 
     def _is_rule_match(self, row: dict[str, Any], rule: dict[str, Any]) -> bool:
         for key, expected_val in rule.items():
-            if key in IGNORED_METADATA_KEYS:
+            # Use Whitelist: skip any key that is not a technical condition
+            db_key = key.lower()
+            if db_key not in MATCHING_CONDITION_KEYS:
                 continue
 
             # Map YAML key to DB key
-            db_key = key.lower()
             if "ema" in db_key or "sma" in db_key:
                 db_key = "dist_sma_200" if "200" in db_key else "dist_sma_20"
             elif "rsi" in db_key:
@@ -224,8 +262,13 @@ class CrocSetupStrategy(BaseStrategy):
         # Try numeric lookup
         try:
             val = float(market_val)
-            cond_key = str(condition).lower().strip()
-            handler = CONDITION_HANDLERS.get(cond_key)
+            cond_str = str(condition).lower().strip()
+            
+            # Strip numeric prefixes like "3. " or "6. "
+            if cond_str and cond_str[0].isdigit() and ". " in cond_str:
+                cond_str = cond_str.split(". ", 1)[1].strip()
+                
+            handler = CONDITION_HANDLERS.get(cond_str)
             if handler:
                 return handler(val)
         except (ValueError, TypeError):
@@ -267,7 +310,7 @@ class CrocSetupStrategy(BaseStrategy):
         context = {
             "source": "webhook",
             "date": row.get("date_str", row.get("timestamp")),
-            "setup_score": float(match.get("Score", 0)),
+            "setup_score": float(match.get("SQN", match.get("Score", 0))),
             "match_rule": match,
             "tp1": targets["tp1"],
             "tp3": targets["tp3"],
@@ -287,7 +330,7 @@ class CrocSetupStrategy(BaseStrategy):
         return {
             "Symbol": symbol,
             "Signal": str(row.get("signal", "-")),
-            "Score": round(float(match.get("Score", 0)), 1),
+            "Score": round(float(match.get("SQN", match.get("Score", 0))), 2),
             "Entry": round(entry, 2),
             "Stop": round(stop, 2),
             "TP": round(targets["main"], 2),
@@ -297,14 +340,22 @@ class CrocSetupStrategy(BaseStrategy):
         self, entry: float, risk: float, exit_name: str
     ) -> dict[str, float]:
         t = {"tp1": 0.0, "tp3": 0.0, "main": 0.0}
+        
         if "split" in exit_name:
             t["tp1"] = round(entry + risk, 2)
             t["tp3"] = round(entry + (3 * risk), 2)
             t["main"] = t["tp3"]
         elif "tp3" in exit_name and "hold" in exit_name:
-            t["main"] = entry + (3 * risk)
+            t["tp3"] = round(entry + (3 * risk), 2)
+            t["main"] = t["tp3"]
+        elif "tp1" in exit_name and "hold" in exit_name:
+            t["tp1"] = round(entry + risk, 2)
+            t["main"] = t["tp1"]
         else:
-            t["main"] = entry + risk
+            # Fallback
+            t["tp1"] = round(entry + risk, 2)
+            t["main"] = t["tp1"]
+            
         return t
 
     def _get_indices_string(self, symbol: str) -> str:

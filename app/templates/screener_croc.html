@@ -24,7 +24,8 @@
                             <th>Index</th>
                             <th>Setup</th>
                             <th>Score</th>
-                            <th>4W Trend</th>
+                            <th>MaxDD</th>
+                            <th>90d Trend</th>
                             <th>Entry (Stop)</th>
                             <th>Stop Loss</th>
                             <th>Risiko</th>
@@ -53,9 +54,10 @@
 
                                 <!-- Display Filter Criteria -->
                                 <div class="small mt-1">
+                                    {% set whitelist = ['status', 'kerze', 'wolke', 'trend', 'setter', 'welle',
+                                    'deluxe', 'rsi_zone', 'sma_20_cluster', 'sma_200_cluster'] %}
                                     {% for key, val in rule.items() %}
-                                    {% if key not in ['Signal', 'Exit', 'Score', 'Status', 'R_Hist', 'Risk_95',
-                                    'R_2026', 'R_4W_Trend', 'Avg_Days', 'TimeExit'] %}
+                                    {% if key.lower() in whitelist %}
                                     <span class="badge bg-light text-secondary border fw-normal"
                                         title="{{ key }}: {{ val }}">
                                         {{ key }}: {{ val }}
@@ -66,17 +68,25 @@
                             </td>
 
                             <td>
-                                {% set score = row.setup_score | float %}
+                                {% set score = (rule.get('SQN') or row.setup_score) | float %}
                                 <span
-                                    class="badge {% if score >= 700 %}bg-success{% elif score >= 500 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                                    {{ score }}
+                                    class="badge {% if score >= 4.0 %}bg-success{% elif score >= 2.0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                                    {{ "%.2f"|format(score) }}
                                 </span>
+                            </td>
+
+                            <td>
+                                {% if rule.get('MaxDD') %}
+                                <span class="text-danger">{{ rule['MaxDD'] }}</span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
                             </td>
 
                             <!-- New Trend Column -->
                             <td>
-                                {% if rule.get('R_4W_Trend') %}
-                                <span class="text-muted">{{ rule['R_4W_Trend'] }} %</span>
+                                {% if rule.get('R_90d') %}
+                                <span class="text-muted">{{ rule['R_90d'] }} %</span>
                                 {% else %}
                                 <span class="text-muted">-</span>
                                 {% endif %}

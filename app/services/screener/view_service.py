@@ -77,10 +77,10 @@ class ScreenerViewService:
                         all_results.append(row)
                         seen_ids.add(row["id"])
 
-            # Sort by created_at descending
+            # Sort by created_at descending and limit to strict 3
             results = sorted(
                 all_results, key=lambda x: x.get("created_at") or "", reverse=True
-            )[:limit]
+            )[:3]
 
         else:
             # Standard Single Strategy Fetch
