@@ -30,6 +30,9 @@ MATCHING_CONDITION_KEYS: Final[set[str]] = {
     "rsi_zone",
     "sma_20_cluster",
     "sma_200_cluster",
+    "rsi",
+    "dist_sma_20",
+    "dist_sma_200",
 }
 
 # Optimized Condition Lookup
@@ -166,6 +169,18 @@ class CrocSetupStrategy(BaseStrategy):
             self._send_report(report_rows, analysis_date or "LIVE")
 
         return len(report_rows)
+
+    def _process_single_signal(self, row: dict[str, Any]) -> dict[str, Any] | None:
+        """
+        Legacy helper for processing a single signal row.
+        Used primarily by tests to skip the batching/limiting logic.
+        """
+        candidate = self._find_candidate(row)
+        if not candidate:
+            return None
+        return self._create_trade(
+            candidate["normalized"], candidate["prices"], candidate["match"]
+        )
 
     def _find_candidate(self, row: dict[str, Any]) -> dict[str, Any] | None:
         """Finds a matching rule for a signal but does not create a trade yet."""
