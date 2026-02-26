@@ -20,9 +20,16 @@
     }
 </script>
 
+<style type="text/tailwindcss">
+    @layer components {
+        .glass-nav {
+            @apply bg-white/80 backdrop-blur-md border-b border-slate-200/60;
+        }
+    }
+</style>
 {% endblock %}
 
-{% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}
+{% block body_class %}bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
 
 {% block content %}
 <!-- NAVIGATION (Fixed, Glassmorphism) -->
@@ -56,7 +63,7 @@
 </nav>
 
 <!-- MAIN CONTENT -->
-<main class="max-w-7xl mx-auto pt-20 space-y-8">
+<main class="flex-grow pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
     <!-- Signals Section (Table) -->
     <section class="mb-12">
@@ -152,45 +159,51 @@
                         <!-- Mobile Detail Row (Style 2) -->
                         <tr class="hidden bg-slate-50/50">
                             <td colspan="4" class="px-4 py-3 text-xs">
-                                <div class="grid grid-cols-2 gap-2">
-                                    <div class="flex justify-between border-b border-slate-200 pb-1">
-                                        <span class="text-slate-400">Date</span>
-                                        <span class="font-medium text-slate-700">{{ row.display_date }}</span>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <!-- Left Column -->
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between border-b border-slate-200 pb-1">
+                                            <span class="text-slate-400">Date</span>
+                                            <span class="font-medium text-slate-700">{{ row.display_date }}</span>
+                                        </div>
+                                        <div class="flex justify-between border-b border-slate-200 pb-1">
+                                            <span class="text-slate-400">Index</span>
+                                            <span class="font-medium text-slate-700">{{ row.context.get('indices', '-')
+                                                }}</span>
+                                        </div>
+                                        <div class="flex justify-between border-b border-slate-200 pb-1">
+                                            <span class="text-slate-400">ATR</span>
+                                            <span class="font-mono text-slate-600">
+                                                {% if row.context.get('atr5') %}
+                                                {{ "{:,.2f}".format(row.context.get('atr5')|float) }}
+                                                {% else %}-{% endif %}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <div class="flex justify-between border-b border-slate-200 pb-1">
-                                        <span class="text-slate-400">Index</span>
-                                        <span class="font-medium text-slate-700">{{ row.context.get('indices', '-')
-                                            }}</span>
-                                    </div>
-                                    <div class="flex justify-between border-b border-slate-200 pb-1">
-                                        <span class="text-slate-400">LOC</span>
-                                        <span class="font-mono text-amber-600">
-                                            {% if row.context.get('threshold_loc') %}
-                                            {{ "{:,.2f}".format(row.context.threshold_loc|float) }}
-                                            {% else %}-{% endif %}
-                                        </span>
-                                    </div>
-                                    <div class="flex justify-between border-b border-slate-200 pb-1">
-                                        <span class="text-slate-400">Close</span>
-                                        <span class="font-mono text-slate-600">
-                                            {% if row.context.get('close') %}
-                                            {{ "{:,.2f}".format(row.context.get('close')|float) }}
-                                            {% else %}-{% endif %}
-                                        </span>
-                                    </div>
-                                    <div class="flex justify-between border-b border-slate-200 pb-1">
-                                        <span class="text-slate-400">ATR</span>
-                                        <span class="font-mono text-slate-600">
-                                            {% if row.context.get('atr5') %}
-                                            {{ "{:,.2f}".format(row.context.get('atr5')|float) }}
-                                            {% else %}-{% endif %}
-                                        </span>
-                                    </div>
-                                    <div class="flex items-center justify-end border-b border-slate-200 pb-1">
-                                        <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}"
-                                            target="_blank" class="text-blue-600 font-bold flex items-center gap-1">
-                                            Chart <i data-lucide="external-link" class="w-3 h-3"></i>
-                                        </a>
+                                    <!-- Right Column -->
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between border-b border-slate-200 pb-1">
+                                            <span class="text-slate-400">Close</span>
+                                            <span class="font-mono text-slate-600">
+                                                {% if row.context.get('close') %}
+                                                {{ "{:,.2f}".format(row.context.get('close')|float) }}
+                                                {% else %}-{% endif %}
+                                            </span>
+                                        </div>
+                                        <div class="flex justify-between border-b border-slate-200 pb-1">
+                                            <span class="text-slate-400">LOC</span>
+                                            <span class="font-mono text-amber-600">
+                                                {% if row.context.get('threshold_loc') %}
+                                                {{ "{:,.2f}".format(row.context.threshold_loc|float) }}
+                                                {% else %}-{% endif %}
+                                            </span>
+                                        </div>
+                                        <div class="flex items-center justify-end border-b border-slate-200 pb-1">
+                                            <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}"
+                                                target="_blank" class="text-blue-600 font-bold flex items-center gap-1">
+                                                Chart <i data-lucide="external-link" class="w-3 h-3"></i>
+                                            </a>
+                                        </div>
                                     </div>
                                 </div>
                             </td>
