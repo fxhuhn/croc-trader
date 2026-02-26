@@ -114,7 +114,17 @@
 
                             <!-- Setup -->
                             <td class="px-4 py-3">
-                                <div class="font-bold text-blue-600 text-sm whitespace-nowrap">{{ clean_signal }}</div>
+                                <div class="flex items-center gap-2">
+                                    <div class="font-bold text-slate-500 text-sm whitespace-nowrap">{{ clean_signal }}
+                                    </div>
+                                    {% if row.strategy == 'split_target' %}
+                                    <span
+                                        class="px-1.5 py-0.25 rounded text-[9px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-600 border border-indigo-100/50">Split</span>
+                                    {% elif row.strategy == 'hold_target' %}
+                                    <span
+                                        class="px-1.5 py-0.25 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-50 text-amber-600 border border-amber-100/50">Hold</span>
+                                    {% endif %}
+                                </div>
                             </td>
 
                             <!-- Score -->
@@ -162,6 +172,14 @@
                                     <div class="flex justify-between border-b border-slate-200 pb-1">
                                         <span class="text-slate-400">Index</span>
                                         <span class="font-medium text-slate-700">{{ row.context.indices or '-' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Strategy</span>
+                                        <span
+                                            class="font-bold {% if row.strategy == 'split_target' %}text-indigo-600{% elif row.strategy == 'hold_target' %}text-amber-600{% else %}text-slate-700{% endif %}">
+                                            {{ 'Split' if row.strategy == 'split_target' else 'Hold' if row.strategy ==
+                                            'hold_target' else row.strategy }}
+                                        </span>
                                     </div>
                                     <div class="flex justify-between border-b border-slate-200 pb-1">
                                         <span class="text-slate-400">MaxDD</span>
@@ -266,11 +284,11 @@
 <!-- Mobile Bottom Navigation -->
 <nav class="md:hidden fixed bottom-0 w-full z-50 glass-nav border-t border-slate-200/60 pb-safe">
     <div class="flex justify-around items-center h-16">
-        <a href="/screener/croc" class="flex flex-col items-center justify-center w-full h-full text-blue-600">
+        <a href="/screener" class="flex flex-col items-center justify-center w-full h-full text-blue-600">
             <i data-lucide="search-check" class="w-5 h-5 mb-1"></i>
             <span class="text-[10px] font-medium">Screener</span>
         </a>
-        <a href="/trades/croc"
+        <a href="/trades"
             class="flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-blue-600 transition-colors">
             <i data-lucide="wallet" class="w-5 h-5 mb-1"></i>
             <span class="text-[10px] font-medium">Trades</span>
