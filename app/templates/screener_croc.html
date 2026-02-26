@@ -1,128 +1,280 @@
 {% extends "base.html" %}
 
-{% block title %}🐊 Croc Signale{% endblock %}
+{% block title %}Croc Screener{% endblock %}
+{% block head %}
+
+<!-- Primary Font: Inter -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: {
+                    sans: ['Inter', 'sans-serif'],
+                }
+            }
+        }
+    }
+</script>
+
+{% endblock %}
+
+{% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}
 
 {% block content %}
-<div class="container-fluid" style="max-width: 1600px;">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="text-success">🐊 Croc Signale</h1>
-        <div class="btn-group">
-            <a href="/screener" class="btn btn-outline-secondary">Screener Übersicht</a>
-            <a href="/trades/croc" class="btn btn-success">Zu den Trades</a>
-            <a href="/" class="btn btn-secondary">Home</a>
+<!-- NAVIGATION (Fixed, Glassmorphism) -->
+<nav class="glass-nav fixed top-0 w-full z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex h-16 items-center">
+            <!-- Branding -->
+            <div class="flex-shrink-0 flex items-center">
+                <span class="text-xl font-medium text-slate-900 tracking-tight">Croc Setup</span>
+            </div>
+            <!-- Links -->
+            <div class="ml-10 flex space-x-4">
+                <a href="/trades/croc"
+                    class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    Trades
+                </a>
+                <a href="/screener/croc"
+                    class="bg-blue-50 text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    Screener
+                </a>
+                <!-- Dashboard Link (Desktop Only) -->
+                <div class="hidden md:block">
+                    <a href="/screener"
+                        class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                        Dashboard
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
+</nav>
 
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0 align-middle">
-                    <thead class="bg-success text-white">
-                        <tr>
-                            <th>Datum</th>
-                            <th>Symbol</th>
-                            <th>Index</th>
-                            <th>Setup</th>
-                            <th>Score</th>
-                            <th>MaxDD</th>
-                            <th>90d Trend</th>
-                            <th>Entry (Stop)</th>
-                            <th>Stop Loss</th>
-                            <th>Risiko</th>
-                            <th>Target (TP3)</th>
+<!-- MAIN CONTENT -->
+<main class="max-w-7xl mx-auto pt-20 space-y-8">
+
+    <!-- Signals Section (Table) -->
+    <section class="mb-12">
+
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto no-scrollbar relative shadow-indicator">
+                <table class="w-full text-sm text-left border-separate border-spacing-0">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-100 text-xs md:text-sm text-slate-500 font-medium">
+                            <th class="px-4 py-3 font-medium whitespace-nowrap hidden md:table-cell">Date</th>
+                            <th
+                                class="px-4 py-3 font-medium sticky-col sticky-col-header border-r border-slate-100 whitespace-nowrap">
+                                Symbol</th>
+                            <th class="px-4 py-3 font-medium whitespace-nowrap hidden md:table-cell">Index</th>
+                            <th class="px-4 py-3 font-medium whitespace-nowrap">Setup</th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap">Score</th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap hidden md:table-cell">Entry
+                            </th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap hidden md:table-cell">SL</th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap hidden md:table-cell">Target
+                            </th>
+                            <!-- Chevron for mobile -->
+                            <th class="px-2 py-3 md:hidden w-8"></th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody class="divide-y divide-slate-100">
                         {% for row in results %}
-                        <tr>
-                            <td class="text-nowrap">{{ row.display_date }}</td>
-                            <td>
-                                <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}"
-                                    class="tv-link fw-bold text-dark text-decoration-none" target="_blank">
-                                    {{ row.symbol }} ↗
-                                </a>
-                            </td>
-                            <td><span class="badge bg-light text-dark border">{{ row.context.indices or '-' }}</span>
-                            </td>
+                        {% set rule = row.context.get('match_rule', {}) %}
+                        {% set signal_name = rule.get('Signal') or row.context.get('original_signal') or row.strategy %}
+                        {% set clean_signal = signal_name.replace('Croc_', '') %}
 
-                            <td>
-                                {% set rule = row.context.get('match_rule', {}) %}
-                                {% set signal_name = rule.get('Signal') or row.context.get('original_signal') or
-                                row.strategy %}
-                                <!-- Clean setup name (remove Croc_) -->
-                                <div class="fw-bold text-primary">{{ signal_name.replace('Croc_', '') }}</div>
+                        <!-- Main Row -->
+                        <tr onclick="toggleRow(this)"
+                            class="active:bg-slate-50 hover:bg-slate-50/50 transition-colors group cursor-pointer md:cursor-default">
 
-                                <!-- Display Filter Criteria -->
-                                <div class="small mt-1">
-                                    {% set whitelist = ['status', 'kerze', 'wolke', 'trend', 'setter', 'welle',
-                                    'deluxe', 'rsi_zone', 'sma_20_cluster', 'sma_200_cluster'] %}
-                                    {% for key, val in rule.items() %}
-                                    {% if key.lower() in whitelist %}
-                                    <span class="badge bg-light text-secondary border fw-normal"
-                                        title="{{ key }}: {{ val }}">
-                                        {{ key }}: {{ val }}
-                                    </span>
-                                    {% endif %}
-                                    {% endfor %}
-                                </div>
+                            <!-- Date (Desktop Only) -->
+                            <td
+                                class="px-4 py-3 font-medium text-slate-500 text-xs md:text-sm whitespace-nowrap hidden md:table-cell">
+                                {{ row.display_date }}
                             </td>
 
-                            <td>
-                                {% set score = (rule.get('SQN') or row.setup_score) | float %}
+                            <!-- Symbol -->
+                            <td
+                                class="px-4 py-3 sticky-col border-r border-slate-100 text-sm whitespace-nowrap bg-white group-hover:bg-slate-50/50 transition-colors">
+                                <span class="font-black text-slate-800">{{ row.symbol }}</span>
+                            </td>
+
+                            <!-- Index (Desktop Only) -->
+                            <td class="px-4 py-3 text-sm whitespace-nowrap hidden md:table-cell">
                                 <span
-                                    class="badge {% if score >= 4.0 %}bg-success{% elif score >= 2.0 %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
-                                    {{ "%.2f"|format(score) }}
+                                    class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200">
+                                    {{ row.context.indices or '-' }}
                                 </span>
                             </td>
 
-                            <td>
-                                {% if rule.get('MaxDD') %}
-                                <span class="text-danger">{{ rule['MaxDD'] }}</span>
-                                {% else %}
-                                <span class="text-muted">-</span>
-                                {% endif %}
+                            <!-- Setup -->
+                            <td class="px-4 py-3">
+                                <div class="font-bold text-blue-600 text-sm whitespace-nowrap">{{ clean_signal }}</div>
                             </td>
 
-                            <!-- New Trend Column -->
-                            <td>
-                                {% if rule.get('R_90d') %}
-                                <span class="text-muted">{{ rule['R_90d'] }} %</span>
-                                {% else %}
-                                <span class="text-muted">-</span>
-                                {% endif %}
+                            <!-- Score -->
+                            <td class="px-4 py-3 text-right">
+                                {% set score = (rule.get('SQN') or row.setup_score) | float %}
+                                <span class="font-bold text-slate-800 text-sm">{{ "%.2f"|format(score) }}</span>
                             </td>
 
-
-                            <td class="font-monospace text-primary">{{ "%.2f"|format(row.entry_price|float) }}
-                            </td>
-                            <td class="font-monospace text-danger">{{ "%.2f"|format(row.current_stop_loss|float) }}</td>
-
-                            <td>
-                                {% set risk = (row.entry_price|float - row.current_stop_loss|float) %}
-                                <span class="text-muted">{{ "%.2f"|format(risk) }} $</span>
+                            <!-- Entry (Desktop) -->
+                            <td
+                                class="px-4 py-3 text-right font-mono text-blue-600 font-medium text-sm whitespace-nowrap hidden md:table-cell">
+                                {{ "%.2f"|format(row.entry_price|float) }}
                             </td>
 
-                            <td class="font-monospace text-success">
-                                {% if row.context.tp1 and row.context.tp3 %}
-                                <div class="small text-muted">TP1: {{ "%.2f"|format(row.context.tp1|float) }}</div>
-                                <div class="fw-bold">{{ "%.2f"|format(row.context.tp3|float) }}</div>
-                                {% elif row.current_target and row.current_target|float > 0 %}
+                            <!-- SL (Desktop) -->
+                            <td
+                                class="px-4 py-3 text-right font-mono text-rose-600 font-medium text-sm whitespace-nowrap hidden md:table-cell">
+                                {{ "%.2f"|format(row.current_stop_loss|float) }}
+                            </td>
+
+                            <!-- Target (Desktop) -->
+                            <td
+                                class="px-4 py-3 text-right font-mono text-emerald-600 font-medium text-sm whitespace-nowrap hidden md:table-cell">
+                                {% if row.context.tp3 %}
+                                {{ "%.2f"|format(row.context.tp3|float) }}
+                                {% elif row.current_target %}
                                 {{ "%.2f"|format(row.current_target|float) }}
-                                {% else %}
-                                <span class="text-muted">-</span>
-                                {% endif %}
+                                {% else %}-{% endif %}
+                            </td>
+
+                            <!-- Chevron (Mobile Only) -->
+                            <td class="px-2 py-3 md:hidden text-right text-slate-400 w-8">
+                                <i data-lucide="chevron-down" class="w-4 h-4 transition-transform duration-200"></i>
+                            </td>
+                        </tr>
+
+                        <!-- Mobile Detail Row (Accordion) -->
+                        <tr class="hidden bg-slate-50/50">
+                            <td colspan="4" class="px-4 py-3 text-xs">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Date</span>
+                                        <span class="font-medium text-slate-700">{{ row.display_date }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Index</span>
+                                        <span class="font-medium text-slate-700">{{ row.context.indices or '-' }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">MaxDD</span>
+                                        <span class="text-rose-600 font-bold">{{ rule.get('MaxDD', '-') }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">90d Trend</span>
+                                        <span class="text-slate-700 font-bold">{% if rule.get('R_90d') %}{{
+                                            rule['R_90d'] }} %{% else %}-{% endif %}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Entry</span>
+                                        <span class="font-mono text-blue-600 font-bold">{{
+                                            "%.2f"|format(row.entry_price|float) }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Stop Loss</span>
+                                        <span class="font-mono text-rose-600 font-bold">{{
+                                            "%.2f"|format(row.current_stop_loss|float) }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Target (TP3)</span>
+                                        <span class="font-mono text-emerald-600 font-bold">
+                                            {% if row.context.tp3 %}{{ "%.2f"|format(row.context.tp3|float) }}
+                                            {% elif row.current_target %}{{ "%.2f"|format(row.current_target|float) }}{%
+                                            else %}-{% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center justify-end border-b border-slate-200 pb-1">
+                                        <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}"
+                                            target="_blank" class="text-blue-600 font-bold flex items-center gap-1">
+                                            Chart <i data-lucide="external-link" class="w-3 h-3"></i>
+                                        </a>
+                                    </div>
+                                    <div class="col-span-2 pt-2">
+                                        <p
+                                            class="text-[10px] text-slate-400 mb-1 uppercase tracking-tighter font-semibold">
+                                            Filter Criteria</p>
+                                        <div class="flex flex-wrap gap-1">
+                                            {% set whitelist = ['status', 'kerze', 'wolke', 'trend', 'setter', 'welle',
+                                            'deluxe', 'rsi_zone', 'sma_20_cluster', 'sma_200_cluster'] %}
+                                            {% for key, val in rule.items() %}
+                                            {% if key.lower() in whitelist %}
+                                            <span
+                                                class="px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 text-[10px]">{{
+                                                key }}: {{ val }}</span>
+                                            {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="10" class="text-center py-4 text-muted"> Keine offenen Signale gefunden.
+                            <td colspan="4" class="px-6 py-12 text-center">
+                                <p class="text-slate-400 font-medium">Keine offenen Signale gefunden.</p>
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            <!-- Footer -->
+            <div
+                class="px-6 py-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-400 font-medium tracking-wide">
+                Check auf neue Signale erfolgt täglich
+            </div>
         </div>
+    </section>
+
+</main>
+
+<script>
+    function toggleRow(row) {
+        // Simple width check: if desktop view, do nothing
+        if (window.innerWidth >= 768) return;
+
+        // The hidden row is the next sibling
+        const detailRow = row.nextElementSibling;
+        const isHidden = detailRow.classList.contains('hidden');
+
+        // Toggle visibility
+        if (isHidden) {
+            detailRow.classList.remove('hidden');
+            detailRow.classList.add('table-row');
+            row.classList.add('bg-slate-50/80');
+        } else {
+            detailRow.classList.add('hidden');
+            detailRow.classList.remove('table-row');
+            row.classList.remove('bg-slate-50/80');
+        }
+
+        // Rotate Chevron
+        const icon = row.querySelector('.lucide-chevron-down') || row.querySelector('[data-lucide="chevron-down"]');
+        if (icon) {
+            icon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+    }
+</script>
+
+<!-- Mobile Bottom Navigation -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 glass-nav border-t border-slate-200/60 pb-safe">
+    <div class="flex justify-around items-center h-16">
+        <a href="/screener/croc" class="flex flex-col items-center justify-center w-full h-full text-blue-600">
+            <i data-lucide="search-check" class="w-5 h-5 mb-1"></i>
+            <span class="text-[10px] font-medium">Screener</span>
+        </a>
+        <a href="/trades/croc"
+            class="flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-blue-600 transition-colors">
+            <i data-lucide="wallet" class="w-5 h-5 mb-1"></i>
+            <span class="text-[10px] font-medium">Trades</span>
+        </a>
     </div>
-</div>
+</nav>
 {% endblock %}

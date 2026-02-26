@@ -2,51 +2,61 @@
 
 {% block title %}DipBuyer Screener{% endblock %}
 {% block head %}
+
+<!-- Primary Font: Inter -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<!-- Tailwind CSS -->
 <script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
-<style>
-    body {
-        font-family: 'Inter', sans-serif;
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: {
+                    sans: ['Inter', 'sans-serif'],
+                }
+            }
+        }
     }
-</style>
+</script>
+
 {% endblock %}
 
 {% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}
 
 {% block content %}
-<!-- NAVIGATION (Sticky, Glassmorphism) -->
-<nav class="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-100/50 transition-all">
+<!-- NAVIGATION (Fixed, Glassmorphism) -->
+<nav class="glass-nav fixed top-0 w-full z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
-            <!-- Brand -->
-            <div class="flex items-center gap-8">
-                <a href="/screener/dip-buyer" class="text-xl font-semibold tracking-tight text-slate-900">
-                    Dip Buyer
+        <div class="flex h-16 items-center">
+            <!-- Branding -->
+            <div class="flex-shrink-0 flex items-center">
+                <span class="text-xl font-medium text-slate-900 tracking-tight">Dip Buyer</span>
+            </div>
+            <!-- Links -->
+            <div class="ml-10 flex space-x-4">
+                <a href="/trades/dip-buyer"
+                    class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    Trades
                 </a>
-                <!-- Links -->
-                <div class="hidden md:flex items-center space-x-1">
-                    <a href="/trades/dip-buyer"
-                        class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-                        Trades
-                    </a>
-                    <a href="/screener/dip-buyer"
-                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-                        Screener
+                <a href="/screener/dip-buyer"
+                    class="bg-blue-50 text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    Screener
+                </a>
+                <!-- Dashboard Link (Desktop Only) -->
+                <div class="hidden md:block">
+                    <a href="/screener"
+                        class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                        Dashboard
                     </a>
                 </div>
-            </div>
-            <!-- Dashboard Link -->
-            <div class="flex items-center">
-                <a href="/screener" class="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
-                    Dashboard
-                </a>
             </div>
         </div>
     </div>
 </nav>
 
 <!-- MAIN CONTENT -->
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+<main class="max-w-7xl mx-auto pt-20 space-y-8">
 
     <!-- Signals Section (Table) -->
     <section class="mb-12">
@@ -55,88 +65,134 @@
             <div class="overflow-x-auto no-scrollbar relative shadow-indicator">
                 <table class="w-full text-sm text-left border-separate border-spacing-0">
                     <thead>
-                        <tr class="text-xs md:text-sm text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                            <th class="px-3 md:px-6 py-4 font-normal whitespace-nowrap">Date</th>
+                        <tr class="bg-slate-50 border-b border-slate-100 text-xs md:text-sm text-slate-500 font-medium">
+                            <th class="px-4 py-3 font-medium whitespace-nowrap hidden md:table-cell">Date</th>
                             <th
-                                class="px-3 md:px-6 py-4 font-normal sticky-col sticky-col-header border-r border-slate-100 whitespace-nowrap">
+                                class="px-4 py-3 font-medium sticky-col sticky-col-header border-r border-slate-100 whitespace-nowrap">
                                 Symbol</th>
-                            <th class="px-3 md:px-6 py-4 font-normal whitespace-nowrap">Index</th>
-                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Entry (Limit)</th>
-                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">LOC</th>
-                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Score</th>
-                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Close</th>
-                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">ATR</th>
+                            <th class="px-4 py-3 font-medium whitespace-nowrap hidden md:table-cell">Index</th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap">Entry</th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap hidden md:table-cell">LOC</th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap">Score</th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap hidden md:table-cell">Close
+                            </th>
+                            <th class="px-4 py-3 font-medium text-right whitespace-nowrap hidden md:table-cell">ATR</th>
+                            <!-- Chevron for mobile -->
+                            <th class="px-2 py-3 md:hidden w-8"></th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-50">
+                    <tbody class="divide-y divide-slate-100">
                         {% for row in results %}
-                        <tr class="hover:bg-slate-50/50 transition-colors group">
-                            <!-- Date -->
-                            <td class="px-3 md:px-6 py-3 font-medium text-slate-700 text-sm whitespace-nowrap">
+                        <!-- Main Row -->
+                        <tr onclick="toggleRow(this)"
+                            class="active:bg-slate-50 hover:bg-slate-50/50 transition-colors group cursor-pointer md:cursor-default">
+                            <!-- Date (Desktop) -->
+                            <td
+                                class="px-4 py-3 font-medium text-slate-500 text-xs md:text-sm whitespace-nowrap hidden md:table-cell">
                                 {{ row.display_date }}
                             </td>
 
                             <!-- Symbol -->
                             <td
-                                class="px-3 md:px-6 py-3 sticky-col border-r border-slate-100 text-sm whitespace-nowrap bg-white group-hover:bg-slate-50/50 transition-colors">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-black text-slate-700">{{ row.symbol }}</span>
-                                    <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
-                                        class="text-slate-400 hover:text-indigo-500 transition-colors">
-                                        <i data-lucide="external-link" class="w-3 h-3"></i>
-                                    </a>
-                                </div>
+                                class="px-4 py-3 sticky-col border-r border-slate-100 text-sm whitespace-nowrap bg-white group-hover:bg-slate-50/50 transition-colors">
+                                <span class="font-black text-slate-800">{{ row.symbol }}</span>
                             </td>
 
-                            <!-- Index -->
-                            <td class="px-3 md:px-6 py-3 text-sm whitespace-nowrap">
+                            <!-- Index (Desktop) -->
+                            <td class="px-4 py-3 text-sm whitespace-nowrap hidden md:table-cell">
                                 <span
                                     class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200">
                                     {{ row.context.get('indices', '-') }}
                                 </span>
                             </td>
 
-                            <!-- Entry (Limit) -->
+                            <!-- Entry -->
                             <td
-                                class="px-3 md:px-6 py-3 text-right font-mono text-emerald-600 font-medium text-sm whitespace-nowrap">
+                                class="px-4 py-3 text-right font-mono text-emerald-600 font-medium text-sm whitespace-nowrap">
                                 {% if row.entry_price %}
                                 {{ "{:,.2f}".format(row.entry_price|float) }}
-                                {% else %}
-                                -
-                                {% endif %}
+                                {% else %}-{% endif %}
                             </td>
 
-                            <!-- LOC Threshold -->
+                            <!-- LOC (Desktop) -->
                             <td
-                                class="px-3 md:px-6 py-3 text-right font-mono text-amber-600 font-medium text-sm whitespace-nowrap">
+                                class="px-4 py-3 text-right font-mono text-amber-600 font-medium text-sm whitespace-nowrap hidden md:table-cell">
                                 {% if row.context.get('threshold_loc') %}
                                 {{ "{:,.2f}".format(row.context.threshold_loc|float) }}
-                                {% else %}
-                                -
-                                {% endif %}
+                                {% else %}-{% endif %}
                             </td>
 
                             <!-- Score -->
-                            <td class="px-3 md:px-6 py-3 text-right font-bold text-slate-800 text-sm whitespace-nowrap">
+                            <td class="px-4 py-3 text-right font-bold text-slate-800 text-sm whitespace-nowrap">
                                 {{ row.setup_score }}
                             </td>
 
-                            <!-- Close -->
-                            <td class="px-3 md:px-6 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap">
+                            <!-- Close (Desktop) -->
+                            <td
+                                class="px-4 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap hidden md:table-cell">
                                 {% if row.context.get('close') %}
                                 {{ "{:,.2f}".format(row.context.get('close')|float) }}
-                                {% else %}
-                                -
-                                {% endif %}
+                                {% else %}-{% endif %}
                             </td>
 
-                            <!-- ATR (5) -->
-                            <td class="px-3 md:px-6 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap">
+                            <!-- ATR (Desktop) -->
+                            <td
+                                class="px-4 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap hidden md:table-cell">
                                 {% if row.context.get('atr5') %}
                                 {{ "{:,.2f}".format(row.context.get('atr5')|float) }}
-                                {% else %}
-                                -
-                                {% endif %}
+                                {% else %}-{% endif %}
+                            </td>
+
+                            <!-- Chevron (Mobile) -->
+                            <td class="px-2 py-3 md:hidden text-right text-slate-400 w-8">
+                                <i data-lucide="chevron-down" class="w-4 h-4 transition-transform duration-200"></i>
+                            </td>
+                        </tr>
+
+                        <!-- Mobile Detail Row (Style 2) -->
+                        <tr class="hidden bg-slate-50/50">
+                            <td colspan="4" class="px-4 py-3 text-xs">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Date</span>
+                                        <span class="font-medium text-slate-700">{{ row.display_date }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Index</span>
+                                        <span class="font-medium text-slate-700">{{ row.context.get('indices', '-')
+                                            }}</span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">LOC</span>
+                                        <span class="font-mono text-amber-600">
+                                            {% if row.context.get('threshold_loc') %}
+                                            {{ "{:,.2f}".format(row.context.threshold_loc|float) }}
+                                            {% else %}-{% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">Close</span>
+                                        <span class="font-mono text-slate-600">
+                                            {% if row.context.get('close') %}
+                                            {{ "{:,.2f}".format(row.context.get('close')|float) }}
+                                            {% else %}-{% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="flex justify-between border-b border-slate-200 pb-1">
+                                        <span class="text-slate-400">ATR</span>
+                                        <span class="font-mono text-slate-600">
+                                            {% if row.context.get('atr5') %}
+                                            {{ "{:,.2f}".format(row.context.get('atr5')|float) }}
+                                            {% else %}-{% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center justify-end border-b border-slate-200 pb-1">
+                                        <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}"
+                                            target="_blank" class="text-blue-600 font-bold flex items-center gap-1">
+                                            Chart <i data-lucide="external-link" class="w-3 h-3"></i>
+                                        </a>
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -152,4 +208,47 @@
     </section>
 
 </main>
+
+<script>
+    function toggleRow(row) {
+        // Simple width check: if desktop view, do nothing
+        if (window.innerWidth >= 768) return;
+
+        // The hidden row is the next sibling
+        const detailRow = row.nextElementSibling;
+        const isHidden = detailRow.classList.contains('hidden');
+
+        // Toggle visibility
+        if (isHidden) {
+            detailRow.classList.remove('hidden');
+            detailRow.classList.add('table-row');
+            row.classList.add('bg-slate-50/80');
+        } else {
+            detailRow.classList.add('hidden');
+            detailRow.classList.remove('table-row');
+            row.classList.remove('bg-slate-50/80');
+        }
+
+        // Rotate Chevron - target the SVG or the i tag
+        const icon = row.querySelector('.lucide-chevron-down') || row.querySelector('[data-lucide="chevron-down"]');
+        if (icon) {
+            icon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+    }
+</script>
+
+<!-- Mobile Bottom Navigation -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 glass-nav border-t border-slate-200/60 pb-safe">
+    <div class="flex justify-around items-center h-16">
+        <a href="/screener" class="flex flex-col items-center justify-center w-full h-full text-blue-600">
+            <i data-lucide="search-check" class="w-6 h-6 mb-1"></i>
+            <span class="text-[10px] font-medium">Screener</span>
+        </a>
+        <a href="/trades"
+            class="flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-slate-900 transition-colors">
+            <i data-lucide="wallet" class="w-6 h-6 mb-1"></i>
+            <span class="text-[10px] font-medium">Trades</span>
+        </a>
+    </div>
+</nav>
 {% endblock %}
