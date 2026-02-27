@@ -32,8 +32,25 @@
 {% block body_class %}bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
 
 {% block content %}
-<!-- NAVIGATION (Fixed, Glassmorphism) -->
-<nav class="glass-nav fixed top-0 w-full z-50">
+<!-- MOBILE TOP NAVIGATION (Visible only on Mobile) -->
+<nav class="glass-nav sticky top-0 w-full z-50 px-4 flex items-center h-14 md:hidden">
+    <div class="flex items-center justify-between w-full">
+        <span class="text-lg font-bold text-slate-900 tracking-tight">Croc Setup</span>
+        <div class="flex items-center space-x-1">
+            <a href="/trades/croc"
+                class="text-slate-500 hover:text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                Trades
+            </a>
+            <a href="/screener/croc"
+                class="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                Screener
+            </a>
+        </div>
+    </div>
+</nav>
+
+<!-- DESKTOP NAVIGATION (Fixed, Glassmorphism - Visible only on Desktop) -->
+<nav class="glass-nav fixed top-0 w-full z-50 hidden md:block">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex h-16 items-center">
             <!-- Branding -->
@@ -50,13 +67,13 @@
                     class="bg-blue-50 text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
                     Screener
                 </a>
-                <!-- Dashboard Link (Desktop Only) -->
-                <div class="hidden md:block">
-                    <a href="/screener"
-                        class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                        Dashboard
-                    </a>
-                </div>
+            </div>
+            <!-- Dashboard Link -->
+            <div class="ml-auto">
+                <a href="/screener"
+                    class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    Dashboard
+                </a>
             </div>
         </div>
     </div>
@@ -68,8 +85,8 @@
     <!-- Signals Section (Table) -->
     <section class="mb-12">
 
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="overflow-x-auto no-scrollbar relative shadow-indicator">
+        <div class="bg-white rounded-3xl shadow-sm overflow-hidden">
+            <div class="overflow-x-auto no-scrollbar relative">
                 <table class="w-full text-sm text-left border-separate border-spacing-0">
                     <thead>
                         <tr class="bg-slate-50 border-b border-slate-100 text-xs md:text-sm text-slate-500 font-medium">
@@ -279,18 +296,6 @@
     }
 </script>
 
-<!-- Mobile Bottom Navigation -->
-<nav class="md:hidden fixed bottom-0 w-full z-50 glass-nav border-t border-slate-200/60 pb-safe">
-    <div class="flex justify-around items-center h-16">
-        <a href="/screener" class="flex flex-col items-center justify-center w-full h-full text-blue-600">
-            <i data-lucide="search-check" class="w-6 h-6 mb-1"></i>
-            <span class="text-[10px] font-medium">Screener</span>
-        </a>
-        <a href="/trades"
-            class="flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-slate-900 transition-colors">
-            <i data-lucide="wallet" class="w-6 h-6 mb-1"></i>
-            <span class="text-[10px] font-medium">Trades</span>
-        </a>
-    </div>
-</nav>
+{% set active_page = 'screener' %}
+{% include "partials/mobile_nav.html" with context %}
 {% endblock %}
