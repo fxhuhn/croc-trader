@@ -196,18 +196,5 @@
     </div>
 </main>
 
-<!-- Mobile Bottom Navigation -->
-<nav class="md:hidden fixed bottom-0 w-full z-50 glass-nav border-t border-slate-200/60 pb-safe">
-    <div class="flex justify-around items-center h-16">
-        <a href="/screener" class="flex flex-col items-center justify-center w-full h-full text-blue-600">
-            <i data-lucide="search-check" class="w-6 h-6 mb-1"></i>
-            <span class="text-[10px] font-medium">Screener</span>
-        </a>
-        <a href="/trades"
-            class="flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-slate-900 transition-colors">
-            <i data-lucide="wallet" class="w-6 h-6 mb-1"></i>
-            <span class="text-[10px] font-medium">Trades</span>
-        </a>
-    </div>
-</nav>
+{% include "partials/mobile_nav.html" with context %}
 {% endblock %}

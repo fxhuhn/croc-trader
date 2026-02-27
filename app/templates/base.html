@@ -47,10 +47,9 @@
 
         /* Glassmorphism Navigation */
         .glass-nav {
-            background-color: rgba(255, 255, 255, 0.8);
+            background-color: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(12px);
-            border-bottom: 1px solid rgba(226, 232, 240, 0.6);
-            /* Matches border-slate-200/60 */
+            border-bottom: 1px solid rgba(226, 232, 240, 0.8);
         }
 
         /* Status Pulse Animation */
@@ -149,7 +148,7 @@
     {% block head %}{% endblock %}
 </head>
 
-<body class="{% block body_class %}bg-slate-50 min-h-screen p-4 md:p-8 text-slate-900{% endblock %}">
+<body class="{% block body_class %}bg-slate-50 min-h-screen text-slate-900 antialiased flex flex-col{% endblock %}">
 
     {% block content %}{% endblock %}
 
