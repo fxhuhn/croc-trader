@@ -1,41 +1,41 @@
 {% extends "base.html" %}
 
 {% block title %}Two Percent Strategy{% endblock %}
+{% block body_class %}bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
 
 {% block content %}
-<!-- NAVIGATION (Sticky, Glassmorphism) -->
-<nav class="sticky top-0 z-50 w-full bg-white/80 backdrop-blur-md border-b border-slate-100/50 transition-all">
+<!-- NAVIGATION (Fixed, Glassmorphism) -->
+<nav class="glass-nav fixed top-0 w-full z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
+        <div class="flex h-16 items-center">
             <!-- Brand -->
-            <div class="flex items-center gap-8">
-                <a href="/trades/twopercent" class="text-xl font-semibold tracking-tight text-slate-900">
-                    TwoPercent
-                </a>
-                <!-- Links -->
-                <div class="hidden md:flex items-center space-x-1">
-                    <a href="/trades/twopercent"
-                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-                        Trades
-                    </a>
-                    <a href="/screener/twopercent"
-                        class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-                        Screener
-                    </a>
-                </div>
+            <div class="flex-shrink-0 flex items-center">
+                <span class="text-xl font-medium text-slate-900 tracking-tight">TwoPercent</span>
             </div>
-            <!-- Dashboard Link -->
-            <div class="flex items-center">
-                <a href="/trades" class="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
-                    Dashboard
+            <!-- Links -->
+            <div class="hidden md:flex items-center space-x-1">
+                <a href="/trades/twopercent"
+                    class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Trades
+                </a>
+                <a href="/screener/twopercent"
+                    class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
+                    Screener
                 </a>
             </div>
         </div>
+        <!-- Dashboard Link -->
+        <div class="flex items-center">
+            <a href="/trades" class="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
+                Dashboard
+            </a>
+        </div>
+    </div>
     </div>
 </nav>
 
 <!-- MAIN CONTENT -->
-<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+<main class="flex-grow pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
     <!-- KPI Cards -->
     <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -247,4 +247,6 @@
     </section>
 
 </main>
+{% set active_page = 'trades' %}
+{% include "partials/mobile_nav.html" with context %}
 {% endblock %}

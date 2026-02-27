@@ -30,20 +30,23 @@
 {% block content %}
 <nav class="glass-nav fixed top-0 w-full z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex h-16 items-center justify-between">
-            <div class="flex items-center">
-                <a href="/screener" class="text-slate-500 hover:text-slate-900 mr-4">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-                    </svg>
-                </a>
+        <div class="flex h-16 items-center">
+            <!-- Branding -->
+            <div class="flex-shrink-0 flex items-center">
                 <span class="text-xl font-medium text-slate-900 tracking-tight">NDX Momentum</span>
+            </div>
+            <!-- Links -->
+            <div class="ml-10 flex space-x-4">
+                <a href="/screener"
+                    class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
+                    Dashboard
+                </a>
             </div>
         </div>
     </div>
 </nav>
 
-<main class="max-w-7xl mx-auto pt-24 pb-12 px-4 sm:px-6 lg:px-8">
+<main class="flex-grow pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
     <div class="bg-white rounded-2xl shadow-saas overflow-hidden border border-slate-200/60">
         <div class="p-6 border-b border-slate-100 flex justify-between items-center">
             <div>
@@ -132,4 +135,6 @@
         </div>
     </div>
 </main>
+{% set active_page = 'screener' %}
+{% include "partials/mobile_nav.html" with context %}
 {% endblock %}
