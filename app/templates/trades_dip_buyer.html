@@ -1,27 +1,15 @@
 {% extends "base.html" %}
 
 {% block title %}Dip Buyer Dashboard{% endblock %}
-{% block body_class %}bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
+{% block body_class %}bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
 
 {% block content %}
+{% from "macros/navigation.html" import render_mobile_header, render_desktop_header %}
+{% from "macros/cards.html" import render_kpi_card %}
 <!-- MOBILE DASHBOARD (Visible only on Mobile) -->
-<div class="md:hidden bg-slate-50 min-h-screen antialiased">
+<div class="md:hidden bg-slate-100 min-h-screen antialiased">
     <!-- Mobile Top Navigation -->
-    <nav class="glass-nav sticky top-0 w-full z-50 px-4 flex items-center h-14">
-        <div class="flex items-center justify-between w-full">
-            <span class="text-lg font-bold text-slate-900 tracking-tight">Dip Buyer</span>
-            <div class="flex items-center space-x-1">
-                <a href="/trades/dip-buyer"
-                    class="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                    Trades
-                </a>
-                <a href="/screener/dip-buyer"
-                    class="text-slate-500 hover:text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
-                    Screener
-                </a>
-            </div>
-        </div>
-    </nav>
+    {{ render_mobile_header("Dip Buyer", "dip-buyer") }}
 
     <!-- Mobile KPIs -->
     <div class="px-4 py-6">
@@ -41,14 +29,14 @@
             </div>
 
             <!-- Invested -->
-            <div class="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                 <div class="text-lg font-black text-slate-900 leading-none mb-1">{{ "{:,.0f}".format(summary.invested)
                     }} $</div>
                 <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Invested</div>
             </div>
 
             <!-- Active Trades -->
-            <div class="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm">
+            <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                 <div class="flex flex-col">
                     <div class="text-lg font-black text-slate-900 leading-none mb-1">{{ active_trades|length }}</div>
                     <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Active</div>
@@ -63,7 +51,8 @@
                 Active
             </h2>
             {% for t in active_trades %}
-            <div class="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm overflow-hidden">
+            <div
+                class="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm overflow-hidden active:bg-slate-50 transition-colors">
                 <div class="flex justify-between items-start mb-3">
                     <div class="flex items-center gap-2">
                         <div class="text-lg font-black text-slate-900 leading-none">{{ t.symbol }}</div>
@@ -115,11 +104,11 @@
                 <i data-lucide="chart-pie" class="w-3.5 h-3.5"></i>
                 Performance
             </h2>
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div class="divide-y divide-slate-50">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="divide-y divide-slate-100">
                     {% for row in index_stats.values() %}
                     {% if row.win > 0 or row.loss > 0 %}
-                    <div class="px-4 py-3 flex justify-between items-center">
+                    <div class="px-4 py-3 flex justify-between items-center active:bg-slate-50 transition-colors">
                         <div>
                             <div class="text-sm font-bold text-slate-800">{{ row.name }}</div>
                             <div class="text-[10px] font-medium">
@@ -141,7 +130,7 @@
                     {% endfor %}
                 </div>
                 <!-- Mini Footer -->
-                <div class="bg-slate-50 px-4 py-3 flex justify-between items-center border-t border-slate-100">
+                <div class="bg-slate-50 px-4 py-3 flex justify-between items-center border-t border-slate-200">
                     <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Overall</div>
                     <div class="text-right">
                         <div class="text-xs font-black text-slate-700">
@@ -162,10 +151,10 @@
                 History
             </h2>
             <div
-                class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden divide-y divide-slate-50">
+                class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden divide-y divide-slate-100">
                 {% for group in history_groups %}
                 {% for t in group.trades %}
-                <div class="px-4 py-2 flex justify-between items-center">
+                <div class="px-4 py-2 flex justify-between items-center active:bg-slate-50 transition-colors">
                     <div>
                         <div class="text-sm font-bold text-slate-900 leading-tight">{{ group.symbol }}</div>
                         <div class="text-[10px] text-slate-400 font-medium">
@@ -181,7 +170,7 @@
                 {% endfor %}
 
                 <!-- History Footer -->
-                <div class="bg-slate-50 px-4 py-3 flex justify-between items-center border-t border-slate-100">
+                <div class="bg-slate-50 px-4 py-3 flex justify-between items-center border-t border-slate-200">
                     <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Overall</div>
                     <div class="text-right">
                         <div class="text-xs font-black text-slate-700">
@@ -200,34 +189,7 @@
 <!-- DESKTOP DASHBOARD (Existing Content) -->
 <div class="hidden md:block">
     <!-- NAVIGATION (Fixed, Glassmorphism) -->
-    <nav class="glass-nav fixed top-0 w-full z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex h-16 items-center">
-                <!-- Brand -->
-                <div class="flex-shrink-0 flex items-center">
-                    <span class="text-xl font-medium text-slate-900 tracking-tight">Dip Buyer</span>
-                </div>
-                <!-- Links -->
-                <div class="ml-10 flex space-x-4">
-                    <a href="/trades/dip-buyer"
-                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                        Trades
-                    </a>
-                    <a href="/screener/dip-buyer"
-                        class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                        Screener
-                    </a>
-                </div>
-                <!-- Dashboard Link -->
-                <div class="ml-auto">
-                    <a href="/trades"
-                        class="text-slate-500 hover:text-slate-900 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                        Dashboard
-                    </a>
-                </div>
-            </div>
-        </div>
-    </nav>
+    {{ render_desktop_header("Dip Buyer", "dip-buyer") }}
 
     <!-- MAIN CONTENT -->
     <main class="flex-grow pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
@@ -235,7 +197,7 @@
         <!-- KPI Cards -->
         <section class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <!-- Invested -->
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-200">
                 <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
                     <i data-lucide="wallet" class="w-6 h-6"></i>
                 </div>
@@ -246,7 +208,7 @@
             </article>
 
             <!-- Active Positions -->
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-200">
                 <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
                     <i data-lucide="activity" class="w-6 h-6"></i>
                 </div>
@@ -257,7 +219,7 @@
             </article>
 
             <!-- Open PnL -->
-            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
+            <article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-200">
                 <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
                     <i data-lucide="trending-up" class="w-6 h-6"></i>
                 </div>
@@ -282,7 +244,7 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left">
                         <thead>
-                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <tr class="text-slate-400 font-medium border-b border-slate-200 bg-slate-50">
                                 <th class="px-6 py-4 font-normal">Date</th>
                                 <th class="px-6 py-4 font-normal">Symbol</th>
                                 <th class="px-6 py-4 font-normal text-right">Qty</th>
@@ -293,9 +255,9 @@
                                 <th class="px-6 py-4 font-normal text-right">PnL</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-50">
+                        <tbody class="divide-y divide-slate-100">
                             {% for t in active_trades %}
-                            <tr class="hover:bg-slate-50/50 transition-colors group">
+                            <tr class="active:bg-slate-50/50 md:hover:bg-slate-50/50 transition-colors group">
                                 <!-- Date -->
                                 <td class="px-6 py-3 font-medium text-slate-700">
                                     {{ t.entry_date }}
@@ -385,17 +347,17 @@
             <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden max-w-4xl">
                 <table class="w-full text-sm text-left">
                     <thead>
-                        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                        <tr class="text-slate-400 font-medium border-b border-slate-200 bg-slate-50">
                             <th class="px-6 py-4 font-normal">Index</th>
                             <th class="px-6 py-4 font-normal text-right">Win — Loss</th>
                             <th class="px-6 py-4 font-normal text-right">Total PnL</th>
                             <th class="px-6 py-4 font-normal text-right">∅</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-50">
+                    <tbody class="divide-y divide-slate-100">
                         {% for row in index_stats.values() %}
                         {% if row.win > 0 or row.loss > 0 %}
-                        <tr class="hover:bg-slate-50/50 transition-colors">
+                        <tr class="active:bg-slate-50/50 md:hover:bg-slate-50/50 transition-colors">
                             <td class="px-6 py-3 font-medium text-slate-700">{{ row.name }}</td>
                             <td class="px-6 py-3 text-right text-slate-500">
                                 <span class="text-emerald-500 font-bold">{{ row.win }}W</span> — <span
@@ -441,7 +403,7 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-sm text-left">
                         <thead>
-                            <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+                            <tr class="text-slate-400 font-medium border-b border-slate-200 bg-slate-50">
                                 <th class="px-6 py-4 font-normal">Date</th>
                                 <th class="px-6 py-4 font-normal">Symbol</th>
                                 <th class="px-6 py-4 font-normal">Qty</th>
@@ -452,7 +414,8 @@
                             </tr>
                         </thead>
                         {% for group in history_groups %}
-                        <tbody class="border-b border-slate-100 last:border-0 hover:bg-slate-50/30 transition-colors">
+                        <tbody
+                            class="border-b border-slate-200 last:border-0 active:bg-slate-50/30 md:hover:bg-slate-50/30 transition-colors">
                             {% for t in group.trades %}
                             <tr class="group">
                                 <!-- Date: Exit (Bold) + Entry (Small) -->
@@ -501,7 +464,7 @@
                                     </span>
                                     {% else %}
                                     <span
-                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-50 text-slate-400 border border-slate-100">
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-50 text-slate-400 border border-slate-200">
                                         {{ t.exit_reason }}
                                     </span>
                                     {% endif %}

@@ -1,0 +1,45 @@
+<table class="w-full text-sm text-left">
+    <thead>
+        <tr class="text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
+            <th class="px-6 py-4 font-normal">Index</th>
+            <th class="px-6 py-4 font-normal text-right">Win — Loss</th>
+            <th class="px-6 py-4 font-normal text-right">Avg</th>
+            <th class="px-6 py-4 font-normal text-right">PnL</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-50">
+        {% for row in index_stats.values() %}
+        {% if row.win > 0 or row.loss > 0 %}
+        <tr class="active:bg-slate-50/50 md:hover:bg-slate-50/50 transition-colors">
+            <td class="px-6 py-3 font-medium text-slate-700">{{ row.name }}</td>
+            <td class="px-6 py-3 text-right text-slate-500">
+                <span class="text-emerald-500/80 font-bold">{{ row.win }}</span> — <span
+                    class="text-rose-500/90 font-bold">{{ row.loss }}</span>
+            </td>
+            <td class="px-6 py-3 text-right font-medium text-slate-400">
+                {{ "{:+,.0f}".format(row.average_pnl) }}
+            </td>
+            <td
+                class="px-6 py-3 text-right font-medium {{ 'text-emerald-500/80' if row.pnl >= 0 else 'text-rose-500/90' }}">
+                {{ "{:+.0f}".format(row.pnl) }}
+            </td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+    </tbody>
+    <tfoot class="bg-slate-50 border-t border-slate-200">
+        <tr class="font-semibold">
+            <td class="px-6 py-4 text-slate-900 border-none">Total (Unique)</td>
+            <td class="px-6 py-4 text-right text-slate-500 border-none">
+                {{ closed_summary.count }} Trades
+            </td>
+            <td class="px-6 py-4 text-right text-slate-400 border-none">
+                {{ "{:+,.0f}".format(closed_summary.average_pnl) }} $
+            </td>
+            <td
+                class="px-6 py-4 text-right border-none {{ 'text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'text-rose-500/90' }}">
+                {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
+            </td>
+        </tr>
+    </tfoot>
+</table>

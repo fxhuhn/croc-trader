@@ -306,10 +306,10 @@ class TradeViewService:
         )
 
         figure.update_layout(
-            margin=dict(l=0, r=0, t=0, b=0),
+            margin=dict(l=0, r=0, t=10, b=10),
             paper_bgcolor="rgba(0,0,0,0)",
             showlegend=False,
-            height=180,
+            height=200,
         )
         return figure.to_html(
             full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
