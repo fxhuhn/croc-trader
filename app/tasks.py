@@ -4,6 +4,7 @@ from pathlib import Path
 from .services.market.updater import MarketDataUpdater
 from .services.market.quality import MarketQualityService
 from .database.session import DatabaseSession
+from .extensions import cache
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,46 @@ def run_daily_strategy_check(app):
                 screener.run_all(days=0)
             except Exception as e:
                 logger.error(f"Fehler im Screener Job: {e}")
+            
+            # 2. Cache invalidieren und neu aufbauen (Pre-warming)
+            try:
+                _clear_and_prewarm_cache(app)
+            except Exception as e:
+                logger.error(f"Fehler beim Cache Pre-warming: {e}")
         else:
             logger.error("Screener Engine nicht gefunden!")
+
+
+def _clear_and_prewarm_cache(app):
+    """
+    Clears the Flask-Caching cache and preemptively fetches the /trades routes
+    to ensure the first user request is instantaneous.
+    """
+    with app.app_context():
+        logger.info("🧹 Leere Cache für /trades Routen...")
+        cache.clear()
+        
+        logger.info("🔥 Starte Pre-warming der /trades Routen...")
+        with app.test_client() as client:
+            routes = [
+                "/trades",
+                "/trades/croc",
+                "/trades/dip-buyer",
+                "/trades/turnover",
+                "/trades/ndx-momentum",
+                "/trades/twopercent",
+            ]
+            for route in routes:
+                try:
+                    response = client.get(route)
+                    if response.status_code == 200:
+                        logger.info(f"  ✓ Pre-warmed: {route}")
+                    else:
+                        logger.warning(f"  ✗ Pre-warm fehlgeschlagen für {route}: Status {response.status_code}")
+                except Exception as e:
+                    logger.error(f"  ✗ Exception beim Pre-warm von {route}: {e}")
+        
+        logger.info("✅ Cache Pre-warming abgeschlossen.")
 
 
 def run_market_data_update(db_path: Path):

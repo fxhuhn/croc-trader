@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from flask import Blueprint, current_app, render_template, request
+from ..extensions import cache
 
 from ..types import TradeStatus
 from ..const import Strategies, ExitReason
@@ -268,6 +269,7 @@ def generate_donut_chart(labels: list, values: list, colors: list) -> str:
 
 @views_bp.route("/trades", methods=["GET"])
 @views_bp.route("/trades/", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_trades_overview() -> str:
     """Displays an overview of all active trades across strategies."""
     service = _get_trade_view_service()
@@ -395,6 +397,7 @@ def view_screener_ndx_momentum() -> str:
 
 # 3. Trades Details
 @views_bp.route("/trades/croc", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_trades_croc() -> str:
     """Displays the Croc Setup trade history and active positions."""
     limit = request.args.get("limit", 100, type=int)
@@ -465,6 +468,7 @@ def view_trades_croc() -> str:
 
 
 @views_bp.route("/trades/dip-buyer", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_trades_dip_buyer() -> str:
     limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
@@ -504,6 +508,7 @@ def view_trades_dip_buyer() -> str:
 
 
 @views_bp.route("/trades/turnover", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_trades_turnover() -> str:
     """Displays the Turnover Timing trade history and active positions."""
     limit = request.args.get("limit", 200, type=int)
@@ -590,6 +595,7 @@ def view_trades_turnover() -> str:
 
 
 @views_bp.route("/trades/ndx-momentum", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_trades_ndx_momentum() -> str:
     """Displays the NDX Momentum trade history and active positions."""
     limit = request.args.get("limit", 100, type=int)
@@ -621,6 +627,7 @@ def view_trades_ndx_momentum() -> str:
 
 
 @views_bp.route("/trades/twopercent", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_trades_twopercent() -> str:
     """Displays the Two Percent trade history and active positions."""
     limit = request.args.get("limit", 100, type=int)
