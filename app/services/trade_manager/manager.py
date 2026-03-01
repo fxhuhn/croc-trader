@@ -143,14 +143,14 @@ class TradeManager:
 
         logger.info("TradeManager: Daily Process beendet.")
 
-    def _process_active_trade(self, trade: dict):
-        symbol = trade["symbol"]
-        strat_name = trade["strategy"]
-        strategy = self._get_strategy(strat_name)
+    def _process_active_trade(self, trade: dict[str, object]) -> None:
+        symbol = str(trade.get("symbol", ""))
+        strategy_name = str(trade.get("strategy", ""))
+        strategy = self._get_strategy(strategy_name)
 
         if not strategy:
             logger.warning(
-                f"Keine Strategie-Klasse für '{strat_name}' ({symbol}) gefunden."
+                f"Keine Strategie-Klasse für '{strategy_name}' ({symbol}) gefunden."
             )
             return
 
@@ -183,10 +183,10 @@ class TradeManager:
         except Exception as e:
             logger.error(f"Fehler bei Exit Check {symbol}: {e}", exc_info=True)
 
-    def _process_created_trade(self, trade: dict):
-        symbol = trade["symbol"]
-        strat_name = trade["strategy"]
-        strategy = self._get_strategy(strat_name)
+    def _process_created_trade(self, trade: dict[str, object]) -> None:
+        symbol = str(trade.get("symbol", ""))
+        strategy_name = str(trade.get("strategy", ""))
+        strategy = self._get_strategy(strategy_name)
 
         if not strategy:
             return
@@ -230,12 +230,12 @@ class TradeManager:
         orders = []
 
         for trade in created_trades:
-            symbol = trade["symbol"]
-            strat_name = trade["strategy"]
-            strategy = self._get_strategy(strat_name)
+            symbol = str(trade.get("symbol", ""))
+            strategy_name = str(trade.get("strategy", ""))
+            strategy = self._get_strategy(strategy_name)
 
             if not strategy:
-                logger.warning(f"Keine Strategie für Trade {symbol} ({strat_name})")
+                logger.warning(f"Keine Strategie für Trade {symbol} ({strategy_name})")
                 continue
 
             try:
@@ -260,16 +260,7 @@ class TradeManager:
                     # Clean None values (e.g. qty in Entry Leg)
                     order_dict = asdict(order)
 
-                    def clean_nones(d):
-                        if isinstance(d, dict):
-                            return {
-                                k: clean_nones(v) for k, v in d.items() if v is not None
-                            }
-                        if isinstance(d, list):
-                            return [clean_nones(v) for v in d]
-                        return d
-
-                    cleaned_order = clean_nones(order_dict)
+                    cleaned_order = _remove_none_values(order_dict)  # type: ignore
                     orders.append(cleaned_order)
                     logger.info(f"Order generiert: {symbol}")
 
@@ -294,3 +285,16 @@ class TradeManager:
 
         logger.info(f"Orders gespeichert: {file_path}")
         return str(file_path)
+
+
+def _remove_none_values(data: object) -> object:
+    """Recursively removes all keys with None values from nested dictionaries or lists."""
+    if isinstance(data, dict):
+        return {
+            key: _remove_none_values(value)
+            for key, value in data.items()
+            if value is not None
+        }
+    if isinstance(data, list):
+        return [_remove_none_values(item) for item in data]
+    return data

@@ -1,6 +1,5 @@
 import json
 import logging
-from typing import Any
 from pathlib import Path
 from datetime import date
 
@@ -54,7 +53,8 @@ class TradeViewData(TradeData):
     max_days: int | None
 
     # Context (overrides str | None from TradeData for parsed dict)
-    context: dict[str, Any]
+    context: dict[str, object]
+
 
 
 class TradeViewService:
@@ -74,7 +74,7 @@ class TradeViewService:
         session = DatabaseSession(str(_get_database_path("stocks")))
         return MarketRepository(session)
 
-    def resolve_strategy(self, trade: dict[str, Any]) -> str:
+    def resolve_strategy(self, trade: dict[str, object]) -> str:
         """Resolves a trade's strategy string to its Enum value."""
         raw = str(trade.get("strategy", "")).lower()
         # Check exact match first
@@ -88,7 +88,7 @@ class TradeViewService:
         resolved = STRATEGY_ALIASES.get(raw)
         return resolved if resolved else raw
 
-    def is_strategy_match(self, trade: dict[str, Any], target: str | list[str]) -> bool:
+    def is_strategy_match(self, trade: dict[str, object], target: str | list[str]) -> bool:
         """Checks if a trade belongs to a strategy or list of strategies."""
         trade_strat = self.resolve_strategy(trade)
 
@@ -97,19 +97,19 @@ class TradeViewService:
 
         return trade_strat == target
 
-    def _parse_context(self, trade: dict[str, Any]) -> dict[str, Any]:
+    def _parse_context(self, trade: dict[str, object]) -> dict[str, object]:
         """Parses the JSON context string safely."""
         try:
             raw_context = trade.get("signal_context") or trade.get("ctx")
             if isinstance(raw_context, str) and raw_context:
                 return json.loads(raw_context)
             if isinstance(raw_context, dict):
-                return raw_context
+                return raw_context  # type: ignore
             return {}
         except (json.JSONDecodeError, TypeError):
             return {}
 
-    def prepare_trade_view(self, trade: dict[str, Any]) -> TradeViewData:
+    def prepare_trade_view(self, trade: dict[str, object]) -> TradeViewData:
         """Transforms a raw trade dict into a strictly typed TradeViewData."""
         context = self._parse_context(trade)
 
@@ -183,21 +183,21 @@ class TradeViewService:
                 TargetColumn.TP1,
                 TargetColumn.TAKE_PROFIT_1,
             ]:
-                if val := context.get(key):
-                    target_price = float(val)
+                if value := context.get(key):
+                    target_price = float(value)  # type: ignore
                     break
 
             # Progress Calculation
             if stop_loss > 0.0 and target_price > 0.0 and stop_loss != target_price:
                 total_range = target_price - stop_loss
-                current_dist = current_price - stop_loss
-                pct = (current_dist / total_range) * 100
-                progress = max(0.0, min(100.0, pct))
+                current_distance = current_price - stop_loss
+                percentage = (current_distance / total_range) * 100
+                progress = max(0.0, min(100.0, percentage))
 
             # Critical SL
             if stop_loss > 0.0:
-                dist = abs(current_price - stop_loss)
-                if current_price > 0 and (dist / current_price) < 0.01:
+                distance = abs(current_price - stop_loss)
+                if current_price > 0 and (distance / current_price) < 0.01:
                     is_critical = True
 
         elif trade.get("status") == TradeStatus.CLOSED and entry_price > 0:
@@ -252,7 +252,7 @@ class TradeViewService:
         return view_data
 
     def generate_sparkline(
-        self, dates: list[Any], prices: list[float], is_positive: bool
+        self, dates: list[str], prices: list[float], is_positive: bool
     ) -> str:
         """Generates a minimalistic sparkline chart."""
         color = "#10b981" if is_positive else "#ef4444"
@@ -406,9 +406,9 @@ class TradeViewService:
 
     def group_trades_by_symbol(
         self, trades: list[TradeViewData]
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """Groups active trades by symbol."""
-        grouped: dict[str, dict[str, Any]] = {}
+        grouped: dict[str, dict[str, object]] = {}
         for trade in trades:
             symbol = trade["symbol"]
             if symbol not in grouped:
@@ -418,9 +418,9 @@ class TradeViewService:
 
         return sorted(list(grouped.values()), key=lambda x: x["symbol"])
 
-    def group_trades_history(self, trades: list[TradeViewData]) -> list[dict[str, Any]]:
+    def group_trades_history(self, trades: list[TradeViewData]) -> list[dict[str, object]]:
         """Groups closed trades by Symbol + Entry Date."""
-        grouped: dict[tuple[str, str], dict[str, Any]] = {}
+        grouped: dict[tuple[str, str], dict[str, object]] = {}
 
         for trade in trades:
             # Entry date key fallback
@@ -454,7 +454,7 @@ class TradeViewService:
             list(grouped.values()), key=lambda x: str(x["max_exit"]), reverse=True
         )
 
-    def get_index_stats(self, trades: list[TradeViewData]) -> dict[str, dict[str, Any]]:
+    def get_index_stats(self, trades: list[TradeViewData]) -> dict[str, dict[str, object]]:
         """Aggregates PnL statistics by Index (SPX, NDX, etc.)."""
         statistics = {
             IndexAliases.SPX: {
@@ -527,7 +527,7 @@ class TradeViewService:
 
         return statistics
 
-    def _update_stat(self, stat_dict: dict[str, Any], pnl: float) -> None:
+    def _update_stat(self, stat_dict: dict[str, object], pnl: float) -> None:
         """Helper to update a stats dictionary entry."""
         stat_dict["count"] += 1
         stat_dict["pnl"] += pnl
