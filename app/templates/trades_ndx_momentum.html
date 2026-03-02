@@ -13,11 +13,7 @@
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
-    <!-- Mobile Header (Visible only on Mobile) -->
-    <div class="md:hidden flex items-center gap-2 mb-4">
-        <i data-lucide="layout-dashboard" class="w-5 h-5 text-slate-400"></i>
-        <h1 class="text-lg font-bold text-slate-900 tracking-tight">NDX Momentum</h1>
-    </div>
+
 
     <!-- KPI Cards -->
     <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8">
@@ -116,7 +112,8 @@
                             <div>
                                 <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Entry / Qty</div>
                                 <div class="text-slate-700 font-bold">{{ "{:,.2f}".format(t.entry_price|float) }} $
-                                    <span class="text-slate-400 font-normal">x{{ t.initial_size|int }}</span></div>
+                                    <span class="text-slate-400 font-normal">x{{ t.initial_size|int }}</span>
+                                </div>
                             </div>
                             <div class="text-right">
                                 <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Entry Date</div>

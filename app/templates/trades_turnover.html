@@ -13,11 +13,7 @@
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
-    <!-- Mobile Header (Visible only on Mobile) -->
-    <div class="md:hidden flex items-center gap-2 mb-4">
-        <i data-lucide="layout-dashboard" class="w-5 h-5 text-slate-400"></i>
-        <h1 class="text-lg font-bold text-slate-900 tracking-tight">Turnover Signale</h1>
-    </div>
+
 
     <!-- KPI Cards -->
     <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8">
@@ -63,7 +59,7 @@
                 <div class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last">{{
                     active_trades|length }}</div>
                 <div class="text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">Active
-                    Positions</div>
+                </div>
             </div>
         </article>
     </section>
@@ -125,7 +121,8 @@
                                 <div>
                                     <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Entry / Qty</div>
                                     <div class="text-slate-700 font-bold">{{ "{:,.2f}".format(t.entry_price|float) }} $
-                                        <span class="text-slate-400 font-normal">x{{ t.current_size|int }}</span></div>
+                                        <span class="text-slate-400 font-normal">x{{ t.current_size|int }}</span>
+                                    </div>
                                 </div>
                                 <div class="text-right">
                                     <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Entry Date</div>
@@ -205,7 +202,7 @@
         <div>
             <h2
                 class="text-xs md:text-lg font-black md:font-bold text-slate-400 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> Index
+                <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i>
                 Performance
             </h2>
             <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
@@ -339,8 +336,7 @@
     <section class="mb-4">
         <h2
             class="text-xs md:text-lg font-black md:font-bold text-slate-400 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="history" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> Trade
-            History
+            <i data-lucide="history" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> History
         </h2>
 
         <div

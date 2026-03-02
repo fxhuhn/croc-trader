@@ -2,11 +2,23 @@
 
 {% block title %}Two Percent Signale{% endblock %}
 {% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
-<style>
-    body {
-        font-family: 'Inter', sans-serif;
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: { sans: ['Inter', 'sans-serif'] },
+                boxShadow: { 'soft': '0 2px 10px rgba(0, 0, 0, 0.04)' }
+            }
+        }
+    }
+</script>
+<style type="text/tailwindcss">
+    @layer components {
+        .glass-nav {
+            @apply bg-white/80 backdrop-blur-md border-b border-slate-200/60;
+        }
     }
 </style>
 {% endblock %}
@@ -14,114 +26,86 @@
 {% block body_class %}bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
 
 {% block content %}
-<!-- NAVIGATION (Fixed, Glassmorphism) -->
-<nav class="glass-nav fixed top-0 w-full z-50">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center justify-between h-16">
-            <!-- Brand -->
-            <div class="flex items-center gap-8">
-                <a href="/screener/twopercent" class="text-xl font-semibold tracking-tight text-slate-900">
-                    Two Percent
-                </a>
-                <!-- Links -->
-                <div class="hidden md:flex items-center space-x-1">
-                    <a href="/trades/twopercent"
-                        class="text-slate-500 hover:text-slate-900 hover:bg-slate-50 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-                        Trades
-                    </a>
-                    <a href="/screener/twopercent"
-                        class="bg-blue-50 text-blue-600 px-3 py-2 rounded-lg text-sm font-medium transition-colors">
-                        Screener
-                    </a>
-                </div>
-            </div>
-            <!-- Dashboard Link -->
-            <div class="flex items-center">
-                <a href="/screener" class="text-slate-500 hover:text-slate-900 transition-colors text-sm font-medium">
-                    Dashboard
-                </a>
-            </div>
-        </div>
-    </div>
-</nav>
+{% from "macros/navigation.html" import render_header %}
+{% import "macros/cards.html" as cards %}
+
+{% from "macros/navigation.html" import render_header %}
+{{ render_header("Two Percent", "twopercent", active_tab="screener") }}
 
 <!-- MAIN CONTENT -->
-<main class="flex-grow pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
-    <!-- Signals Section (Table) -->
+    <!-- Signals Section (Cards) -->
     <section class="mb-12">
-
-        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="overflow-x-auto no-scrollbar relative shadow-indicator">
-                <table class="w-full text-sm text-left border-separate border-spacing-0">
-                    <thead>
-                        <tr class="text-xs md:text-sm text-slate-400 font-medium border-b border-slate-100 bg-slate-50">
-                            <th class="px-3 md:px-6 py-4 font-normal whitespace-nowrap">Datum</th>
-                            <th
-                                class="px-3 md:px-6 py-4 font-normal sticky-col sticky-col-header border-r border-slate-100 whitespace-nowrap">
-                                Symbol</th>
-                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Close</th>
-                            <th class="px-3 md:px-6 py-4 font-normal text-right whitespace-nowrap">Entry (Limit)</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">
-                        {% for row in results %}
-                        <tr class="hover:bg-slate-50/50 transition-colors group">
-                            <!-- Date -->
-                            <td class="px-3 md:px-6 py-3 font-medium text-slate-700 text-sm whitespace-nowrap">
-                                {{ row.display_date }}
-                            </td>
-
-                            <!-- Symbol -->
-                            <td
-                                class="px-3 md:px-6 py-3 sticky-col border-r border-slate-100 text-sm whitespace-nowrap bg-white group-hover:bg-slate-50/50 transition-colors">
-                                <div class="flex items-center gap-2">
-                                    <span class="font-black text-slate-700">{{ row.symbol }}</span>
-                                    <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
-                                        class="text-slate-400 hover:text-indigo-500 transition-colors">
-                                        <i data-lucide="external-link" class="w-3 h-3"></i>
-                                    </a>
-                                </div>
-                            </td>
-
-                            <!-- Freitag Close -->
-                            <td class="px-3 md:px-6 py-3 text-right font-mono text-slate-500 text-sm whitespace-nowrap">
-                                {% if row.context.get('setup_close') %}
-                                {{ "{:,.2f}".format(row.context.get('setup_close')|float) }}
-                                {% else %}
-                                -
-                                {% endif %}
-                            </td>
-
-                            <!-- Entry Limit -->
-                            <td
-                                class="px-3 md:px-6 py-3 text-right font-mono text-emerald-600 font-medium text-sm whitespace-nowrap">
-                                {% if row.context.get('limit_entry') %}
-                                {{ "{:,.2f}".format(row.context.get('limit_entry')|float) }}
-                                {% else %}
-                                -
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="4" class="px-3 md:px-6 py-12 text-center text-slate-400 italic text-sm">
-                                Keine aktuellen Signale
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+            {% for row in results %}
+            {% call cards.screener_card(row.symbol, "", row.context.get('limit_entry', 0), "Limit") %}
+            <div class="grid grid-cols-2 gap-x-6 text-[11px] mb-2">
+                <!-- Left Column -->
+                <div class="flex flex-col">
+                    <div class="flex justify-between py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium">Datum</span>
+                        <span class="font-bold text-slate-800">{{ row.display_date }}</span>
+                    </div>
+                </div>
+                <!-- Right Column -->
+                <div class="flex flex-col">
+                    <div class="flex justify-between py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium">Close</span>
+                        <span class="font-bold text-slate-600 font-mono">
+                            {% if row.context.get('setup_close') %}
+                            {{ "{:,.2f}".format(row.context.get('setup_close')|float) }}
+                            {% else %}-{% endif %}
+                        </span>
+                    </div>
+                </div>
             </div>
-            <!-- Footer -->
-            <div
-                class="px-6 py-4 bg-slate-50 border-t border-slate-100 text-xs text-slate-400 font-medium tracking-wide">
-                Check auf neue Signale erfolgt nur zum Ende der Handelswoche
+
+            <!-- Action Button (Chart) -->
+            <div class="mb-4 mt-1">
+                <a href="https://www.tradingview.com/chart/?symbol={{ row.symbol }}" target="_blank"
+                    class="w-full flex items-center justify-center gap-1.5 bg-blue-50 text-blue-600 py-2 rounded-lg font-bold text-[11px] border border-blue-100 hover:bg-blue-100 transition-colors">
+                    Open in TradingView <i data-lucide="external-link" class="w-3 h-3"></i>
+                </a>
             </div>
+            {% endcall %}
+            {% else %}
+            <div class="col-span-full py-12 text-center bg-white rounded-3xl shadow-sm border border-slate-100">
+                <p class="text-slate-400 italic text-sm">Keine aktuellen Signale</p>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-4 px-2 py-2 text-xs text-slate-400 font-medium tracking-wide text-center">
+            Check auf neue Signale erfolgt nur zum Ende der Handelswoche
         </div>
     </section>
 
 </main>
+
+<script>
+    function toggleCard(card) {
+        // Toggle the hidden details section
+        const details = card.querySelector('.hidden-details');
+        const icon = card.querySelector('.chevron-icon');
+
+        if (!details || !icon) return;
+
+        const isHidden = details.classList.contains('hidden');
+
+        if (isHidden) {
+            details.classList.remove('hidden');
+            icon.style.transform = 'rotate(180deg)';
+            card.classList.add('shadow-md', 'border-slate-200');
+            card.classList.remove('shadow-soft', 'border-slate-100');
+        } else {
+            details.classList.add('hidden');
+            icon.style.transform = 'rotate(0deg)';
+            card.classList.remove('shadow-md', 'border-slate-200');
+            card.classList.add('shadow-soft', 'border-slate-100');
+        }
+    }
+</script>
+
 {% set active_page = 'screener' %}
 {% include "partials/mobile_nav.html" with context %}
 {% endblock %}
