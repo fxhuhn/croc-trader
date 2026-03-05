@@ -7,15 +7,16 @@ errors_bp = Blueprint("errors", __name__)
 
 BLOCKED_EXTENSIONS = (
     ".php",
+    ".php7",
     ".aspx",
     ".jsp",
     ".cgi",
     ".env",
     ".git",
     ".htaccess",
-    ".ico",
+    ".xml",
 )
-API_PREFIXES = ("/webhook", "/screener", "/orders", "/api")
+API_PREFIXES = ("/screener", "/orders", "/api")
 
 
 @errors_bp.app_errorhandler(404)
