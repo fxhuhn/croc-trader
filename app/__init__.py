@@ -16,7 +16,8 @@ def create_app(config_object=settings):
     app = Flask(__name__, static_url_path="", static_folder="static")
 
     # 1. Config & Cache
-    app.config["CACHE_TYPE"] = "SimpleCache"
+    debug_mode = config_object.app.webserver.debug
+    app.config["CACHE_TYPE"] = "NullCache" if debug_mode else "SimpleCache"
     app.config["CACHE_DEFAULT_TIMEOUT"] = 300
     app.config["JSONIFY_MIMETYPE"] = "application/json; charset=utf-8"
     app.config["SECRET_KEY"] = config_object.env.SECRET_KEY

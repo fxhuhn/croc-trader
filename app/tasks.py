@@ -39,7 +39,12 @@ def _clear_and_prewarm_cache(app):
     """
     Clears the Flask-Caching cache and preemptively fetches the /trades routes
     to ensure the first user request is instantaneous.
+    Runs ONLY in production (debug=False).
     """
+    if app.debug:
+        logger.info("Skipping cache pre-warming in debug mode.")
+        return
+
     with app.app_context():
         logger.info("🧹 Leere Cache für /trades Routen...")
         cache.clear()
