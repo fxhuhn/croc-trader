@@ -5,7 +5,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import render_kpi_card %}
+{% import "macros/cards.html" as cards %}
 
 <!-- Header -->
 {{ render_header("Croc Setup", "croc") }}
@@ -14,71 +14,24 @@
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
     <!-- KPI Cards -->
-    <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8 mt-2 md:mt-0">
-        <!-- Open PnL -->
-        <article
-            class="col-span-2 md:col-span-1 md:order-last bg-gradient-to-br from-emerald-500 to-teal-500 md:bg-none md:bg-white rounded-2xl shadow-lg shadow-emerald-200/50 md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border border-emerald-400/30 md:border-slate-200">
-            <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500">
-                <i data-lucide="trending-up" class="w-6 h-6"></i>
-            </div>
-            <div class="flex flex-col">
-                <div
-                    class="text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last {{ 'md:!text-emerald-500' if summary.open_pnl >= 0 else 'md:!text-rose-500' }}">
-                    {{ "{:+,.2f}".format(summary.open_pnl) }} $
-                </div>
-                <div
-                    class="text-emerald-50/80 md:text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">
-                    Open PnL</div>
-            </div>
-            <i data-lucide="trending-up" class="w-8 h-8 text-emerald-100 md:hidden"></i>
-        </article>
-
-        <!-- Invested -->
-        <article
-            class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center md:items-center justify-center md:justify-start gap-1 md:gap-4 order-2 md:order-1">
-            <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500">
-                <i data-lucide="wallet" class="w-6 h-6"></i>
-            </div>
-            <div class="flex flex-col items-center md:items-start text-center md:text-left">
-                <div class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last">{{
-                    "{:,.0f}".format(summary.invested) }} $</div>
-                <div class="text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">Invested
-                </div>
-            </div>
-        </article>
-
-        <!-- Active -->
-        <article
-            class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center md:items-center justify-center md:justify-start gap-1 md:gap-4 order-3 md:order-2">
-            <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500">
-                <i data-lucide="activity" class="w-6 h-6"></i>
-            </div>
-            <div class="flex flex-col items-center md:items-start text-center md:text-left">
-                <div class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last">{{
-                    active_trades|length }}</div>
-                <div class="text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">Active
-                </div>
-            </div>
-        </article>
-    </section>
+    {{ cards.dashboard_kpis(summary, active_trades|length) }}
 
     <!-- Active Trades Section -->
     {% if active_trades %}
     <section class="mb-8 md:mb-12">
         <h2
-            class="text-xs md:text-lg font-black md:font-bold text-slate-400 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> Active Trades
+            class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+            <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Active
         </h2>
 
         <div
             class="bg-transparent md:bg-white md:rounded-3xl md:shadow-sm border-0 md:border border-slate-200 overflow-hidden">
             <!-- Desktop Header -->
             <div
-                class="hidden md:grid grid-cols-11 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-400 font-medium text-sm">
+                class="hidden md:grid grid-cols-10 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
                 <div>Date</div>
                 <div>Symbol</div>
                 <div>Signal</div>
-                <div>Index</div>
                 <div class="text-right">Days</div>
                 <div class="text-right">Qty</div>
                 <div class="text-right">Entry</div>
@@ -94,97 +47,115 @@
                 <div
                     class="bg-white md:bg-transparent border border-slate-200 md:border-none rounded-2xl md:rounded-none shadow-sm md:shadow-none transition-colors md:hover:bg-slate-50/50">
 
-                    <!-- MOBILE ACCORDION VIEW -->
-                    <div class="md:hidden p-4">
-                        <div class="flex justify-between items-start cursor-pointer" onclick="toggleTradeCard(this)">
-                            <div class="flex flex-col gap-1">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-lg font-black text-slate-900 leading-none">{{ t.symbol }}</span>
+                    <!-- SINGLE-DOM RESPONSIVE ROW -->
+                    <!-- Mobile: Visible header, click to expand. Desktop: Always visible row -->
+                    <div class="flex flex-col md:grid md:grid-cols-10 md:gap-4 md:px-4 md:py-3 md:items-center text-sm">
+
+                        <!-- Header / Symbol Row -->
+                        <div class="p-4 md:p-0 flex justify-between items-start md:items-center md:col-span-3 cursor-pointer md:cursor-auto"
+                            onclick="toggleTradeCard(this)">
+                            <div class="flex flex-col gap-1 md:flex-row md:items-center md:gap-4 flex-1 min-w-0">
+                                <div class="hidden md:block font-mono text-slate-500">{{ t.display_entry }}</div>
+                                <div class="flex items-center gap-2 md:gap-0">
                                     <span
-                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase">
+                                        class="text-lg md:text-base font-black text-slate-900 leading-none md:font-bold md:text-slate-700">
+                                        <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
+                                            target="_blank"
+                                            class="hover:text-indigo-500 transition-colors flex items-center gap-1 md:pointer-events-auto pointer-events-none"
+                                            onclick="event.stopPropagation()">
+                                            {{ t.symbol }}
+                                            <i data-lucide="external-link"
+                                                class="w-3 h-3 text-slate-300 hidden md:inline-block"></i>
+                                        </a>
+                                    </span>
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase md:hidden ml-2">
                                         {{ (t.context.original_signal or t.context.match_rule.Signal or
                                         t.strategy).replace('Croc_', '') }}
                                     </span>
-                                    {% if t.context.indices %}
-                                    <span
-                                        class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-slate-100 text-slate-500 uppercase">
-                                        {{ t.context.indices }}
-                                    </span>
-                                    {% endif %}
+
                                 </div>
+                                <div class="hidden md:block text-slate-500"><span
+                                        class="text-xs font-bold text-indigo-500">{{
+                                        (t.context.original_signal or t.context.match_rule.Signal or
+                                        t.strategy).replace('Croc_', '') }}</span></div>
+
                             </div>
-                            <div class="flex items-center gap-3">
+                            <!-- PnL + Chevron (Mobile only) -->
+                            <div class="flex md:hidden items-center gap-3 flex-shrink-0 pl-2">
                                 <div
-                                    class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
-                                    {{ "{:+,.2f}".format(t.unrealized_pnl) }} $
+                                    class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
+                                    {{ "{:+,.2f}".format(t.unrealized_pnl) }}&nbsp;$
                                 </div>
                                 <i data-lucide="chevron-down"
-                                    class="w-4 h-4 text-slate-400 transition-transform duration-200"></i>
+                                    class="w-4 h-4 text-slate-600 transition-transform duration-200"></i>
                             </div>
                         </div>
-                        <div class="hidden pt-3 mt-3 border-t border-slate-200">
-                            <div class="grid grid-cols-2 gap-4 text-[11px] mb-3">
-                                <div>
-                                    <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Entry / Qty</div>
-                                    <div class="text-slate-700 font-bold">{{ "{:,.2f}".format(t.entry_price|float) }} $
-                                        <span class="text-slate-400 font-normal">x{{ t.current_size|int }}</span>
+
+                        <!-- Details Row (Hidden on mobile by default, grid on desktop) -->
+                        <div
+                            class="hidden md:contents pt-3 mt-3 border-t border-slate-200 md:border-none md:mt-0 md:pt-0 pb-4 px-4 md:p-0 md:col-span-7">
+
+                            <!-- New 2-Column Detail Layout -->
+                            <div class="grid grid-cols-2 gap-x-6 text-[11px] mb-2 md:contents md:gap-0 md:text-sm">
+                                <!-- Left Column -->
+                                <div class="flex flex-col md:contents">
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
+                                        <span class="text-slate-500 font-medium">In Date</span>
+                                        <span class="font-mono text-slate-600">{{ t.display_entry }}</span>
+                                    </div>
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
+                                        <span class="text-slate-500 font-medium md:hidden">Days Held</span>
+                                        <span
+                                            class="font-bold text-slate-800 md:text-slate-500 md:font-normal md:text-right">{{
+                                            t.days_held }}</span>
+                                    </div>
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
+                                        <span class="text-slate-500 font-medium">Index</span>
+                                        <span class="font-bold text-slate-800">{% if t.context.indices %}{{
+                                            t.context.indices }}{% else %}-{% endif %}</span>
+                                    </div>
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
+                                        <span class="text-slate-500 font-medium md:hidden">Qty</span>
+                                        <span
+                                            class="font-bold text-slate-800 md:text-slate-500 md:font-mono md:text-right">{{
+                                            t.current_size|int }}</span>
                                     </div>
                                 </div>
-                                <div class="text-right">
-                                    <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Target 1</div>
-                                    <div class="text-emerald-600 font-bold">{% if t.context.tp1 %}{{
-                                        "{:,.2f}".format(t.context.tp1|float) }} ${% else %}-{% endif %}</div>
+                                <!-- Right Column -->
+                                <div class="flex flex-col md:contents">
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
+                                        <span class="text-slate-500 font-medium md:hidden">Entry</span>
+                                        <span class="font-mono text-slate-800 md:text-slate-500 md:text-right">{{
+                                            "{:,.2f}".format(t.entry_price|float) }}</span>
+                                    </div>
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
+                                        <span class="text-slate-500 font-medium md:hidden">Stop Loss</span>
+                                        <span class="font-mono text-rose-600 md:text-rose-500/80 md:text-right">{{
+                                            "{:,.2f}".format(t.current_stop_loss|float) }}</span>
+                                    </div>
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
+                                        <span class="text-slate-500 font-medium md:hidden">Target 1</span>
+                                        <span class="font-mono text-emerald-600 md:text-emerald-500/80 md:text-right">
+                                            {% if t.context.tp1 %}{{ "{:,.2f}".format(t.context.tp1|float) }}{% else
+                                            %}-{% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
+                                        <span class="text-slate-500 font-medium md:hidden">Target 2</span>
+                                        <span class="font-mono text-emerald-600 md:text-emerald-500/80 md:text-right">
+                                            {% if t.context.tp3 %}{{ "{:,.2f}".format(t.context.tp3|float) }}{% else
+                                            %}-{% endif %}
+                                        </span>
+                                    </div>
+                                    <!-- Desktop PnL -->
+                                    <div
+                                        class="hidden md:block text-right font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
+                                        {{ "{:+,.2f}".format(t.unrealized_pnl) }}&nbsp;$
+                                    </div>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-4 text-[11px]">
-                                <div>
-                                    <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Stop Loss</div>
-                                    <div class="text-rose-500 font-bold">{{ "{:,.2f}".format(t.current_stop_loss|float)
-                                        }} $</div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Target 3</div>
-                                    <div class="text-emerald-600 font-bold">{% if t.context.tp3 %}{{
-                                        "{:,.2f}".format(t.context.tp3|float) }} ${% else %}-{% endif %}</div>
-                                </div>
-                            </div>
-                            <div
-                                class="mt-3 pt-3 border-t border-slate-50 flex justify-between items-center text-[10px] text-slate-400 font-medium">
-                                <div>Days Held: <span class="text-slate-600 font-bold">{{ t.days_held }}</span></div>
-                                <div class="uppercase tracking-wider">In: {{ t.display_entry }}</div>
-                            </div>
                         </div>
-                    </div>
-
-                    <!-- DESKTOP ROW VIEW -->
-                    <div class="hidden md:grid grid-cols-11 gap-4 px-4 py-3 items-center text-sm">
-                        <div class="font-mono text-slate-500">{{ t.display_entry }}</div>
-                        <div class="font-bold text-slate-700">
-                            <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}" target="_blank"
-                                class="hover:text-indigo-500 transition-colors flex items-center gap-1">
-                                {{ t.symbol }}
-                                <i data-lucide="external-link" class="w-3 h-3 text-slate-300"></i>
-                            </a>
-                        </div>
-                        <div class="text-slate-500"><span class="text-xs font-bold text-indigo-500">{{
-                                (t.context.original_signal or t.context.match_rule.Signal or
-                                t.strategy).replace('Croc_', '') }}</span></div>
-                        <div class="text-slate-500"><span
-                                class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-600">{{
-                                t.context.indices or '-' }}</span></div>
-                        <div class="text-right text-slate-500">{{ t.days_held }}</div>
-                        <div class="text-right font-mono text-slate-500">{{ t.current_size|int }}</div>
-                        <div class="text-right font-mono text-slate-500">{{ "{:,.2f}".format(t.entry_price|float) }}
-                        </div>
-                        <div class="text-right font-mono text-rose-500/80">{{
-                            "{:,.2f}".format(t.current_stop_loss|float) }}</div>
-                        <div class="text-right font-mono text-emerald-500/80">{{ "{:,.2f}".format(t.context.tp1|float)
-                            if t.context.tp1 else '-' }}</div>
-                        <div class="text-right font-mono text-emerald-500/80">{{ "{:,.2f}".format(t.context.tp3|float)
-                            if t.context.tp3 else '-' }}</div>
-                        <div
-                            class="text-right font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(t.unrealized_pnl) }} $</div>
                     </div>
 
                 </div>
@@ -199,17 +170,19 @@
         <!-- Index Performance -->
         <div>
             <h2
-                class="text-xs md:text-lg font-black md:font-bold text-slate-400 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> Index
+                class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Index
             </h2>
-            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-sm text-left">
+            <div
+                class="bg-white md:bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 md:overflow-hidden">
+                <!-- Desktop Table -->
+                <table class="w-full text-sm text-left hidden md:table">
                     <thead>
                         <tr
-                            class="text-[10px] md:text-sm text-slate-400 uppercase md:normal-case tracking-wider md:tracking-normal font-bold md:font-medium border-b border-slate-200 bg-slate-50">
+                            class="text-[10px] md:text-sm text-slate-600 uppercase md:normal-case tracking-wider md:tracking-normal font-bold md:font-medium border-b border-slate-200 bg-slate-50">
                             <th class="px-4 md:px-6 py-2 md:py-4 font-normal">Index</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">W — L</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right hidden md:table-cell">Avg</th>
+                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-center">W — L</th>
+                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">Avg</th>
                             <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">PnL</th>
                         </tr>
                     </thead>
@@ -218,28 +191,22 @@
                         {% if row.win > 0 or row.loss > 0 %}
                         <tr class="active:bg-slate-50/50 md:hover:bg-slate-50/50 transition-colors">
                             <td class="px-4 md:px-6 py-3 font-medium text-slate-700">
-                                <span class="hidden md:inline">{{ row.name }}</span>
-                                <span class="md:hidden text-sm font-bold text-slate-800 flex flex-col">{{ row.name
-                                    }}</span>
+                                <span>{{ row.name }}</span>
                             </td>
-                            <td class="px-4 md:px-6 py-3 text-right">
-                                <span class="text-[10px] md:text-sm font-medium md:font-normal">
-                                    <span class="text-emerald-500/80 font-bold">{{ row.win }}</span><span
-                                        class="md:hidden">W</span> <span class="hidden md:inline">—</span><span
-                                        class="md:hidden ml-1"></span> <span class="text-rose-500/90 font-bold">{{
-                                        row.loss }}</span><span class="md:hidden">L</span>
+                            <td class="px-4 md:px-6 py-3 text-center">
+                                <span class="text-[10px] md:text-sm font-bold">
+                                    <span class="text-emerald-500 whitespace-nowrap">{{ row.win }}W</span>
+                                    <span class="text-slate-300 mx-1">-</span>
+                                    <span class="text-rose-500 whitespace-nowrap">{{ row.loss }}L</span>
                                 </span>
                             </td>
-                            <td class="px-4 md:px-6 py-3 text-right font-medium text-slate-400 hidden md:table-cell">
+                            <td class="px-4 md:px-6 py-3 text-right font-medium text-slate-600">
                                 {{ "{:+,.0f}".format(row.average_pnl) }}
                             </td>
                             <td class="px-4 md:px-6 py-3 text-right">
                                 <div
                                     class="text-sm font-black md:font-medium {{ 'text-emerald-500 md:text-emerald-500/80' if row.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }}">
-                                    {{ "{:+.0f}".format(row.pnl) }}<span class="md:hidden"> $</span>
-                                </div>
-                                <div class="md:hidden text-[10px] text-slate-400 font-medium mt-0.5">
-                                    {{ "{:+.2f}".format(row.average_pnl) }} ∅
+                                    {{ "{:+.0f}".format(row.pnl) }}&nbsp;$
                                 </div>
                             </td>
                         </tr>
@@ -249,47 +216,80 @@
                     <tfoot class="bg-slate-50 border-t border-slate-200">
                         <tr class="font-semibold">
                             <td class="px-4 md:px-6 py-3 md:py-4 text-slate-900 border-none">
-                                <span class="hidden md:inline">Total (Unique)</span>
-                                <span
-                                    class="md:hidden text-[10px] uppercase font-bold text-slate-400 tracking-wider">Overall</span>
+                                <span>Total (Unique)</span>
                             </td>
-                            <td
-                                class="px-4 md:px-6 py-3 md:py-4 text-right text-slate-500 border-none hidden md:table-cell">
+                            <td class="px-4 md:px-6 py-3 md:py-4 text-right text-slate-500 border-none">
                                 {{ closed_summary.count }} Trades
                             </td>
-                            <td
-                                class="px-4 md:px-6 py-3 md:py-4 text-right text-slate-400 border-none hidden md:table-cell">
+                            <td class="px-4 md:px-6 py-3 md:py-4 text-right text-slate-600 border-none">
                                 {{ "{:+,.0f}".format(closed_summary.average_pnl) }}
                             </td>
-                            <td class="px-4 md:px-6 py-3 md:py-4 text-right border-none" colspan="2">
+                            <td class="px-4 md:px-6 py-3 md:py-4 text-right border-none">
                                 <div
                                     class="text-xs md:text-sm font-black md:font-semibold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'md:text-rose-500/90' }}">
-                                    {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
-                                </div>
-                                <div class="md:hidden text-[10px] text-slate-400 font-bold mt-0.5">
-                                    {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $ ∅
+                                    {{ "{:+,.2f}".format(closed_summary.total_pnl) }}&nbsp;$
                                 </div>
                             </td>
                         </tr>
                     </tfoot>
                 </table>
+
+                <!-- Mobile List -->
+                <div class="md:hidden flex flex-col divide-y divide-slate-100">
+                    {% for row in index_stats.values() %}
+                    {% if row.win > 0 or row.loss > 0 %}
+                    <div class="flex justify-between items-center px-4 py-3 active:bg-slate-50 transition-colors">
+                        <div class="flex flex-col">
+                            <span class="text-sm font-bold text-slate-800">{{ row.name }}</span>
+                            <span class="text-[10px] mt-0.5 font-bold">
+                                <span class="text-emerald-500">{{ row.win }}W</span>
+                                <span class="text-slate-300 mx-0.5">-</span>
+                                <span class="text-rose-500">{{ row.loss }}L</span>
+                            </span>
+                        </div>
+                        <div class="text-right">
+                            <div
+                                class="text-sm font-black {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500' }}">
+                                {{ "{:+.0f}".format(row.pnl) }}&nbsp;$
+                            </div>
+                            <div class="text-[10px] text-slate-600 font-medium">
+                                {{ "{:+.2f}".format(row.average_pnl) }}&nbsp;∅
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                    <!-- Mobile Footer row -->
+                    <div class="bg-slate-50/50 px-4 py-3 flex justify-between items-center">
+                        <span class="text-[10px] uppercase font-bold text-slate-600 tracking-wider">Overall</span>
+                        <div class="text-right">
+                            <div class="text-sm font-black text-slate-700">
+                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }}&nbsp;$
+                            </div>
+                            <div class="text-[10px] text-slate-600 font-bold">
+                                {{ "{:+,.2f}".format(closed_summary.average_pnl) }}&nbsp;∅
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Signal Performance -->
         <div>
             <h2
-                class="text-xs md:text-lg font-black md:font-bold text-slate-400 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> Signals
+                class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Signals
             </h2>
-            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <table class="w-full text-sm text-left">
+            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 md:overflow-hidden">
+                <!-- Desktop Table -->
+                <table class="w-full text-sm text-left hidden md:table">
                     <thead>
                         <tr
-                            class="text-[10px] md:text-sm text-slate-400 uppercase md:normal-case tracking-wider md:tracking-normal font-bold md:font-medium border-b border-slate-200 bg-slate-50">
+                            class="text-[10px] md:text-sm text-slate-600 uppercase md:normal-case tracking-wider md:tracking-normal font-bold md:font-medium border-b border-slate-200 bg-slate-50">
                             <th class="px-4 md:px-6 py-2 md:py-4 font-normal">Signal</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">W — L</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right hidden md:table-cell">Avg</th>
+                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-center">W — L</th>
+                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">Avg</th>
                             <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">PnL</th>
                         </tr>
                     </thead>
@@ -297,33 +297,53 @@
                         {% for sig_name, stats in signal_stats.items() %}
                         <tr class="active:bg-slate-50/50 md:hover:bg-slate-50/50 transition-colors">
                             <td class="px-4 md:px-6 py-3 font-medium text-slate-600">
-                                <span class="hidden md:inline">{{ sig_name }}</span>
-                                <span class="md:hidden text-sm font-bold text-slate-800">{{ sig_name }}</span>
+                                <span>{{ sig_name }}</span>
                             </td>
-                            <td class="px-4 md:px-6 py-3 text-right text-slate-500">
-                                <span class="text-[10px] md:text-sm font-medium md:font-normal">
-                                    <span class="text-emerald-500/80 font-bold">{{ stats.win }}</span><span
-                                        class="md:hidden">W</span> <span class="hidden md:inline">—</span><span
-                                        class="md:hidden ml-1"></span> <span class="text-rose-500/90 font-bold">{{
-                                        stats.loss }}</span><span class="md:hidden">L</span>
+                            <td class="px-4 md:px-6 py-3 text-center">
+                                <span class="text-[10px] md:text-sm font-bold">
+                                    <span class="text-emerald-500 whitespace-nowrap">{{ stats.win }}W</span>
+                                    <span class="text-slate-300 mx-1">-</span>
+                                    <span class="text-rose-500 whitespace-nowrap">{{ stats.loss }}L</span>
                                 </span>
                             </td>
-                            <td class="px-4 md:px-6 py-3 text-right font-medium text-slate-400 hidden md:table-cell">
+                            <td class="px-4 md:px-6 py-3 text-right font-medium text-slate-600">
                                 {{ "{:+,.0f}".format(stats.average_pnl) }}
                             </td>
                             <td class="px-4 md:px-6 py-3 text-right">
                                 <div
                                     class="text-sm font-black md:font-medium {{ 'text-emerald-500 md:text-emerald-500/80' if stats.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }}">
-                                    {{ "{:+.0f}".format(stats.pnl) }}<span class="md:hidden"> $</span>
-                                </div>
-                                <div class="md:hidden text-[10px] text-slate-400 font-medium mt-0.5">
-                                    {{ "{:+.2f}".format(stats.average_pnl) }} ∅
+                                    {{ "{:+.0f}".format(stats.pnl) }}&nbsp;$
                                 </div>
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
+
+                <!-- Mobile List -->
+                <div class="md:hidden flex flex-col divide-y divide-slate-100">
+                    {% for sig_name, stats in signal_stats.items() %}
+                    <div class="flex justify-between items-center px-4 py-3 active:bg-slate-50 transition-colors">
+                        <div class="flex flex-col">
+                            <span class="text-sm font-bold text-slate-800">{{ sig_name }}</span>
+                            <span class="text-[10px] mt-0.5 font-bold">
+                                <span class="text-emerald-500">{{ stats.win }}W</span>
+                                <span class="text-slate-300 mx-0.5">-</span>
+                                <span class="text-rose-500">{{ stats.loss }}L</span>
+                            </span>
+                        </div>
+                        <div class="text-right">
+                            <div
+                                class="text-sm font-black {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }}">
+                                {{ "{:+.0f}".format(stats.pnl) }}&nbsp;$
+                            </div>
+                            <div class="text-[10px] text-slate-600 font-medium">
+                                {{ "{:+.2f}".format(stats.average_pnl) }}&nbsp;∅
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
             </div>
         </div>
     </section>
@@ -331,20 +351,19 @@
     <!-- Trade History -->
     <section class="mb-4">
         <h2
-            class="text-xs md:text-lg font-black md:font-bold text-slate-400 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="history" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> Trade
+            class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+            <i data-lucide="history" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i>
             History
         </h2>
 
-        <div
-            class="bg-transparent md:bg-white md:rounded-3xl md:shadow-sm border-0 md:border border-slate-200 overflow-hidden">
+        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <!-- Desktop Header -->
             <div
-                class="hidden md:grid grid-cols-9 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-400 font-medium text-sm">
+                class="hidden md:grid grid-cols-9 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
                 <div>Date</div>
                 <div>Symbol</div>
                 <div>Signal</div>
-                <div>Strategy</div>
+                <div class="text-right">Days</div>
                 <div class="text-right">Qty</div>
                 <div class="text-right">Entry</div>
                 <div class="text-right">Exit</div>
@@ -353,75 +372,113 @@
             </div>
 
             <!-- Single Loop -->
-            <div
-                class="flex flex-col gap-3 md:gap-0 bg-white md:bg-transparent rounded-2xl md:rounded-none border border-slate-200 md:border-none shadow-sm md:shadow-none divide-y divide-slate-100">
+            <div class="flex flex-col flex-col divide-y divide-slate-100" id="single-dom-history-container">
                 {% for group in history_groups %}
-                <!-- Group Container for Desktop (Rows) -->
+                {% for t in group.trades %}
+
+                <!-- SINGLE-DOM HISTORY ROW -->
                 <div
-                    class="md:divide-y md:divide-slate-100 md:border-b md:border-slate-200 md:last:border-0 md:active:bg-slate-50/30 md:hover:bg-slate-50/30 transition-colors">
-                    {% for t in group.trades %}
+                    class="px-4 py-1.5 md:py-2 border-b border-slate-100/50 last:border-none hover:bg-slate-50/50 transition-colors md:divide-y md:divide-slate-100 md:border-b md:border-slate-200 md:last:border-0 md:active:bg-slate-50/30 md:hover:bg-slate-50/30">
+                    <div class="flex flex-col md:grid md:grid-cols-9 md:gap-4 md:items-center text-sm">
 
-                    <!-- MOBILE ROW -->
-                    <div
-                        class="md:hidden px-4 py-3 flex justify-between items-center active:bg-slate-50 transition-colors {{ 'mt-3 pt-3 border-t border-slate-100' if not loop.first else '' }}">
-                        <div>
-                            <div class="flex items-baseline gap-2">
-                                <span class="text-sm font-bold text-slate-900 leading-tight">{{ group.symbol }}</span>
-                                <span class="text-[9px] font-bold text-indigo-500 uppercase">{{
-                                    (t.context.original_signal or t.context.match_rule.Signal or '-').replace('Croc_',
-                                    '') }}</span>
+                        <!-- Header Row (Mobile) / First Columns (Desktop) -->
+                        <div class="flex justify-between items-start md:contents mb-2 md:mb-0 gap-2">
+                            <!-- Symbol & Entry Date -->
+                            <div class="flex flex-col md:contents min-w-0 flex-1">
+                                <div class="flex items-center gap-2 md:contents min-w-0">
+                                    <div class="hidden md:block font-mono text-slate-500">{{ t.display_entry }}
+                                    </div>
+                                    <div class="font-bold text-slate-700 truncate max-w-[120px] sm:max-w-[200px]">
+                                        <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
+                                            target="_blank"
+                                            class="hover:text-indigo-500 transition-colors flex items-center gap-1">
+                                            {{ t.symbol }}
+                                            <i data-lucide="external-link"
+                                                class="w-3 h-3 text-slate-300 hidden md:inline-block"></i>
+                                        </a>
+                                    </div>
+                                </div>
+                                <div class="text-[10px] text-slate-600 font-medium mt-0.5 md:hidden">
+                                    {{ t.display_entry }} ({{ t.days_held }}d)
+                                </div>
                             </div>
-                            <div class="text-[10px] text-slate-400 font-medium mt-0.5">
-                                {{ t.display_exit }} • {{ t.exit_reason }}
+
+                            <!-- PnL (Mobile) -->
+                            <div class="text-right md:hidden flex-shrink-0 pl-2">
+                                <div
+                                    class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
+                                    {{ "{:+,.2f}".format(t.realized_pnl) }}&nbsp;$
+                                </div>
+                                <div class="mt-0.5">
+                                    {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in
+                                    t.exit_reason %}
+                                    <span
+                                        class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[8px] font-bold bg-emerald-50/40 text-emerald-600/80 uppercase tracking-wider">
+                                        {{ t.exit_reason.split('_')[0] if '_' in t.exit_reason else t.exit_reason }}
+                                    </span>
+                                    {% elif 'STOP_LOSS' in t.exit_reason %}
+                                    <span
+                                        class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[8px] font-bold bg-rose-50/40 text-rose-600/80 uppercase tracking-wider">
+                                        STOP
+                                    </span>
+                                    {% else %}
+                                    <span
+                                        class="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[8px] font-bold bg-slate-100 text-slate-500 uppercase tracking-wider">
+                                        {{ t.exit_reason }}
+                                    </span>
+                                    {% endif %}
+                                </div>
                             </div>
                         </div>
+
+                        <!-- Details Grid -->
+                        <div class="hidden md:contents">
+
+                            <!-- Exit Info -->
+                            <div class="md:contents">
+                                <div class="text-slate-600 mb-0.5 uppercase tracking-tighter md:hidden">Exit / Date
+                                </div>
+                                <div class="text-slate-700 font-bold md:hidden">
+                                    {{ "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}&nbsp;$
+                                    <div class="text-[10px] text-slate-600 font-medium mt-0.5">{{ t.display_exit }}
+                                    </div>
+                                </div>
+
+                                <div class="hidden md:block text-slate-500"><span
+                                        class="text-xs font-bold text-indigo-500">{{ (t.context.original_signal or
+                                        t.context.match_rule.Signal or t.strategy).replace('Croc_', '') }}</span>
+                                </div>
+                            </div>
+
+                            <!-- Metrics -->
+                            <div class="text-right md:contents">
+                                <div class="text-slate-600 mb-0.5 uppercase tracking-tighter md:hidden">Held / Qty
+                                </div>
+                                <div class="text-slate-600 font-bold md:hidden">
+                                    {{ t.days_held }}d
+                                    <span class="text-slate-600 font-normal ml-1">x{{ t.current_size|int }}</span>
+                                </div>
+
+                                <div class="hidden md:block text-right text-slate-500">{{ t.days_held }}</div>
+                                <div class="hidden md:block text-right font-mono text-slate-500">{{
+                                    t.current_size|int }}</div>
+                                <div class="hidden md:block text-right font-mono text-slate-500">{{
+                                    "{:,.2f}".format(t.entry_price|float) }}</div>
+                                <div class="hidden md:block text-right font-mono text-slate-500">{{
+                                    "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}</div>
+                            </div>
+                        </div>
+
+                        <!-- PnL (Desktop) -->
                         <div
-                            class="text-sm font-black {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(t.realized_pnl) }} $
-                        </div>
-                    </div>
-
-                    <!-- DESKTOP ROW -->
-                    <div class="hidden md:grid grid-cols-9 gap-4 px-4 py-3 items-start text-sm">
-                        <div class="text-slate-500">
-                            {% if loop.first or t.display_exit != loop.previtem.display_exit %}
-                            <div class="text-slate-900 font-bold">{{ t.display_exit }} <span
-                                    class="text-xs text-slate-400 font-normal">({{ t.days_held }}d)</span></div>
-                            {% endif %}
-                            {% if loop.first %}
-                            <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-1">In: {{ group.entry_date
-                                }}</div>
-                            {% endif %}
+                            class="hidden md:block text-right font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }}">
+                            {{ "{:+,.2f}".format(t.realized_pnl) }}&nbsp;$
                         </div>
 
-                        <div>
-                            {% if loop.first %}
-                            <div class="font-black text-slate-700 text-lg leading-tight">{{ group.symbol }}</div>
-                            <div class="text-xs font-bold text-slate-400 uppercase tracking-wide mt-0.5">{{
-                                group.display_index }}</div>
-                            {% endif %}
-                        </div>
-
-                        <div class="text-slate-500">
-                            <span class="text-slate-600 font-bold text-xs">{{ t.context.original_signal or
-                                t.context.match_rule.Signal or '-' }}</span>
-                        </div>
-
-                        <div class="text-slate-500">
-                            <span class="text-slate-400 text-xs">{{ t.strategy.replace('Croc_', '') }}</span>
-                        </div>
-
-                        <div class="text-right font-mono text-slate-500">{{ t.initial_size|int }}</div>
-                        <div class="text-right font-mono text-slate-400">{{ "{:,.2f}".format(t.entry_price|float) }}
-                        </div>
-                        <div class="text-right font-mono text-slate-700">{{ "{:,.2f}".format(t.exit_price|float) }}
-                        </div>
-                        <div
-                            class="text-right font-bold {{ 'text-emerald-500/80' if t.realized_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(t.realized_pnl) }}
-                        </div>
-                        <div class="text-right">
-                            {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in t.exit_reason %}
+                        <!-- Reason (Desktop) -->
+                        <div class="hidden md:block text-right">
+                            {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in t.exit_reason
+                            %}
                             <span
                                 class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50">
                                 {{ t.exit_reason }}
@@ -433,54 +490,19 @@
                             </span>
                             {% else %}
                             <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-400 border border-slate-200">
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-600 border border-slate-200">
                                 {{ t.exit_reason }}
                             </span>
                             {% endif %}
                         </div>
                     </div>
-
-                    {% endfor %}
                 </div>
                 {% endfor %}
+                {% endfor %}
 
-                <!-- Shared Mobile Footer / Desktop Footer Override -->
-                <div
-                    class="md:hidden bg-slate-50 px-4 py-3 flex justify-between items-center border-t border-slate-200 rounded-b-2xl">
-                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Overall</div>
-                    <div class="text-right">
-                        <div class="text-xs font-black text-slate-700">
-                            {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
-                        </div>
-                        <div class="text-[10px] text-slate-400 font-bold">
-                            {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $ ∅
-                        </div>
-                    </div>
-                </div>
             </div>
 
-            <!-- Desktop Explicit Footer -->
-            <div class="hidden md:block bg-slate-50 border-t border-slate-200">
-                <div class="grid grid-cols-9 gap-4 p-4 items-center">
-                    <div class="col-span-6 text-right font-bold text-slate-500 uppercase tracking-widest text-xs pr-4">
-                        Total History Metrics</div>
-                    <div class="text-right">
-                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Avg / Trade</div>
-                        <div
-                            class="text-sm font-bold {{ 'text-emerald-500' if closed_summary.average_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Total PnL</div>
-                        <div
-                            class="text-lg font-black {{ 'text-emerald-500' if closed_summary.total_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
-                        </div>
-                    </div>
-                    <div></div>
-                </div>
-            </div>
+            {{ cards.history_footer(closed_summary, "9") }}
 
         </div>
     </section>

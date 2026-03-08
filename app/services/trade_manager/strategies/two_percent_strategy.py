@@ -56,7 +56,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
         target_exit_price = (
             round(entry_price * self.REWARD_TARGET_MULTIPLIER, 2)
             if entry_price > 0
-            else 0.0
+            else float(trade.get("current_target") or 0.0)
         )
 
         return TradeParams(
@@ -162,18 +162,26 @@ class TwoPercentStrategy(BaseTradeStrategy):
         if days_passed == 1:
             # Check Fill (Gap Down)
             if open_price < limit_price:
+                target_price = round(open_price * self.REWARD_TARGET_MULTIPLIER, 2)
                 return self._execute_activation(
                     trade,
                     repository,
                     open_price,
                     "Gap Down (Open < Limit)",
                     date_string,
+                    extra_updates={"current_target": target_price},
                 )
 
             # Check Fill (Limit Hit)
             if low_price <= limit_price:
+                target_price = round(limit_price * self.REWARD_TARGET_MULTIPLIER, 2)
                 return self._execute_activation(
-                    trade, repository, limit_price, "Limit Hit", date_string
+                    trade,
+                    repository,
+                    limit_price,
+                    "Limit Hit",
+                    date_string,
+                    extra_updates={"current_target": target_price},
                 )
 
             # No Fill on Day 1:
@@ -190,22 +198,26 @@ class TwoPercentStrategy(BaseTradeStrategy):
         if days_passed == 2 and was_day_1_holiday:
             # Check Fill (Gap Down)
             if open_price < limit_price:
+                target_price = round(open_price * self.REWARD_TARGET_MULTIPLIER, 2)
                 return self._execute_activation(
                     trade,
                     repository,
                     open_price,
                     "Gap Down (Tuesday-after-Holiday)",
                     date_string,
+                    extra_updates={"current_target": target_price},
                 )
 
             # Check Fill (Limit Hit)
             if low_price <= limit_price:
+                target_price = round(limit_price * self.REWARD_TARGET_MULTIPLIER, 2)
                 return self._execute_activation(
                     trade,
                     repository,
                     limit_price,
                     "Limit Hit (Tuesday-after-Holiday)",
                     date_string,
+                    extra_updates={"current_target": target_price},
                 )
 
             # No fill on Tuesday after Monday holiday -> Invalidate

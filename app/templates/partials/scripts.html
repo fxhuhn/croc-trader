@@ -1,0 +1,43 @@
+<script>
+    function toggleCard(card) {
+        // Toggle the hidden details section
+        const details = card.querySelector('.hidden-details');
+        const icon = card.querySelector('.chevron-icon');
+
+        if (!details || !icon) return;
+
+        const isHidden = details.classList.contains('hidden');
+
+        if (isHidden) {
+            details.classList.remove('hidden');
+            icon.style.transform = 'rotate(180deg)';
+            card.classList.add('shadow-md', 'border-slate-200');
+            card.classList.remove('shadow-soft', 'border-slate-100');
+        } else {
+            details.classList.add('hidden');
+            icon.style.transform = 'rotate(0deg)';
+            card.classList.remove('shadow-md', 'border-slate-200');
+            card.classList.add('shadow-soft', 'border-slate-100');
+        }
+    }
+
+    function toggleTradeCard(header) {
+        // Toggle visibility of the next element (details container)
+        const details = header.nextElementSibling;
+        const isHidden = details.classList.contains('hidden');
+
+        if (isHidden) {
+            details.classList.remove('hidden');
+            header.classList.add('opacity-90');
+        } else {
+            details.classList.add('hidden');
+            header.classList.remove('opacity-90');
+        }
+
+        // Rotate Chevron
+        const icon = header.querySelector('[data-lucide="chevron-down"]');
+        if (icon) {
+            icon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+        }
+    }
+</script>

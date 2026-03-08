@@ -550,14 +550,16 @@ def view_trades_turnover() -> str:
     # Variant Stats
     variant_stats = {
         "Turnover 0.5": {
-            "name": "Turnover 0.5",
+            "name": "Turnover",
+            "version": "0.5",
             "count": 0,
             "win": 0,
             "loss": 0,
             "pnl": 0.0,
         },
         "Turnover 1.0": {
-            "name": "Turnover 1.0",
+            "name": "Turnover",
+            "version": "1.0",
             "count": 0,
             "win": 0,
             "loss": 0,

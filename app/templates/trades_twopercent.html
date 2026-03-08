@@ -5,10 +5,10 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import render_kpi_card %}
+{% import "macros/cards.html" as cards %}
 
-<!-- Header -->
-{{ render_header("TwoPercent", "twopercent") }}
+<!-- Header turn-->
+{{ render_header("Two Percent", "twopercent") }}
 
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
@@ -16,179 +16,113 @@
 
 
     <!-- KPI Cards -->
-    <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8">
-        <!-- Open PnL -->
-        <article
-            class="col-span-2 md:col-span-1 md:order-last bg-gradient-to-br from-emerald-500 to-teal-500 md:bg-none md:bg-white rounded-2xl shadow-lg shadow-emerald-200/50 md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border border-emerald-400/30 md:border-slate-200">
-            <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500">
-                <i data-lucide="trending-up" class="w-6 h-6"></i>
-            </div>
-            <div class="flex flex-col">
-                <div
-                    class="text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last {{ 'md:!text-emerald-500' if summary.open_pnl >= 0 else 'md:!text-rose-500' }}">
-                    {{ "{:+,.2f}".format(summary.open_pnl) }} $
-                </div>
-                <div
-                    class="text-emerald-50/80 md:text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">
-                    Open PnL</div>
-            </div>
-            <i data-lucide="trending-up" class="w-8 h-8 text-emerald-100 md:hidden"></i>
-        </article>
-
-        <!-- Invested -->
-        <article
-            class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center md:items-center justify-center md:justify-start gap-1 md:gap-4 order-2 md:order-1">
-            <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500">
-                <i data-lucide="wallet" class="w-6 h-6"></i>
-            </div>
-            <div class="flex flex-col items-center md:items-start text-center md:text-left">
-                <div class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last">{{
-                    "{:,.0f}".format(summary.invested) }} $</div>
-                <div class="text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">Invested
-                </div>
-            </div>
-        </article>
-
-        <!-- Active -->
-        <article
-            class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center md:items-center justify-center md:justify-start gap-1 md:gap-4 order-3 md:order-2">
-            <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500">
-                <i data-lucide="activity" class="w-6 h-6"></i>
-            </div>
-            <div class="flex flex-col items-center md:items-start text-center md:text-left">
-                <div class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last">{{
-                    active_trades|length }}</div>
-                <div class="text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">Active
-                </div>
-            </div>
-        </article>
-    </section>
+    {{ cards.dashboard_kpis(summary, active_trades|length) }}
 
     <!-- Active Trades Section -->
     {% if active_groups %}
     <section class="mb-8 md:mb-12">
         <h2
-            class="text-xs md:text-lg font-black md:font-bold text-slate-400 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> Active Trades
+            class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+            <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Active
         </h2>
 
-        <div class="flex flex-col gap-6">
+        <div class="flex flex-col gap-4">
             {% for group in active_groups %}
+            {% set variant_metrics = namespace(half_percent_variant=none, one_percent_variant=none, total_quantity=0,
+            max_days=0) %}
+            {% for variant in group.variants %}
+            {% if '0.5' in variant.strategy %}{% set variant_metrics.half_percent_variant = variant %}{% endif %}
+            {% if '1.0' in variant.strategy %}{% set variant_metrics.one_percent_variant = variant %}{% endif %}
+            {% set variant_metrics.total_quantity = variant_metrics.total_quantity + variant.current_size|int %}
+            {% set variant_metrics.max_days = [variant_metrics.max_days, variant.days_held|int]|max %}
+            {% endfor %}
+
             <div
-                class="bg-transparent md:bg-white md:rounded-3xl md:shadow-sm border-0 md:border border-slate-200 overflow-hidden">
-                <!-- Desktop Header -->
-                <div
-                    class="hidden md:flex px-6 py-4 bg-slate-50 border-b border-slate-100 justify-between items-center">
-                    <div class="flex items-center gap-2">
-                        <span class="text-xl font-black text-slate-900">{{ group.symbol }}</span>
-                        <a href="https://www.tradingview.com/chart/?symbol={{ group.symbol }}" target="_blank"
-                            class="text-slate-400 hover:text-indigo-500 transition-colors">
-                            <i data-lucide="external-link" class="w-4 h-4"></i>
-                        </a>
+                class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                <!-- Header Block (Always Visible) -->
+                <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                    onclick="toggleTradeCard(this)">
+                    <!-- Main Header Row -->
+                    <div class="flex justify-between items-center p-4 md:px-6 md:py-4">
+                        <!-- Symbol & Badges -->
+                        <div class="flex items-center gap-3">
+                            <span class="text-xl md:text-2xl font-bold text-slate-900 leading-none">{{ group.symbol
+                                }}</span>
+                            <div class="flex gap-1.5">
+                                {% if variant_metrics.half_percent_variant %}
+                                <span
+                                    class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">0.5</span>
+                                {% endif %}
+                                {% if variant_metrics.one_percent_variant %}
+                                <span
+                                    class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">1.0</span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- PnL & Chevron -->
+                        <div class="flex items-center gap-4 text-right">
+                            <div
+                                class="text-lg md:text-xl font-bold {{ 'text-emerald-500' if group.total_pnl >= 0 else 'text-rose-500' }} leading-none">
+                                {{ "{:+,.2f}".format(group.total_pnl) }} $
+                            </div>
+                            <i data-lucide="chevron-down"
+                                class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                        </div>
                     </div>
-                    <div class="font-bold {{ 'text-emerald-500/80' if group.total_pnl >= 0 else 'text-rose-500/90' }}">
-                        {{ "{:+,.2f}".format(group.total_pnl) }} $
+
+                    <!-- Segmented Full-Width Progress Bar -->
+                    <div class="grid grid-cols-5 gap-0.5 w-full h-2 bg-slate-50 border-t border-b border-slate-100">
+                        {% for i in range(1, 6) %}
+                        <div class="h-full {{ 'bg-indigo-500' if i <= variant_metrics.max_days else 'bg-slate-100' }}">
+                        </div>
+                        {% endfor %}
                     </div>
                 </div>
 
-                <!-- Single Loop -->
-                <div class="flex flex-col gap-4 md:gap-0 md:divide-y md:divide-slate-100">
-                    {% for t in group.variants %}
-                    <div
-                        class="bg-white md:bg-transparent border border-slate-200 md:border-none rounded-2xl md:rounded-none shadow-sm md:shadow-none transition-colors md:hover:bg-slate-50/30">
-
-                        <!-- MOBILE CARD VIEW -->
-                        <div class="md:hidden p-4">
-                            <div class="flex justify-between items-start mb-3">
-                                <div class="flex items-center gap-2">
-                                    <div class="text-lg font-black text-slate-900 leading-none">{{ group.symbol }}</div>
-                                    <span
-                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase">TWO
-                                        PERCENT</span>
+                <!-- Minimalist Detail View (Accordion) -->
+                <div class="hidden-details hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
+                    <div class="px-4 py-3 md:px-8 md:py-4">
+                        <div class="grid grid-cols-2 gap-8 items-start">
+                            <!-- Left Column: Date & Quantity -->
+                            <div class="flex flex-col">
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">Date</span>
+                                    <span class="text-slate-700 font-bold text-xs">
+                                        {{ group.variants[0].entry_date if group.variants else '-' }} ({{
+                                        variant_metrics.max_days }}d)
+                                    </span>
                                 </div>
-                                <div class="text-right">
-                                    <div
-                                        class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
-                                        {{ "{:+,.2f}".format(t.unrealized_pnl) }} $
-                                    </div>
-                                    <div class="text-[10px] font-medium text-slate-400">
-                                        {{ "{:+.2f}".format(t.pnl_pct) }}%
-                                    </div>
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">Quantity</span>
+                                    <span class="text-slate-700 font-bold text-xs">{{ variant_metrics.total_quantity
+                                        }}</span>
                                 </div>
                             </div>
 
-                            <div class="grid grid-cols-2 gap-4 text-[11px] mb-4">
-                                <div>
-                                    <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Entry / Qty</div>
-                                    <div class="text-slate-700 font-bold">{{ "{:,.2f}".format(t.entry_price|float) }} $
-                                        <span class="text-slate-400 font-normal">x{{ t.current_size|int }}</span>
-                                    </div>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-slate-400 mb-0.5 uppercase tracking-tighter">Entry Date</div>
-                                    <div class="text-slate-600 font-bold">
-                                        {{ group.entry_date if group.entry_date else '-' }}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Progress Bar -->
-                            <div class="flex gap-1 h-1.5 w-full">
-                                {% for i in range(1, 6) %}
-                                <div
-                                    class="flex-1 rounded-full {{ 'bg-indigo-500' if i <= t.days_held|int else 'bg-slate-100' }}">
+                            <!-- Right Column: Entry Prices -->
+                            <div class="flex flex-col">
+                                {% for variant in group.variants %}
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">
+                                        {% if '0.5' in variant.strategy %}0.5 Entry{% elif '1.0' in variant.strategy
+                                        %}1.0 Entry{% else %}Entry{% endif %}
+                                    </span>
+                                    <span class="font-mono text-slate-500 font-bold text-xs">
+                                        {{ "{:,.2f}".format(variant.entry_price|float) if variant.entry_price else '-'
+                                        }} $
+                                    </span>
                                 </div>
                                 {% endfor %}
                             </div>
                         </div>
 
-                        <!-- DESKTOP ROW VIEW -->
-                        <div class="hidden md:flex p-6 items-center gap-4 w-full">
-
-                            <!-- 1. Strategy Name -->
-                            <div class="text-slate-600 font-bold whitespace-nowrap min-w-[100px]">
-                                TWO PERCENT
-                            </div>
-
-                            <div class="border-l border-slate-200 h-4"></div>
-
-                            <!-- 2. Entry Info -->
-                            <div
-                                class="text-[9px] font-bold tracking-[0.15em] text-slate-400 uppercase whitespace-nowrap flex gap-2">
-                                <span>QTY: {{ t.current_size|int }}</span>
-                                <span class="text-slate-300">@</span>
-                                <span>{{ "{:,.2f}".format(t.entry_price|float) }} $</span>
-                            </div>
-
-                            <div class="border-l border-slate-200 h-4"></div>
-
-                            <!-- 3. Time Tracker -->
-                            <div class="flex items-center gap-3 w-auto flex-1">
-                                <span
-                                    class="text-[9px] font-bold tracking-[0.15em] text-slate-300 uppercase whitespace-nowrap">DAY
-                                    {{ t.days_held }}/5</span>
-                                <div class="flex gap-1 flex-1 max-w-[100px]">
-                                    {% for i in range(1, 6) %}
-                                    <div
-                                        class="h-1.5 flex-1 rounded-full {{ 'bg-indigo-400/60' if i <= t.days_held|int else 'bg-slate-100' }}">
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-
-                            <!-- 4. Metrics -->
-                            <div class="flex items-center gap-4 ml-auto w-auto justify-end">
-                                <span class="text-xs font-medium text-slate-400">{{ "{:+.2f}".format(t.pnl_pct)
-                                    }}%</span>
-                                <span
-                                    class="text-lg font-black {{ 'text-emerald-500/80' if t.unrealized_pnl >= 0 else 'text-rose-500/90' }}">
-                                    {{ "{:+,.2f}".format(t.unrealized_pnl) }} $
-                                </span>
-                            </div>
-                        </div>
-
+                        <!-- Full Width Button (Fat-finger safe) -->
+                        <a href="https://www.tradingview.com/chart/?symbol={{ group.symbol }}" target="_blank"
+                            class="w-full flex items-center justify-center gap-2 py-2.5 mt-4 md:mt-6 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-700 text-xs md:text-sm font-semibold transition-transform active:scale-[0.98] active:bg-slate-50 md:hover:bg-slate-50">
+                            <i data-lucide="bar-chart-2" class="w-4 h-4 text-slate-400"></i> View on TradingView
+                        </a>
                     </div>
-                    {% endfor %}
                 </div>
             </div>
             {% endfor %}
@@ -199,143 +133,79 @@
     <!-- Trade History -->
     <section class="mb-4">
         <h2
-            class="text-xs md:text-lg font-black md:font-bold text-slate-400 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="history" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-400 md:text-indigo-500"></i> History
+            class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+            <i data-lucide="history" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> History
         </h2>
 
         <div
-            class="bg-transparent md:bg-white md:rounded-3xl md:shadow-sm border-0 md:border border-slate-200 overflow-hidden">
-            <!-- Desktop Header -->
-            <div
-                class="hidden md:grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-400 font-medium text-sm">
-                <div>Date</div>
-                <div>Symbol</div>
-                <div class="text-right">Qty</div>
-                <div class="text-right">Entry</div>
-                <div class="text-right">Exit</div>
-                <div class="text-right">PnL</div>
-                <div class="text-right">Reason</div>
+            class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden divide-y divide-slate-100">
+            {% for group in history_groups %}
+            {% for trade in group.trades %}
+            <!-- Single History Row -->
+            <div class="flex justify-between items-center p-4 hover:bg-slate-50/50 transition-colors">
+                <div class="flex flex-col">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <span class="font-bold text-slate-900 text-sm md:text-base">{{ trade.symbol }}</span>
+                        {% if '0.5' in trade.variant %}
+                        <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">0.5</span>
+                        {% elif '1.0' in trade.variant %}
+                        <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">1.0</span>
+                        {% endif %}
+                    </div>
+                    <span class="text-xs font-medium text-slate-500">{{ trade.display_entry }} ({{ trade.days_held
+                        }}d)</span>
+                </div>
+                <div class="flex flex-col items-end">
+                    <span
+                        class="font-bold text-sm md:text-base leading-none {{ 'text-emerald-500' if trade.realized_pnl >= 0 else 'text-rose-500' }}">
+                        {{ "{:+,.2f}".format(trade.realized_pnl) }} $
+                    </span>
+                    <span
+                        class="mt-1.5 px-2 py-0.5 rounded-md text-xs font-medium border border-slate-200 text-slate-600 bg-slate-50">
+                        {{ trade.exit_reason | replace('_', ' ') | title }}
+                    </span>
+                </div>
             </div>
-
-            <!-- Single Loop -->
-            <div
-                class="flex flex-col gap-3 md:gap-0 bg-white md:bg-transparent rounded-2xl md:rounded-none border border-slate-200 md:border-none shadow-sm md:shadow-none divide-y divide-slate-100">
-                {% for group in history_groups %}
-                <!-- Group Container for Desktop (Rows) -->
+            {% endfor %}
+            {% else %}
+            <div class="flex flex-col items-center justify-center p-12 bg-slate-50">
                 <div
-                    class="md:divide-y md:divide-slate-100 md:border-b md:border-slate-200 md:last:border-0 md:active:bg-slate-50/30 md:hover:bg-slate-50/30 transition-colors">
-                    {% for t in group.trades %}
-
-                    <!-- MOBILE ROW -->
-                    <div
-                        class="md:hidden px-4 py-3 flex justify-between items-center active:bg-slate-50 transition-colors {{ 'mt-3 pt-3 border-t border-slate-100' if not loop.first else '' }}">
-                        <div>
-                            <div class="text-sm font-bold text-slate-900 leading-tight">{{ group.symbol }}</div>
-                            <div class="text-[10px] text-slate-400 font-medium mt-0.5">
-                                {{ t.display_exit }} • {{ t.exit_reason }}
-                            </div>
-                        </div>
-                        <div
-                            class="text-sm font-black {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(t.realized_pnl) }} $
-                        </div>
-                    </div>
-
-                    <!-- DESKTOP ROW -->
-                    <div class="hidden md:grid grid-cols-7 gap-4 px-4 py-3 items-start text-sm group/row">
-                        <div class="text-slate-500">
-                            {% if loop.first or t.display_exit != loop.previtem.display_exit %}
-                            <div class="text-slate-900 font-bold">{{ t.display_exit }} <span
-                                    class="text-xs text-slate-400 font-normal">({{ t.days_held }}d)</span></div>
-                            {% endif %}
-                            {% if loop.first %}
-                            <div class="text-[10px] text-slate-400 uppercase tracking-wide mt-1">In: {{ group.entry_date
-                                }}</div>
-                            {% endif %}
-                        </div>
-
-                        <div>
-                            {% if loop.first %}
-                            <div class="font-black text-slate-700 text-lg leading-tight">{{ group.symbol }}</div>
-                            {% endif %}
-                        </div>
-
-                        <div class="text-right font-mono text-slate-500">{{ t.initial_size|int }}</div>
-                        <div class="text-right font-mono text-slate-400">{{ "{:,.2f}".format(t.entry_price|float) }}
-                        </div>
-                        <div class="text-right font-mono text-slate-700">{{ "{:,.2f}".format(t.exit_price|float) }}
-                        </div>
-                        <div
-                            class="text-right font-bold {{ 'text-emerald-500/80' if t.realized_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(t.realized_pnl) }}
-                        </div>
-                        <div class="text-right">
-                            {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in t.exit_reason %}
-                            <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50">
-                                {{ t.exit_reason }}
-                            </span>
-                            {% elif 'STOP_LOSS' in t.exit_reason %}
-                            <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50">
-                                {{ t.exit_reason }}
-                            </span>
-                            {% else %}
-                            <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-400 border border-slate-200">
-                                {{ t.exit_reason }}
-                            </span>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    {% endfor %}
+                    class="w-16 h-16 rounded-3xl bg-white shadow-sm border border-slate-100 flex items-center justify-center mb-4">
+                    <i data-lucide="history" class="w-8 h-8 text-slate-300"></i>
                 </div>
-                {% endfor %}
+                <div class="text-base font-bold text-slate-900 mb-1">No Trade History</div>
+                <div class="text-sm text-slate-500 text-center max-w-xs">Once you close positions, they will appear here
+                    with detailed performance metrics.</div>
+            </div>
+            {% endfor %}
 
-                <!-- Shared Mobile Footer / Desktop Footer Override -->
-                <div
-                    class="md:hidden bg-slate-50 px-4 py-3 flex justify-between items-center border-t border-slate-200 rounded-b-2xl">
-                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Overall</div>
-                    <div class="text-right">
-                        <div class="text-xs font-black text-slate-700">
-                            {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
-                        </div>
-                        <div class="text-[10px] text-slate-400 font-bold">
-                            {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $ ∅
-                        </div>
-                    </div>
+            {% if closed_summary %}
+            <!-- Consolidated Summary Footer Row -->
+            <div
+                class="flex flex-col md:grid md:grid-cols-4 md:items-center px-4 md:px-6 py-3 md:py-4 bg-slate-50 border-t border-slate-200">
+                <div class="flex justify-between items-center md:contents">
+                    <span
+                        class="text-xs md:text-sm uppercase md:normal-case font-bold md:font-semibold text-slate-500 md:text-slate-900 tracking-wider md:tracking-normal md:order-1">Overall
+                        History</span>
+                    <span
+                        class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right">
+                        {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
+                    </span>
+                </div>
+                <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
+                    <span
+                        class="text-xs font-medium text-slate-500 md:text-sm md:font-medium md:order-2 md:text-center">{{
+                        closed_summary.count }} Trades</span>
+                    <span
+                        class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right">
+                        {{ "{:+,.2f}".format(closed_summary.average_pnl) }} ∅
+                    </span>
                 </div>
             </div>
-
-            <!-- Desktop Explicit Footer -->
-            <div class="hidden md:block bg-slate-50 border-t border-slate-200">
-                <div class="grid grid-cols-7 gap-4 p-4 items-center">
-                    <div class="col-span-4 text-right font-bold text-slate-500 uppercase tracking-widest text-xs pr-4">
-                        Total History Metrics</div>
-                    <div class="text-right">
-                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Avg / Trade</div>
-                        <div
-                            class="text-sm font-bold {{ 'text-emerald-500' if closed_summary.average_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(closed_summary.average_pnl) }} $
-                        </div>
-                    </div>
-                    <div class="text-right">
-                        <div class="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Total PnL</div>
-                        <div
-                            class="text-lg font-black {{ 'text-emerald-500' if closed_summary.total_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
-                        </div>
-                    </div>
-                    <div></div>
-                </div>
-            </div>
-
+            {% endif %}
         </div>
     </section>
-
 </main>
-
 {% set active_page = 'trades' %}
 {% include "partials/mobile_nav.html" with context %}
 {% endblock %}

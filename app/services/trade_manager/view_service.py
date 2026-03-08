@@ -51,6 +51,7 @@ class TradeViewData(TradeData):
     display_size: float
     sparkline: str
     max_days: int | None
+    version: str | None
 
     # Context (overrides str | None from TradeData for parsed dict)
     context: dict[str, object]
@@ -208,12 +209,21 @@ class TradeViewService:
             price_diff = exit_price - entry_price
             pnl_pct = (price_diff / entry_for_pct) * 100
 
+        # Version extraction
+        version = None
+        strat_str = str(trade.get("strategy", ""))
+        if "0.5" in strat_str:
+            version = "0.5"
+        elif "1.0" in strat_str:
+            version = "1.0"
+
         # Construct strictly typed response.
         # Using cast logic implicitly by creating dict matching structure.
         view_data: TradeViewData = {
             "id": trade.get("id", ""),
             "symbol": trade.get("symbol", ""),
             "strategy": trade.get("strategy", ""),
+            "version": version,
             "status": trade.get("status", ""),
             "entry_date": str(entry_date) if entry_date else None,
             "exit_date": str(exit_date) if exit_date else None,
