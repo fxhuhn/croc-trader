@@ -16,6 +16,7 @@ from ..services.backtester.analytics import BacktestAnalytics
 from ..services.backtester.backtest_results import ResultsPersistence
 from ..services.screener.view_service import ScreenerViewService
 from ..services.trade_manager.view_service import TradeViewService
+from ..tools import metrics
 
 logger = logging.getLogger(__name__)
 views_bp = Blueprint("views", __name__)
@@ -346,6 +347,143 @@ def view_trades_overview() -> str:
         summary=summary_metrics,
         strategy_stats=strategy_stats,
         donut_html=allocation_chart_html,
+    )
+
+
+@views_bp.route("/analytics", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
+def view_analytics_dashboard() -> str:
+    """Displays the Strategy Overview Dashboard with performance analytics."""
+    service = _get_trade_view_service()
+    
+    # 1. Fetch Closed Trades (Excluding invalid signals)
+    closed_trades = service.get_trades(
+        status=TradeStatus.CLOSED,
+        exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED]
+    )
+    
+    if not closed_trades:
+        return render_template("analytics.html", summary=None, strategies=[], weekly_trend={})
+
+    df = pd.DataFrame(closed_trades)
+    df["exit_date_dt"] = pd.to_datetime(df["exit_date"])
+    df = df.sort_values("exit_date_dt")
+    
+    # 2. Summary Metrics (Using metrics.py)
+    # Portfolio equity curve for drawdown calculation
+    initial_capital = 100_000.0
+    df["cum_pnl"] = df["realized_pnl"].cumsum()
+    df["equity"] = initial_capital + df["cum_pnl"]
+    
+    summary = {
+        "net_pnl": float(df["realized_pnl"].sum()),
+        "win_rate": metrics.calculate_win_rate(df["realized_pnl"]),
+        "max_drawdown": metrics.calculate_max_drawdown(df["equity"]),
+        "total_trades": len(df)
+    }
+    
+    # 3. Strategy Analysis
+    strategies_data = []
+    # Identify unique strategy groups
+    strat_groups = {
+        "Croc Setup": [Strategies.CrocSetup, Strategies.HoldTarget, Strategies.SplitTarget, "croc"],
+        "Dip Buyer": [Strategies.DipBuyer],
+        "Turnover": [Strategies.TurnOverTiming, Strategies.TurnOverTiming_05, Strategies.TurnOverTiming_10],
+        "Two Percent": [Strategies.TwoPercent],
+        "NDX Momentum": [Strategies.NDXMomentum],
+    }
+    
+    # Map colors
+    strat_colors = {
+        "Croc Setup": "#10b981",    # Emerald-500
+        "Dip Buyer": "#3b82f6",     # Blue-500
+        "Turnover": "#f59e0b",      # Amber-500
+        "Two Percent": "#8b5cf6",   # Violet-500
+        "NDX Momentum": "#f97316",  # Orange-500
+    }
+    
+    for name, filters in strat_groups.items():
+        strat_df = df[df["strategy"].isin(filters)]
+        if strat_df.empty:
+            continue
+            
+        winning_trades = strat_df[strat_df["realized_pnl"] > 0]
+        losing_trades = strat_df[strat_df["realized_pnl"] < 0]
+        
+        # Risk Multiples (R) calculation if risk is available in context
+        # Fallback to simple expectancy if R is not easily derived here
+        strat_expectancy = metrics.calculate_expectancy(strat_df["realized_pnl"])
+        
+        # Mocking R Notation for now as current trade structure might not have 'Risk' field directly
+        # In a real scenario, we'd use (entry - stop) * size.
+        
+        strategies_data.append({
+            "id": name.lower().replace(" ", "-"),
+            "name": name,
+            "color": strat_colors.get(name, "#64748b"),
+            "pnl": float(strat_df["realized_pnl"].sum()),
+            "trades_count": len(strat_df),
+            "metrics": {
+                "trades": len(strat_df),
+                "avg_risk": "1.0%",  # Static example or calculate if possible
+                "win_count": len(winning_trades),
+                "loss_count": len(losing_trades),
+                "avg_win": float(winning_trades["realized_pnl"].mean()) if not winning_trades.empty else 0.0,
+                "avg_loss": float(losing_trades["realized_pnl"].mean()) if not losing_trades.empty else 0.0,
+                "profit_factor": metrics.calculate_profit_factor(strat_df["realized_pnl"]),
+                "expectancy": f"{strat_expectancy / 100:.2f} R", # Heuristic R
+                "ror": "0.0%", # Placeholder
+                "sharpe": metrics.calculate_sharpe_ratio(strat_df["realized_pnl"], initial_capital)
+            }
+        })
+
+    # Sort strategies by PnL desc
+    strategies_data.sort(key=lambda x: x["pnl"], reverse=True)
+    
+    # 4. Weekly Trend Data (Plotly) - Since 01.01.2026
+    start_of_year = pd.Timestamp("2026-01-01")
+    today = pd.Timestamp.now()
+    
+    # Create a full weekly range to ensure no gaps at the start
+    date_range = pd.date_range(start=start_of_year, end=today, freq="W-MON")
+    
+    # Filter trades for chart
+    chart_df = df[df["exit_date_dt"] >= start_of_year].copy()
+    
+    if chart_df.empty:
+        weekly_trend = {
+            "dates": [d.strftime("%Y-%m-%d") for d in date_range],
+            "aggregate": [0.0] * len(date_range),
+            "strategies": {name: [0.0] * len(date_range) for name in strat_groups}
+        }
+    else:
+        # Resample to weekly
+        df_weekly = chart_df.set_index("exit_date_dt")["realized_pnl"].resample("W-MON").sum().cumsum()
+        # Reindex to full range
+        df_weekly = df_weekly.reindex(date_range, method="ffill").fillna(0.0)
+        
+        weekly_trend = {
+            "dates": [d.strftime("%Y-%m-%d") for d in date_range],
+            "aggregate": df_weekly.tolist(),
+            "strategies": {}
+        }
+        
+        for name, filters in strat_groups.items():
+            s_trades = chart_df[chart_df["strategy"].isin(filters)]
+            if s_trades.empty:
+                weekly_trend["strategies"][name] = [0.0] * len(date_range)
+                continue
+                
+            s_df = s_trades.set_index("exit_date_dt")["realized_pnl"].resample("W-MON").sum().cumsum()
+            s_df = s_df.reindex(date_range, method="ffill").fillna(0.0)
+            weekly_trend["strategies"][name] = s_df.tolist()
+            
+    return render_template(
+        "analytics.html",
+        summary=summary,
+        strategies=strategies_data,
+        weekly_trend=weekly_trend,
+        active_page="analytics"
     )
 
 

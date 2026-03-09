@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}Strategy Overview{% endblock %}
+
+{% block head %}
+<!-- Plotly.js -->
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+{% endblock %}
+
+{% block body_class %}bg-slate-50 text-slate-900 pb-32{% endblock %}
+
+{% block content %}
+{% from "macros/navigation.html" import render_header %}
+
+<!-- Top-Navigation -->
+{{ render_header("Strategy", "analytics", show_switcher=False) }}
+
+<main class="max-w-2xl mx-auto p-4 space-y-4">
+
+    <!-- Section 1: KPI Grid -->
+    <section class="grid grid-cols-2 gap-2">
+        <!-- Net PnL Card -->
+        {% set pnl = summary.net_pnl | default(0) %}
+        {% set pnl_bg = 'bg-emerald-500' if pnl >= 0 else 'bg-rose-500' %}
+        <article class="{{ pnl_bg }} rounded-2xl p-3 shadow-sm flex flex-col justify-between">
+            <div class="text-white text-xl font-black whitespace-nowrap">
+                {{ "{:+,.2f} $".format(pnl) }}
+            </div>
+            <div class="text-white/80 text-xs uppercase font-semibold tracking-wide">Net PnL</div>
+        </article>
+
+        <!-- Win Rate -->
+        <article class="bg-white rounded-2xl p-3 shadow-sm flex flex-col justify-between">
+            <div class="text-slate-900 text-xl font-black">
+                {{ "{:.1%}".format(summary.win_rate | default(0)) }}
+            </div>
+            <div class="text-slate-500 text-xs uppercase font-semibold tracking-wide">Avg Win Rate</div>
+        </article>
+
+        <!-- Max Drawdown -->
+        <article class="bg-white rounded-2xl p-3 shadow-sm flex flex-col justify-between">
+            <div class="text-rose-500 text-xl font-black">
+                {{ "{:.1%}".format(summary.max_drawdown | default(0)) }}
+            </div>
+            <div class="text-slate-500 text-xs uppercase font-semibold tracking-wide">Max Drawdown</div>
+        </article>
+
+        <!-- Total Trades -->
+        <article class="bg-white rounded-2xl p-3 shadow-sm flex flex-col justify-between">
+            <div class="text-slate-900 text-xl font-black">
+                {{ summary.total_trades | default(0) }}
+            </div>
+            <div class="text-slate-500 text-xs uppercase font-semibold tracking-wide">Total Trades</div>
+        </article>
+    </section>
+
+    <!-- Section 2: Weekly Trend (Chart) -->
+    <section class="bg-white rounded-2xl p-3 shadow-sm">
+        <div class="flex justify-between items-center mb-3">
+            <h3 class="text-xs uppercase font-bold tracking-wider text-slate-500">Weekly PnL</h3>
+            <span class="text-xs font-medium text-slate-500">Weeks</span>
+        </div>
+
+        <div id="weekly-trend-chart" class="h-[200px] w-full"></div>
+
+        <!-- Legend (Custom HTML) -->
+        <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
+            <!-- Aggregate Line -->
+            <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-sm bg-slate-400"></div>
+                <span class="text-xs text-slate-700 font-medium">Portfolio</span>
+            </div>
+            {% for strat in strategies %}
+            <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-sm" style="background-color: {{ strat.color }}"></div>
+                <span class="text-xs text-slate-500">{{ strat.name }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <!-- Section 3: Strategy Breakdown (Accordion) -->
+    <section class="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div class="divide-y divide-slate-100">
+            {% for strat in strategies %}
+            <div class="flex flex-col">
+                <!-- Accordion Header -->
+                <div class="flex justify-between items-center p-4 cursor-pointer active:bg-slate-50 transition-colors"
+                    onclick="toggleTradeCard(this)">
+                    <div class="flex items-center gap-3">
+                        <div class="w-1.5 h-6 rounded-full" style="background-color: {{ strat.color }}"></div>
+                        <div class="flex flex-col">
+                            <span class="text-lg font-bold text-slate-900 leading-tight">{{ strat.name }}</span>
+                            <span class="text-xs text-slate-500 font-medium">{{ strat.trades_count }} Trades</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-lg font-bold {{ 'text-emerald-500' if strat.pnl >= 0 else 'text-rose-500' }}">
+                            {{ "{:+,.0f} $".format(strat.pnl) }}
+                        </span>
+                        <i data-lucide="chevron-down"
+                            class="w-4 h-4 text-slate-600 transition-transform duration-200"></i>
+                    </div>
+                </div>
+
+                <!-- Accordion Content -->
+                <div class="hidden bg-slate-50/50 p-4 border-t border-slate-100">
+                    <div class="grid grid-cols-2 gap-x-6 text-xs items-start">
+                        <!-- Left Column -->
+                        <div class="flex flex-col">
+                            <div class="flex justify-between py-2 border-b border-slate-100">
+                                <span class="text-slate-500 font-medium">Trades</span>
+                                <span class="font-bold text-slate-800">{{ strat.metrics.trades }}</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-100">
+                                <span class="text-slate-500 font-medium">Win / Loss</span>
+                                <div class="flex items-baseline gap-1">
+                                    <span class="font-bold text-emerald-600">{{ strat.metrics.win_count }}W</span>
+                                    <span class="text-slate-300 mx-0.5">—</span>
+                                    <span class="font-bold text-rose-600">{{ strat.metrics.loss_count }}L</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-100">
+                                <span class="text-slate-500 font-medium">Profit Factor</span>
+                                <span class="font-bold text-slate-800">{{ "{:.2f}".format(strat.metrics.profit_factor)
+                                    }}</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-100">
+                                <span class="text-slate-500 font-medium">RoR</span>
+                                <span class="font-bold text-slate-800">{{ strat.metrics.ror }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Right Column -->
+                        <div class="flex flex-col">
+                            <div class="flex justify-between py-2 border-b border-slate-100">
+                                <span class="text-slate-500 font-medium">Avg Risk</span>
+                                <span class="font-bold text-slate-800">{{ strat.metrics.avg_risk }}</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-100">
+                                <span class="text-slate-500 font-medium">Avg W/L</span>
+                                <div class="flex items-baseline gap-1 font-bold">
+                                    <span class="text-emerald-500">+{{ "{:,.0f}$".format(strat.metrics.avg_win)
+                                        }}</span>
+                                    <span class="text-slate-300 mx-0.5">/</span>
+                                    <span class="text-rose-500">{{ "{:,.0f}$".format(strat.metrics.avg_loss) }}</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-100">
+                                <span class="text-slate-500 font-medium">Expectancy</span>
+                                <span class="font-bold text-slate-800">{{ strat.metrics.expectancy }}</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-100">
+                                <span class="text-slate-500 font-medium">Sharpe</span>
+                                <span class="font-bold text-slate-800">{{ "{:.2f}".format(strat.metrics.sharpe)
+                                    }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+</main>
+
+<!-- Bottom-Navigation -->
+{% include "partials/mobile_nav.html" with context %}
+
+<!-- JavaScript Interactivity -->
+<script>
+    // Accordion Toggle
+    function toggleTradeCard(header) {
+        const content = header.nextElementSibling;
+        const icon = header.querySelector('i[data-lucide="chevron-down"]');
+
+        // Toggle Hidden Class
+        const isHidden = content.classList.contains('hidden');
+
+        if (isHidden) {
+            content.classList.remove('hidden');
+            icon.style.transform = 'rotate(180deg)';
+        } else {
+            content.classList.add('hidden');
+            icon.style.transform = 'rotate(0deg)';
+        }
+    }
+
+    // Plotly Chart Generation
+    document.addEventListener('DOMContentLoaded', function () {
+        const trendData = {{ weekly_trend | tojson | safe
+    }};
+    const strategies = {{ strategies | tojson | safe }};
+
+    if (!trendData || !trendData.dates) return;
+
+    const traces = [];
+
+    // Portfolio Line (Thick, Light Slate)
+    traces.push({
+        x: trendData.dates,
+        y: trendData.aggregate,
+        name: 'Portfolio',
+        type: 'scatter',
+        mode: 'lines',
+        line: {
+            color: '#94a3b8', // slate-400 (light grey)
+            width: 3,
+            shape: 'spline',
+            dash: 'dash'
+        },
+        fill: 'tozeroy',
+        fillcolor: 'rgba(148, 163, 184, 0.05)',
+        hoverinfo: 'x+y'
+    });
+
+    // Strategy Lines
+    for (const stratName in trendData.strategies) {
+        const stratMeta = strategies.find(s => s.name === stratName);
+        const color = stratMeta ? stratMeta.color : '#94a3b8';
+
+        traces.push({
+            x: trendData.dates,
+            y: trendData.strategies[stratName],
+            name: stratName,
+            type: 'scatter',
+            mode: 'lines',
+            line: {
+                color: color,
+                width: 1.5,
+                shape: 'spline'
+            },
+            fill: 'tozeroy',
+            fillcolor: color + '0D', // approx 5% opacity
+            hoverinfo: 'x+y'
+        });
+    }
+
+    const layout = {
+        margin: { l: 45, r: 10, t: 5, b: 20 },
+        showlegend: false,
+        hovermode: 'x unified',
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        xaxis: {
+            showgrid: false,
+            zeroline: false,
+            showticklabels: false,
+            fixedrange: true
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: '#f1f5f9',
+            zeroline: true,
+            zerolinecolor: '#cbd5e1', // slate-300
+            zerolinewidth: 1.5,
+            showticklabels: true,
+            tickfont: {
+                size: 9,
+                color: '#94a3b8', // slate-400
+                family: 'monospace'
+            },
+            ticksuffix: ' $',
+            fixedrange: true
+        }
+    };
+
+    const config = {
+        displayModeBar: false,
+        responsive: true
+    };
+
+    Plotly.newPlot('weekly-trend-chart', traces, layout, config);
+
+    // Ensure Lucide icons are updated after JS changes if any
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
+    });
+
+    // Handle Window Resize for Plotly
+    window.addEventListener('resize', function () {
+        Plotly.Plots.resize('weekly-trend-chart');
+    });
+</script>
+{% endblock %}
