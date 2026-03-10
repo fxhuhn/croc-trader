@@ -255,6 +255,55 @@ def analyze_turnover() -> Response:
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
+@api_blueprint.route("/screener/croc", methods=["POST"])
+@require_ip_whitelist
+def analyze_croc() -> Response:
+    """
+    Returns the full list of recommended signals for CrocSetup.
+
+    Returns:
+        Response: JSON analysis result or error.
+    """
+    try:
+        days_lookback = request.args.get("days", default=0, type=int)
+        analysis_date = request.args.get("date")
+
+        screener_engine = current_app.extensions.get("screener_engine")
+        if not screener_engine:
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Engine not initialized",
+                }
+            ), 503
+
+        strategy = screener_engine.get_strategy(Strategies.CrocSetup)
+        if not strategy:
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "CrocSetup strategy not found",
+                }
+            ), 404
+
+        signals = strategy.get_all_recommendations(
+            days=days_lookback, analysis_date=analysis_date
+        )
+
+        return jsonify(
+            {
+                "status": "success",
+                "date": analysis_date,
+                "days_lookback": days_lookback,
+                "signals": signals,
+            }
+        ), 200
+
+    except Exception as error:
+        logger.exception(f"Error analyzing Croc setup: {error}")
+        return jsonify({"status": "error", "message": str(error)}), 500
+
+
 @api_blueprint.route("/screener/ndx-momentum", methods=["POST"])
 @require_ip_whitelist
 def analyze_ndx_momentum() -> Response:

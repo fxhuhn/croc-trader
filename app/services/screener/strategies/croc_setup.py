@@ -142,11 +142,11 @@ class CrocSetupStrategy(BaseStrategy):
                 candidates.append(item)
 
         # 2. Sort all candidates by SQN / MaxDD Ratio (High to Low)
-        def _get_sort_score(c: dict[str, Any]) -> float:
-            rule = c["match"]
-            sqn = float(rule.get("SQN", rule.get("Score", 0.0)))
-            max_dd = float(rule.get("MaxDD", 0.0))
-            return (sqn / max_dd) if max_dd > 0 else 0.0
+        def _get_sort_score(candidate_data: dict[str, Any]) -> float:
+            rule = candidate_data["match"]
+            system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
+            maximum_drawdown = float(rule.get("MaxDD", 0.0))
+            return (system_quality_number / maximum_drawdown) if maximum_drawdown > 0 else 0.0
 
         sorted_candidates = sorted(
             candidates,
@@ -169,6 +169,57 @@ class CrocSetupStrategy(BaseStrategy):
             self._send_report(report_rows, analysis_date or "LIVE")
 
         return len(report_rows)
+
+    def get_all_recommendations(
+        self,
+        days: int = 0,
+        analysis_date: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Returns all recommended signals without creating trades in the database.
+        """
+        if not analysis_date and days == 0:
+            analysis_date = self.signal_repository.get_latest_signal_date()
+
+        try:
+            signals = self.signal_repository.get_signals_by_date(analysis_date, days)
+        except Exception as e:
+            logger.error(f"Error loading signals: {e}")
+            return []
+
+        if not signals:
+            return []
+
+        # 1. Find all matching signal candidates
+        candidates = []
+        for row in signals:
+            item = self._find_candidate(dict(row))
+            if item:
+                candidates.append(item)
+
+        # 2. Sort all candidates by SQN / MaxDD Ratio (High to Low)
+        def _get_sort_score(candidate_data: dict[str, Any]) -> float:
+            rule = candidate_data["match"]
+            system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
+            maximum_drawdown = float(rule.get("MaxDD", 0.0))
+            return (system_quality_number / maximum_drawdown) if maximum_drawdown > 0 else 0.0
+
+        sorted_candidates = sorted(
+            candidates,
+            key=_get_sort_score,
+            reverse=True,
+        )
+
+        results = []
+        for c in sorted_candidates:
+            recommendation = self._build_trade_recommendation(
+                c["normalized"], c["prices"], c["match"]
+            )
+            if recommendation:
+                recommendation.pop("_internal", None)
+                results.append(recommendation)
+
+        return results
 
     def _process_single_signal(self, row: dict[str, Any]) -> dict[str, Any] | None:
         """
@@ -297,6 +348,38 @@ class CrocSetupStrategy(BaseStrategy):
     def _create_trade(
         self, row: dict[str, Any], prices: PriceData, match: dict[str, Any]
     ) -> dict[str, Any] | None:
+        recommendation = self._build_trade_recommendation(row, prices, match)
+        if not recommendation:
+            return None
+
+        internal_data = recommendation.pop("_internal")
+        targets = internal_data["targets"]
+
+        context = {
+            "source": "webhook",
+            "date": row.get("date_str", row.get("timestamp")),
+            "setup_score": float(match.get("SQN", match.get("Score", 0))),
+            "match_rule": match,
+            "tp1": targets["tp1"],
+            "tp3": targets["tp3"],
+            "indices": internal_data["indices"],
+        }
+
+        self.trade_repository.create_trade(
+            symbol=recommendation["Symbol"],
+            strategy=internal_data["strategy_enum"],
+            size=0,
+            entry=recommendation["Entry"],
+            stop_loss=recommendation["Stop"],
+            target=targets["main"],
+            context=context,
+        )
+
+        return recommendation
+
+    def _build_trade_recommendation(
+        self, row: dict[str, Any], prices: PriceData, match: dict[str, Any]
+    ) -> dict[str, Any] | None:
         symbol = row.get("symbol", "UNKNOWN")
         indices = self._get_indices_string(symbol)
 
@@ -322,26 +405,6 @@ class CrocSetupStrategy(BaseStrategy):
         # Target Logic
         targets = self._calc_targets(entry, prices.risk_range, exit_name)
 
-        context = {
-            "source": "webhook",
-            "date": row.get("date_str", row.get("timestamp")),
-            "setup_score": float(match.get("SQN", match.get("Score", 0))),
-            "match_rule": match,
-            "tp1": targets["tp1"],
-            "tp3": targets["tp3"],
-            "indices": indices,
-        }
-
-        self.trade_repository.create_trade(
-            symbol=symbol,
-            strategy=strategy_enum,
-            size=0,
-            entry=entry,
-            stop_loss=stop,
-            target=targets["main"],
-            context=context,
-        )
-
         return {
             "Symbol": symbol,
             "Signal": str(row.get("signal", "-")),
@@ -349,29 +412,35 @@ class CrocSetupStrategy(BaseStrategy):
             "Entry": round(entry, 2),
             "Stop": round(stop, 2),
             "TP": round(targets["main"], 2),
+            "Date": row.get("date_str", row.get("timestamp")),
+            "_internal": {
+                "strategy_enum": strategy_enum,
+                "targets": targets,
+                "indices": indices,
+            }
         }
 
     def _calc_targets(
         self, entry: float, risk: float, exit_name: str
     ) -> dict[str, float]:
-        t = {"tp1": 0.0, "tp3": 0.0, "main": 0.0}
+        target_prices = {"tp1": 0.0, "tp3": 0.0, "main": 0.0}
         
         if "split" in exit_name:
-            t["tp1"] = round(entry + risk, 2)
-            t["tp3"] = round(entry + (3 * risk), 2)
-            t["main"] = t["tp3"]
+            target_prices["tp1"] = round(entry + risk, 2)
+            target_prices["tp3"] = round(entry + (3 * risk), 2)
+            target_prices["main"] = target_prices["tp3"]
         elif "tp3" in exit_name and "hold" in exit_name:
-            t["tp3"] = round(entry + (3 * risk), 2)
-            t["main"] = t["tp3"]
+            target_prices["tp3"] = round(entry + (3 * risk), 2)
+            target_prices["main"] = target_prices["tp3"]
         elif "tp1" in exit_name and "hold" in exit_name:
-            t["tp1"] = round(entry + risk, 2)
-            t["main"] = t["tp1"]
+            target_prices["tp1"] = round(entry + risk, 2)
+            target_prices["main"] = target_prices["tp1"]
         else:
             # Fallback
-            t["tp1"] = round(entry + risk, 2)
-            t["main"] = t["tp1"]
+            target_prices["tp1"] = round(entry + risk, 2)
+            target_prices["main"] = target_prices["tp1"]
             
-        return t
+        return target_prices
 
     def _get_indices_string(self, symbol: str) -> str:
         # Simplified for brevity
