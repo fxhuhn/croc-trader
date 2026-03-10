@@ -52,6 +52,7 @@ def _clear_and_prewarm_cache(app):
         logger.info("🔥 Starte Pre-warming der /trades Routen...")
         with app.test_client() as client:
             routes = [
+                "/analytics",
                 "/trades",
                 "/trades/croc",
                 "/trades/dip-buyer",
