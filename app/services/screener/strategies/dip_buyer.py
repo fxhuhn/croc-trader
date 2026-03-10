@@ -125,7 +125,7 @@ class DipBuyerStrategy(BaseStrategy):
             int: Number of trades created.
         """
         # 1. Determine Lookback
-        lookback = self.config.LOOKBACK_DAYS
+        historical_lookback_days = self.config.LOOKBACK_DAYS
 
         # 2. Determine Universe
         self._initialize_symbol_sets()
@@ -143,7 +143,7 @@ class DipBuyerStrategy(BaseStrategy):
             target_symbols = list(valid_universe)
 
         # 3. Load Data
-        data = self.data_provider.get_universe_daily_data(target_symbols, days=lookback)
+        data = self.data_provider.get_universe_daily_data(target_symbols, days=historical_lookback_days)
 
         if not data or "close" not in data or data["close"].empty:
             logger.warning(f"[{self.name}] No market data available for universe.")
@@ -233,12 +233,12 @@ class DipBuyerStrategy(BaseStrategy):
         closes = data["close"]
 
         # FIX: Clean the Index (Remove holidays where all US stocks are NaN)
-        valid_idx = closes.dropna(how="all").index
-        closes = closes.loc[valid_idx]
-        highs = data["high"].loc[valid_idx]
-        lows = data["low"].loc[valid_idx]
-        opens = data["open"].loc[valid_idx]
-        volumes = data["volume"].loc[valid_idx]
+        valid_trading_days_index = closes.dropna(how="all").index
+        closes = closes.loc[valid_trading_days_index]
+        highs = data["high"].loc[valid_trading_days_index]
+        lows = data["low"].loc[valid_trading_days_index]
+        opens = data["open"].loc[valid_trading_days_index]
+        volumes = data["volume"].loc[valid_trading_days_index]
 
         # Verify target date validity after cleaning
         # Verify target date validity after cleaning
@@ -487,10 +487,10 @@ class DipBuyerStrategy(BaseStrategy):
         Debug method to analyze a single symbol step-by-step.
         Returns detailed check results.
         """
-        lookback = self.config.LOOKBACK_DAYS
+        historical_lookback_days = self.config.LOOKBACK_DAYS
 
         # 1. Fetch Data
-        df = self.data_provider.get_symbol_history(symbol, days=lookback)
+        df = self.data_provider.get_symbol_history(symbol, days=historical_lookback_days)
         if df.empty:
             return {
                 "symbol": symbol,
@@ -560,8 +560,8 @@ class DipBuyerStrategy(BaseStrategy):
 
         passed = all(checks.values())
 
-        def safe_val(val, default=0.0):
-            return default if pd.isna(val) else val
+        def extract_safe_numeric_value(raw_metric_value, default_fallback_value=0.0):
+            return default_fallback_value if pd.isna(raw_metric_value) else raw_metric_value
 
         return {
             "symbol": symbol,
@@ -570,13 +570,13 @@ class DipBuyerStrategy(BaseStrategy):
             "data_valid": True,
             "checks": checks,
             "values": {
-                "close": round(safe_val(current_close), 2),
-                "sma200": round(safe_val(sma200), 2),
-                "volume_sma": int(safe_val(volume_sma, 0)),
-                "atr": round(safe_val(atr), 2),
-                "atr_ratio_3day": round(safe_val(atr_ratio_3day), 2),
-                "ibs": round(safe_val(ibs), 2),
-                "volatility_ratio": round(safe_val(volatility_ratio), 3),
+                "close": round(extract_safe_numeric_value(current_close), 2),
+                "sma200": round(extract_safe_numeric_value(sma200), 2),
+                "volume_sma": int(extract_safe_numeric_value(volume_sma, 0)),
+                "atr": round(extract_safe_numeric_value(atr), 2),
+                "atr_ratio_3day": round(extract_safe_numeric_value(atr_ratio_3day), 2),
+                "ibs": round(extract_safe_numeric_value(ibs), 2),
+                "volatility_ratio": round(extract_safe_numeric_value(volatility_ratio), 3),
             },
             "result": "PASS" if passed else "FAIL",
             "error": None,
