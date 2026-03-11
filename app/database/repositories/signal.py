@@ -191,7 +191,7 @@ class SignalRepository(BaseRepository):
             WHERE data IS NOT NULL OR signal IS NOT NULL
         """
         rows = self.fetch_all(sql)
-        
+
         attributes = {
             "Signal": set(),
             "Status": set(),
@@ -201,16 +201,16 @@ class SignalRepository(BaseRepository):
             "Setter": set(),
             "Welle": set(),
         }
-        
+
         for row in rows:
             for yaml_key, db_key in zip(
                 ["Signal", "Status", "Kerze", "Wolke", "Trend", "Setter", "Welle"],
-                ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"]
+                ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"],
             ):
                 val = row[db_key]
                 if val is not None:
                     attributes[yaml_key].add(str(val))
-                    
+
         return attributes
 
     def get_by_timestamp(self, signal_name: str, timestamp: str) -> list[dict]:

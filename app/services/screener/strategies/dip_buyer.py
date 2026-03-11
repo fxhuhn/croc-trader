@@ -143,7 +143,9 @@ class DipBuyerStrategy(BaseStrategy):
             target_symbols = list(valid_universe)
 
         # 3. Load Data
-        data = self.data_provider.get_universe_daily_data(target_symbols, days=historical_lookback_days)
+        data = self.data_provider.get_universe_daily_data(
+            target_symbols, days=historical_lookback_days
+        )
 
         if not data or "close" not in data or data["close"].empty:
             logger.warning(f"[{self.name}] No market data available for universe.")
@@ -490,7 +492,9 @@ class DipBuyerStrategy(BaseStrategy):
         historical_lookback_days = self.config.LOOKBACK_DAYS
 
         # 1. Fetch Data
-        df = self.data_provider.get_symbol_history(symbol, days=historical_lookback_days)
+        df = self.data_provider.get_symbol_history(
+            symbol, days=historical_lookback_days
+        )
         if df.empty:
             return {
                 "symbol": symbol,
@@ -561,7 +565,11 @@ class DipBuyerStrategy(BaseStrategy):
         passed = all(checks.values())
 
         def extract_safe_numeric_value(raw_metric_value, default_fallback_value=0.0):
-            return default_fallback_value if pd.isna(raw_metric_value) else raw_metric_value
+            return (
+                default_fallback_value
+                if pd.isna(raw_metric_value)
+                else raw_metric_value
+            )
 
         return {
             "symbol": symbol,
@@ -576,7 +584,9 @@ class DipBuyerStrategy(BaseStrategy):
                 "atr": round(extract_safe_numeric_value(atr), 2),
                 "atr_ratio_3day": round(extract_safe_numeric_value(atr_ratio_3day), 2),
                 "ibs": round(extract_safe_numeric_value(ibs), 2),
-                "volatility_ratio": round(extract_safe_numeric_value(volatility_ratio), 3),
+                "volatility_ratio": round(
+                    extract_safe_numeric_value(volatility_ratio), 3
+                ),
             },
             "result": "PASS" if passed else "FAIL",
             "error": None,

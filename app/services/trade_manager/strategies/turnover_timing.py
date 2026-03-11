@@ -91,10 +91,10 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
     def _parse_turnover_context(self, trade: TradeData) -> TurnoverContext:
         """
         Safely extracts and parses the TurnoverContext from the trade JSON.
-        
+
         Args:
             trade: The active or created trade data.
-            
+
         Returns:
             TurnoverContext: The parsed dictionary containing context data.
         """
@@ -102,7 +102,9 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         try:
             return json.loads(raw_context)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode signal_context for trade {trade.get('id')}: {e}")
+            logger.error(
+                f"Failed to decode signal_context for trade {trade.get('id')}: {e}"
+            )
             return {"green_candle_count": 0}
 
     def _create_exit_order(self, symbol: str, quantity: int) -> Order:
@@ -113,14 +115,12 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             quantity=quantity,
             mode="Exit",
             entry=None,
-            exits=[
-                OrderLeg(
-                    action="SELL", type="MKT", price=0.0, quantity=quantity
-                )
-            ],
+            exits=[OrderLeg(action="SELL", type="MKT", price=0.0, quantity=quantity)],
         )
 
-    def _create_entry_order(self, symbol: str, quantity: int, entry_price: float) -> Order:
+    def _create_entry_order(
+        self, symbol: str, quantity: int, entry_price: float
+    ) -> Order:
         """Generates a Limit Buy Entry Order."""
         return Order(
             id=str(uuid.uuid4()),
@@ -253,7 +253,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                 # Crucial bug fix: Do not inherit screener setup's green candle state.
                 close_price = float(candle["close"])
                 context = self._parse_turnover_context(trade)
-                
+
                 # Use strict helper
                 count = 1 if self._is_green_candle(open_price, close_price) else 0
 
@@ -307,7 +307,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         # Otherwise, update count based on current candle color.
 
         context = self._parse_turnover_context(trade)
-        
+
         # Idempotency check: Do not process the same candle twice
         last_processed_date = context.get("last_processed_date")
         if last_processed_date == date_string:

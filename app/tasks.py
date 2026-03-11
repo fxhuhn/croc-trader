@@ -42,7 +42,7 @@ def _clear_and_prewarm_cache(app):
     with app.app_context():
         logger.info("🧹 Leere Cache für /trades Routen...")
         cache.clear()
-        
+
         logger.info("🔥 Starte Pre-warming der /trades Routen...")
         with app.test_client() as client:
             routes = [
@@ -60,10 +60,12 @@ def _clear_and_prewarm_cache(app):
                     if response.status_code == 200:
                         logger.info(f"  ✓ Pre-warmed: {route}")
                     else:
-                        logger.warning(f"  ✗ Pre-warm fehlgeschlagen für {route}: Status {response.status_code}")
+                        logger.warning(
+                            f"  ✗ Pre-warm fehlgeschlagen für {route}: Status {response.status_code}"
+                        )
                 except Exception as e:
                     logger.error(f"  ✗ Exception beim Pre-warm von {route}: {e}")
-        
+
         logger.info("✅ Cache Pre-warming abgeschlossen.")
 
 

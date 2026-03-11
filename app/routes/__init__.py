@@ -14,4 +14,3 @@ main_bp.register_blueprint(api_blueprint)
 main_bp.register_blueprint(views_bp)
 main_bp.register_blueprint(errors_bp)
 main_bp.register_blueprint(honeypot_bp)
-

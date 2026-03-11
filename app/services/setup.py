@@ -101,14 +101,22 @@ def register_services(app, config):
         try:
             with open(ranking_yaml_path, encoding="utf-8") as f:
                 ranking_data = yaml.safe_load(f) or {}
-            
+
             # Check DB availability for multiple attributes
             db_attributes = signal_repository.get_unique_signal_attributes()
-            check_keys = ["Signal", "Status", "Kerze", "Wolke", "Trend", "Setter", "Welle"]
-            
+            check_keys = [
+                "Signal",
+                "Status",
+                "Kerze",
+                "Wolke",
+                "Trend",
+                "Setter",
+                "Welle",
+            ]
+
             # Signals to ignore for now
             IGNORED_SIGNALS = {"bull_schwarz", "bull_1"}
-            
+
             for key in check_keys:
                 required_values = set()
                 if isinstance(ranking_data, list):
@@ -125,7 +133,9 @@ def register_services(app, config):
                 elif isinstance(ranking_data, dict):
                     if key == "Signal":
                         for signal_name, rules in ranking_data.items():
-                            if isinstance(rules, dict) and ("Score" in rules or "SQN" in rules):
+                            if isinstance(rules, dict) and (
+                                "Score" in rules or "SQN" in rules
+                            ):
                                 val = str(signal_name).strip()
                                 if " (" in val:
                                     val = val.split(" (")[0].strip()
@@ -134,17 +144,18 @@ def register_services(app, config):
                                 required_values.add(val)
                     else:
                         required_values = {
-                            str(rules[key]) for rules in ranking_data.values()
+                            str(rules[key])
+                            for rules in ranking_data.values()
                             if isinstance(rules, dict) and key in rules
                         }
-                
+
                 if not required_values:
                     continue
-                
+
                 db_values = db_attributes.get(key, set())
                 missing_values = required_values - db_values
                 available_values = required_values & db_values
-                
+
                 if missing_values:
                     logger.warning(
                         f"Ranking-Check WARNUNG: Folgende Werte für '{key}' aus {ranking_yaml_path.name} "
@@ -158,7 +169,9 @@ def register_services(app, config):
         except Exception as e:
             logger.error(f"Fehler beim Ranking-Check für {ranking_yaml_path.name}: {e}")
     else:
-        logger.warning(f"Ranking-Check: Ranking Datei {ranking_yaml_path} nicht gefunden.")
+        logger.warning(
+            f"Ranking-Check: Ranking Datei {ranking_yaml_path} nicht gefunden."
+        )
 
     # 5. Screener Engine (DI: Repos and Strategies)
     active_strategies = [

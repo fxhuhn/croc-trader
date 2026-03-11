@@ -57,7 +57,6 @@ class TradeViewData(TradeData):
     context: dict[str, object]
 
 
-
 class TradeViewService:
     """Service to prepare trade data for UI views."""
 
@@ -89,7 +88,9 @@ class TradeViewService:
         resolved = STRATEGY_ALIASES.get(raw)
         return resolved if resolved else raw
 
-    def is_strategy_match(self, trade: dict[str, object], target: str | list[str]) -> bool:
+    def is_strategy_match(
+        self, trade: dict[str, object], target: str | list[str]
+    ) -> bool:
         """Checks if a trade belongs to a strategy or list of strategies."""
         trade_strat = self.resolve_strategy(trade)
 
@@ -428,7 +429,9 @@ class TradeViewService:
 
         return sorted(list(grouped.values()), key=lambda x: x["symbol"])
 
-    def group_trades_history(self, trades: list[TradeViewData]) -> list[dict[str, object]]:
+    def group_trades_history(
+        self, trades: list[TradeViewData]
+    ) -> list[dict[str, object]]:
         """Groups closed trades by Symbol + Entry Date."""
         grouped: dict[tuple[str, str], dict[str, object]] = {}
 
@@ -464,7 +467,9 @@ class TradeViewService:
             list(grouped.values()), key=lambda x: str(x["max_exit"]), reverse=True
         )
 
-    def get_index_stats(self, trades: list[TradeViewData]) -> dict[str, dict[str, object]]:
+    def get_index_stats(
+        self, trades: list[TradeViewData]
+    ) -> dict[str, dict[str, object]]:
         """Aggregates PnL statistics by Index (SPX, NDX, etc.)."""
         statistics = {
             IndexAliases.SPX: {

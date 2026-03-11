@@ -420,5 +420,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
         try:
             return json.loads(trade.get("signal_context") or "{}")
         except json.JSONDecodeError as parsing_error:
-            logger.warning(f"Failed to parse signal context for trade {trade.get('id')}: {parsing_error}")
+            logger.warning(
+                f"Failed to parse signal context for trade {trade.get('id')}: {parsing_error}"
+            )
             return {}

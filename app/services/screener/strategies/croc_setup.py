@@ -146,7 +146,11 @@ class CrocSetupStrategy(BaseStrategy):
             rule = candidate_data["match"]
             system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
             maximum_drawdown = float(rule.get("MaxDD", 0.0))
-            return (system_quality_number / maximum_drawdown) if maximum_drawdown > 0 else 0.0
+            return (
+                (system_quality_number / maximum_drawdown)
+                if maximum_drawdown > 0
+                else 0.0
+            )
 
         sorted_candidates = sorted(
             candidates,
@@ -202,7 +206,11 @@ class CrocSetupStrategy(BaseStrategy):
             rule = candidate_data["match"]
             system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
             maximum_drawdown = float(rule.get("MaxDD", 0.0))
-            return (system_quality_number / maximum_drawdown) if maximum_drawdown > 0 else 0.0
+            return (
+                (system_quality_number / maximum_drawdown)
+                if maximum_drawdown > 0
+                else 0.0
+            )
 
         sorted_candidates = sorted(
             candidates,
@@ -272,14 +280,21 @@ class CrocSetupStrategy(BaseStrategy):
 
     def _find_best_match(self, row: dict[str, Any]) -> dict[str, Any] | None:
         signal_name = str(row.get("signal", ""))
-        
+
         candidates = []
         for rule in self.ranking_rules:
             rule_signal = str(rule.get("Signal", ""))
             # Extract base signal name if it contains a parenthetical suffix like (NEU)
-            base_rule_signal = rule_signal.split(" (")[0].strip() if " (" in rule_signal else rule_signal.strip()
-            
-            if base_rule_signal == signal_name or base_rule_signal == signal_name.split(" (")[0].strip():
+            base_rule_signal = (
+                rule_signal.split(" (")[0].strip()
+                if " (" in rule_signal
+                else rule_signal.strip()
+            )
+
+            if (
+                base_rule_signal == signal_name
+                or base_rule_signal == signal_name.split(" (")[0].strip()
+            ):
                 candidates.append(rule)
 
         best_match = None
@@ -290,14 +305,18 @@ class CrocSetupStrategy(BaseStrategy):
             if self._is_rule_match(row, rule):
                 # Prefer SQN over Score if available
                 score = float(rule.get("SQN", rule.get("Score", 0.0)))
-                rule_length = len([k for k in rule.keys() if k.lower() in MATCHING_CONDITION_KEYS])
-                
+                rule_length = len(
+                    [k for k in rule.keys() if k.lower() in MATCHING_CONDITION_KEYS]
+                )
+
                 # If score is better, or if score is equal but rule is more specific (more conditions)
-                if score > best_score or (score == best_score and rule_length > best_rule_length):
+                if score > best_score or (
+                    score == best_score and rule_length > best_rule_length
+                ):
                     best_match = rule
                     best_score = score
                     best_rule_length = rule_length
-                    
+
         return best_match
 
     def _is_rule_match(self, row: dict[str, Any], rule: dict[str, Any]) -> bool:
@@ -329,11 +348,11 @@ class CrocSetupStrategy(BaseStrategy):
         try:
             val = float(market_val)
             cond_str = str(condition).lower().strip()
-            
+
             # Strip numeric prefixes like "3. " or "6. "
             if cond_str and cond_str[0].isdigit() and ". " in cond_str:
                 cond_str = cond_str.split(". ", 1)[1].strip()
-                
+
             handler = CONDITION_HANDLERS.get(cond_str)
             if handler:
                 return handler(val)
@@ -417,14 +436,14 @@ class CrocSetupStrategy(BaseStrategy):
                 "strategy_enum": strategy_enum,
                 "targets": targets,
                 "indices": indices,
-            }
+            },
         }
 
     def _calc_targets(
         self, entry: float, risk: float, exit_name: str
     ) -> dict[str, float]:
         target_prices = {"tp1": 0.0, "tp3": 0.0, "main": 0.0}
-        
+
         if "split" in exit_name:
             target_prices["tp1"] = round(entry + risk, 2)
             target_prices["tp3"] = round(entry + (3 * risk), 2)
@@ -439,7 +458,7 @@ class CrocSetupStrategy(BaseStrategy):
             # Fallback
             target_prices["tp1"] = round(entry + risk, 2)
             target_prices["main"] = target_prices["tp1"]
-            
+
         return target_prices
 
     def _get_indices_string(self, symbol: str) -> str:
