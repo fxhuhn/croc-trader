@@ -28,6 +28,7 @@ from ..tasks import (
     run_market_data_update,
     run_db_maintenance,
     run_db_backup,
+    run_cache_prewarm,
 )
 
 logger = logging.getLogger(__name__)
@@ -269,6 +270,20 @@ def configure_scheduler(app, config):
             timezone=pytz.timezone("Europe/Berlin"),
         ),
         id="strategy_check",
+        replace_existing=True,
+    )
+
+    # --- JOB 4.5: Cache Pre-warming (NACH Trade Manager) ---
+    scheduler.add_job(
+        func=run_cache_prewarm,
+        args=[app],
+        trigger=CronTrigger(
+            day_of_week="mon-sat",
+            hour=7,
+            minute=15,
+            timezone=pytz.timezone("Europe/Berlin"),
+        ),
+        id="cache_prewarming",
         replace_existing=True,
     )
 

@@ -25,12 +25,6 @@ def run_daily_strategy_check(app):
                 screener.run_all(days=0)
             except Exception as e:
                 logger.error(f"Fehler im Screener Job: {e}")
-            
-            # 2. Cache invalidieren und neu aufbauen (Pre-warming)
-            try:
-                _clear_and_prewarm_cache(app)
-            except Exception as e:
-                logger.error(f"Fehler beim Cache Pre-warming: {e}")
         else:
             logger.error("Screener Engine nicht gefunden!")
 
@@ -71,6 +65,18 @@ def _clear_and_prewarm_cache(app):
                     logger.error(f"  ✗ Exception beim Pre-warm von {route}: {e}")
         
         logger.info("✅ Cache Pre-warming abgeschlossen.")
+
+
+def run_cache_prewarm(app):
+    """
+    Wird vom Scheduler aufgerufen, um den Cache für den Tag zu pre-warmen.
+    Sollte nach dem TradeManager (der um 07:00 läuft) ausgeführt werden.
+    """
+    logger.info("⏰ Scheduler: Starte Cache Pre-warming...")
+    try:
+        _clear_and_prewarm_cache(app)
+    except Exception as e:
+        logger.error(f"Fehler beim Cache Pre-warming: {e}")
 
 
 def run_market_data_update(db_path: Path):
