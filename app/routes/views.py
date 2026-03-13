@@ -361,13 +361,17 @@ def view_analytics_dashboard() -> str:
         status=TradeStatus.CLOSED,
         exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
     )
+    active_trades = service.get_trades(status=TradeStatus.ACTIVE)
 
-    if not closed_trades:
+    if not closed_trades and not active_trades:
         return render_template(
             "analytics.html", summary=None, strategies=[], weekly_trend={}
         )
 
-    df = pd.DataFrame(closed_trades)
+    if not closed_trades:
+        df = pd.DataFrame(columns=["exit_date", "realized_pnl", "strategy"])
+    else:
+        df = pd.DataFrame(closed_trades)
     df["exit_date_dt"] = pd.to_datetime(df["exit_date"])
     df = df.sort_values("exit_date_dt")
 
@@ -414,16 +418,37 @@ def view_analytics_dashboard() -> str:
     }
 
     for name, filters in strat_groups.items():
-        strat_df = df[df["strategy"].isin(filters)]
-        if strat_df.empty:
+        strat_df = df[df["strategy"].isin(filters)] if not df.empty else pd.DataFrame()
+
+        # Calculate active trades and open PnL
+        strat_active = [
+            t
+            for t in active_trades
+            if service.resolve_strategy(t) in filters or t.get("strategy") in filters
+        ]
+        open_pnl = sum([t.get("unrealized_pnl", 0.0) for t in strat_active])
+
+        if strat_df.empty and not strat_active:
             continue
 
-        winning_trades = strat_df[strat_df["realized_pnl"] > 0]
-        losing_trades = strat_df[strat_df["realized_pnl"] < 0]
+        winning_trades = (
+            strat_df[strat_df["realized_pnl"] > 0]
+            if not strat_df.empty
+            else pd.DataFrame()
+        )
+        losing_trades = (
+            strat_df[strat_df["realized_pnl"] < 0]
+            if not strat_df.empty
+            else pd.DataFrame()
+        )
 
         # Risk Multiples (R) calculation if risk is available in context
         # Fallback to simple expectancy if R is not easily derived here
-        strat_expectancy = metrics.calculate_expectancy(strat_df["realized_pnl"])
+        strat_expectancy = (
+            metrics.calculate_expectancy(strat_df["realized_pnl"])
+            if not strat_df.empty
+            else 0.0
+        )
 
         # Mocking R Notation for now as current trade structure might not have 'Risk' field directly
         # In a real scenario, we'd use (entry - stop) * size.
@@ -433,10 +458,14 @@ def view_analytics_dashboard() -> str:
                 "id": name.lower().replace(" ", "-"),
                 "name": name,
                 "color": strat_colors.get(name, "#64748b"),
-                "pnl": float(strat_df["realized_pnl"].sum()),
+                "pnl": float(strat_df["realized_pnl"].sum())
+                if not strat_df.empty
+                else 0.0,
+                "open_pnl": open_pnl,
                 "trades_count": len(strat_df),
                 "metrics": {
                     "trades": len(strat_df),
+                    "active_positions": len(strat_active),
                     "avg_risk": "1.0%",  # Static example or calculate if possible
                     "win_count": len(winning_trades),
                     "loss_count": len(losing_trades),
@@ -448,12 +477,16 @@ def view_analytics_dashboard() -> str:
                     else 0.0,
                     "profit_factor": metrics.calculate_profit_factor(
                         strat_df["realized_pnl"]
-                    ),
+                    )
+                    if not strat_df.empty
+                    else 0.0,
                     "expectancy": f"{strat_expectancy / 100:.2f} R",  # Heuristic R
                     "ror": "0.0%",  # Placeholder
                     "sharpe": metrics.calculate_sharpe_ratio(
                         strat_df["realized_pnl"], initial_capital
-                    ),
+                    )
+                    if not strat_df.empty
+                    else 0.0,
                 },
             }
         )

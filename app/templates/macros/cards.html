@@ -1,11 +1,11 @@
-{% macro render_kpi_card(title, value, icon_name, value_classes="text-slate-900") %}
-<article class="bg-white rounded-2xl shadow-sm p-6 flex items-center gap-4 border border-slate-100">
-    <div class="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-indigo-500">
+{% macro render_kpi_card(title, value, icon_name, value_classes="text-slate-900", bg_classes="bg-white border-slate-100", label_classes="text-slate-600", icon_bg_classes="bg-slate-50", icon_text_classes="text-indigo-500") %}
+<article class="{{ bg_classes }} rounded-2xl shadow-sm p-4 md:p-6 flex flex-col md:flex-row items-center md:items-center justify-center md:justify-start gap-1 md:gap-4 border">
+    <div class="hidden md:flex w-12 h-12 rounded-xl {{ icon_bg_classes }} items-center justify-center {{ icon_text_classes }}">
         <i data-lucide="{{ icon_name }}" class="w-6 h-6"></i>
     </div>
-    <div>
-        <p class="text-xs font-bold text-slate-600 uppercase tracking-widest mb-1">{{ title }}</p>
-        <p class="text-2xl font-black {{ value_classes }}">{{ value }}</p>
+    <div class="flex flex-col items-center md:items-start text-center md:text-left">
+        <p class="text-lg md:text-2xl font-black leading-none mb-1 md:mb-0 md:order-last {{ value_classes }}">{{ value }}</p>
+        <p class="text-xs font-bold {{ label_classes }} uppercase tracking-widest md:mb-1">{{ title }}</p>
     </div>
 </article>
 {% endmacro %}
@@ -19,7 +19,7 @@
         <div class="flex items-center gap-2">
             <span class="font-black text-lg text-slate-900 leading-none">{{ symbol }}</span>
             {% if badge_text %}
-            <span class="bg-slate-100 text-slate-500 text-[11px] font-semibold uppercase px-2 py-0.5 rounded-md">{{
+            <span class="bg-slate-100 text-slate-500 text-xs font-semibold uppercase px-2 py-0.5 rounded-md">{{
                 badge_text }}</span>
             {% endif %}
         </div>
@@ -30,7 +30,7 @@
                 <span class="font-mono font-black text-base text-blue-600">
                     {{ "{:,.2f}".format(entry_price|float) if entry_price else '-' }}
                 </span>
-                <span class="text-[10px] text-slate-600">{{ entry_label }}</span>
+                <span class="text-xs text-slate-600">{{ entry_label }}</span>
             </div>
             {% endif %}
             <div class="w-6 h-6 rounded-full bg-slate-50 flex items-center justify-center">
@@ -50,7 +50,7 @@
 {% macro tradingview_btn(symbol) %}
 <div class="mb-4 mt-1">
     <a href="https://www.tradingview.com/chart/?symbol={{ symbol }}" target="_blank"
-        class="w-full flex items-center justify-center gap-1.5 bg-blue-50 text-blue-600 py-2 rounded-lg font-bold text-[11px] border border-blue-100 hover:bg-blue-100 transition-colors">
+        class="w-full flex items-center justify-center gap-1.5 bg-blue-50 text-blue-600 py-2 rounded-lg font-bold text-xs border border-blue-100 hover:bg-blue-100 transition-colors">
         Open in TradingView <i data-lucide="chart-candlestick" class="w-3 h-3"></i>
     </a>
 </div>
@@ -76,7 +76,7 @@
                 {{ "{:+,.2f}".format(summary.open_pnl) }} $
             </div>
             <div
-                class="{{ 'text-emerald-50/80' if summary.open_pnl >= 0 else 'text-rose-100/80' }} md:text-slate-600 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">
+                class="{{ 'text-emerald-50/80' if summary.open_pnl >= 0 else 'text-rose-100/80' }} md:text-slate-600 text-xs md:text-xs uppercase font-bold tracking-wider md:mb-1">
                 Open PnL</div>
         </div>
         <i data-lucide="trending-down"
@@ -94,7 +94,7 @@
         <div class="flex flex-col items-center md:items-start text-center md:text-left">
             <div class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last">{{
                 "{:,.0f}".format(summary.invested) }} $</div>
-            <div class="text-slate-600 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">Invested
+            <div class="text-slate-600 text-xs md:text-xs uppercase font-bold tracking-wider md:mb-1">Invested
             </div>
         </div>
     </article>
@@ -108,7 +108,7 @@
         <div class="flex flex-col items-center md:items-start text-center md:text-left">
             <div class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last">{{
                 active_count }}</div>
-            <div class="text-slate-600 text-[10px] md:text-xs uppercase font-bold tracking-wider md:mb-1">Active
+            <div class="text-slate-600 text-xs md:text-xs uppercase font-bold tracking-wider md:mb-1">Active
             </div>
         </div>
     </article>
