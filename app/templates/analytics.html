@@ -11,51 +11,38 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
+{% from "macros/cards.html" import render_kpi_card %}
 
 <!-- Top-Navigation -->
 {{ render_header("Strategy", "analytics", show_switcher=False) }}
 
-<main class="max-w-2xl mx-auto p-4 space-y-4">
+<!-- MAIN CONTENT -->
+<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
     <!-- Section 1: KPI Grid -->
-    <section class="grid grid-cols-2 gap-2">
-        <!-- Net PnL Card -->
+    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 mb-8 mt-2 md:mt-0">
         {% set pnl = summary.net_pnl | default(0) %}
-        {% set pnl_bg = 'bg-emerald-500' if pnl >= 0 else 'bg-rose-500' %}
-        <article class="{{ pnl_bg }} rounded-2xl p-3 shadow-sm flex flex-col justify-between">
-            <div class="text-white text-xl font-black whitespace-nowrap">
-                {{ "{:+,.2f} $".format(pnl) }}
-            </div>
-            <div class="text-white/80 text-xs uppercase font-semibold tracking-wide">Net PnL</div>
-        </article>
-
-        <!-- Win Rate -->
-        <article class="bg-white rounded-2xl p-3 shadow-sm flex flex-col justify-between">
-            <div class="text-slate-900 text-xl font-black">
-                {{ "{:.1%}".format(summary.win_rate | default(0)) }}
-            </div>
-            <div class="text-slate-500 text-xs uppercase font-semibold tracking-wide">Avg Win Rate</div>
-        </article>
-
-        <!-- Max Drawdown -->
-        <article class="bg-white rounded-2xl p-3 shadow-sm flex flex-col justify-between">
-            <div class="text-rose-500 text-xl font-black">
-                {{ "{:.1%}".format(summary.max_drawdown | default(0)) }}
-            </div>
-            <div class="text-slate-500 text-xs uppercase font-semibold tracking-wide">Max Drawdown</div>
-        </article>
-
-        <!-- Total Trades -->
-        <article class="bg-white rounded-2xl p-3 shadow-sm flex flex-col justify-between">
-            <div class="text-slate-900 text-xl font-black">
-                {{ summary.total_trades | default(0) }}
-            </div>
-            <div class="text-slate-500 text-xs uppercase font-semibold tracking-wide">Total Trades</div>
-        </article>
+        {% if pnl >= 0 %}
+        {{ render_kpi_card("Net PnL", "{:+,.2f} $".format(pnl), "trending-up", "text-white", "bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30", "text-emerald-50/80", "bg-white/20", "text-white") }}
+        {% else %}
+        {{ render_kpi_card("Net PnL", "{:+,.2f} $".format(pnl), "trending-down", "text-white", "bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30", "text-rose-100/80", "bg-white/20", "text-white") }}
+        {% endif %}
+        
+        {% set win_rate_val = "{:.1%}".format(summary.win_rate | default(0)) %}
+        {{ render_kpi_card("Avg Win Rate", win_rate_val, "target") }}
+        
+        {% set dd_val = "{:.1%}".format(summary.max_drawdown | default(0)) %}
+        {{ render_kpi_card("Max Drawdown", dd_val, "alert-triangle", "text-rose-500") }}
+        
+        {{ render_kpi_card("Total Trades", summary.total_trades | default(0), "layers") }}
     </section>
 
     <!-- Section 2: Weekly Trend (Chart) -->
-    <section class="bg-white rounded-2xl p-3 shadow-sm">
+    <section class="mb-8 md:mb-12">
+        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+            <i data-lucide="line-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly Trend
+        </h2>
+        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
         <div class="flex justify-between items-center mb-3">
             <h3 class="text-xs uppercase font-bold tracking-wider text-slate-500">Weekly PnL</h3>
             <span class="text-xs font-medium text-slate-500">Weeks</span>
@@ -70,45 +57,79 @@
                 <div class="w-2.5 h-2.5 rounded-sm bg-slate-400"></div>
                 <span class="text-xs text-slate-700 font-medium">Portfolio</span>
             </div>
+            {% set strat_colors = {'Croc Setup': 'bg-emerald-500', 'Dip Buyer': 'bg-indigo-500', 'Turnover': 'bg-amber-500', 'Two Percent': 'bg-purple-500', 'NDX Momentum': 'bg-rose-500'} %}
             {% for strat in strategies %}
             <div class="flex items-center gap-1.5">
-                <div class="w-2.5 h-2.5 rounded-sm" style="background-color: {{ strat.color }}"></div>
+                <div class="w-2.5 h-2.5 rounded-sm {{ strat_colors.get(strat.name, 'bg-slate-500') }}"></div>
                 <span class="text-xs text-slate-500">{{ strat.name }}</span>
             </div>
             {% endfor %}
         </div>
+        </div>
     </section>
 
     <!-- Section 3: Strategy Breakdown (Accordion) -->
-    <section class="bg-white rounded-2xl shadow-sm overflow-hidden">
-        <div class="divide-y divide-slate-100">
-            {% for strat in strategies %}
-            <div class="flex flex-col">
-                <!-- Accordion Header -->
-                <div class="flex justify-between items-center p-4 cursor-pointer active:bg-slate-50 transition-colors"
-                    onclick="toggleTradeCard(this)">
-                    <div class="flex items-center gap-3">
-                        <div class="w-1.5 h-6 rounded-full" style="background-color: {{ strat.color }}"></div>
-                        <div class="flex flex-col">
-                            <span class="text-lg font-bold text-slate-900 leading-tight">{{ strat.name }}</span>
-                            <span class="text-xs text-slate-500 font-medium">{{ strat.trades_count }} Trades</span>
+    <section class="mb-8 md:mb-12">
+        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+            <i data-lucide="pie-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Strategies
+        </h2>
+        <div class="bg-transparent md:bg-white md:rounded-3xl md:shadow-sm border-0 md:border border-slate-200 overflow-hidden">
+            <div class="flex flex-col gap-4 md:gap-0 md:divide-y md:divide-slate-100">
+                {% set strat_colors = {'Croc Setup': 'bg-emerald-500', 'Dip Buyer': 'bg-indigo-500', 'Turnover': 'bg-amber-500', 'Two Percent': 'bg-purple-500', 'NDX Momentum': 'bg-rose-500'} %}
+                {% for strat in strategies %}
+                <div class="bg-white md:bg-transparent border border-slate-200 md:border-none rounded-2xl md:rounded-none shadow-sm md:shadow-none transition-colors md:hover:bg-slate-50/50 flex flex-col">
+                    <!-- Accordion Header -->
+                <div class="flex justify-between items-center px-4 py-3 md:px-6 md:py-4 cursor-pointer active:bg-slate-50 transition-colors"
+                     onclick="toggleTradeCard(this)">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <div class="w-1.5 h-6 rounded-full {{ strat_colors.get(strat.name, 'bg-slate-500') }} shrink-0"></div>
+                        <div class="flex flex-col min-w-0">
+                            <span class="text-sm md:text-lg font-bold text-slate-900 leading-tight truncate">{{ strat.name }}</span>
+                            <span class="text-xs text-slate-500 font-medium whitespace-nowrap">{{ strat.trades_count }} Trades</span>
                         </div>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <span class="text-lg font-bold {{ 'text-emerald-500' if strat.pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.0f} $".format(strat.pnl) }}
-                        </span>
-                        <i data-lucide="chevron-down"
-                            class="w-4 h-4 text-slate-600 transition-transform duration-200"></i>
+                    <div class="flex items-center gap-3 shrink-0 ml-2">
+                        <div class="flex flex-col items-end gap-1">
+                            <!-- Realized PnL -->
+                            <span class="text-base md:text-xl font-black leading-none {{ 'text-emerald-500' if strat.pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
+                                {{ "{:+,.2f} $".format(strat.pnl) }}
+                            </span>
+                            
+                            <!-- Open PnL -->
+                            {% set open_pnl = strat.open_pnl %}
+                            {% if open_pnl and open_pnl > 0 %}
+                            <div class="flex items-center gap-1 mt-1">
+                                <span class="relative flex h-2 w-2 shrink-0">
+                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                <span class="text-xs font-bold text-emerald-600 leading-none whitespace-nowrap">Open {{ "{:+,.2f} $".format(open_pnl) }}</span>
+                            </div>
+                            {% elif open_pnl and open_pnl < 0 %}
+                            <div class="flex items-center gap-1 mt-1">
+                                <span class="relative flex h-2 w-2 shrink-0">
+                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                                </span>
+                                <span class="text-xs font-bold text-rose-600 leading-none whitespace-nowrap">Open {{ "{:+,.2f} $".format(open_pnl) }}</span>
+                            </div>
+                            {% else %}
+                            <div class="flex items-center gap-1 mt-1">
+                                <div class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></div>
+                                <span class="text-xs font-bold text-slate-500 leading-none whitespace-nowrap">Open 0.00 $</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <i data-lucide="chevron-down" class="w-5 h-5 text-slate-400 transition-transform duration-200 chevron-icon shrink-0"></i>
                     </div>
                 </div>
 
                 <!-- Accordion Content -->
-                <div class="hidden bg-slate-50/50 p-4 border-t border-slate-100">
-                    <div class="grid grid-cols-2 gap-x-6 text-xs items-start">
+                <div class="hidden bg-slate-50/50 px-4 py-3 md:px-6 md:py-4 border-t border-slate-100">
+                    <div class="grid grid-cols-2 gap-x-6 text-xs md:text-sm items-start">
                         <!-- Left Column -->
                         <div class="flex flex-col">
-                            <div class="flex justify-between py-2 border-b border-slate-100">
+                            <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Trades</span>
                                 <span class="font-bold text-slate-800">{{ strat.metrics.trades }}</span>
                             </div>
@@ -120,12 +141,12 @@
                                     <span class="font-bold text-rose-600">{{ strat.metrics.loss_count }}L</span>
                                 </div>
                             </div>
-                            <div class="flex justify-between py-2 border-b border-slate-100">
+                            <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Profit Factor</span>
                                 <span class="font-bold text-slate-800">{{ "{:.2f}".format(strat.metrics.profit_factor)
                                     }}</span>
                             </div>
-                            <div class="flex justify-between py-2 border-b border-slate-100">
+                            <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100 md:border-none">
                                 <span class="text-slate-500 font-medium">RoR</span>
                                 <span class="font-bold text-slate-800">{{ strat.metrics.ror }}</span>
                             </div>
@@ -133,11 +154,11 @@
 
                         <!-- Right Column -->
                         <div class="flex flex-col">
-                            <div class="flex justify-between py-2 border-b border-slate-100">
+                            <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Avg Risk</span>
                                 <span class="font-bold text-slate-800">{{ strat.metrics.avg_risk }}</span>
                             </div>
-                            <div class="flex justify-between py-2 border-b border-slate-100">
+                            <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Avg W/L</span>
                                 <div class="flex items-baseline gap-1 font-bold">
                                     <span class="text-emerald-500">+{{ "{:,.0f}$".format(strat.metrics.avg_win)
@@ -146,11 +167,11 @@
                                     <span class="text-rose-500">{{ "{:,.0f}$".format(strat.metrics.avg_loss) }}</span>
                                 </div>
                             </div>
-                            <div class="flex justify-between py-2 border-b border-slate-100">
+                            <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Expectancy</span>
                                 <span class="font-bold text-slate-800">{{ strat.metrics.expectancy }}</span>
                             </div>
-                            <div class="flex justify-between py-2 border-b border-slate-100">
+                            <div class="flex justify-between py-1.5 md:py-2 border-none">
                                 <span class="text-slate-500 font-medium">Sharpe</span>
                                 <span class="font-bold text-slate-800">{{ "{:.2f}".format(strat.metrics.sharpe)
                                     }}</span>
@@ -160,6 +181,7 @@
                 </div>
             </div>
             {% endfor %}
+            </div>
         </div>
     </section>
 
@@ -172,26 +194,19 @@
 <script>
     // Accordion Toggle
     function toggleTradeCard(header) {
-        const content = header.nextElementSibling;
-        const icon = header.querySelector('i[data-lucide="chevron-down"]');
-
-        // Toggle Hidden Class
-        const isHidden = content.classList.contains('hidden');
-
-        if (isHidden) {
-            content.classList.remove('hidden');
-            icon.style.transform = 'rotate(180deg)';
-        } else {
-            content.classList.add('hidden');
-            icon.style.transform = 'rotate(0deg)';
+        const details = header.nextElementSibling;
+        const chevron = header.querySelector('.chevron-icon');
+        const isOpen = !details.classList.contains('hidden');
+        details.classList.toggle('hidden', isOpen);
+        if (chevron) {
+            chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
         }
     }
 
     // Plotly Chart Generation
     document.addEventListener('DOMContentLoaded', function () {
-        const trendData = {{ weekly_trend | tojson | safe
-    }};
-    const strategies = {{ strategies | tojson | safe }};
+        const trendData = {{ weekly_trend | tojson | safe }};
+        const strategies = {{ strategies | tojson | safe }};
 
     if (!trendData || !trendData.dates) return;
 
@@ -257,7 +272,7 @@
             zerolinewidth: 1.5,
             showticklabels: true,
             tickfont: {
-                size: 9,
+                size: 12,
                 color: '#94a3b8', // slate-400
                 family: 'monospace'
             },
