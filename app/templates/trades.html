@@ -32,14 +32,14 @@
                         <span class="text-sm md:text-lg font-bold text-slate-900">{{ strat_name }}</span>
                         <!-- Mobile active positions, hidden on desktop here, shown below -->
                         <span
-                            class="md:hidden text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full">{{
+                            class="md:hidden text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full">{{
                             stat.count }} Active</span>
                     </div>
                 </div>
                 <div class="flex justify-between items-center w-full md:w-auto md:flex-col md:items-end">
                     <!-- Desktop active positions, hidden on mobile -->
                     <span
-                        class="hidden md:inline-block text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full mb-2">{{
+                        class="hidden md:inline-block text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full mb-2">{{
                         stat.count }} Active Position(s)</span>
                     <div
                         class="text-base md:text-xl font-black {{ 'text-emerald-500' if stat.pnl >= 0 else 'text-rose-500' }}">
