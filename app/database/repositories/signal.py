@@ -165,7 +165,15 @@ class SignalRepository(BaseRepository):
         """
 
         cursor = self.execute(
-            sql, (symbol, timeframe, signal_name, timestamp, exchange, json.dumps(data))
+            sql,
+            (
+                symbol,
+                timeframe,
+                signal_name,
+                timestamp,
+                exchange,
+                json.dumps(data, ensure_ascii=False),
+            ),
         )
         return cursor.lastrowid
 
