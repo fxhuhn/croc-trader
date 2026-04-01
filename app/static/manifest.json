@@ -2,7 +2,7 @@
   "name": "Croc Trader",
   "short_name": "Trader",
   "description": "Croc Trader Dashboard",
-  "start_url": "/",
+  "start_url": "screener",
   "display": "standalone",
   "background_color": "#f8fafc",
   "theme_color": "#f8fafc",
