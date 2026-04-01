@@ -115,6 +115,8 @@ class TradeEventType(StrEnum):
 class EntryReason(StrEnum):
     GAP_UP = "GAP UP (Stop)"
     BREAKOUT = "BREAKOUT (Stop)"
+    GAP_DOWN = "GAP DOWN (Stop)"
+    BREAKDOWN = "BREAKDOWN (Stop)"
 
 
 class TargetColumn(StrEnum):

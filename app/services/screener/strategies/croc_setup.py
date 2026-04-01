@@ -279,7 +279,10 @@ class CrocSetupStrategy(BaseStrategy):
             ) * 100
 
     def _find_best_match(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        signal_name = str(row.get("signal", ""))
+        raw_signal = row.get("signal")
+        signal_name = str(raw_signal).strip() if raw_signal is not None else ""
+        if signal_name.lower() == "none":
+            signal_name = ""
 
         candidates = []
         for rule in self.ranking_rules:
@@ -291,10 +294,21 @@ class CrocSetupStrategy(BaseStrategy):
                 else rule_signal.strip()
             )
 
-            if (
-                base_rule_signal == signal_name
-                or base_rule_signal == signal_name.split(" (")[0].strip()
-            ):
+            is_string_match = bool(
+                signal_name
+                and (
+                    base_rule_signal == signal_name
+                    or base_rule_signal == signal_name.split(" (")[0].strip()
+                )
+            )
+
+            signal_json_key = base_rule_signal.lower()
+            signal_flag_value = str(row.get(signal_json_key, "")).lower().strip()
+            is_json_flag_active = signal_flag_value in ("true", "1", "yes", "on", "1.0")
+
+            if is_string_match or is_json_flag_active:
+                candidates.append(rule)
+            elif not signal_name and signal_json_key not in row:
                 candidates.append(rule)
 
         best_match = None
@@ -382,6 +396,7 @@ class CrocSetupStrategy(BaseStrategy):
             "tp1": targets["tp1"],
             "tp3": targets["tp3"],
             "indices": internal_data["indices"],
+            "direction": internal_data.get("direction", "long"),
         }
 
         self.trade_repository.create_trade(
@@ -405,8 +420,17 @@ class CrocSetupStrategy(BaseStrategy):
         if indices == "-" or prices.risk_range <= 0:
             return None
 
-        entry = prices.high
-        stop = prices.high - prices.risk_range
+        direction = str(match.get("direction", "long")).lower().strip()
+        if direction not in ("long", "short"):
+            direction = "long"
+
+        if direction == "short":
+            entry = prices.low
+            stop = prices.low + prices.risk_range
+        else:
+            entry = prices.high
+            stop = prices.high - prices.risk_range
+
         exit_name = str(match.get("Exit", "unknown")).lower().strip()
 
         # Strict Strategy Mapping
@@ -422,11 +446,18 @@ class CrocSetupStrategy(BaseStrategy):
             return None
 
         # Target Logic
-        targets = self._calc_targets(entry, prices.risk_range, exit_name)
+        targets = self._calc_targets(entry, prices.risk_range, exit_name, direction)
+
+        raw_signal = row.get("signal")
+        displayed_signal = (
+            str(raw_signal)
+            if raw_signal and str(raw_signal).lower() != "none"
+            else str(match.get("Signal", "-"))
+        )
 
         return {
             "Symbol": symbol,
-            "Signal": str(row.get("signal", "-")),
+            "Signal": displayed_signal,
             "Score": round(float(match.get("SQN", match.get("Score", 0))), 2),
             "Entry": round(entry, 2),
             "Stop": round(stop, 2),
@@ -436,27 +467,30 @@ class CrocSetupStrategy(BaseStrategy):
                 "strategy_enum": strategy_enum,
                 "targets": targets,
                 "indices": indices,
+                "direction": direction,
             },
         }
 
     def _calc_targets(
-        self, entry: float, risk: float, exit_name: str
+        self, entry: float, risk: float, exit_name: str, direction: str = "long"
     ) -> dict[str, float]:
         target_prices = {"tp1": 0.0, "tp3": 0.0, "main": 0.0}
 
+        risk_multiplier = 1 if direction == "long" else -1
+
         if "split" in exit_name:
-            target_prices["tp1"] = round(entry + risk, 2)
-            target_prices["tp3"] = round(entry + (3 * risk), 2)
+            target_prices["tp1"] = round(entry + (risk * risk_multiplier), 2)
+            target_prices["tp3"] = round(entry + (3 * risk * risk_multiplier), 2)
             target_prices["main"] = target_prices["tp3"]
         elif "tp3" in exit_name and "hold" in exit_name:
-            target_prices["tp3"] = round(entry + (3 * risk), 2)
+            target_prices["tp3"] = round(entry + (3 * risk * risk_multiplier), 2)
             target_prices["main"] = target_prices["tp3"]
         elif "tp1" in exit_name and "hold" in exit_name:
-            target_prices["tp1"] = round(entry + risk, 2)
+            target_prices["tp1"] = round(entry + (risk * risk_multiplier), 2)
             target_prices["main"] = target_prices["tp1"]
         else:
             # Fallback
-            target_prices["tp1"] = round(entry + risk, 2)
+            target_prices["tp1"] = round(entry + (risk * risk_multiplier), 2)
             target_prices["main"] = target_prices["tp1"]
 
         return target_prices

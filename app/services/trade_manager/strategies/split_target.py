@@ -110,14 +110,25 @@ class SplitTargetStrategy(BaseTradeStrategy):
 
         # 3. Entry Logic
         filled, fill_price, reason = False, 0.0, ""
+        direction = str(self._get_context(trade).get("direction", "long")).lower()
 
-        if open_price >= entry_price:
-            filled, fill_price, reason = True, open_price, EntryReason.GAP_UP
-        elif high_price >= entry_price:
-            filled, fill_price, reason = True, entry_price, EntryReason.BREAKOUT
+        is_stop_hit = False
+        if direction == "long":
+            if open_price >= entry_price:
+                filled, fill_price, reason = True, open_price, EntryReason.GAP_UP
+            elif high_price >= entry_price:
+                filled, fill_price, reason = True, entry_price, EntryReason.BREAKOUT
 
-        # 4. Stop Loss / Invalidation
-        is_stop_hit = stop_loss > 0 and low_price <= stop_loss
+            # Stop Loss Invalidation
+            is_stop_hit = stop_loss > 0 and low_price <= stop_loss
+        else:
+            if open_price <= entry_price:
+                filled, fill_price, reason = True, open_price, EntryReason.GAP_DOWN
+            elif low_price <= entry_price:
+                filled, fill_price, reason = True, entry_price, EntryReason.BREAKDOWN
+
+            # Stop Loss Invalidation
+            is_stop_hit = stop_loss > 0 and high_price >= stop_loss
 
         if filled:
             if is_stop_hit:
@@ -192,18 +203,32 @@ class SplitTargetStrategy(BaseTradeStrategy):
     ) -> str | None:
         """Checks and executes Stop Loss logic."""
         stop_loss = float(trade.get("current_stop_loss") or 0.0)
+        if stop_loss <= 0:
+            return None
+
         low_price = float(candle["low"])
+        high_price = float(candle["high"])
         open_price = float(candle["open"])
         date_string = str(candle["date"])
 
-        if stop_loss > 0 and low_price <= stop_loss:
+        direction = str(self._get_context(trade).get("direction", "long")).lower()
+
+        if direction == "long" and low_price <= stop_loss:
             exit_price = stop_loss
             if open_price < stop_loss:
-                exit_price = open_price  # Gap down
-
+                exit_price = open_price  # Gap down benefit
             return self._close_trade(
                 trade, repository, exit_price, ExitReason.STOP_LOSS, date_string
             )
+
+        if direction == "short" and high_price >= stop_loss:
+            exit_price = stop_loss
+            if open_price > stop_loss:
+                exit_price = open_price  # Gap up downside
+            return self._close_trade(
+                trade, repository, exit_price, ExitReason.STOP_LOSS, date_string
+            )
+
         return None
 
     def _check_targets(
@@ -215,17 +240,27 @@ class SplitTargetStrategy(BaseTradeStrategy):
     ) -> str | None:
         """Evaluates Take Profit levels (TP3 then TP1)."""
         high_price = float(candle["high"])
+        low_price = float(candle["low"])
         open_price = float(candle["open"])
         date_string = str(candle["date"])
 
         take_profit_3 = float(context.get("take_profit_3") or context.get("tp3") or 0.0)
+        direction = str(context.get("direction", "long")).lower()
 
         # Check Final Target (TP3) - GAP OVER FIX
-        if take_profit_3 > 0 and high_price >= take_profit_3:
-            exit_price = take_profit_3
+        is_tp3_hit = False
+        exit_price = take_profit_3
+
+        if direction == "long" and take_profit_3 > 0 and high_price >= take_profit_3:
+            is_tp3_hit = True
             if open_price > take_profit_3:
                 exit_price = open_price  # Gap up benefit
+        elif direction == "short" and take_profit_3 > 0 and low_price <= take_profit_3:
+            is_tp3_hit = True
+            if open_price < take_profit_3:
+                exit_price = open_price  # Gap down benefit
 
+        if is_tp3_hit:
             return self._close_trade(
                 trade, repository, exit_price, ExitReason.TARGET_HIT, date_string
             )
@@ -234,11 +269,17 @@ class SplitTargetStrategy(BaseTradeStrategy):
         is_phase_2 = bool(context.get("is_phase_2", False))
         take_profit_1 = float(context.get("take_profit_1") or context.get("tp1") or 0.0)
 
+        is_tp1_hit = False
         if not is_phase_2 and take_profit_1 > 0:
-            if high_price >= take_profit_1:
-                return self._execute_partial_take_profit(
-                    trade, repository, candle, take_profit_1, context
-                )
+            if direction == "long" and high_price >= take_profit_1:
+                is_tp1_hit = True
+            elif direction == "short" and low_price <= take_profit_1:
+                is_tp1_hit = True
+
+        if is_tp1_hit:
+            return self._execute_partial_take_profit(
+                trade, repository, candle, take_profit_1, context
+            )
 
         return None
 
@@ -252,9 +293,12 @@ class SplitTargetStrategy(BaseTradeStrategy):
     ) -> str:
         """Executes the partial sell logic for TP1."""
         open_price = float(candle["open"])
+        direction = str(context.get("direction", "long")).lower()
 
         exit_price = exit_price_limit
-        if open_price > exit_price:
+        if direction == "long" and open_price > exit_price:
+            exit_price = open_price
+        elif direction == "short" and open_price < exit_price:
             exit_price = open_price
 
         current_size = float(trade.get("current_size") or 0.0)
@@ -269,7 +313,11 @@ class SplitTargetStrategy(BaseTradeStrategy):
             )
 
         entry_price = float(trade.get("entry_price") or 0.0)
-        profit_and_loss_chunk = (exit_price - entry_price) * quantity_to_sell
+
+        if direction == "short":
+            profit_and_loss_chunk = (entry_price - exit_price) * quantity_to_sell
+        else:
+            profit_and_loss_chunk = (exit_price - entry_price) * quantity_to_sell
 
         existing_pnl = float(trade.get("realized_pnl") or 0.0)
         new_total_pnl = existing_pnl + profit_and_loss_chunk
@@ -344,9 +392,13 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if quantity <= 0:
             return None
 
+        direction = str(context.get("direction", "long")).lower()
+        entry_action = "SELL" if direction == "short" else "BUY"
+        exit_action = "BUY" if direction == "short" else "SELL"
+
         # 2. Entry Leg
         entry_leg = OrderLeg(
-            action="BUY",
+            action=entry_action,
             type="STP",
             price=entry_price,
             quantity=quantity,
@@ -359,7 +411,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if stop_loss > 0:
             exits.append(
                 OrderLeg(
-                    action="SELL",
+                    action=exit_action,
                     type="STP",
                     price=stop_loss,
                     quantity=quantity,
@@ -373,7 +425,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
             if quantity_half > 0:
                 exits.append(
                     OrderLeg(
-                        action="SELL",
+                        action=exit_action,
                         type="LMT",
                         price=take_profit_1,
                         quantity=quantity_half,
@@ -383,11 +435,11 @@ class SplitTargetStrategy(BaseTradeStrategy):
 
         # 5. Exit 3: TP3 (Remaining)
         if take_profit_3 > 0:
-            quantity_rem = quantity - int(quantity / 2)
+            quantity_rem = quantity - quantity_half
             if quantity_rem > 0:
                 exits.append(
                     OrderLeg(
-                        action="SELL",
+                        action=exit_action,
                         type="LMT",
                         price=take_profit_3,
                         quantity=quantity_rem,
