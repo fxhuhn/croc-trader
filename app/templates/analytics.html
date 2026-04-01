@@ -16,6 +16,9 @@
 <!-- Top-Navigation -->
 {{ render_header("Strategy", "analytics", show_switcher=False) }}
 
+{% set strategy_colors = {'Croc Setup': 'bg-emerald-500', 'Dip Buyer': 'bg-indigo-500', 'Turnover': 'bg-amber-500', 'Two Percent': 'bg-purple-500', 'NDX Momentum': 'bg-rose-500'} %}
+{% set strategy_hex_colors = {'Croc Setup': '#10b981', 'Dip Buyer': '#6366f1', 'Turnover': '#f59e0b', 'Two Percent': '#a855f7', 'NDX Momentum': '#f43f5e'} %}
+
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
@@ -28,11 +31,11 @@
         {{ render_kpi_card("Net PnL", "{:+,.2f} $".format(pnl), "trending-down", "text-white", "bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30", "text-rose-100/80", "bg-white/20", "text-white") }}
         {% endif %}
         
-        {% set win_rate_val = "{:.1%}".format(summary.win_rate | default(0)) %}
-        {{ render_kpi_card("Avg Win Rate", win_rate_val, "target") }}
+        {% set win_rate_value = "{:.1%}".format(summary.win_rate | default(0)) %}
+        {{ render_kpi_card("Avg Win Rate", win_rate_value, "target") }}
         
-        {% set dd_val = "{:.1%}".format(summary.max_drawdown | default(0)) %}
-        {{ render_kpi_card("Max Drawdown", dd_val, "alert-triangle", "text-rose-500") }}
+        {% set drawdown_value = "{:.1%}".format(summary.max_drawdown | default(0)) %}
+        {{ render_kpi_card("Max Drawdown", drawdown_value, "alert-triangle", "text-rose-500") }}
         
         {{ render_kpi_card("Total Trades", summary.total_trades | default(0), "layers") }}
     </section>
@@ -57,11 +60,10 @@
                 <div class="w-2.5 h-2.5 rounded-sm bg-slate-400"></div>
                 <span class="text-xs text-slate-700 font-medium">Portfolio</span>
             </div>
-            {% set strat_colors = {'Croc Setup': 'bg-emerald-500', 'Dip Buyer': 'bg-indigo-500', 'Turnover': 'bg-amber-500', 'Two Percent': 'bg-purple-500', 'NDX Momentum': 'bg-rose-500'} %}
-            {% for strat in strategies %}
+            {% for strategy in strategies %}
             <div class="flex items-center gap-1.5">
-                <div class="w-2.5 h-2.5 rounded-sm {{ strat_colors.get(strat.name, 'bg-slate-500') }}"></div>
-                <span class="text-xs text-slate-500">{{ strat.name }}</span>
+                <div class="w-2.5 h-2.5 rounded-sm {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
+                <span class="text-xs text-slate-500">{{ strategy.name }}</span>
             </div>
             {% endfor %}
         </div>
@@ -75,28 +77,27 @@
         </h2>
         <div class="bg-transparent md:bg-white md:rounded-3xl md:shadow-sm border-0 md:border border-slate-200 overflow-hidden">
             <div class="flex flex-col gap-4 md:gap-0 md:divide-y md:divide-slate-100">
-                {% set strat_colors = {'Croc Setup': 'bg-emerald-500', 'Dip Buyer': 'bg-indigo-500', 'Turnover': 'bg-amber-500', 'Two Percent': 'bg-purple-500', 'NDX Momentum': 'bg-rose-500'} %}
-                {% for strat in strategies %}
+                {% for strategy in strategies %}
                 <div class="bg-white md:bg-transparent border border-slate-200 md:border-none rounded-2xl md:rounded-none shadow-sm md:shadow-none transition-colors md:hover:bg-slate-50/50 flex flex-col">
                     <!-- Accordion Header -->
                 <div class="flex justify-between items-center px-4 py-3 md:px-6 md:py-4 cursor-pointer active:bg-slate-50 transition-colors"
                      onclick="toggleTradeCard(this)">
                     <div class="flex items-center gap-3 min-w-0">
-                        <div class="w-1.5 h-6 rounded-full {{ strat_colors.get(strat.name, 'bg-slate-500') }} shrink-0"></div>
+                        <div class="w-1.5 h-6 rounded-full {{ strategy_colors.get(strategy.name, 'bg-slate-500') }} shrink-0"></div>
                         <div class="flex flex-col min-w-0">
-                            <span class="text-sm md:text-lg font-bold text-slate-900 leading-tight truncate">{{ strat.name }}</span>
-                            <span class="text-xs text-slate-500 font-medium whitespace-nowrap">{{ strat.trades_count }} Trades</span>
+                            <span class="text-sm md:text-lg font-bold text-slate-900 leading-tight truncate">{{ strategy.name }}</span>
+                            <span class="text-xs text-slate-500 font-medium whitespace-nowrap">{{ strategy.trades_count }} Trades</span>
                         </div>
                     </div>
                     <div class="flex items-center gap-3 shrink-0 ml-2">
                         <div class="flex flex-col items-end gap-1">
                             <!-- Realized PnL -->
-                            <span class="text-base md:text-xl font-black leading-none {{ 'text-emerald-500' if strat.pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
-                                {{ "{:+,.2f} $".format(strat.pnl) }}
+                            <span class="text-base md:text-xl font-black leading-none {{ 'text-emerald-500' if strategy.pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
+                                {{ "{:+,.2f} $".format(strategy.pnl) }}
                             </span>
                             
                             <!-- Open PnL -->
-                            {% set open_pnl = strat.open_pnl %}
+                            {% set open_pnl = strategy.open_pnl %}
                             {% if open_pnl and open_pnl > 0 %}
                             <div class="flex items-center gap-1 mt-1">
                                 <span class="relative flex h-2 w-2 shrink-0">
@@ -131,24 +132,24 @@
                         <div class="flex flex-col">
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Trades</span>
-                                <span class="font-bold text-slate-800">{{ strat.metrics.trades }}</span>
+                                <span class="font-bold text-slate-800">{{ strategy.metrics.trades }}</span>
                             </div>
                             <div class="flex justify-between py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Win / Loss</span>
                                 <div class="flex items-baseline gap-1">
-                                    <span class="font-bold text-emerald-600">{{ strat.metrics.win_count }}W</span>
+                                    <span class="font-bold text-emerald-600">{{ strategy.metrics.win_count }}W</span>
                                     <span class="text-slate-300 mx-0.5">—</span>
-                                    <span class="font-bold text-rose-600">{{ strat.metrics.loss_count }}L</span>
+                                    <span class="font-bold text-rose-600">{{ strategy.metrics.loss_count }}L</span>
                                 </div>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Profit Factor</span>
-                                <span class="font-bold text-slate-800">{{ "{:.2f}".format(strat.metrics.profit_factor)
+                                <span class="font-bold text-slate-800">{{ "{:.2f}".format(strategy.metrics.profit_factor)
                                     }}</span>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100 md:border-none">
                                 <span class="text-slate-500 font-medium">RoR</span>
-                                <span class="font-bold text-slate-800">{{ strat.metrics.ror }}</span>
+                                <span class="font-bold text-slate-800">{{ strategy.metrics.ror }}</span>
                             </div>
                         </div>
 
@@ -156,24 +157,24 @@
                         <div class="flex flex-col">
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Avg Risk</span>
-                                <span class="font-bold text-slate-800">{{ strat.metrics.avg_risk }}</span>
+                                <span class="font-bold text-slate-800">{{ strategy.metrics.avg_risk }}</span>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Avg W/L</span>
                                 <div class="flex items-baseline gap-1 font-bold">
-                                    <span class="text-emerald-500">+{{ "{:,.0f}$".format(strat.metrics.avg_win)
+                                    <span class="text-emerald-500">+{{ "{:,.0f}$".format(strategy.metrics.avg_win)
                                         }}</span>
                                     <span class="text-slate-300 mx-0.5">/</span>
-                                    <span class="text-rose-500">{{ "{:,.0f}$".format(strat.metrics.avg_loss) }}</span>
+                                    <span class="text-rose-500">{{ "{:,.0f}$".format(strategy.metrics.avg_loss) }}</span>
                                 </div>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Expectancy</span>
-                                <span class="font-bold text-slate-800">{{ strat.metrics.expectancy }}</span>
+                                <span class="font-bold text-slate-800">{{ strategy.metrics.expectancy }}</span>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-none">
                                 <span class="text-slate-500 font-medium">Sharpe</span>
-                                <span class="font-bold text-slate-800">{{ "{:.2f}".format(strat.metrics.sharpe)
+                                <span class="font-bold text-slate-800">{{ "{:.2f}".format(strategy.metrics.sharpe)
                                     }}</span>
                             </div>
                         </div>
@@ -205,17 +206,18 @@
 
     // Plotly Chart Generation
     document.addEventListener('DOMContentLoaded', function () {
-        const trendData = {{ weekly_trend | tojson | safe }};
-        const strategies = {{ strategies | tojson | safe }};
+        const weeklyTrendData = {{ weekly_trend | tojson | safe }};
+        const strategiesMetadata = {{ strategies | tojson | safe }};
+        const strategyHexColors = {{ strategy_hex_colors | tojson | safe }};
 
-    if (!trendData || !trendData.dates) return;
+    if (!weeklyTrendData || !weeklyTrendData.dates) return;
 
     const traces = [];
 
     // Portfolio Line (Thick, Light Slate)
     traces.push({
-        x: trendData.dates,
-        y: trendData.aggregate,
+        x: weeklyTrendData.dates,
+        y: weeklyTrendData.aggregate,
         name: 'Portfolio',
         type: 'scatter',
         mode: 'lines',
@@ -231,14 +233,13 @@
     });
 
     // Strategy Lines
-    for (const stratName in trendData.strategies) {
-        const stratMeta = strategies.find(s => s.name === stratName);
-        const color = stratMeta ? stratMeta.color : '#94a3b8';
+    for (const strategyName in weeklyTrendData.strategies) {
+        const color = strategyHexColors[strategyName] || '#94a3b8';
 
         traces.push({
-            x: trendData.dates,
-            y: trendData.strategies[stratName],
-            name: stratName,
+            x: weeklyTrendData.dates,
+            y: weeklyTrendData.strategies[strategyName],
+            name: strategyName,
             type: 'scatter',
             mode: 'lines',
             line: {
