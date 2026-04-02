@@ -172,7 +172,7 @@ class TradeRepository(BaseRepository):
                     f"Value for {name} must be a finite non-negative number"
                 )
 
-        context_json = json.dumps(context, default=str)
+        context_json = json.dumps(context, default=str, ensure_ascii=False)
         quantity = int(size)
 
         # 1. Datum extrahieren für den Eindeutigkeits-Check

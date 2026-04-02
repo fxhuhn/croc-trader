@@ -267,7 +267,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                     fill_price,
                     "LIMIT",
                     current_date,
-                    extra_updates={"signal_context": json.dumps(context, default=str)},
+                    extra_updates={"signal_context": json.dumps(context, default=str, ensure_ascii=False)},
                 )
             else:
                 # Day 1 finished and price was never below limit -> Expire immediately!
@@ -339,7 +339,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         context["last_processed_date"] = date_string
         repository.update_trade(
             trade["id"],
-            {"signal_context": json.dumps(context, default=str)},
+            {"signal_context": json.dumps(context, default=str, ensure_ascii=False)},
             reason=f"Update Green Candle Count: {green_candle_count}",
         )
 

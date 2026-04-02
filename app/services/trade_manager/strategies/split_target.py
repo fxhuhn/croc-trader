@@ -334,7 +334,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 "current_size": quantity_remaining,
                 "current_stop_loss": new_stop_loss,
                 "realized_pnl": new_total_pnl,
-                "signal_context": json.dumps(context),
+                "signal_context": json.dumps(context, default=str, ensure_ascii=False),
             },
             reason=(
                 f"TP1 HIT @ {exit_price:.2f}. "
