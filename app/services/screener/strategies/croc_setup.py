@@ -18,43 +18,51 @@ from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
-# Positive list of technical fields used for matching
-MATCHING_CONDITION_KEYS: Final[set[str]] = {
-    "status",
-    "kerze",
-    "wolke",
-    "trend",
-    "setter",
-    "welle",
-    "deluxe",
-    "rsi_zone",
-    "sma_20_cluster",
-    "sma_200_cluster",
-    "rsi",
-    "dist_sma_20",
-    "dist_sma_200",
-}
+@dataclass(frozen=True)
+class TechnicalIndicatorConfig:
+    """Explicitly defines the capabilities of the technical indicator matching engine."""
+    
+    WHITELIST: frozenset[str] = frozenset([
+        "deluxe",
+        "dist_sma_20",
+        "dist_sma_200",
+        "kerze",
+        "long_blau_status",
+        "rsi",
+        "rsi_zone",
+        "setter",
+        "short_blau_status",
+        "sma_20_cluster",
+        "sma_200_cluster",
+        "status",
+        "trend",
+        "welle",
+        "wolke",
+    ])
 
-# Optimized Condition Lookup
-CONDITION_HANDLERS: dict[str, Callable[[float], bool]] = {
-    "< -10%": lambda v: v < -10.0,
-    "-10 to -3%": lambda v: -10.0 <= v <= -3.0,
-    "-3 to 0%": lambda v: -3.0 <= v <= 0.0,
-    "0 to 3%": lambda v: 0.0 <= v <= 3.0,
-    "3 to 10%": lambda v: 3.0 <= v <= 10.0,
-    "> 10%": lambda v: v > 10.0,
-    "oversold": lambda v: v < 30.0,
-    "weak": lambda v: 30.0 <= v < 45.0,
-    "neutral": lambda v: 45.0 <= v <= 55.0,
-    "strong": lambda v: 55.0 < v <= 70.0,
-    "overbought": lambda v: v > 70.0,
-    # Map explicit labels to same logic to ensure coverage
-    "oversold (<30)": lambda v: v < 30.0,
-    "weak (30-45)": lambda v: 30.0 <= v < 45.0,
-    "neutral (45-55)": lambda v: 45.0 <= v <= 55.0,
-    "strong (55-70)": lambda v: 55.0 < v <= 70.0,
-    "overbought (>70)": lambda v: v > 70.0,
-}
+    @staticmethod
+    def get_handler(condition_str: str) -> Callable[[float], bool] | None:
+        """Returns the appropriate boolean evaluation logic for a string condition."""
+        handlers: dict[str, Callable[[float], bool]] = {
+            "< -10%": lambda v: v < -10.0,
+            "-10 to -3%": lambda v: -10.0 <= v <= -3.0,
+            "-3 to 0%": lambda v: -3.0 <= v <= 0.0,
+            "0 to 3%": lambda v: 0.0 <= v <= 3.0,
+            "3 to 10%": lambda v: 3.0 <= v <= 10.0,
+            "> 10%": lambda v: v > 10.0,
+            "oversold": lambda v: v < 30.0,
+            "weak": lambda v: 30.0 <= v < 45.0,
+            "neutral": lambda v: 45.0 <= v <= 55.0,
+            "strong": lambda v: 55.0 < v <= 70.0,
+            "overbought": lambda v: v > 70.0,
+            "oversold (<30)": lambda v: v < 30.0,
+            "weak (30-45)": lambda v: 30.0 <= v < 45.0,
+            "neutral (45-55)": lambda v: 45.0 <= v <= 55.0,
+            "strong (55-70)": lambda v: 55.0 < v <= 70.0,
+            "overbought (>70)": lambda v: v > 70.0,
+        }
+        return handlers.get(condition_str)
+
 
 
 @dataclass(frozen=True)
@@ -111,6 +119,22 @@ class CrocSetupStrategy(BaseStrategy):
             # Ensure we return a list regardless of YAML structure
             rules = data if isinstance(data, list) else data.get("ranking_2026", [])
             logger.info(f"✅ Loaded {len(rules)} rules")
+            
+            # --- START LOGGING SKIPPED/META KEYS ---
+            all_keys = set()
+            trigger_flags = set()
+            for rule in rules:
+                for k in rule.keys():
+                    all_keys.add(k)
+                rule_signal = str(rule.get("Signal", ""))
+                base_rule_signal = rule_signal.split(" (")[0].strip() if " (" in rule_signal else rule_signal.strip()
+                for sig in base_rule_signal.split("+"):
+                    trigger_flags.add(sig.strip().lower())
+            
+            meta_keys = [k for k in all_keys if k.lower() not in TechnicalIndicatorConfig.WHITELIST and k.lower() not in trigger_flags and k.lower() != "signal"]
+            if meta_keys:
+                logger.info(f"⏭️ Skipped/Meta Keys identified in YAML (ignored by matcher): {sorted(meta_keys)}")
+            
             return rules
         except Exception as e:
             logger.error(f"Error loading config: {e}")
@@ -302,13 +326,17 @@ class CrocSetupStrategy(BaseStrategy):
                 )
             )
 
-            signal_json_key = base_rule_signal.lower()
-            signal_flag_value = str(row.get(signal_json_key, "")).lower().strip()
-            is_json_flag_active = signal_flag_value in ("true", "1", "yes", "on", "1.0")
+            # Handle combined signals safely, e.g. "bear_1 + bear_rot"
+            base_signals = [s.strip().lower() for s in base_rule_signal.split("+")]
+            
+            is_json_flag_active = bool(base_signals)
+            for sig in base_signals:
+                sig_val = str(row.get(sig, "")).lower().strip()
+                if sig_val not in ("true", "1", "yes", "on", "1.0"):
+                    is_json_flag_active = False
+                    break
 
             if is_string_match or is_json_flag_active:
-                candidates.append(rule)
-            elif not signal_name and signal_json_key not in row:
                 candidates.append(rule)
 
         best_match = None
@@ -320,7 +348,7 @@ class CrocSetupStrategy(BaseStrategy):
                 # Prefer SQN over Score if available
                 score = float(rule.get("SQN", rule.get("Score", 0.0)))
                 rule_length = len(
-                    [k for k in rule.keys() if k.lower() in MATCHING_CONDITION_KEYS]
+                    [k for k in rule.keys() if k.lower() in TechnicalIndicatorConfig.WHITELIST]
                 )
 
                 # If score is better, or if score is equal but rule is more specific (more conditions)
@@ -337,7 +365,7 @@ class CrocSetupStrategy(BaseStrategy):
         for key, expected_val in rule.items():
             # Use Whitelist: skip any key that is not a technical condition
             db_key = key.lower()
-            if db_key not in MATCHING_CONDITION_KEYS:
+            if db_key not in TechnicalIndicatorConfig.WHITELIST:
                 continue
 
             # Map YAML key to DB key
@@ -367,7 +395,7 @@ class CrocSetupStrategy(BaseStrategy):
             if cond_str and cond_str[0].isdigit() and ". " in cond_str:
                 cond_str = cond_str.split(". ", 1)[1].strip()
 
-            handler = CONDITION_HANDLERS.get(cond_str)
+            handler = TechnicalIndicatorConfig.get_handler(cond_str)
             if handler:
                 return handler(val)
         except (ValueError, TypeError):
