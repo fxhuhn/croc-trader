@@ -171,8 +171,14 @@ class TradeViewService:
         progress = 0.0
 
         if trade.get("status") == TradeStatus.ACTIVE and entry_price > 0:
-            unrealized_pnl = (current_price - entry_price) * initial_size
-            pnl_pct = ((current_price - entry_price) / entry_price) * 100
+            direction = str(context.get("direction", "long")).lower()
+            
+            if direction == "short":
+                unrealized_pnl = (entry_price - current_price) * initial_size
+                pnl_pct = ((entry_price - current_price) / entry_price) * 100
+            else:
+                unrealized_pnl = (current_price - entry_price) * initial_size
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
 
             stop_loss = float(trade.get("current_stop_loss") or 0.0)
             target_price = 0.0
@@ -203,11 +209,20 @@ class TradeViewService:
                     is_critical = True
 
         elif trade.get("status") == TradeStatus.CLOSED and entry_price > 0:
+            direction = str(context.get("direction", "long")).lower()
+            
             if realized_pnl == 0.0 and exit_price > 0:
-                realized_pnl = (exit_price - entry_price) * initial_size
+                if direction == "short":
+                    realized_pnl = (entry_price - exit_price) * initial_size
+                else:
+                    realized_pnl = (exit_price - entry_price) * initial_size
 
             entry_for_pct = entry_price
-            price_diff = exit_price - entry_price
+            if direction == "short":
+                price_diff = entry_price - exit_price
+            else:
+                price_diff = exit_price - entry_price
+                
             pnl_pct = (price_diff / entry_for_pct) * 100
 
         # Version extraction
