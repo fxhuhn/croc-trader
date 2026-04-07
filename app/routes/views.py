@@ -450,8 +450,23 @@ def view_analytics_dashboard() -> str:
             else 0.0
         )
 
-        # Mocking R Notation for now as current trade structure might not have 'Risk' field directly
-        # In a real scenario, we'd use (entry - stop) * size.
+        # Calculate Risk and RoR
+        trade_risks_dollars = []
+        for _, trade in strat_df.iterrows():
+            entry = float(trade.get("entry_price") or 0.0)
+            stop = float(trade.get("stop_loss") or 0.0)
+            size = float(trade.get("initial_size") or 0.0)
+            
+            if entry > 0 and stop > 0 and size > 0:
+                risk = abs(entry - stop) * size
+                if risk > 0:
+                    trade_risks_dollars.append(risk)
+                    
+        avg_risk_dollar = sum(trade_risks_dollars) / len(trade_risks_dollars) if trade_risks_dollars else 100.0
+        avg_risk_pct = (avg_risk_dollar / initial_capital) * 100
+        
+        ror_pct = (float(strat_df["realized_pnl"].sum()) / initial_capital) * 100 if not strat_df.empty else 0.0
+        expectancy_r = strat_expectancy / avg_risk_dollar if avg_risk_dollar > 0 else 0.0
 
         strategies_data.append(
             {
@@ -466,7 +481,7 @@ def view_analytics_dashboard() -> str:
                 "metrics": {
                     "trades": len(strat_df),
                     "active_positions": len(strat_active),
-                    "avg_risk": "1.0%",  # Static example or calculate if possible
+                    "avg_risk": f"{avg_risk_pct:.2f}%",
                     "win_count": len(winning_trades),
                     "loss_count": len(losing_trades),
                     "avg_win": float(winning_trades["realized_pnl"].mean())
@@ -480,8 +495,8 @@ def view_analytics_dashboard() -> str:
                     )
                     if not strat_df.empty
                     else 0.0,
-                    "expectancy": f"{strat_expectancy / 100:.2f} R",  # Heuristic R
-                    "ror": "0.0%",  # Placeholder
+                    "expectancy": f"{expectancy_r:.2f} R",
+                    "ror": f"{ror_pct:.2f}%",
                     "sharpe": metrics.calculate_sharpe_ratio(
                         strat_df["realized_pnl"], initial_capital
                     )
