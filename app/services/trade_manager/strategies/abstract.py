@@ -178,10 +178,10 @@ class BaseTradeStrategy(ABC):
         Returns:
             int: Number of shares.
         """
-        if stop_loss <= 0 or fill_price <= stop_loss:
+        if stop_loss <= 0 or fill_price == stop_loss:
             logger.warning("Invalid SL or Fill Price for risk calculation.")
             return 0
-        risk_per_share = fill_price - stop_loss
+        risk_per_share = abs(fill_price - stop_loss)
         return int(risk_amount / risk_per_share)
 
     def _execute_activation(
@@ -213,7 +213,7 @@ class BaseTradeStrategy(ABC):
             stop_loss = float(trade.get("current_stop_loss") or 0.0)
 
             # 1. Try Risk-Based sizing (if SL exists)
-            if stop_loss > 0 and fill_price > stop_loss:
+            if stop_loss > 0 and fill_price != stop_loss:
                 risk_amount = float(
                     self._get_context_value(trade, "risk_amount")
                     or trade.get("risk_amount")
@@ -279,7 +279,7 @@ class BaseTradeStrategy(ABC):
         """
         size = float(trade.get("initial_size") or trade.get("current_size") or 0.0)
         if size <= 0:
-            if stop_loss > 0 and fill_price > stop_loss:
+            if stop_loss > 0 and fill_price != stop_loss:
                 risk_amount = float(
                     self._get_context_value(trade, "risk_amount")
                     or trade.get("risk_amount")
