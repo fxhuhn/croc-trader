@@ -220,9 +220,9 @@ class DipBuyerStrategy(BaseTradeStrategy):
             return None
 
         # 1. Quantity Calculation
-        db_size = float(trade.get("initial_size") or 0.0)
-        if db_size > 0:
-            quantity = int(db_size)
+        database_size = float(trade.get("initial_size") or 0.0)
+        if database_size > 0:
+            quantity = int(database_size)
         else:
             trade_budget = float(trade.get("budget") or budget or self.DEFAULT_BUDGET)
             quantity = int(trade_budget / entry_price)

@@ -46,9 +46,19 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
     FRIDAY_INDEX: int = 4
     """Zero-based index for Friday (pd.Timestamp.dayofweek)."""
 
-    def __init__(self, strategy_name: str | None = None):
+    def __init__(self, strategy_name: str | None = None) -> None:
+        """Initializes the strategy, optionally overriding the default name.
+
+        Instantiates the holiday checker once to avoid per-call allocation
+        on every manage_active_trade invocation.
+
+        Args:
+            strategy_name: Optional override for the strategy registry key.
+        """
+        super().__init__()
         if strategy_name:
             self.name = strategy_name
+        self._holiday_checker = MarketHolidayChecker()
 
     def _is_green_candle(self, open_price: float, close_price: float) -> bool:
         """Determines if a candle is green (Close > Open).
@@ -101,9 +111,11 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         raw_context = trade.get("signal_context") or "{}"
         try:
             return json.loads(raw_context)
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as json_error:
             logger.error(
-                f"Failed to decode signal_context for trade {trade.get('id')}: {e}"
+                "Failed to decode signal_context for trade %s: %s",
+                trade.get("id"),
+                json_error,
             )
             return {"green_candle_count": 0}
 
@@ -249,13 +261,21 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                 if fill_price <= 0:
                     return None
 
-                # Update green candle count if the entry day itself is green
-                # Crucial bug fix: Do not inherit screener setup's green candle state.
+                # Now we DO inherit the setup's green state. If the setup day was green
+                # (which the screener passes generically), we use it to exit earlier.
                 close_price = float(candle["close"])
                 context = self._parse_turnover_context(trade)
 
-                # Use strict helper
-                count = 1 if self._is_green_candle(open_price, close_price) else 0
+                # Use strict helper to determine if entry day is green
+                entry_is_green = self._is_green_candle(open_price, close_price)
+
+                # Inherit setup's green state if the entry day is also green
+                setup_was_green = context.get("setup_candle_green", False)
+
+                if entry_is_green:
+                    count = 2 if setup_was_green else 1
+                else:
+                    count = 0
 
                 # Update context correctly
                 context["green_candle_count"] = count
@@ -267,7 +287,11 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                     fill_price,
                     "LIMIT",
                     current_date,
-                    extra_updates={"signal_context": json.dumps(context, default=str, ensure_ascii=False)},
+                    extra_updates={
+                        "signal_context": json.dumps(
+                            context, default=str, ensure_ascii=False
+                        )
+                    },
                 )
             else:
                 # Day 1 finished and price was never below limit -> Expire immediately!
@@ -346,16 +370,13 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         # 2. End of Week Time Stop (Friday or Holiday-Thursday Close)
         current_date_timestamp = pd.Timestamp(current_candle["date"])
         day_of_week = current_date_timestamp.dayofweek
-        holiday_checker = MarketHolidayChecker()
 
         is_end_of_week = False
-        if day_of_week == self.FRIDAY_INDEX:  # Friday
+        if day_of_week == self.FRIDAY_INDEX:
             is_end_of_week = True
-        elif day_of_week == self.THURSDAY_INDEX:  # Thursday
-            # If Friday is a holiday, Thursday is the end of the week
+        elif day_of_week == self.THURSDAY_INDEX:
             tomorrow = current_date_timestamp + pd.Timedelta(days=1)
-            # Use explicit date() for checker
-            if holiday_checker.is_holiday(tomorrow.date()):
+            if self._holiday_checker.is_holiday(tomorrow.date()):
                 is_end_of_week = True
 
         if is_end_of_week:

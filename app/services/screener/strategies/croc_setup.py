@@ -1,5 +1,6 @@
 import json
 import logging
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Final
@@ -107,37 +108,58 @@ class CrocSetupStrategy(BaseStrategy):
         self.exchange_symbols = ExchangeSymbol()
         self.config_path: Path = settings.get_path("ranking_yaml")
         self.ranking_rules = self._load_config()
-        logger.info(f"🐊 {self.name} initialized. Rules: {len(self.ranking_rules)}")
+        logger.info("🐊 %s initialized. Rules: %d", self.name, len(self.ranking_rules))
+
+    _MAX_CONFIG_FILE_SIZE_BYTES: Final[int] = 1_048_576  # 1 MB guard (SEC-01)
 
     def _load_config(self) -> list[dict[str, Any]]:
         if not self.config_path.exists():
-            logger.error(f"Config missing: {self.config_path}")
+            logger.error("Ranking config missing: %s", self.config_path)
             return []
+        if self.config_path.stat().st_size > self._MAX_CONFIG_FILE_SIZE_BYTES:
+            raise RuntimeError(
+                "Ranking config exceeds safe size limit — possible YAML anchor bomb: %s"
+                % self.config_path
+            )
         try:
-            with open(self.config_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            # Ensure we return a list regardless of YAML structure
+            with open(self.config_path, encoding="utf-8") as config_file:
+                data = yaml.safe_load(config_file)
             rules = data if isinstance(data, list) else data.get("ranking_2026", [])
-            logger.info(f"✅ Loaded {len(rules)} rules")
-            
-            # --- START LOGGING SKIPPED/META KEYS ---
-            all_keys = set()
-            trigger_flags = set()
+            logger.info("\u2705 Loaded %d rules from ranking config", len(rules))
+
+            all_keys: set[str] = set()
+            trigger_flags: set[str] = set()
             for rule in rules:
-                for k in rule.keys():
-                    all_keys.add(k)
+                for key in rule.keys():
+                    all_keys.add(key)
                 rule_signal = str(rule.get("Signal", ""))
-                base_rule_signal = rule_signal.split(" (")[0].strip() if " (" in rule_signal else rule_signal.strip()
-                for sig in base_rule_signal.split("+"):
-                    trigger_flags.add(sig.strip().lower())
-            
-            meta_keys = [k for k in all_keys if k.lower() not in TechnicalIndicatorConfig.WHITELIST and k.lower() not in trigger_flags and k.lower() != "signal"]
+                base_rule_signal = (
+                    rule_signal.split(" (")[0].strip()
+                    if " (" in rule_signal
+                    else rule_signal.strip()
+                )
+                for signal_part in base_rule_signal.split("+"):
+                    trigger_flags.add(signal_part.strip().lower())
+
+            meta_keys = [
+                k
+                for k in all_keys
+                if k.lower() not in TechnicalIndicatorConfig.WHITELIST
+                and k.lower() not in trigger_flags
+                and k.lower() != "signal"
+            ]
             if meta_keys:
-                logger.info(f"⏭️ Skipped/Meta Keys identified in YAML (ignored by matcher): {sorted(meta_keys)}")
-            
+                logger.info(
+                    "\u23ed\ufe0f Skipped/Meta Keys in YAML (ignored by matcher): %s",
+                    sorted(meta_keys),
+                )
             return rules
-        except Exception as e:
-            logger.error(f"Error loading config: {e}")
+        except (yaml.YAMLError, OSError) as yaml_or_io_error:
+            logger.error(
+                "Failed to load ranking config from %s: %s",
+                self.config_path,
+                yaml_or_io_error,
+            )
             return []
 
     def run(
@@ -151,8 +173,14 @@ class CrocSetupStrategy(BaseStrategy):
 
         try:
             signals = self.signal_repository.get_signals_by_date(analysis_date, days)
-        except Exception as e:
-            logger.error(f"Error loading signals: {e}")
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+            raise RuntimeError(
+                "[%s] Database unavailable during signal load: %s" % (self.name, database_error)
+            ) from database_error
+        except (ValueError, KeyError) as data_error:
+            logger.warning(
+                "[%s] Data anomaly during signal load: %s", self.name, data_error
+            )
             return 0
 
         if not signals:
@@ -166,7 +194,8 @@ class CrocSetupStrategy(BaseStrategy):
                 candidates.append(item)
 
         # 2. Sort all candidates by SQN / MaxDD Ratio (High to Low)
-        def _get_sort_score(candidate_data: dict[str, Any]) -> float:
+        def _sort_by_sqn_over_max_drawdown(candidate_data: dict[str, Any]) -> float:
+            """Pure sort key: higher SQN-to-MaxDD ratio = better risk-adjusted quality."""
             rule = candidate_data["match"]
             system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
             maximum_drawdown = float(rule.get("MaxDD", 0.0))
@@ -178,21 +207,20 @@ class CrocSetupStrategy(BaseStrategy):
 
         sorted_candidates = sorted(
             candidates,
-            key=_get_sort_score,
+            key=_sort_by_sqn_over_max_drawdown,
             reverse=True,
         )
 
         # 3. Limit to top 3 and create trades
         report_rows = []
-        for c in sorted_candidates[:3]:
-            trade = self._create_trade(c["normalized"], c["prices"], c["match"])
+        for candidate in sorted_candidates[:3]:
+            trade = self._create_trade(candidate["normalized"], candidate["prices"], candidate["match"])
             if trade:
                 report_rows.append(trade)
 
-        logger.info(f"🐊 [{self.name}] Created {len(report_rows)} trades.")
+        logger.info("🐊 [%s] Created %d trades.", self.name, len(report_rows))
 
         if self.telegram_bot and report_rows:
-            # Sort report rows by date for cleaner log
             report_rows.sort(key=lambda x: x.get("Symbol", ""))
             self._send_report(report_rows, analysis_date or "LIVE")
 
@@ -211,8 +239,16 @@ class CrocSetupStrategy(BaseStrategy):
 
         try:
             signals = self.signal_repository.get_signals_by_date(analysis_date, days)
-        except Exception as e:
-            logger.error(f"Error loading signals: {e}")
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+            raise RuntimeError(
+                "[%s] Database unavailable during signal load: %s" % (self.name, database_error)
+            ) from database_error
+        except (ValueError, KeyError) as data_error:
+            logger.warning(
+                "[%s] Data anomaly loading signals for get_all_recommendations: %s",
+                self.name,
+                data_error,
+            )
             return []
 
         if not signals:
@@ -225,8 +261,9 @@ class CrocSetupStrategy(BaseStrategy):
             if item:
                 candidates.append(item)
 
-        # 2. Sort all candidates by SQN / MaxDD Ratio (High to Low)
-        def _get_sort_score(candidate_data: dict[str, Any]) -> float:
+        # 2. Sort using the same SQN/MaxDD key used in run()
+        def _sort_by_sqn_over_max_drawdown(candidate_data: dict[str, Any]) -> float:
+            """Pure sort key: higher SQN-to-MaxDD ratio = better risk-adjusted quality."""
             rule = candidate_data["match"]
             system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
             maximum_drawdown = float(rule.get("MaxDD", 0.0))
@@ -238,7 +275,7 @@ class CrocSetupStrategy(BaseStrategy):
 
         sorted_candidates = sorted(
             candidates,
-            key=_get_sort_score,
+            key=_sort_by_sqn_over_max_drawdown,
             reverse=True,
         )
 
@@ -285,7 +322,7 @@ class CrocSetupStrategy(BaseStrategy):
             return None
 
         # 4. Enrich Data
-        self._enrich_sma(normalized, prices)
+        normalized = self._enrich_sma(normalized, prices)
 
         # 5. Match Rule
         match = self._find_best_match(normalized)
@@ -294,13 +331,16 @@ class CrocSetupStrategy(BaseStrategy):
 
         return {"normalized": normalized, "prices": prices, "match": match}
 
-    def _enrich_sma(self, row: dict[str, Any], prices: PriceData) -> None:
+    def _enrich_sma(self, row: dict[str, Any], prices: PriceData) -> dict[str, Any]:
+        """Returns a new dict enriched with SMA distance metrics (no in-place mutation)."""
+        enriched = dict(row)
         if prices.sma_20 > 0:
-            row["dist_sma_20"] = ((prices.close - prices.sma_20) / prices.sma_20) * 100
+            enriched["dist_sma_20"] = ((prices.close - prices.sma_20) / prices.sma_20) * 100
         if prices.sma_200 > 0:
-            row["dist_sma_200"] = (
+            enriched["dist_sma_200"] = (
                 (prices.close - prices.sma_200) / prices.sma_200
             ) * 100
+        return enriched
 
     def _find_best_match(self, row: dict[str, Any]) -> dict[str, Any] | None:
         raw_signal = row.get("signal")
@@ -469,7 +509,10 @@ class CrocSetupStrategy(BaseStrategy):
             strategy_enum = Strategies.HoldTarget
         else:
             logger.error(
-                f"[{self.name}] Unknown exit strategy '{exit_name}' for {symbol}. Skipping."
+                "[%s] Unknown exit strategy '%s' for %s. Skipping.",
+                self.name,
+                exit_name,
+                symbol,
             )
             return None
 

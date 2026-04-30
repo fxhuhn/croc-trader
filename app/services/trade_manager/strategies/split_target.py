@@ -2,10 +2,9 @@ import json
 import logging
 from typing import override, final
 
-
 import pandas as pd
 
-from ....types import EntryReason, ExitReason, TradeData
+from ....types import EntryReason, ExitReason, TradeData, TradeStatus
 from ....models import TradeParams, Order, OrderLeg
 from ....database.repositories.trade import TradeRepository
 from .abstract import BaseTradeStrategy
@@ -131,10 +130,30 @@ class SplitTargetStrategy(BaseTradeStrategy):
             is_stop_hit = stop_loss > 0 and high_price >= stop_loss
 
         if filled:
+            # Same Day Final Profit (TP3) Check
+            context = self._get_context(trade)
+            take_profit_3 = float(context.get("take_profit_3") or context.get("tp3") or 0.0)
+            is_tp3_hit = False
+            tp3_exit_price = take_profit_3
+
+            if direction == "long" and take_profit_3 > 0 and high_price >= take_profit_3:
+                is_tp3_hit = True
+                if open_price > take_profit_3:
+                    tp3_exit_price = open_price
+            elif direction == "short" and take_profit_3 > 0 and low_price <= take_profit_3:
+                is_tp3_hit = True
+                if open_price < take_profit_3:
+                    tp3_exit_price = open_price
+
             if is_stop_hit:
                 # Immediate Loss (Day 1 turnaround)
+                # Prioritize Stop Loss to be conservative if both are theoretically hit
                 return self._execute_immediate_loss(
                     trade, repository, fill_price, reason, stop_loss, date_string
+                )
+            elif is_tp3_hit:
+                return self._execute_immediate_target(
+                    trade, repository, fill_price, reason, tp3_exit_price, stop_loss, date_string, context
                 )
             else:
                 return self._execute_activation(
@@ -419,33 +438,34 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 )
             )
 
+        # Define half/remaining quantities unconditionally to prevent NameError
+        # when take_profit_3 is set but take_profit_1 is zero (SEC-03 fix).
+        quantity_half = int(quantity / 2) if take_profit_1 > 0 else 0
+        quantity_remaining = quantity - quantity_half
+
         # 4. Exit 2: TP1 (50%)
-        if take_profit_1 > 0:
-            quantity_half = int(quantity / 2)
-            if quantity_half > 0:
-                exits.append(
-                    OrderLeg(
-                        action=exit_action,
-                        type="LMT",
-                        price=take_profit_1,
-                        quantity=quantity_half,
-                        time_in_force="GTC",
-                    )
+        if take_profit_1 > 0 and quantity_half > 0:
+            exits.append(
+                OrderLeg(
+                    action=exit_action,
+                    type="LMT",
+                    price=take_profit_1,
+                    quantity=quantity_half,
+                    time_in_force="GTC",
                 )
+            )
 
         # 5. Exit 3: TP3 (Remaining)
-        if take_profit_3 > 0:
-            quantity_rem = quantity - quantity_half
-            if quantity_rem > 0:
-                exits.append(
-                    OrderLeg(
-                        action=exit_action,
-                        type="LMT",
-                        price=take_profit_3,
-                        quantity=quantity_rem,
-                        time_in_force="GTC",
-                    )
+        if take_profit_3 > 0 and quantity_remaining > 0:
+            exits.append(
+                OrderLeg(
+                    action=exit_action,
+                    type="LMT",
+                    price=take_profit_3,
+                    quantity=quantity_remaining,
+                    time_in_force="GTC",
                 )
+            )
 
         return Order(
             id=f"{symbol}_{self.name}",
@@ -473,6 +493,68 @@ class SplitTargetStrategy(BaseTradeStrategy):
             return json.loads(trade.get("signal_context") or "{}")
         except json.JSONDecodeError as parsing_error:
             logger.warning(
-                f"Failed to parse signal context for trade {trade.get('id')}: {parsing_error}"
+                "Failed to parse signal context for trade %s: %s",
+                trade.get("id"),
+                parsing_error,
             )
             return {}
+
+    def _execute_immediate_target(
+        self,
+        trade: TradeData,
+        repository: TradeRepository,
+        fill_price: float,
+        reason: str,
+        exit_price: float,
+        stop_loss: float,
+        date_string: str,
+        context: dict[str, object],
+    ) -> str:
+        """Handles Day 1 massive targets: entry and full target hit on same day."""
+        size = float(trade.get("initial_size") or trade.get("current_size") or 0.0)
+        if size <= 0:
+            if stop_loss > 0 and fill_price != stop_loss:
+                risk_amount = float(
+                    context.get("risk_amount")
+                    or trade.get("risk_amount")
+                    or 100.0
+                )
+                size = self._calculate_position_size(fill_price, stop_loss, risk_amount)
+
+            if size <= 0:
+                budget = float(
+                    context.get("budget")
+                    or trade.get("budget")
+                    or self.DEFAULT_BUDGET
+                )
+                if fill_price > 0:
+                    size = int(budget / fill_price)
+
+        if size <= 0:
+            return "ERROR: Zero Size"
+
+        direction = str(context.get("direction", "long")).lower()
+        if direction == "short":
+            profit_and_loss = (fill_price - exit_price) * size
+        else:
+            profit_and_loss = (exit_price - fill_price) * size
+
+        repository.update_trade(
+            trade["id"],
+            {
+                "status": TradeStatus.CLOSED,
+                "entry_date": date_string,
+                "entry_price": fill_price,
+                "initial_size": size,
+                "current_size": 0,
+                "exit_date": date_string,
+                "exit_price": exit_price,
+                "exit_reason": ExitReason.TARGET_HIT,
+                "realized_pnl": profit_and_loss,
+            },
+            reason=f"{reason} FILLED @ {fill_price:.2f} -> TARGET HIT @ {exit_price:.2f}",
+        )
+        return (
+            f"FILLED @ {fill_price:.2f} -> TARGET HIT @ {exit_price:.2f} "
+            f"(PnL: {profit_and_loss:.2f})"
+        )

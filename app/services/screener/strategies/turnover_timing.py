@@ -63,7 +63,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
-        configuration: TurnoverConfiguration = TurnoverConfiguration(),
+        configuration: TurnoverConfiguration | None = None,
     ) -> None:
         """
         Initializes the Turnover Timing strategy.
@@ -72,11 +72,12 @@ class TurnoverTimingStrategy(BaseStrategy):
             trade_repository: Repository for trade persistence.
             data_provider: Provider for market historical data.
             telegram_bot: Optional bot for reporting signals.
-            config: Configuration parameters for technical indicators.
+            configuration: Configuration parameters for technical indicators.
+                Defaults to TurnoverConfiguration() when not provided.
         """
         super().__init__(data_provider, telegram_bot)
         self.trade_repository = trade_repository
-        self.configuration = configuration
+        self.configuration = configuration or TurnoverConfiguration()
         self.holiday_checker = MarketHolidayChecker()
 
     @override

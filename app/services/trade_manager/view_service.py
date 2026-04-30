@@ -102,7 +102,7 @@ class TradeViewService:
     def _parse_context(self, trade: dict[str, object]) -> dict[str, object]:
         """Parses the JSON context string safely."""
         try:
-            raw_context = trade.get("signal_context") or trade.get("ctx")
+            raw_context = trade.get("signal_context")
             if isinstance(raw_context, str) and raw_context:
                 return json.loads(raw_context)
             if isinstance(raw_context, dict):
@@ -341,12 +341,22 @@ class TradeViewService:
             full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
         )
 
-    def attach_sparklines(self, trades: list[TradeViewData]) -> None:
-        """Method to batch fetch history and attach sparklines."""
+    def attach_sparklines(
+        self,
+        trades: list[TradeViewData],
+        reference_date: pd.Timestamp | None = None,
+    ) -> None:
+        """Batch-fetches price history and attaches sparklines to each trade.
+
+        Args:
+            trades: List of prepared trade view objects.
+            reference_date: Override for the current date (injectable for tests).
+                            Defaults to pd.Timestamp.now() when None.
+        """
         if not trades:
             return
 
-        today = pd.Timestamp.now()
+        today = reference_date if reference_date is not None else pd.Timestamp.now()
         start_date = (today - pd.Timedelta(days=30)).strftime("%Y-%m-%d")
         symbols = list({trade["symbol"] for trade in trades})
 

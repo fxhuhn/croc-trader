@@ -15,7 +15,7 @@ class ScreenerViewService:
     to keep view functions clean and focused on presentation.
     """
 
-    def __init__(self, signal_repository: SignalRepository):
+    def __init__(self, signal_repository: SignalRepository) -> None:
         self.signal_repository = signal_repository
 
     def _parse_context(

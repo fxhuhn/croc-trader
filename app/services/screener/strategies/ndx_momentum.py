@@ -1,8 +1,9 @@
 import logging
+import sqlite3
 import pandas as pd
 from datetime import datetime
 from dataclasses import dataclass
-from typing import override
+from typing import override, TypedDict
 
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
@@ -21,6 +22,25 @@ class NDXMomentumConfiguration:
 
     maximum_ticker_count: int = 5
     maximum_lookback_period: int = 252
+
+
+class NDXAnalysisResult(TypedDict, total=False):
+    """Typed result container for the NDX momentum analysis pipeline.
+
+    All fields are optional (total=False) because early-return branches
+    populate only a subset of keys.
+    """
+
+    triggered: bool
+    date: str
+    requested_date: str
+    is_rebalance_day: bool
+    top_symbols: list[str]
+    momentum_scores: pd.Series
+    roc_matrices: dict[int, pd.DataFrame]
+    price_data: dict[str, pd.DataFrame]
+    regime_indicators: dict[str, float | bool]
+    error: str
 
 
 class NDXMomentumScreener(BaseStrategy):
@@ -100,7 +120,7 @@ class NDXMomentumScreener(BaseStrategy):
 
     def calculate_analysis(
         self, analysis_date: str | None = None, force_run: bool = False
-    ) -> dict[str, object]:
+    ) -> NDXAnalysisResult:
         """
         Performs the momentum analysis without creating trades.
 
@@ -211,9 +231,16 @@ class NDXMomentumScreener(BaseStrategy):
                     "error": f"{analysis_date} not in data",
                 }
 
-        except Exception as exception:
-            logger.error("[%s] Date resolution error: %s", self.name, exception)
-            return {"triggered": False, "date": analysis_date, "error": str(exception)}
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+            raise RuntimeError(
+                "[%s] Database unavailable during date resolution: %s"
+                % (self.name, database_error)
+            ) from database_error
+        except (ValueError, KeyError, TypeError) as resolution_error:
+            logger.error(
+                "[%s] Date resolution error: %s", self.name, resolution_error
+            )
+            return {"triggered": False, "date": analysis_date, "error": str(resolution_error)}
 
         # 2. Calculation Pipeline
         qqq_close_series = pivoted_data["close"]["QQQ"]
@@ -303,7 +330,7 @@ class NDXMomentumScreener(BaseStrategy):
         roc_matrices: dict[int, pd.DataFrame],
         analysis_date: pd.Timestamp,
         price_data: dict[str, pd.DataFrame],
-        regime_indicators: dict,
+        regime_indicators: dict[str, float | bool],
     ) -> int:
         """Writes the selected leaders to the trades table as CREATED status."""
         date_iso_string = analysis_date.strftime("%Y-%m-%d")
@@ -359,9 +386,14 @@ class NDXMomentumScreener(BaseStrategy):
                     context=trade_context,
                 )
                 created_count += 1
-            except Exception as exception:
-                logger.error(
-                    "[%s] Error creating trade for %s: %s", self.name, symbol, exception
+            except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+                raise RuntimeError(
+                    "[%s] Database unavailable saving trade for %s: %s"
+                    % (self.name, symbol, database_error)
+                ) from database_error
+            except (ValueError, KeyError, TypeError) as data_error:
+                logger.warning(
+                    "[%s] Error creating trade for %s: %s", self.name, symbol, data_error
                 )
 
         logger.info("[%s] Created %d CREATED trades.", self.name, created_count)

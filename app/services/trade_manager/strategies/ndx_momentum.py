@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass, field
 from typing import override, final
 import pandas as pd
 
@@ -9,6 +10,19 @@ from ....database.repositories.trade import TradeRepository
 from .abstract import BaseTradeStrategy
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class _RebalanceCache:
+    """Typed cache for the monthly rebalance leader lookup.
+
+    Avoids O(N²) DB queries during a full portfolio rebalance by caching
+    the leaders set for a given date key.
+    """
+
+    cache_key: str
+    latest_signal_date: str
+    leaders_symbols: set[str] = field(default_factory=set)
 
 
 @final
@@ -27,6 +41,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
 
     name = Strategies.NDXMomentum
     DEFAULT_BUDGET: float = 2000.0
+    _rebalance_cache: _RebalanceCache | None = None
 
     @override
     def get_current_parameters(
@@ -164,15 +179,15 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         # lookups during a full portfolio rebalance on the same day.
         cache_key = f"latest_leaders_{date_string}"
         if (
-            not hasattr(self, "_rebalance_cache")
-            or self._rebalance_cache.get("key") != cache_key
+            self._rebalance_cache is None
+            or self._rebalance_cache.cache_key != cache_key
         ):
             all_strategy_trades = repository.get_all_by_strategy(self.name)
             if not all_strategy_trades:
                 return None
 
             latest_signal_date = "0000-00-00"
-            leaders_symbols = set()
+            leaders_symbols: set[str] = set()
 
             for historical_trade in all_strategy_trades:
                 context_date_value = (
@@ -184,14 +199,14 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
                 elif context_date_value == latest_signal_date:
                     leaders_symbols.add(historical_trade["symbol"])
 
-            self._rebalance_cache = {
-                "key": cache_key,
-                "latest_signal_date": latest_signal_date,
-                "leaders_symbols": leaders_symbols,
-            }
+            self._rebalance_cache = _RebalanceCache(
+                cache_key=cache_key,
+                latest_signal_date=latest_signal_date,
+                leaders_symbols=leaders_symbols,
+            )
 
-        latest_signal_date = self._rebalance_cache["latest_signal_date"]
-        leaders_symbols = self._rebalance_cache["leaders_symbols"]
+        latest_signal_date = self._rebalance_cache.latest_signal_date
+        leaders_symbols = self._rebalance_cache.leaders_symbols
 
         # 2. Check if current trade symbol is still in the latest batch of leaders
         # We only exit if the symbol is NOT in the latest winners list.

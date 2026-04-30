@@ -216,7 +216,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         stop_loss = float(trade.get("current_stop_loss") or 0.0)
 
         if entry_price <= 0:
-            logger.warning(f"[{symbol}] Invalid Entry Price: {entry_price}")
+            logger.warning("[%s] Invalid entry price: %s", symbol, entry_price)
             return None
 
         # 1. Centralized Quantity Calculation
@@ -230,7 +230,9 @@ class HoldTargetStrategy(BaseTradeStrategy):
             )
 
         if quantity <= 0:
-            logger.warning(f"[{symbol}] Calculated quantity is 0 or invalid SL setup.")
+            logger.warning(
+                "[%s] Calculated quantity is 0 or invalid stop loss setup.", symbol
+            )
             return None
 
         # 2. Entry: STOP BUY
@@ -256,7 +258,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 )
             )
         else:
-            logger.warning(f"[{symbol}] Missing stop loss for HoldTarget.")
+            logger.warning("[%s] Missing stop loss for HoldTarget order.", symbol)
             return None
 
         # 4. Exit 2: Target (Optional)

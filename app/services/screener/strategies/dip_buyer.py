@@ -1,4 +1,5 @@
 import logging
+import sqlite3
 import pandas as pd
 from dataclasses import dataclass
 from typing import override, TypedDict
@@ -6,6 +7,7 @@ from typing import override, TypedDict
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
+from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
 from .base import BaseStrategy
 from ....const import Strategies
@@ -214,9 +216,6 @@ class DipBuyerStrategy(BaseStrategy):
             return 0
 
         # --- Symbol Filtering Integration ---
-        # Filter out secondary class shares (e.g., maintain GOOG, drop GOOGL) if both are present
-        from ....tools.symbol_filter import SymbolFilter
-
         candidates = signals_dataframe.index.tolist()
         filtered_candidates = SymbolFilter().filter_symbols(candidates)
 
@@ -373,7 +372,11 @@ class DipBuyerStrategy(BaseStrategy):
             "volatility_ratio": volatility_ratio,
         }
 
-    def _filter_market_state(self, current: dict, previous: dict) -> pd.DataFrame:
+    def _filter_market_state(
+        self,
+        current: dict[str, pd.Series],
+        previous: dict[str, pd.Series],
+    ) -> pd.DataFrame:
         """Applies configuration rules to filter candidates."""
 
         # 1. Liquidity & Price
@@ -471,9 +474,14 @@ class DipBuyerStrategy(BaseStrategy):
                     }
                 )
 
-            except Exception as error:
-                logger.error(
-                    f"[{self.name}] Failed to save trade for {symbol}: {error}"
+            except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+                raise RuntimeError(
+                    "[%s] Database unavailable saving trade for %s: %s"
+                    % (self.name, symbol, database_error)
+                ) from database_error
+            except (ValueError, TypeError, KeyError) as data_error:
+                logger.warning(
+                    "[%s] Failed to save trade for %s: %s", self.name, symbol, data_error
                 )
 
         # Reporting
@@ -564,11 +572,14 @@ class DipBuyerStrategy(BaseStrategy):
 
         passed = all(checks.values())
 
-        def extract_safe_numeric_value(raw_metric_value, default_fallback_value=0.0):
+        def _extract_safe_numeric_value(
+            raw_metric_value: object, default_fallback_value: float = 0.0
+        ) -> float:
+            """Safely extracts a float from a potentially NaN value."""
             return (
                 default_fallback_value
-                if pd.isna(raw_metric_value)
-                else raw_metric_value
+                if pd.isna(raw_metric_value)  # type: ignore[arg-type]
+                else float(raw_metric_value)  # type: ignore[arg-type]
             )
 
         return {
@@ -578,14 +589,14 @@ class DipBuyerStrategy(BaseStrategy):
             "data_valid": True,
             "checks": checks,
             "values": {
-                "close": round(extract_safe_numeric_value(current_close), 2),
-                "sma200": round(extract_safe_numeric_value(sma200), 2),
-                "volume_sma": int(extract_safe_numeric_value(volume_sma, 0)),
-                "atr": round(extract_safe_numeric_value(atr), 2),
-                "atr_ratio_3day": round(extract_safe_numeric_value(atr_ratio_3day), 2),
-                "ibs": round(extract_safe_numeric_value(ibs), 2),
+                "close": round(_extract_safe_numeric_value(current_close), 2),
+                "sma200": round(_extract_safe_numeric_value(sma200), 2),
+                "volume_sma": int(_extract_safe_numeric_value(volume_sma, 0)),
+                "atr": round(_extract_safe_numeric_value(atr), 2),
+                "atr_ratio_3day": round(_extract_safe_numeric_value(atr_ratio_3day), 2),
+                "ibs": round(_extract_safe_numeric_value(ibs), 2),
                 "volatility_ratio": round(
-                    extract_safe_numeric_value(volatility_ratio), 3
+                    _extract_safe_numeric_value(volatility_ratio), 3
                 ),
             },
             "result": "PASS" if passed else "FAIL",
