@@ -742,6 +742,7 @@ def view_trades_turnover() -> str:
     # Inject Max Days for Visualization (Mon-Fri = 5 days)
     for trade in active:
         trade["max_days"] = 5
+        trade["green_candle_count"] = trade.get("context", {}).get("green_candle_count", 0)
 
     # Fetch CLOSED Trades EXCLUDING Expired ones
     closed = service.get_trades(
