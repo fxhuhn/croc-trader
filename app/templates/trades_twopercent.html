@@ -100,7 +100,7 @@
                                 </div>
                             </div>
 
-                            <!-- Right Column: Entry Prices -->
+                            <!-- Right Column: Entry & Target Prices -->
                             <div class="flex flex-col">
                                 {% for variant in group.variants %}
                                 <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
@@ -113,6 +113,17 @@
                                         }} $
                                     </span>
                                 </div>
+                                {% if variant.current_target %}
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs text-emerald-600">
+                                        {% if '0.5' in variant.strategy %}0.5 Target{% elif '1.0' in variant.strategy
+                                        %}1.0 Target{% else %}Target{% endif %}
+                                    </span>
+                                    <span class="font-mono text-emerald-600 font-bold text-xs">
+                                        {{ "{:,.2f}".format(variant.current_target|float) }} $
+                                    </span>
+                                </div>
+                                {% endif %}
                                 {% endfor %}
                             </div>
                         </div>
