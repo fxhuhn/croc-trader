@@ -514,7 +514,7 @@ def view_analytics_dashboard() -> str:
     today = pd.Timestamp.now()
 
     # Create a full weekly range to ensure no gaps at the start
-    date_range = pd.date_range(start=start_of_year, end=today, freq="W-MON")
+    date_range = pd.date_range(start=start_of_year, end=today, freq="W-SUN")
 
     # Filter trades for chart
     chart_df = df[df["exit_date_dt"] >= start_of_year].copy()
@@ -529,7 +529,7 @@ def view_analytics_dashboard() -> str:
         # Resample to weekly
         df_weekly = (
             chart_df.set_index("exit_date_dt")["realized_pnl"]
-            .resample("W-MON")
+            .resample("W-SUN")
             .sum()
             .cumsum()
         )
@@ -550,7 +550,7 @@ def view_analytics_dashboard() -> str:
 
             s_df = (
                 s_trades.set_index("exit_date_dt")["realized_pnl"]
-                .resample("W-MON")
+                .resample("W-SUN")
                 .sum()
                 .cumsum()
             )
