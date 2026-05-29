@@ -72,9 +72,7 @@ def view_trades_overview() -> str:
             strategy_stats[label] = {"count": 0, "pnl": 0.0, "invested": 0.0}
 
         strategy_stats[label]["count"] += 1
-        strategy_stats[label]["pnl"] += float(
-            trade.get("unrealized_pnl", 0.0) or 0.0
-        )
+        strategy_stats[label]["pnl"] += float(trade.get("unrealized_pnl", 0.0) or 0.0)
 
         entry_price = float(trade.get("entry_price") or 0.0)
         initial_size = float(trade.get("initial_size") or 0.0)
@@ -82,9 +80,7 @@ def view_trades_overview() -> str:
 
     # Prepare Data for Donut Chart
     allocation_labels = list(strategy_stats.keys())
-    allocation_values = [
-        float(data["invested"]) for data in strategy_stats.values()
-    ]
+    allocation_values = [float(data["invested"]) for data in strategy_stats.values()]
     # Custom colors: Blue, Purple, Orange, Slate, Emerald...
     palette = ["#2563eb", "#8b5cf6", "#f97316", "#64748b", "#10b981"]
 
@@ -119,19 +115,11 @@ def view_trades_croc() -> str:
         "croc",
     ]
 
-    active = service.get_trades(
-        strategies=croc_group, status=TradeStatus.ACTIVE
-    )
+    active = service.get_trades(strategies=croc_group, status=TradeStatus.ACTIVE)
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
 
-    closed_all = service.get_trades(
-        strategies=croc_group, status=TradeStatus.CLOSED
-    )
-    closed = [
-        trade
-        for trade in closed_all
-        if trade.get("exit_reason") != "EXPIRED"
-    ]
+    closed_all = service.get_trades(strategies=croc_group, status=TradeStatus.CLOSED)
+    closed = [trade for trade in closed_all if trade.get("exit_reason") != "EXPIRED"]
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
@@ -150,9 +138,7 @@ def view_trades_croc() -> str:
             or trade["context"].get("match_rule", {}).get("Signal")
             or trade["strategy"]
         )
-        signal_name = (
-            str(raw_signal).replace("Croc_", "") if raw_signal else "Unknown"
-        )
+        signal_name = str(raw_signal).replace("Croc_", "") if raw_signal else "Unknown"
 
         if signal_name not in signal_stats:
             signal_stats[signal_name] = {
@@ -163,9 +149,7 @@ def view_trades_croc() -> str:
             }
 
         realized_profit_and_loss = float(trade["realized_pnl"] or 0.0)
-        service._update_stat(
-            signal_stats[signal_name], realized_profit_and_loss
-        )
+        service._update_stat(signal_stats[signal_name], realized_profit_and_loss)
 
     # Add Avg PnL
     for value in signal_stats.values():
@@ -254,15 +238,13 @@ def view_trades_turnover() -> str:
         Strategies.TurnOverTiming_10,
     ]
 
-    active = service.get_trades(
-        strategies=turnover_group, status=TradeStatus.ACTIVE
-    )
+    active = service.get_trades(strategies=turnover_group, status=TradeStatus.ACTIVE)
 
     # Inject Max Days for Visualization (Mon-Fri = 5 days)
     for trade in active:
         trade["max_days"] = 5
-        trade["green_candle_count"] = (
-            trade.get("context", {}).get("green_candle_count", 0)
+        trade["green_candle_count"] = trade.get("context", {}).get(
+            "green_candle_count", 0
         )
 
     # Fetch CLOSED Trades EXCLUDING Expired ones
@@ -273,9 +255,7 @@ def view_trades_turnover() -> str:
     )
 
     # Sort Closed: Exit Date desc, then Symbol
-    closed.sort(
-        key=lambda x: (x["exit_date"] or "", x["symbol"]), reverse=True
-    )
+    closed.sort(key=lambda x: (x["exit_date"] or "", x["symbol"]), reverse=True)
     closed = closed[:limit]
 
     # Active Groups
@@ -318,15 +298,11 @@ def view_trades_turnover() -> str:
 
         if variant_key:
             realized_profit_and_loss = float(trade["realized_pnl"] or 0.0)
-            service._update_stat(
-                variant_stats[variant_key], realized_profit_and_loss
-            )
+            service._update_stat(variant_stats[variant_key], realized_profit_and_loss)
 
     # Calc Averages for Variants
     for item in variant_stats.values():
-        item["average_pnl"] = (
-            item["pnl"] / item["count"] if item["count"] > 0 else 0.0
-        )
+        item["average_pnl"] = item["pnl"] / item["count"] if item["count"] > 0 else 0.0
 
     history_groups = service.group_trades_history(closed)
 

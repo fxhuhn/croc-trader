@@ -38,26 +38,18 @@ def _get_strategy_overview(
     Returns:
         list[StrategyOverview]: Populated strategies metadata and signals count.
     """
-    count_croc = len(
-        screener_service.get_candidates(Strategies.CrocSetup, limit=100)
-    )
+    count_croc = len(screener_service.get_candidates(Strategies.CrocSetup, limit=100))
     count_dip = len(
         signals_repository.get_trade_candidates(Strategies.DipBuyer, limit=100)
     )
     count_turnover = len(
-        signals_repository.get_trade_candidates(
-            Strategies.TurnOverTiming, limit=100
-        )
+        signals_repository.get_trade_candidates(Strategies.TurnOverTiming, limit=100)
     )
     count_twopercent = len(
-        signals_repository.get_trade_candidates(
-            Strategies.TwoPercent, limit=100
-        )
+        signals_repository.get_trade_candidates(Strategies.TwoPercent, limit=100)
     )
     count_ndx_momentum = len(
-        signals_repository.get_trade_candidates(
-            Strategies.NDXMomentum, limit=100
-        )
+        signals_repository.get_trade_candidates(Strategies.NDXMomentum, limit=100)
     )
 
     return [
@@ -65,8 +57,7 @@ def _get_strategy_overview(
             "id": "croc",
             "name": "Croc Setup",
             "desc": (
-                "Trendfolge-Signale basierend auf Wochen- und "
-                "Tageschart-Momentum."
+                "Trendfolge-Signale basierend auf Wochen- und Tageschart-Momentum."
             ),
             "icon": "arrow-up",
             "count": count_croc,

@@ -151,27 +151,15 @@ def _generate_dashboard_charts(
     )
 
     # 2. Split Equity Curves
-    base_equity = equity_dataframe[
-        equity_dataframe["strategy_name"] == "Base"
-    ]
+    base_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Base"]
     if base_equity.empty:
-        base_equity = equity_dataframe[
-            equity_dataframe["strategy_name"] == "Portfolio"
-        ]
+        base_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Portfolio"]
     if base_equity.empty:
-        base_equity = equity_dataframe[
-            equity_dataframe["strategy_name"] == "Kelly"
-        ]
+        base_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Kelly"]
     if base_equity.empty:
-        base_equity = equity_dataframe[
-            equity_dataframe["strategy_name"] == "Safety"
-        ]
-    kelly_equity = equity_dataframe[
-        equity_dataframe["strategy_name"] == "Kelly"
-    ]
-    safety_equity = equity_dataframe[
-        equity_dataframe["strategy_name"] == "Safety"
-    ]
+        base_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Safety"]
+    kelly_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Kelly"]
+    safety_equity = equity_dataframe[equity_dataframe["strategy_name"] == "Safety"]
 
     # 3. Generate individual charts
     chart_equity_base, chart_drawdown_base = (
@@ -239,11 +227,7 @@ def _generate_dashboard_charts(
         ),
         "chart_exposure": generate_exposure_heatmap(exposure_pivot),
         "chart_risk": generate_risk_reward_scatter(safety_equity),
-        "chart_pf": generate_profit_factor_gauge(
-            main_metrics.profit_factor
-        ),
+        "chart_pf": generate_profit_factor_gauge(main_metrics.profit_factor),
         "chart_wr": generate_win_rate_gauge(main_metrics.win_rate * 100),
-        "chart_sqn": generate_sqn_gauge(
-            main_metrics.system_quality_number
-        ),
+        "chart_sqn": generate_sqn_gauge(main_metrics.system_quality_number),
     }

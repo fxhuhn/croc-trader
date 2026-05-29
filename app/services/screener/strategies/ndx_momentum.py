@@ -237,10 +237,12 @@ class NDXMomentumScreener(BaseStrategy):
                 % (self.name, database_error)
             ) from database_error
         except (ValueError, KeyError, TypeError) as resolution_error:
-            logger.error(
-                "[%s] Date resolution error: %s", self.name, resolution_error
-            )
-            return {"triggered": False, "date": analysis_date, "error": str(resolution_error)}
+            logger.error("[%s] Date resolution error: %s", self.name, resolution_error)
+            return {
+                "triggered": False,
+                "date": analysis_date,
+                "error": str(resolution_error),
+            }
 
         # 2. Calculation Pipeline
         qqq_close_series = pivoted_data["close"]["QQQ"]
@@ -393,7 +395,10 @@ class NDXMomentumScreener(BaseStrategy):
                 ) from database_error
             except (ValueError, KeyError, TypeError) as data_error:
                 logger.warning(
-                    "[%s] Error creating trade for %s: %s", self.name, symbol, data_error
+                    "[%s] Error creating trade for %s: %s",
+                    self.name,
+                    symbol,
+                    data_error,
                 )
 
         logger.info("[%s] Created %d CREATED trades.", self.name, created_count)

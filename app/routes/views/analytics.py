@@ -46,9 +46,7 @@ def view_analytics_dashboard() -> str:
         )
 
     if not closed_trades:
-        dataframe = pd.DataFrame(
-            columns=["exit_date", "realized_pnl", "strategy"]
-        )
+        dataframe = pd.DataFrame(columns=["exit_date", "realized_pnl", "strategy"])
     else:
         dataframe = pd.DataFrame(closed_trades)
     dataframe["exit_date_dt"] = pd.to_datetime(dataframe["exit_date"])
@@ -98,9 +96,7 @@ def view_analytics_dashboard() -> str:
 
     for name, filters in strategy_groups.items():
         if not dataframe.empty:
-            strategy_dataframe = dataframe[
-                dataframe["strategy"].isin(filters)
-            ]
+            strategy_dataframe = dataframe[dataframe["strategy"].isin(filters)]
         else:
             strategy_dataframe = pd.DataFrame()
 
@@ -149,9 +145,7 @@ def view_analytics_dashboard() -> str:
             ).fillna(0.0)
 
             valid_trades_mask = (
-                (entry_prices > 0.0)
-                & (stop_losses > 0.0)
-                & (initial_sizes > 0.0)
+                (entry_prices > 0.0) & (stop_losses > 0.0) & (initial_sizes > 0.0)
             )
             risks_series = (entry_prices - stop_losses).abs() * initial_sizes
             valid_risks = risks_series[valid_trades_mask & (risks_series > 0.0)]
@@ -161,11 +155,7 @@ def view_analytics_dashboard() -> str:
 
         average_risk_percent = (average_risk_dollar / initial_capital) * 100.0
         rate_of_return_percent = (
-            (
-                float(strategy_dataframe["realized_pnl"].sum())
-                / initial_capital
-            )
-            * 100.0
+            (float(strategy_dataframe["realized_pnl"].sum()) / initial_capital) * 100.0
             if not strategy_dataframe.empty
             else 0.0
         )
@@ -182,8 +172,7 @@ def view_analytics_dashboard() -> str:
             else []
         )
         active_profit_and_loss_list = [
-            float(trade.get("unrealized_pnl") or 0.0)
-            for trade in strategy_active
+            float(trade.get("unrealized_pnl") or 0.0) for trade in strategy_active
         ]
         total_performance_series = pd.Series(
             closed_profit_and_loss_list + active_profit_and_loss_list
@@ -265,9 +254,7 @@ def view_analytics_dashboard() -> str:
     # Apply scaling multiplier to compute professional Suggested Allocations
     for strategy_item in strategies_data:
         raw_kelly = float(strategy_item["metrics"]["kelly_criterion"])
-        suggested_allocation = (
-            raw_kelly * depot_multiplier if raw_kelly > 0.0 else 0.0
-        )
+        suggested_allocation = raw_kelly * depot_multiplier if raw_kelly > 0.0 else 0.0
         strategy_item["metrics"]["suggested_allocation"] = suggested_allocation
 
     # Sort strategies by realized pnl desc
@@ -287,16 +274,12 @@ def view_analytics_dashboard() -> str:
         weekly_trend = {
             "dates": [d.strftime("%Y-%m-%d") for d in date_range],
             "aggregate": [0.0] * len(date_range),
-            "strategies": {
-                name: [0.0] * len(date_range) for name in strategy_groups
-            },
+            "strategies": {name: [0.0] * len(date_range) for name in strategy_groups},
         }
         weekly_profit_and_loss = {
             "dates": [d.strftime("%Y-%m-%d") for d in date_range],
             "aggregate": [0.0] * len(date_range),
-            "strategies": {
-                name: [0.0] * len(date_range) for name in strategy_groups
-            },
+            "strategies": {name: [0.0] * len(date_range) for name in strategy_groups},
         }
     else:
         # Cumulative Weekly Trend
@@ -306,9 +289,9 @@ def view_analytics_dashboard() -> str:
             .sum()
             .cumsum()
         )
-        dataframe_weekly = dataframe_weekly.reindex(
-            date_range, method="ffill"
-        ).fillna(0.0)
+        dataframe_weekly = dataframe_weekly.reindex(date_range, method="ffill").fillna(
+            0.0
+        )
 
         weekly_trend = {
             "dates": [d.strftime("%Y-%m-%d") for d in date_range],
@@ -322,11 +305,9 @@ def view_analytics_dashboard() -> str:
             .resample("W-SUN")
             .sum()
         )
-        dataframe_weekly_profit_and_loss = (
-            dataframe_weekly_profit_and_loss.reindex(
-                date_range, fill_value=0.0
-            ).fillna(0.0)
-        )
+        dataframe_weekly_profit_and_loss = dataframe_weekly_profit_and_loss.reindex(
+            date_range, fill_value=0.0
+        ).fillna(0.0)
 
         weekly_profit_and_loss = {
             "dates": [d.strftime("%Y-%m-%d") for d in date_range],
@@ -335,14 +316,10 @@ def view_analytics_dashboard() -> str:
         }
 
         for name, filters in strategy_groups.items():
-            strategy_trades = chart_dataframe[
-                chart_dataframe["strategy"].isin(filters)
-            ]
+            strategy_trades = chart_dataframe[chart_dataframe["strategy"].isin(filters)]
             if strategy_trades.empty:
                 weekly_trend["strategies"][name] = [0.0] * len(date_range)
-                weekly_profit_and_loss["strategies"][name] = [0.0] * len(
-                    date_range
-                )
+                weekly_profit_and_loss["strategies"][name] = [0.0] * len(date_range)
                 continue
 
             # Strategy Cumulative Trend
@@ -363,11 +340,9 @@ def view_analytics_dashboard() -> str:
                 .resample("W-SUN")
                 .sum()
             )
-            strategy_weekly_profit_and_loss = (
-                strategy_weekly_profit_and_loss.reindex(
-                    date_range, fill_value=0.0
-                ).fillna(0.0)
-            )
+            strategy_weekly_profit_and_loss = strategy_weekly_profit_and_loss.reindex(
+                date_range, fill_value=0.0
+            ).fillna(0.0)
             weekly_profit_and_loss["strategies"][name] = (
                 strategy_weekly_profit_and_loss.tolist()
             )

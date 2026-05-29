@@ -303,7 +303,7 @@ class BaseTradeStrategy(ABC):
             profit_and_loss = (fill_price - stop_loss) * size
         else:
             profit_and_loss = (stop_loss - fill_price) * size
-            
+
         repository.update_trade(
             trade["id"],
             {
@@ -347,13 +347,13 @@ class BaseTradeStrategy(ABC):
         """
         entry_price = float(trade.get("entry_price") or 0.0)
         current_size = float(trade.get("current_size") or 0.0)
-        
+
         direction = str(self._get_context_value(trade, "direction") or "long").lower()
         if direction == "short":
             pnl_chunk = (entry_price - exit_price) * current_size
         else:
             pnl_chunk = (exit_price - entry_price) * current_size
-            
+
         total_pnl = float(trade.get("realized_pnl") or 0.0) + pnl_chunk
 
         repository.update_trade(

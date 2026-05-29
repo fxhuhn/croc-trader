@@ -132,15 +132,25 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if filled:
             # Same Day Final Profit (TP3) Check
             context = self._get_context(trade)
-            take_profit_3 = float(context.get("take_profit_3") or context.get("tp3") or 0.0)
+            take_profit_3 = float(
+                context.get("take_profit_3") or context.get("tp3") or 0.0
+            )
             is_tp3_hit = False
             tp3_exit_price = take_profit_3
 
-            if direction == "long" and take_profit_3 > 0 and high_price >= take_profit_3:
+            if (
+                direction == "long"
+                and take_profit_3 > 0
+                and high_price >= take_profit_3
+            ):
                 is_tp3_hit = True
                 if open_price > take_profit_3:
                     tp3_exit_price = open_price
-            elif direction == "short" and take_profit_3 > 0 and low_price <= take_profit_3:
+            elif (
+                direction == "short"
+                and take_profit_3 > 0
+                and low_price <= take_profit_3
+            ):
                 is_tp3_hit = True
                 if open_price < take_profit_3:
                     tp3_exit_price = open_price
@@ -153,7 +163,14 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 )
             elif is_tp3_hit:
                 return self._execute_immediate_target(
-                    trade, repository, fill_price, reason, tp3_exit_price, stop_loss, date_string, context
+                    trade,
+                    repository,
+                    fill_price,
+                    reason,
+                    tp3_exit_price,
+                    stop_loss,
+                    date_string,
+                    context,
                 )
             else:
                 return self._execute_activation(
@@ -515,17 +532,13 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if size <= 0:
             if stop_loss > 0 and fill_price != stop_loss:
                 risk_amount = float(
-                    context.get("risk_amount")
-                    or trade.get("risk_amount")
-                    or 100.0
+                    context.get("risk_amount") or trade.get("risk_amount") or 100.0
                 )
                 size = self._calculate_position_size(fill_price, stop_loss, risk_amount)
 
             if size <= 0:
                 budget = float(
-                    context.get("budget")
-                    or trade.get("budget")
-                    or self.DEFAULT_BUDGET
+                    context.get("budget") or trade.get("budget") or self.DEFAULT_BUDGET
                 )
                 if fill_price > 0:
                     size = int(budget / fill_price)

@@ -481,7 +481,10 @@ class DipBuyerStrategy(BaseStrategy):
                 ) from database_error
             except (ValueError, TypeError, KeyError) as data_error:
                 logger.warning(
-                    "[%s] Failed to save trade for %s: %s", self.name, symbol, data_error
+                    "[%s] Failed to save trade for %s: %s",
+                    self.name,
+                    symbol,
+                    data_error,
                 )
 
         # Reporting

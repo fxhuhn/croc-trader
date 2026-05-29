@@ -172,7 +172,7 @@ class TradeViewService:
 
         if trade.get("status") == TradeStatus.ACTIVE and entry_price > 0:
             direction = str(context.get("direction", "long")).lower()
-            
+
             if direction == "short":
                 unrealized_pnl = (entry_price - current_price) * initial_size
                 pnl_pct = ((entry_price - current_price) / entry_price) * 100
@@ -210,7 +210,7 @@ class TradeViewService:
 
         elif trade.get("status") == TradeStatus.CLOSED and entry_price > 0:
             direction = str(context.get("direction", "long")).lower()
-            
+
             if realized_pnl == 0.0 and exit_price > 0:
                 if direction == "short":
                     realized_pnl = (entry_price - exit_price) * initial_size
@@ -222,7 +222,7 @@ class TradeViewService:
                 price_diff = entry_price - exit_price
             else:
                 price_diff = exit_price - entry_price
-                
+
             pnl_pct = (price_diff / entry_for_pct) * 100
 
         # Version extraction

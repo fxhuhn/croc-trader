@@ -19,27 +19,30 @@ from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class TechnicalIndicatorConfig:
     """Explicitly defines the capabilities of the technical indicator matching engine."""
-    
-    WHITELIST: frozenset[str] = frozenset([
-        "deluxe",
-        "dist_sma_20",
-        "dist_sma_200",
-        "kerze",
-        "long_blau_status",
-        "rsi",
-        "rsi_zone",
-        "setter",
-        "short_blau_status",
-        "sma_20_cluster",
-        "sma_200_cluster",
-        "status",
-        "trend",
-        "welle",
-        "wolke",
-    ])
+
+    WHITELIST: frozenset[str] = frozenset(
+        [
+            "deluxe",
+            "dist_sma_20",
+            "dist_sma_200",
+            "kerze",
+            "long_blau_status",
+            "rsi",
+            "rsi_zone",
+            "setter",
+            "short_blau_status",
+            "sma_20_cluster",
+            "sma_200_cluster",
+            "status",
+            "trend",
+            "welle",
+            "wolke",
+        ]
+    )
 
     @staticmethod
     def get_handler(condition_str: str) -> Callable[[float], bool] | None:
@@ -63,7 +66,6 @@ class TechnicalIndicatorConfig:
             "overbought (>70)": lambda v: v > 70.0,
         }
         return handlers.get(condition_str)
-
 
 
 @dataclass(frozen=True)
@@ -175,7 +177,8 @@ class CrocSetupStrategy(BaseStrategy):
             signals = self.signal_repository.get_signals_by_date(analysis_date, days)
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
-                "[%s] Database unavailable during signal load: %s" % (self.name, database_error)
+                "[%s] Database unavailable during signal load: %s"
+                % (self.name, database_error)
             ) from database_error
         except (ValueError, KeyError) as data_error:
             logger.warning(
@@ -214,7 +217,9 @@ class CrocSetupStrategy(BaseStrategy):
         # 3. Limit to top 3 and create trades
         report_rows = []
         for candidate in sorted_candidates[:3]:
-            trade = self._create_trade(candidate["normalized"], candidate["prices"], candidate["match"])
+            trade = self._create_trade(
+                candidate["normalized"], candidate["prices"], candidate["match"]
+            )
             if trade:
                 report_rows.append(trade)
 
@@ -241,7 +246,8 @@ class CrocSetupStrategy(BaseStrategy):
             signals = self.signal_repository.get_signals_by_date(analysis_date, days)
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
-                "[%s] Database unavailable during signal load: %s" % (self.name, database_error)
+                "[%s] Database unavailable during signal load: %s"
+                % (self.name, database_error)
             ) from database_error
         except (ValueError, KeyError) as data_error:
             logger.warning(
@@ -335,7 +341,9 @@ class CrocSetupStrategy(BaseStrategy):
         """Returns a new dict enriched with SMA distance metrics (no in-place mutation)."""
         enriched = dict(row)
         if prices.sma_20 > 0:
-            enriched["dist_sma_20"] = ((prices.close - prices.sma_20) / prices.sma_20) * 100
+            enriched["dist_sma_20"] = (
+                (prices.close - prices.sma_20) / prices.sma_20
+            ) * 100
         if prices.sma_200 > 0:
             enriched["dist_sma_200"] = (
                 (prices.close - prices.sma_200) / prices.sma_200
@@ -368,7 +376,7 @@ class CrocSetupStrategy(BaseStrategy):
 
             # Handle combined signals safely, e.g. "bear_1 + bear_rot"
             base_signals = [s.strip().lower() for s in base_rule_signal.split("+")]
-            
+
             is_json_flag_active = bool(base_signals)
             for sig in base_signals:
                 sig_val = str(row.get(sig, "")).lower().strip()
@@ -388,7 +396,11 @@ class CrocSetupStrategy(BaseStrategy):
                 # Prefer SQN over Score if available
                 score = float(rule.get("SQN", rule.get("Score", 0.0)))
                 rule_length = len(
-                    [k for k in rule.keys() if k.lower() in TechnicalIndicatorConfig.WHITELIST]
+                    [
+                        k
+                        for k in rule.keys()
+                        if k.lower() in TechnicalIndicatorConfig.WHITELIST
+                    ]
                 )
 
                 # If score is better, or if score is equal but rule is more specific (more conditions)

@@ -22,7 +22,6 @@ BLOCKED_EXTENSIONS = (
     ".yml",
     ".bak",
     ".old",
-
 )
 API_PREFIXES = ("/screener", "/orders", "/api")
 
@@ -79,7 +78,7 @@ def page_not_found(e: Exception) -> tuple[Response | str, int]:
         tuple: (Response or HTML string, Status Code 404)
     """
     client_ip: str | None = request.headers.get("X-Forwarded-For", request.remote_addr)
-    resolved_ip = str(client_ip) if client_ip else "0.0.0.0"
+    resolved_ip = str(client_ip) if client_ip else "0.0.0.0"  # nosec B104
 
     if _rate_limiter.should_block(resolved_ip):
         # Quickly drop connection to reduce load / bypass templating overhead

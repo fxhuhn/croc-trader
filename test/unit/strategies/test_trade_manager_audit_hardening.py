@@ -6,6 +6,7 @@ Each test class maps to a specific audit finding. The suite validates all
 security and robustness fixes applied after the Iron Auditor + Red Teamer
 dual-workflow review of the trade_manager module.
 """
+
 import json
 import sqlite3
 from pathlib import Path
@@ -29,6 +30,7 @@ from app.types import TradeStatus
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_trade(
     symbol: str = "AAPL",
@@ -59,12 +61,14 @@ def _make_trade(
         "budget": 2000.0,
         "risk_amount": 100.0,
         "status": status,
-        "signal_context": json.dumps({
-            "direction": "long",
-            "take_profit_1": take_profit_1,
-            "take_profit_3": take_profit_3,
-            "date": "2026-01-09",
-        }),
+        "signal_context": json.dumps(
+            {
+                "direction": "long",
+                "take_profit_1": take_profit_1,
+                "take_profit_3": take_profit_3,
+                "date": "2026-01-09",
+            }
+        ),
     }
 
 
@@ -75,13 +79,15 @@ def _make_candle(
     low: float = 147.0,
     close: float = 153.0,
 ) -> pd.Series:
-    return pd.Series({
-        "date": date,
-        "open": open_price,
-        "high": high,
-        "low": low,
-        "close": close,
-    })
+    return pd.Series(
+        {
+            "date": date,
+            "open": open_price,
+            "high": high,
+            "low": low,
+            "close": close,
+        }
+    )
 
 
 def _make_history(rows: list[dict]) -> pd.DataFrame:
@@ -110,7 +116,7 @@ class TestSplitTargetNameErrorFix:
         assert order is not None
         assert order.symbol == "AAPL"
         exit_types = [leg.type for leg in order.exits]
-        assert "LMT" in exit_types   # TP3 exit present
+        assert "LMT" in exit_types  # TP3 exit present
         # All LMT exits are for the full quantity (no half-split when TP1 = 0)
         lmt_exits = [leg for leg in order.exits if leg.type == "LMT"]
         assert all(leg.quantity == int(order.quantity) for leg in lmt_exits)
@@ -179,8 +185,24 @@ class TestSplitTargetNameErrorFix:
 
         # Candle: gap-up entry above entry, same-day TP3 hit
         candle = _make_candle(open_price=152.0, high=185.0, low=149.0)
-        history = _make_history([{"date": "2026-01-09", "open": 148.0, "high": 152.0, "low": 147.0, "close": 150.0},
-                                  {"date": "2026-01-10", "open": 152.0, "high": 185.0, "low": 149.0, "close": 183.0}])
+        history = _make_history(
+            [
+                {
+                    "date": "2026-01-09",
+                    "open": 148.0,
+                    "high": 152.0,
+                    "low": 147.0,
+                    "close": 150.0,
+                },
+                {
+                    "date": "2026-01-10",
+                    "open": 152.0,
+                    "high": 185.0,
+                    "low": 149.0,
+                    "close": 183.0,
+                },
+            ]
+        )
 
         # Act
         strategy.check_entry(trade, candle, history, mock_repo)
@@ -188,7 +210,11 @@ class TestSplitTargetNameErrorFix:
         # Assert — the status written to DB must be the enum value, not a raw "CLOSED" string
         call_args = mock_repo.update_trade.call_args
         if call_args:
-            update_dict = call_args[0][1] if len(call_args[0]) > 1 else call_args[1].get("updates", {})
+            update_dict = (
+                call_args[0][1]
+                if len(call_args[0]) > 1
+                else call_args[1].get("updates", {})
+            )
             status_value = update_dict.get("status")
             if status_value is not None:
                 assert status_value == TradeStatus.CLOSED
@@ -205,12 +231,10 @@ class TestTradeManagerFailClosed:
     @pytest.fixture
     def manager(self, tmp_path: Path) -> TradeManager:
         """Provides a TradeManager with fully mocked repository layer."""
-        with patch(
-            "app.services.trade_manager.manager.DatabaseSession"
-        ), patch(
-            "app.services.trade_manager.manager.TradeRepository"
-        ), patch(
-            "app.services.trade_manager.manager.MarketRepository"
+        with (
+            patch("app.services.trade_manager.manager.DatabaseSession"),
+            patch("app.services.trade_manager.manager.TradeRepository"),
+            patch("app.services.trade_manager.manager.MarketRepository"),
         ):
             manager_instance = TradeManager(
                 db_path=tmp_path / "signals.db",
@@ -230,7 +254,9 @@ class TestTradeManagerFailClosed:
         )
 
         # Act & Assert
-        with pytest.raises(RuntimeError, match="Database unavailable during active trade load"):
+        with pytest.raises(
+            RuntimeError, match="Database unavailable during active trade load"
+        ):
             manager.run_daily_process()
 
     def test_run_daily_process_raises_on_created_trade_db_lock(
@@ -244,7 +270,9 @@ class TestTradeManagerFailClosed:
         ]
 
         # Act & Assert
-        with pytest.raises(RuntimeError, match="Database unavailable during created trade load"):
+        with pytest.raises(
+            RuntimeError, match="Database unavailable during created trade load"
+        ):
             manager.run_daily_process()
 
     def test_run_daily_process_raises_on_database_error(
@@ -280,7 +308,9 @@ class TestTradeManagerFailClosed:
         )
 
         # Act & Assert
-        with pytest.raises(RuntimeError, match="Database unavailable during order generation"):
+        with pytest.raises(
+            RuntimeError, match="Database unavailable during order generation"
+        ):
             manager.generate_daily_orders()
 
 
@@ -299,7 +329,7 @@ class TestResolveHistoryStartDate:
             ({"entry_date": "2026-03-15 00:00:00"}, "2026-03-15"),  # Strips time
             ({"created_at": "2025-11-01"}, "2025-11-01"),
             ({"signal_date": "2025-06-20"}, "2025-06-20"),
-            ({}, "2024-01-01"),   # Fallback only when no date fields
+            ({}, "2024-01-01"),  # Fallback only when no date fields
         ],
     )
     def test_resolve_history_start_date_returns_correct_date(
@@ -375,14 +405,33 @@ class TestTurnoverTimingStrategyInitialization:
         original_checker = strategy._holiday_checker
         mock_repo = MagicMock()
 
-        history = _make_history([
-            {"date": "2026-01-09", "open": 100.0, "high": 102.0, "low": 99.0, "close": 101.0},
-            {"date": "2026-01-12", "open": 101.0, "high": 103.0, "low": 100.0, "close": 102.0},
-        ])
+        history = _make_history(
+            [
+                {
+                    "date": "2026-01-09",
+                    "open": 100.0,
+                    "high": 102.0,
+                    "low": 99.0,
+                    "close": 101.0,
+                },
+                {
+                    "date": "2026-01-12",
+                    "open": 101.0,
+                    "high": 103.0,
+                    "low": 100.0,
+                    "close": 102.0,
+                },
+            ]
+        )
         trade = {
-            "id": 1, "symbol": "AAPL", "entry_date": "2026-01-09",
-            "current_size": 10, "status": "ACTIVE",
-            "signal_context": json.dumps({"green_candle_count": 0, "date": "2026-01-08"}),
+            "id": 1,
+            "symbol": "AAPL",
+            "entry_date": "2026-01-09",
+            "current_size": 10,
+            "status": "ACTIVE",
+            "signal_context": json.dumps(
+                {"green_candle_count": 0, "date": "2026-01-08"}
+            ),
         }
 
         # Act
@@ -423,14 +472,31 @@ class TestNDXMomentumTypedCache:
             }
         ]
         trade = {
-            "id": 1, "symbol": "NVDA", "strategy": "NDXMomentum",
-            "entry_date": "2026-01-15", "current_size": 10,
+            "id": 1,
+            "symbol": "NVDA",
+            "strategy": "NDXMomentum",
+            "entry_date": "2026-01-15",
+            "current_size": 10,
             "signal_context": json.dumps({"date": "2026-01-31"}),
         }
-        history = _make_history([
-            {"date": "2026-01-31", "open": 800.0, "high": 820.0, "low": 795.0, "close": 815.0},
-            {"date": "2026-02-03", "open": 810.0, "high": 830.0, "low": 805.0, "close": 825.0},
-        ])
+        history = _make_history(
+            [
+                {
+                    "date": "2026-01-31",
+                    "open": 800.0,
+                    "high": 820.0,
+                    "low": 795.0,
+                    "close": 815.0,
+                },
+                {
+                    "date": "2026-02-03",
+                    "open": 810.0,
+                    "high": 830.0,
+                    "low": 805.0,
+                    "close": 825.0,
+                },
+            ]
+        )
 
         # Act
         strategy.manage_active_trade(trade, history, mock_repo)
@@ -451,13 +517,30 @@ class TestNDXMomentumTypedCache:
                 "strategy": "NDXMomentum",
             }
         ]
-        history = _make_history([
-            {"date": "2026-01-31", "open": 800.0, "high": 820.0, "low": 795.0, "close": 815.0},
-            {"date": "2026-02-03", "open": 810.0, "high": 830.0, "low": 805.0, "close": 825.0},
-        ])
+        history = _make_history(
+            [
+                {
+                    "date": "2026-01-31",
+                    "open": 800.0,
+                    "high": 820.0,
+                    "low": 795.0,
+                    "close": 815.0,
+                },
+                {
+                    "date": "2026-02-03",
+                    "open": 810.0,
+                    "high": 830.0,
+                    "low": 805.0,
+                    "close": 825.0,
+                },
+            ]
+        )
         trade = {
-            "id": 1, "symbol": "NVDA", "strategy": "NDXMomentum",
-            "entry_date": "2026-01-15", "current_size": 10,
+            "id": 1,
+            "symbol": "NVDA",
+            "strategy": "NDXMomentum",
+            "entry_date": "2026-01-15",
+            "current_size": 10,
             "signal_context": json.dumps({"date": "2026-01-31"}),
         }
         trade_b = dict(trade) | {"id": 2, "symbol": "MSFT"}
@@ -499,10 +582,15 @@ class TestAttachSparklinesDeterministicClock:
         # Arrange
         from app.services.trade_manager.view_service import TradeViewService
 
-        with patch.object(TradeViewService, "_get_trade_repository", return_value=MagicMock()), \
-             patch.object(TradeViewService, "_get_market_repository") as mock_market_repo_getter, \
-             patch("app.services.trade_manager.view_service._get_database_path"):
-
+        with (
+            patch.object(
+                TradeViewService, "_get_trade_repository", return_value=MagicMock()
+            ),
+            patch.object(
+                TradeViewService, "_get_market_repository"
+            ) as mock_market_repo_getter,
+            patch("app.services.trade_manager.view_service._get_database_path"),
+        ):
             mock_market_repo = MagicMock()
             mock_market_repo.get_batch_history_raw.return_value = pd.DataFrame(
                 columns=["symbol", "date", "close"]
@@ -523,10 +611,15 @@ class TestAttachSparklinesDeterministicClock:
         # Arrange
         from app.services.trade_manager.view_service import TradeViewService
 
-        with patch.object(TradeViewService, "_get_trade_repository", return_value=MagicMock()), \
-             patch.object(TradeViewService, "_get_market_repository") as mock_market_repo_getter, \
-             patch("app.services.trade_manager.view_service._get_database_path"):
-
+        with (
+            patch.object(
+                TradeViewService, "_get_trade_repository", return_value=MagicMock()
+            ),
+            patch.object(
+                TradeViewService, "_get_market_repository"
+            ) as mock_market_repo_getter,
+            patch("app.services.trade_manager.view_service._get_database_path"),
+        ):
             mock_market_repo = MagicMock()
             mock_market_repo.get_batch_history_raw.return_value = pd.DataFrame(
                 columns=["symbol", "date", "close"]
@@ -535,19 +628,42 @@ class TestAttachSparklinesDeterministicClock:
 
             service = TradeViewService()
             fixed_date = pd.Timestamp("2026-03-15")
-            fake_trades = [{
-                "symbol": "AAPL", "unrealized_pnl": 50.0, "sparkline": "",
-                "id": 1, "strategy": "SplitTarget", "status": "ACTIVE",
-                "entry_date": None, "exit_date": None, "entry_price": 0.0,
-                "exit_price": 0.0, "current_price": 0.0, "initial_size": 10.0,
-                "current_size": 10.0, "current_stop_loss": 0.0, "current_target": 0.0,
-                "budget": 2000.0, "signal_context": None, "exit_reason": None,
-                "stop_loss": 0.0, "take_profit": 0.0, "display_entry": "-",
-                "display_exit": "-", "days_held": 0, "realized_pnl": 0.0,
-                "pnl_pct": 0.0, "is_critical": False, "progress": 0.0,
-                "display_size": 10.0, "max_days": None, "version": None,
-                "context": {}, "risk_amount": 100.0,
-            }]
+            fake_trades = [
+                {
+                    "symbol": "AAPL",
+                    "unrealized_pnl": 50.0,
+                    "sparkline": "",
+                    "id": 1,
+                    "strategy": "SplitTarget",
+                    "status": "ACTIVE",
+                    "entry_date": None,
+                    "exit_date": None,
+                    "entry_price": 0.0,
+                    "exit_price": 0.0,
+                    "current_price": 0.0,
+                    "initial_size": 10.0,
+                    "current_size": 10.0,
+                    "current_stop_loss": 0.0,
+                    "current_target": 0.0,
+                    "budget": 2000.0,
+                    "signal_context": None,
+                    "exit_reason": None,
+                    "stop_loss": 0.0,
+                    "take_profit": 0.0,
+                    "display_entry": "-",
+                    "display_exit": "-",
+                    "days_held": 0,
+                    "realized_pnl": 0.0,
+                    "pnl_pct": 0.0,
+                    "is_critical": False,
+                    "progress": 0.0,
+                    "display_size": 10.0,
+                    "max_days": None,
+                    "version": None,
+                    "context": {},
+                    "risk_amount": 100.0,
+                }
+            ]
 
             # Act
             service.attach_sparklines(fake_trades, reference_date=fixed_date)
@@ -556,7 +672,7 @@ class TestAttachSparklinesDeterministicClock:
             mock_market_repo.get_batch_history_raw.assert_called_once()
             call_args = mock_market_repo.get_batch_history_raw.call_args
             start_arg = call_args[0][1]
-            assert start_arg == "2026-02-13"   # 30 days before 2026-03-15
+            assert start_arg == "2026-02-13"  # 30 days before 2026-03-15
 
 
 # ---------------------------------------------------------------------------
@@ -572,9 +688,13 @@ class TestDipBuyerAbbreviationFix:
         # Arrange
         strategy = DipBuyerStrategy()
         trade = {
-            "id": 1, "symbol": "AAPL", "entry_price": 100.0,
-            "initial_size": 20.0, "budget": 2000.0,
-            "current_target": 110.0, "signal_context": "{}",
+            "id": 1,
+            "symbol": "AAPL",
+            "entry_price": 100.0,
+            "initial_size": 20.0,
+            "budget": 2000.0,
+            "current_target": 110.0,
+            "signal_context": "{}",
         }
         mock_repo = MagicMock()
 
@@ -590,9 +710,13 @@ class TestDipBuyerAbbreviationFix:
         # Arrange
         strategy = DipBuyerStrategy()
         trade = {
-            "id": 1, "symbol": "AAPL", "entry_price": 100.0,
-            "initial_size": 0.0, "budget": 2000.0,
-            "current_target": 110.0, "signal_context": "{}",
+            "id": 1,
+            "symbol": "AAPL",
+            "entry_price": 100.0,
+            "initial_size": 0.0,
+            "budget": 2000.0,
+            "current_target": 110.0,
+            "signal_context": "{}",
         }
         mock_repo = MagicMock()
 
@@ -619,8 +743,11 @@ class TestHoldTargetLoggingStyle:
         # Arrange
         strategy = HoldTargetStrategy()
         trade = {
-            "id": 1, "symbol": "AAPL", "entry_price": 0.0,
-            "current_stop_loss": 140.0, "initial_size": 10.0,
+            "id": 1,
+            "symbol": "AAPL",
+            "entry_price": 0.0,
+            "current_stop_loss": 140.0,
+            "initial_size": 10.0,
             "signal_context": "{}",
         }
         mock_repo = MagicMock()
@@ -640,8 +767,11 @@ class TestHoldTargetLoggingStyle:
         # Arrange
         strategy = HoldTargetStrategy()
         trade = {
-            "id": 1, "symbol": "MSFT", "entry_price": 200.0,
-            "current_stop_loss": 0.0, "initial_size": 10.0,
+            "id": 1,
+            "symbol": "MSFT",
+            "entry_price": 200.0,
+            "current_stop_loss": 0.0,
+            "initial_size": 10.0,
             "signal_context": "{}",
         }
         mock_repo = MagicMock()

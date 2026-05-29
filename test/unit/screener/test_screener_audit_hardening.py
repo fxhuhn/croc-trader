@@ -6,6 +6,7 @@ This suite validates all security and robustness fixes applied after the
 Iron Auditor + Red Teamer dual-workflow review. Every test targets a
 specific violation ID from the audit report.
 """
+
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, patch, mock_open
@@ -69,9 +70,7 @@ def croc_strategy(
         mock_path.return_value = Path("mock_ranking.yaml")
         with patch("pathlib.Path.exists", return_value=True):
             with patch("pathlib.Path.stat", return_value=mock_stat):
-                with patch(
-                    "builtins.open", mock_open(read_data="ranking_2026: []")
-                ):
+                with patch("builtins.open", mock_open(read_data="ranking_2026: []")):
                     with patch(
                         "app.services.screener.strategies.croc_setup.ExchangeSymbol"
                     ) as mock_ex:
@@ -93,9 +92,7 @@ def dip_buyer_strategy(
     mock_data_provider: MagicMock,
 ) -> DipBuyerStrategy:
     """Provides a DipBuyerStrategy with mocked exchange symbols."""
-    with patch(
-        "app.services.screener.strategies.dip_buyer.ExchangeSymbol"
-    ) as mock_ex:
+    with patch("app.services.screener.strategies.dip_buyer.ExchangeSymbol") as mock_ex:
         instance = mock_ex.return_value
         instance.dow_30 = ["AAPL"]
         instance.sp_500 = ["AAPL", "MSFT"]
@@ -163,9 +160,7 @@ class TestYamlFileSizeGuard:
         # Act
         with patch("pathlib.Path.exists", return_value=True):
             with patch("pathlib.Path.stat", return_value=mock_stat):
-                with patch(
-                    "builtins.open", mock_open(read_data="ranking_2026: []")
-                ):
+                with patch("builtins.open", mock_open(read_data="ranking_2026: []")):
                     rules = croc_strategy._load_config()
 
         # Assert
@@ -225,8 +220,8 @@ class TestFailClosedOnDatabaseErrors:
     ) -> None:
         """Verifies fail-closed behavior in get_all_recommendations as well."""
         # Arrange
-        mock_signal_repository.get_signals_by_date.side_effect = (
-            sqlite3.DatabaseError("disk I/O error")
+        mock_signal_repository.get_signals_by_date.side_effect = sqlite3.DatabaseError(
+            "disk I/O error"
         )
 
         # Act & Assert
@@ -439,10 +434,10 @@ class TestEnrichSmaReturnsPureResult:
     @pytest.mark.parametrize(
         "sma_20, sma_200, close, expect_20_key, expect_200_key",
         [
-            (95.0, 80.0, 100.0, True, True),   # Both SMAs positive
-            (0.0, 80.0, 100.0, False, True),    # SMA20 = 0 → skip
-            (95.0, 0.0, 100.0, True, False),    # SMA200 = 0 → skip
-            (0.0, 0.0, 100.0, False, False),    # Both zero → no enrichment
+            (95.0, 80.0, 100.0, True, True),  # Both SMAs positive
+            (0.0, 80.0, 100.0, False, True),  # SMA20 = 0 → skip
+            (95.0, 0.0, 100.0, True, False),  # SMA200 = 0 → skip
+            (0.0, 0.0, 100.0, False, False),  # Both zero → no enrichment
         ],
     )
     def test_enrich_sma_conditional_key_addition(
@@ -468,12 +463,12 @@ class TestEnrichSmaReturnsPureResult:
         assert ("dist_sma_20" in enriched) == expect_20_key
         assert ("dist_sma_200" in enriched) == expect_200_key
 
-    def test_enrich_sma_math_is_correct(
-        self, croc_strategy: CrocSetupStrategy
-    ) -> None:
+    def test_enrich_sma_math_is_correct(self, croc_strategy: CrocSetupStrategy) -> None:
         """Verifies the percentage distance formula is mathematically correct."""
         # Arrange: close=110, sma_20=100 → dist = (110-100)/100 * 100 = 10%
-        prices = PriceData(high=115.0, low=105.0, close=110.0, sma_20=100.0, sma_200=50.0)
+        prices = PriceData(
+            high=115.0, low=105.0, close=110.0, sma_20=100.0, sma_200=50.0
+        )
 
         # Act
         enriched = croc_strategy._enrich_sma({}, prices)
@@ -585,9 +580,7 @@ class TestSymbolFilterImportAtModuleLevel:
 class TestScreenerViewServiceConstructor:
     """Validates that ScreenerViewService.__init__ is correctly typed."""
 
-    def test_init_returns_none(
-        self, mock_signal_repository: MagicMock
-    ) -> None:
+    def test_init_returns_none(self, mock_signal_repository: MagicMock) -> None:
         """Verifies that __init__ returns None as expected by python.md Sec 2."""
         # Arrange & Act
         service = ScreenerViewService(signal_repository=mock_signal_repository)

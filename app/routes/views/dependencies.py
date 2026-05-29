@@ -67,9 +67,7 @@ def _get_backtest_database_path() -> Path:
     return signals_database_path.parent / "backtest.db"
 
 
-def _prepare_backtest_metrics(
-    summary_data: dict[str, object]
-) -> BacktestMetrics:
+def _prepare_backtest_metrics(summary_data: dict[str, object]) -> BacktestMetrics:
     """Maps raw summary dictionary data to a typed BacktestMetrics object.
 
     Args:
@@ -78,6 +76,7 @@ def _prepare_backtest_metrics(
     Returns:
         BacktestMetrics: Highly-structured populated metrics object.
     """
+
     # Mapping helper helper for types
     def get_float(key: str) -> float:
         value = summary_data.get(key, 0.0)
@@ -116,7 +115,7 @@ def _prepare_backtest_metrics(
 
 
 def _prepare_strategy_metrics(
-    strategy_list: list[dict[str, object]]
+    strategy_list: list[dict[str, object]],
 ) -> dict[str, BacktestMetrics]:
     """Converts strategy metrics records into BacktestMetrics map.
 
@@ -146,9 +145,7 @@ def generate_sparkline(
         str: Raw Plotly HTML string representing the sparkline chart.
     """
     color = "#10b981" if is_positive else "#ef4444"
-    fill_color = (
-        "rgba(16, 185, 129, 0.1)" if is_positive else "rgba(239, 68, 68, 0.1)"
-    )
+    fill_color = "rgba(16, 185, 129, 0.1)" if is_positive else "rgba(239, 68, 68, 0.1)"
 
     figure = go.Figure()
     figure.add_trace(

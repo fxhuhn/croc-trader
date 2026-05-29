@@ -23,13 +23,9 @@ def test_application() -> Generator[Flask, None, None]:
     application_instance = create_app()
     application_instance.config["TESTING"] = True
     application_instance.config["APP_CONFIG"] = MagicMock()
-    application_instance.config["APP_CONFIG"].app.security.whitelist = [
-        "127.0.0.1"
-    ]
+    application_instance.config["APP_CONFIG"].app.security.whitelist = ["127.0.0.1"]
     application_instance.config["APP_CONFIG"].app.security.mode = "block"
-    application_instance.config["APP_CONFIG"].get_db_path.return_value = (
-        ":memory:"
-    )
+    application_instance.config["APP_CONFIG"].get_db_path.return_value = ":memory:"
 
     yield application_instance
 
@@ -47,7 +43,9 @@ def test_view_screener_overview_returns_correct_response(
     # Arrange
     with (
         patch("app.routes.views.screener._get_signal_repository") as mock_signal_repo,
-        patch("app.routes.views.screener._get_screener_view_service") as mock_screener_service,
+        patch(
+            "app.routes.views.screener._get_screener_view_service"
+        ) as mock_screener_service,
     ):
         mock_signal_repo.return_value.get_trade_candidates.return_value = []
         mock_screener_service.return_value.get_candidates.return_value = []
@@ -97,9 +95,7 @@ def test_view_trades_overview_returns_correct_response(
 ) -> None:
     """Verifies that trades overview dashboard renders summary and donut chart."""
     # Arrange
-    with patch(
-        "app.routes.views.trades._get_trade_view_service"
-    ) as mock_trade_service:
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
         mock_service_instance = mock_trade_service.return_value
         mock_service_instance.get_trades.return_value = []
         mock_service_instance.get_portfolio_summary.return_value = {
@@ -134,9 +130,7 @@ def test_view_trades_strategy_specific_routes(
 ) -> None:
     """Verifies that each strategy-specific trades dashboard renders correctly."""
     # Arrange
-    with patch(
-        "app.routes.views.trades._get_trade_view_service"
-    ) as mock_trade_service:
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
         mock_service_instance = mock_trade_service.return_value
         mock_service_instance.get_trades.return_value = []
         mock_service_instance.get_portfolio_summary.return_value = {
@@ -211,9 +205,7 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
         mock_service_instance = mock_trade_service.return_value
         # Closed and Active
         mock_service_instance.get_trades.side_effect = [mock_trades, []]
-        mock_service_instance.resolve_strategy.return_value = (
-            Strategies.CrocSetup
-        )
+        mock_service_instance.resolve_strategy.return_value = Strategies.CrocSetup
 
         # Act
         response = test_client.get("/analytics")
@@ -255,9 +247,7 @@ def test_view_analytics_dashboard_handles_corrupted_data_gracefully(
     ) as mock_trade_service:
         mock_service_instance = mock_trade_service.return_value
         mock_service_instance.get_trades.side_effect = [mock_trades, []]
-        mock_service_instance.resolve_strategy.return_value = (
-            Strategies.CrocSetup
-        )
+        mock_service_instance.resolve_strategy.return_value = Strategies.CrocSetup
 
         # Act
         response = test_client.get("/analytics")
@@ -276,9 +266,7 @@ def test_view_backtest_dashboard_handles_missing_run_id_gracefully(
     with (
         patch("app.routes.views.backtest._get_database_path"),
         patch("app.routes.views.backtest._get_backtest_database_path"),
-        patch(
-            "app.routes.views.backtest.ResultsPersistence"
-        ) as mock_persistence,
+        patch("app.routes.views.backtest.ResultsPersistence") as mock_persistence,
     ):
         mock_persistence.return_value.get_latest_run_id.return_value = None
 

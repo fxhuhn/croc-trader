@@ -127,9 +127,14 @@ def register_services(app, config):
                                 # Handle cases like 'bull_1 (NEU)' or 'Red Green Rocket (RGR)'
                                 if " (" in val:
                                     val = val.split(" (")[0].strip()
-                                
+
                                 # Skip boolean flags and composite signals that don't exist as raw strings in DB
-                                if "bear_" in val or "bull_" in val or "+" in val or val in IGNORED_SIGNALS:
+                                if (
+                                    "bear_" in val
+                                    or "bull_" in val
+                                    or "+" in val
+                                    or val in IGNORED_SIGNALS
+                                ):
                                     continue
                             required_values.add(val)
                 elif isinstance(ranking_data, dict):
@@ -141,9 +146,14 @@ def register_services(app, config):
                                 val = str(signal_name).strip()
                                 if " (" in val:
                                     val = val.split(" (")[0].strip()
-                                
+
                                 # Skip boolean flags and composite signals that don't exist as raw strings in DB
-                                if "bear_" in val or "bull_" in val or "+" in val or val in IGNORED_SIGNALS:
+                                if (
+                                    "bear_" in val
+                                    or "bull_" in val
+                                    or "+" in val
+                                    or val in IGNORED_SIGNALS
+                                ):
                                     continue
                                 required_values.add(val)
                     else:

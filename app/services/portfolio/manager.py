@@ -58,7 +58,9 @@ class PortfolioManager:
                         {
                             "initial_size": allocation.size,
                             "current_size": allocation.size,  # Synced for initial state
-                            "signal_context": json.dumps(context, default=str, ensure_ascii=False),
+                            "signal_context": json.dumps(
+                                context, default=str, ensure_ascii=False
+                            ),
                         },
                         reason=f"Portfolio Allocated: {allocation.reason}",
                     )
