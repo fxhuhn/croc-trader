@@ -76,8 +76,11 @@ def calculate_risk_reward_ratio(trades_pnl: pd.Series) -> float:
     winning_trades = trades_pnl[trades_pnl > EPSILON]
     losing_trades = trades_pnl[trades_pnl < -EPSILON]
 
-    if winning_trades.empty or losing_trades.empty:
+    if winning_trades.empty:
         return 0.0
+
+    if losing_trades.empty:
+        return 999.0  # Return infinity representation if there are no losses
 
     average_win = winning_trades.mean()
     average_loss = abs(losing_trades.mean())
@@ -164,10 +167,13 @@ def calculate_kelly_criterion(win_rate: float, risk_reward_ratio: float) -> floa
     Returns:
         float: Kelly fraction (clamped between 0.0 and 1.0).
     """
+    loss_rate = 1.0 - win_rate
+    if loss_rate < EPSILON:
+        return 1.0
+
     if risk_reward_ratio < EPSILON:
         return 0.0
 
-    loss_rate = 1.0 - win_rate
     kelly_fraction = win_rate - (loss_rate / risk_reward_ratio)
 
     return float(max(0.0, min(1.0, kelly_fraction)))

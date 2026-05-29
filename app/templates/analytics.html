@@ -43,15 +43,43 @@
     <!-- Section 2: Weekly Trend (Chart) -->
     <section class="mb-8 md:mb-12">
         <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="line-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly Trend
+            <i data-lucide="line-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly Performance
         </h2>
         <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
-        <div class="flex justify-between items-center mb-3">
-            <h3 class="text-xs uppercase font-bold tracking-wider text-slate-500">Weekly PnL</h3>
+        <div class="flex justify-end items-center mb-3">
             <span class="text-xs font-medium text-slate-500">Weeks</span>
         </div>
 
         <div id="weekly-trend-chart" class="h-[200px] w-full"></div>
+
+        <!-- Legend (Custom HTML) -->
+        <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
+            <!-- Aggregate Line -->
+            <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-sm bg-slate-400"></div>
+                <span class="text-xs text-slate-700 font-medium">Portfolio</span>
+            </div>
+            {% for strategy in strategies %}
+            <div class="flex items-center gap-1.5">
+                <div class="w-2.5 h-2.5 rounded-sm {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
+                <span class="text-xs text-slate-500">{{ strategy.name }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        </div>
+    </section>
+
+    <!-- Section 2.5: Historical Weekly PnL (Chart) -->
+    <section class="mb-8 md:mb-12">
+        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+            <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly PnL
+        </h2>
+        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
+        <div class="flex justify-end items-center mb-3">
+            <span class="text-xs font-medium text-slate-500">Weeks</span>
+        </div>
+
+        <div id="weekly-pnl-chart" class="h-[200px] w-full"></div>
 
         <!-- Legend (Custom HTML) -->
         <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
@@ -191,6 +219,64 @@
         </div>
     </section>
 
+    <!-- Section 4: Kelly Criterion Allocation -->
+    <section class="mb-8 md:mb-12">
+        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+            <i data-lucide="percent" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Kelly Criterion Allocation
+        </h2>
+        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                <!-- Donut Chart Column -->
+                <div class="lg:col-span-5 flex flex-col items-center justify-center relative">
+                    <div id="kelly-donut-chart" class="h-[240px] w-full max-w-[280px]"></div>
+                </div>
+                
+                <!-- Metrics Table Column -->
+                <div class="lg:col-span-7 w-full">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-100 text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">
+                                    <th class="py-3 px-2">Strategy</th>
+                                    <th class="py-3 px-2 text-right">Win Rate</th>
+                                    <th class="py-3 px-2 text-right">Risk/Reward</th>
+                                    <th class="py-3 px-2 text-right">Kelly Fraction</th>
+                                    <th class="py-3 px-2 text-right">Suggested Allocation</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 text-xs md:text-sm">
+                                {% for strategy in strategies %}
+                                <tr class="text-slate-700 font-medium hover:bg-slate-50/50 transition-colors">
+                                    <td class="py-3 px-2 flex items-center gap-2">
+                                        <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
+                                        <span class="font-bold text-slate-900">{{ strategy.name }}</span>
+                                    </td>
+                                    <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.1%}".format(strategy.metrics.win_rate) }}</td>
+                                    <td class="py-3 px-2 text-right text-slate-600 font-mono">
+                                        {% if strategy.metrics.risk_reward_ratio == 999.0 %}
+                                            &infin;
+                                        {% else %}
+                                            {{ "{:.2f}".format(strategy.metrics.risk_reward_ratio) }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.1%}".format(strategy.metrics.kelly_criterion) }}</td>
+                                    <td class="py-3 px-2 text-right font-black text-indigo-600 font-mono">
+                                        {{ "{:.1%}".format(strategy.metrics.suggested_allocation) }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-slate-100 flex items-start gap-2 text-xs text-slate-500">
+                        <i data-lucide="info" class="w-4 h-4 text-slate-400 shrink-0 mt-0.5"></i>
+                        <span>The Kelly Criterion calculates the mathematically optimal fraction of capital to allocate to each strategy to maximize long-term growth.</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
 </main>
 
 <!-- Bottom-Navigation -->
@@ -212,6 +298,7 @@
     // Plotly Chart Generation
     document.addEventListener('DOMContentLoaded', function () {
         const weeklyTrendData = {{ weekly_trend | tojson | safe }};
+        const weeklyPnLData = {{ weekly_pnl | tojson | safe }};
         const strategiesMetadata = {{ strategies | tojson | safe }};
         const strategyHexColors = {{ strategy_hex_colors | tojson | safe }};
 
@@ -234,7 +321,8 @@
         },
         fill: 'tozeroy',
         fillcolor: 'rgba(148, 163, 184, 0.05)',
-        hoverinfo: 'x+y'
+        hoverinfo: 'x+y',
+        yhoverformat: '.2f'
     });
 
     // Strategy Lines
@@ -254,7 +342,8 @@
             },
             fill: 'tozeroy',
             fillcolor: color + '0D', // approx 5% opacity
-            hoverinfo: 'x+y'
+            hoverinfo: 'x+y',
+            yhoverformat: '.2f'
         });
     }
 
@@ -262,6 +351,14 @@
         margin: { l: 45, r: 10, t: 5, b: 20 },
         showlegend: false,
         hovermode: 'x unified',
+        hoverlabel: {
+            bgcolor: '#ffffff',
+            bordercolor: '#cbd5e1', // slate-300 for a clean border
+            font: {
+                color: '#1e293b', // slate-800 for high-contrast dark text
+                size: 12
+            }
+        },
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         xaxis: {
@@ -294,6 +391,137 @@
 
     Plotly.newPlot('weekly-trend-chart', traces, layout, config);
 
+    // Historical Weekly PnL Chart Generation
+    const tracesPnL = [];
+
+    if (weeklyPnLData && weeklyPnLData.dates) {
+        // Strategy Bars (Stacked Underneath)
+        for (const strategyName in weeklyPnLData.strategies) {
+            const color = strategyHexColors[strategyName] || '#94a3b8';
+
+            tracesPnL.push({
+                x: weeklyPnLData.dates,
+                y: weeklyPnLData.strategies[strategyName],
+                name: strategyName,
+                type: 'bar',
+                marker: {
+                    color: color,
+                    line: {
+                        color: 'rgba(255, 255, 255, 0.1)',
+                        width: 0.5
+                    }
+                },
+                hoverinfo: 'x+y',
+                yhoverformat: '.2f'
+            });
+        }
+
+        // Portfolio Line (Thick, Dashed Light Slate Overlay - matching Weekly Trend style, no fill to allow negative range)
+        tracesPnL.push({
+            x: weeklyPnLData.dates,
+            y: weeklyPnLData.aggregate,
+            name: 'Portfolio',
+            type: 'scatter',
+            mode: 'lines',
+            line: {
+                color: '#94a3b8', // slate-400 (light grey)
+                width: 3,
+                shape: 'spline',
+                dash: 'dash'
+            },
+            hoverinfo: 'x+y',
+            yhoverformat: '.2f'
+        });
+
+        // Deep-copy standard layout to avoid side-effects, and enable relative bar stacking
+        const layoutPnL = JSON.parse(JSON.stringify(layout));
+        layoutPnL.barmode = 'relative';
+
+        Plotly.newPlot('weekly-pnl-chart', tracesPnL, layoutPnL, config);
+    }
+
+    // Kelly Donut Chart Generation
+    const kellyLabels = [];
+    const kellyValues = [];
+    const kellyColors = [];
+    const kellyTexts = [];
+
+    strategiesMetadata.forEach(strategy => {
+        const allocation = strategy.metrics.suggested_allocation || 0;
+        if (allocation > 0) {
+            kellyLabels.push(strategy.name);
+            kellyValues.push(allocation);
+            kellyColors.push(strategyHexColors[strategy.name] || '#64748b');
+            kellyTexts.push((allocation * 100).toFixed(1) + '%');
+        }
+    });
+
+    if (kellyValues.length > 0) {
+        const kellyTraces = [{
+            labels: kellyLabels,
+            values: kellyValues,
+            text: kellyTexts,
+            hole: 0.75,
+            type: 'pie',
+            textinfo: 'text', // Show absolute allocation figures instead of relative percentages
+            hoverinfo: 'label+text', // Show strategy label and absolute percentage on hover
+            marker: {
+                colors: kellyColors,
+                line: {
+                    color: '#ffffff',
+                    width: 2
+                }
+            },
+            sort: false
+        }];
+
+        const kellyLayout = {
+            margin: { l: 15, r: 15, t: 15, b: 15 },
+            showlegend: false,
+            hoverlabel: {
+                bgcolor: '#ffffff',
+                bordercolor: '#cbd5e1', // slate-300
+                font: {
+                    color: '#1e293b', // slate-800
+                    size: 12
+                }
+            },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            annotations: [
+                {
+                    font: {
+                        size: 13,
+                        color: '#475569', // slate-600
+                        weight: 'bold'
+                    },
+                    showarrow: false,
+                    text: 'Kelly<br>Allocation',
+                    x: 0.5,
+                    y: 0.5
+                }
+            ]
+        };
+
+        const kellyConfig = {
+            displayModeBar: false,
+            responsive: true
+        };
+
+        Plotly.newPlot('kelly-donut-chart', kellyTraces, kellyLayout, kellyConfig);
+    } else {
+        const chartContainer = document.getElementById('kelly-donut-chart');
+        if (chartContainer) {
+            chartContainer.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-slate-400 p-4">
+                    <i data-lucide="info" class="w-8 h-8 mb-2 text-slate-300"></i>
+                    <span class="text-xs font-semibold text-slate-400">No Positive Allocations</span>
+                    <span class="text-[10px] text-slate-400 text-center mt-1">All strategies currently have negative expectancy.</span>
+                </div>
+            `;
+        }
+    }
+
     // Ensure Lucide icons are updated after JS changes if any
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
@@ -303,6 +531,14 @@
     // Handle Window Resize for Plotly
     window.addEventListener('resize', function () {
         Plotly.Plots.resize('weekly-trend-chart');
+        const pnlChart = document.getElementById('weekly-pnl-chart');
+        if (pnlChart && pnlChart.classList.contains('js-plotly-plot')) {
+            Plotly.Plots.resize('weekly-pnl-chart');
+        }
+        const kellyChart = document.getElementById('kelly-donut-chart');
+        if (kellyChart && kellyChart.classList.contains('js-plotly-plot')) {
+            Plotly.Plots.resize('kelly-donut-chart');
+        }
     });
 </script>
 {% endblock %}
