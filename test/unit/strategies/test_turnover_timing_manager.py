@@ -45,6 +45,34 @@ def test_check_entry_limit_hit_and_green_count(strategy, mock_trade_repo):
         assert json.loads(payload["signal_context"])["green_candle_count"] == 1
 
 
+def test_check_entry_limit_hit_inherits_setup_green_state(strategy, mock_trade_repo):
+    """Tests entry when limit is hit and setup day was also green."""
+    trade = {
+        "id": "T1",
+        "symbol": "AAPL",
+        "entry_price": 100.0,
+        "signal_context": json.dumps(
+            {"date": "2026-02-13", "setup_candle_green": True, "green_candle_count": 0}
+        ),
+    }
+    # Current day: Feb 16th (Monday). Open 99, Low 98 (hits 100), Close 102 (Green).
+    candle = pd.Series(
+        {"open": 99.0, "low": 98.0, "close": 102.0, "date": pd.Timestamp("2026-02-16")},
+        name=pd.Timestamp("2026-02-16"),
+    )
+
+    with patch.object(strategy, "_get_trading_days_post_signal", return_value=1):
+        result = strategy.check_entry(
+            trade, candle, pd.DataFrame([candle]), mock_trade_repo
+        )
+
+        assert result is not None
+        assert "FILLED" in result
+        mock_trade_repo.update_trade.assert_called_once()
+        payload = mock_trade_repo.update_trade.call_args[0][1]
+        assert json.loads(payload["signal_context"])["green_candle_count"] == 2
+
+
 def test_check_entry_expired(strategy, mock_trade_repo):
     """Tests immediate expiration if limit not hit on Day 1."""
     trade = {

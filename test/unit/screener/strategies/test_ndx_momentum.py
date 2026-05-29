@@ -171,7 +171,7 @@ def test_run_triggers_trade_creation(strategy, mock_trade_repository):
 
 
 def test_create_trades_direct_error_handling(strategy, mock_trade_repository):
-    """Tests that errors in individual trade creation are logged and don't stop the process."""
+    """Tests that data-level errors in individual trade creation are logged and don't stop the process."""
     analysis_date = pd.Timestamp("2026-01-30")
     symbols = ["AAPL", "MSFT"]
     momentum_scores = pd.Series([10.0, 5.0], index=symbols)
@@ -189,10 +189,10 @@ def test_create_trades_direct_error_handling(strategy, mock_trade_repository):
     roc_df = pd.DataFrame({"AAPL": [5.0], "MSFT": [2.0]}, index=[analysis_date])
     roc_map = {21: roc_df, 63: roc_df, 126: roc_df, 252: roc_df}
 
-    # Mock create_trade to fail for AAPL but succeed for MSFT
+    # Mock create_trade to fail with a data-level ValueError for AAPL only
     def side_effect(symbol, **kwargs):
         if symbol == "AAPL":
-            raise Exception("Db Error")
+            raise ValueError("Missing price data for symbol")
         return MagicMock()
 
     mock_trade_repository.create_trade.side_effect = side_effect

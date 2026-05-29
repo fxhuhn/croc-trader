@@ -39,26 +39,29 @@ def strategy(
     mock_signal_repo: MagicMock,
     mock_telegram_bot: MagicMock,
 ) -> CrocSetupStrategy:
+    mock_stat = MagicMock()
+    mock_stat.st_size = 100  # Well within the 1 MB guard
     with patch(
         "app.services.screener.strategies.croc_setup.settings.get_path"
     ) as mock_get_path:
         mock_get_path.return_value = Path("mock_ranking.yaml")
         with patch("pathlib.Path.exists", return_value=True):
-            with patch("builtins.open", mock_open(read_data="ranking_2026: []")):
-                with patch(
-                    "app.services.screener.strategies.croc_setup.ExchangeSymbol"
-                ) as mock_ex:
-                    instance = mock_ex.return_value
-                    instance.sp_500 = []
-                    instance.nasdaq_100 = []
-                    instance.dow_30 = []
-                    instance.russell_1000 = []
-                    return CrocSetupStrategy(
-                        trade_repository=mock_trade_repo,
-                        data_provider=mock_data_provider,
-                        signal_repository=mock_signal_repo,
-                        telegram_bot=mock_telegram_bot,
-                    )
+            with patch("pathlib.Path.stat", return_value=mock_stat):
+                with patch("builtins.open", mock_open(read_data="ranking_2026: []")):
+                    with patch(
+                        "app.services.screener.strategies.croc_setup.ExchangeSymbol"
+                    ) as mock_ex:
+                        instance = mock_ex.return_value
+                        instance.sp_500 = []
+                        instance.nasdaq_100 = []
+                        instance.dow_30 = []
+                        instance.russell_1000 = []
+                        return CrocSetupStrategy(
+                            trade_repository=mock_trade_repo,
+                            data_provider=mock_data_provider,
+                            signal_repository=mock_signal_repo,
+                            telegram_bot=mock_telegram_bot,
+                        )
 
 
 def test_price_data_from_row_valid() -> None:
@@ -91,11 +94,14 @@ def test_load_config_success(strategy: CrocSetupStrategy) -> None:
     """Tests successful loading of ranking configuration."""
     # Arrange
     mock_yaml = "ranking_2026: [{'Signal': 'Test', 'Score': 10}]"
+    mock_stat = MagicMock()
+    mock_stat.st_size = 100
 
     # Act
     with patch("pathlib.Path.exists", return_value=True):
-        with patch("builtins.open", mock_open(read_data=mock_yaml)):
-            rules = strategy._load_config()
+        with patch("pathlib.Path.stat", return_value=mock_stat):
+            with patch("builtins.open", mock_open(read_data=mock_yaml)):
+                rules = strategy._load_config()
 
     # Assert
     assert len(rules) == 1

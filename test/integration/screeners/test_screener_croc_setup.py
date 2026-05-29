@@ -74,10 +74,10 @@ def test_compute_sma_distances_calculation(strategy):
         "sma_200": 100.0,  # +10%
     }
     prices = PriceData.from_row(row)
-    strategy._enrich_sma(row, prices)
+    enriched = strategy._enrich_sma(row, prices)
 
-    assert row["dist_sma_20"] == 10.0
-    assert row["dist_sma_200"] == 10.0
+    assert enriched["dist_sma_20"] == 10.0
+    assert enriched["dist_sma_200"] == 10.0
 
 
 def test_compute_sma_distances_safe_failure(strategy):

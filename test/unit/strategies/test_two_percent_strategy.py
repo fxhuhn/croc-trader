@@ -81,14 +81,18 @@ def create_candle(
 # --- SCREENER TESTS ---
 
 
-@pytest.mark.parametrize("test_date", ["2026-02-02", "2026-02-03", "2026-02-04"])
-def test_screener_skips_monday_to_wednesday(
-    screener_strategy: ScreenerStrategy, test_date: str
+@pytest.mark.parametrize(
+    "test_date", ["2026-02-02", "2026-02-03", "2026-02-04", "2026-02-05"]
+)
+@patch("pandas.Timestamp.now")
+def test_screener_skips_live_runs_before_friday(
+    mock_now: MagicMock, screener_strategy: ScreenerStrategy, test_date: str
 ) -> None:
     """
-    Ensures that the screener does not generate signals on Monday, Tuesday, or Wednesday.
+    Ensures that the screener does not generate signals mid-week (Mon-Thu) if run live.
     """
     # Arrange
+    mock_now.return_value = pd.Timestamp(test_date)
     candle = create_candle(test_date, 100.0)
     screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame(
         [candle]
@@ -102,12 +106,49 @@ def test_screener_skips_monday_to_wednesday(
     screener_strategy.trade_repository.create_trade.assert_not_called()
 
 
-def test_screener_signals_on_friday(screener_strategy: ScreenerStrategy) -> None:
+@patch("pandas.Timestamp.now")
+def test_screener_rejects_midweek_in_backtest(
+    mock_now: MagicMock, screener_strategy: ScreenerStrategy
+) -> None:
     """
-    Ensures that the screener generates a signal on Friday.
+    Ensures that in a backtest, a midweek day is rejected because future days 
+    for that week exist in the full database history.
+    """
+    # Arrange
+    # Backtest is running in the future
+    mock_now.return_value = pd.Timestamp("2026-05-01")
+    
+    wed_date = "2026-02-04"
+    thu_date = "2026-02-05"
+    fri_date = "2026-02-06"
+    
+    history = pd.DataFrame([
+        create_candle(wed_date, 100.0),
+        create_candle(thu_date, 101.0),
+        create_candle(fri_date, 102.0),
+    ])
+    screener_strategy.data_provider.get_symbol_history.return_value = history
+    
+    # Act
+    # Simulating backtester calling run() for Wednesday
+    result = screener_strategy.run(analysis_date=wed_date)
+    
+    # Assert
+    assert result == 0
+    screener_strategy.trade_repository.create_trade.assert_not_called()
+
+
+@patch("pandas.Timestamp.now")
+def test_screener_signals_on_friday(
+    mock_now: MagicMock, screener_strategy: ScreenerStrategy
+) -> None:
+    """
+    Ensures that the screener generates a signal on Friday when the week has concluded.
     """
     # Arrange
     friday_date = "2026-02-06"
+    # Simulate running on the following Monday
+    mock_now.return_value = pd.Timestamp("2026-02-09") 
     candle = create_candle(friday_date, 1000.0)
     screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame(
         [candle]
@@ -119,7 +160,6 @@ def test_screener_signals_on_friday(screener_strategy: ScreenerStrategy) -> None
 
     # Assert
     assert result == 1
-    # Check limit price (99% of 1000 = 990)
     screener_strategy.trade_repository.create_trade.assert_called_once()
     args, kwargs = screener_strategy.trade_repository.create_trade.call_args
     assert kwargs["entry"] == 990.0
@@ -128,19 +168,44 @@ def test_screener_signals_on_friday(screener_strategy: ScreenerStrategy) -> None
     assert kwargs.get("strategy") == Strategies.TwoPercent
 
 
-@patch("app.services.screener.strategies.two_percent_strategy.MarketHolidayChecker")
-def test_screener_signals_on_thursday_if_friday_is_holiday(
-    mock_holiday_checker_class: MagicMock, screener_strategy: ScreenerStrategy
+@pytest.mark.parametrize("run_date", ["2026-02-07", "2026-02-08"])  # Saturday, Sunday
+@patch("pandas.Timestamp.now")
+def test_screener_signals_on_friday_when_run_on_weekend(
+    mock_now: MagicMock, screener_strategy: ScreenerStrategy, run_date: str
 ) -> None:
     """
-    Ensures that the screener signals on Thursday if Friday is a market holiday.
+    Ensures that the screener successfully generates a signal on Friday when run over the weekend.
     """
     # Arrange
-    thursday_date = "2026-04-02"  # April 3rd 2026 is Good Friday
-    friday_date = "2026-04-03"
+    friday_date = "2026-02-06"
+    # Simulate running on the weekend
+    mock_now.return_value = pd.Timestamp(run_date) 
+    candle = create_candle(friday_date, 1000.0)
+    screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame(
+        [candle]
+    )
+    screener_strategy.trade_repository.exists.return_value = False
 
-    mock_checker = mock_holiday_checker_class.return_value
-    mock_checker.is_holiday.side_effect = lambda d: str(d) == friday_date
+    # Act
+    result = screener_strategy.run(analysis_date=friday_date)
+
+    # Assert
+    assert result == 1
+    screener_strategy.trade_repository.create_trade.assert_called_once()
+
+
+@patch("pandas.Timestamp.now")
+def test_screener_signals_on_thursday_if_friday_missing(
+    mock_now: MagicMock, screener_strategy: ScreenerStrategy
+) -> None:
+    """
+    Ensures that the screener falls back to Thursday if Friday data is missing
+    (e.g. because Friday was a market holiday), assuming the week has concluded.
+    """
+    # Arrange
+    thursday_date = "2026-04-02" # Week 14
+    # Simulate running on the following Monday
+    mock_now.return_value = pd.Timestamp("2026-04-06") 
 
     candle = create_candle(thursday_date, 1000.0)
     screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame(
@@ -150,6 +215,32 @@ def test_screener_signals_on_thursday_if_friday_is_holiday(
 
     # Act
     result = screener_strategy.run(analysis_date=thursday_date)
+
+    # Assert
+    assert result == 1
+    screener_strategy.trade_repository.create_trade.assert_called_once()
+
+
+@patch("pandas.Timestamp.now")
+def test_screener_signals_on_wednesday_if_thursday_and_friday_missing(
+    mock_now: MagicMock, screener_strategy: ScreenerStrategy
+) -> None:
+    """
+    Ensures that the screener falls back to Wednesday if Thursday and Friday data are missing.
+    """
+    # Arrange
+    wednesday_date = "2026-04-01" # Week 14
+    # Simulate running on the following Monday
+    mock_now.return_value = pd.Timestamp("2026-04-06") 
+
+    candle = create_candle(wednesday_date, 1000.0)
+    screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame(
+        [candle]
+    )
+    screener_strategy.trade_repository.exists.return_value = False
+
+    # Act
+    result = screener_strategy.run(analysis_date=wednesday_date)
 
     # Assert
     assert result == 1
