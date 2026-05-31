@@ -1,11 +1,8 @@
 import logging
 import re
 import sqlite3
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
-
-import yaml
 
 from ...const import Strategies, STRATEGY_ALIASES
 from ...types import TradeStatus
@@ -13,6 +10,7 @@ from ...database.repositories.trade import TradeRepository
 from ...database.repositories.market import MarketRepository
 from ...database.session import DatabaseSession
 from ...services.telegram import TelegramBot
+from ...models import Order
 
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.hold_target import HoldTargetStrategy
@@ -250,12 +248,13 @@ class TradeManager:
             )
 
     def generate_daily_orders(self) -> str | None:
-        """Generates daily order file for all CREATED trades across all strategies.
+        """Generates daily order file in CSV format for CREATED trades.
 
-        Serializes the result as a YAML file in data/orders/.
+        Processes only specific strategies (ndx_momentum, turnover_timing,
+        two_percent) and writes the result to a CSV file in data/orders/.
 
         Returns:
-            str | None: Path to the written YAML file, or None if no orders generated.
+            str | None: Path to the written CSV file, or None if no orders generated.
         """
         logger.info("Generating daily orders.")
 
@@ -266,37 +265,14 @@ class TradeManager:
                 "Database unavailable during order generation. Halting."
             ) from database_error
 
-        orders = []
+        orders_data: list[tuple[dict[str, object], Order]] = []
 
         for trade in created_trades:
             symbol = str(trade.get("symbol", ""))
-            strategy_name = str(trade.get("strategy", ""))
-            strategy = self._get_strategy(strategy_name)
-
-            if not strategy:
-                logger.warning(
-                    "No strategy handler for trade [%s] (%s).",
-                    symbol,
-                    strategy_name,
-                )
-                continue
-
             try:
-                start_date = _resolve_history_start_date(trade)
-                df_hist = self.market_repo.get_symbol_history_raw(
-                    symbol, start_date=start_date
-                )
-
-                budget = float(trade.get("budget") or 2000.0)
-
-                order = strategy.generate_orders(
-                    trade, df_hist, budget, self.trade_repository
-                )
-
+                order = self._generate_order_for_trade(trade)
                 if order:
-                    order_dict = asdict(order)
-                    cleaned_order = _remove_none_values(order_dict)  # type: ignore
-                    orders.append(cleaned_order)
+                    orders_data.append((trade, order))
                     logger.info("Order generated for [%s].", symbol)
 
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
@@ -308,21 +284,176 @@ class TradeManager:
                     "Data error generating order for [%s]: %s", symbol, data_error
                 )
 
-        if not orders:
+        if not orders_data:
             logger.info("No orders to generate.")
             return None
 
-        date_str = datetime.now().strftime("%Y-%m-%d")
-        filename = f"orders_{date_str}.yaml"
-        output_dir = Path("data/orders")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        file_path = output_dir / filename
+        date_string = datetime.now().strftime("%Y-%m-%d")
+        csv_file_path = self._write_csv_orders_file(orders_data, date_string)
 
-        with open(file_path, "w") as file_handle:
-            yaml.dump(orders, file_handle, sort_keys=False, default_flow_style=False)
+        if csv_file_path is None:
+            return None
 
-        logger.info("Orders saved to: %s", file_path)
-        return str(file_path)
+        return str(csv_file_path)
+
+    def _generate_order_for_trade(self, trade: dict[str, object]) -> Order | None:
+        """Generates a single order object for a given trade proposal."""
+        symbol = str(trade.get("symbol", ""))
+        strategy_name = str(trade.get("strategy", ""))
+        strategy = self._get_strategy(strategy_name)
+
+        if not strategy:
+            logger.warning(
+                "No strategy handler for trade [%s] (%s).",
+                symbol,
+                strategy_name,
+            )
+            return None
+
+        start_date = _resolve_history_start_date(trade)
+        df_hist = self.market_repo.get_symbol_history_raw(
+            symbol, start_date=start_date
+        )
+
+        budget = float(trade.get("budget") or 2000.0)
+
+        # Call strategy order generation
+        return strategy.generate_orders(
+            trade, df_hist, budget, self.trade_repository
+        )
+
+    def _write_csv_orders_file(
+        self,
+        orders_data: list[tuple[dict[str, object], Order]],
+        date_string: str,
+    ) -> Path | None:
+        """Transforms and saves generated orders to a CSV file in bracket layout."""
+        supported_strategies = {
+            Strategies.NDXMomentum,
+            Strategies.TurnOverTiming,
+            Strategies.TurnOverTiming_10,
+            Strategies.TurnOverTiming_05,
+            Strategies.TwoPercent,
+        }
+
+        filtered_orders_data = []
+        for trade, order in orders_data:
+            resolved_strategy = self._resolve_strategy_name(
+                str(trade.get("strategy", ""))
+            )
+            if resolved_strategy in supported_strategies:
+                filtered_orders_data.append((trade, order))
+
+        if not filtered_orders_data:
+            logger.info("No orders found for CSV-supported strategies.")
+            return None
+
+        csv_rows = []
+        trade_group_counter = 1
+        date_compact = date_string.replace("-", "")
+
+        for trade, order in filtered_orders_data:
+            resolved_strategy = self._resolve_strategy_name(
+                str(trade.get("strategy", ""))
+            )
+            if not resolved_strategy:
+                continue
+
+            strategy_display_name = _get_strategy_display_name(resolved_strategy)
+            trade_group_id = (
+                f"{date_compact}_{strategy_display_name}_{trade_group_counter:03d}"
+            )
+
+            rows = self._map_order_to_csv_rows(
+                trade, order, trade_group_id, strategy_display_name
+            )
+            csv_rows.extend(rows)
+            trade_group_counter += 1
+
+        if not csv_rows:
+            return None
+
+        output_directory = Path("data/orders")
+        output_directory.mkdir(parents=True, exist_ok=True)
+        csv_filename = f"orders_{date_string.replace('-', '_')}.csv"
+        csv_file_path = output_directory / csv_filename
+
+        import csv
+        header = [
+            "trade_group_id",
+            "bracket_role",
+            "symbol",
+            "sec_type",
+            "exchange",
+            "account_id",
+            "action",
+            "quantity",
+            "order_type",
+            "target_price",
+            "tif",
+            "strategy_name",
+        ]
+
+        with open(csv_file_path, "w", newline="") as csv_file_handle:
+            writer = csv.DictWriter(csv_file_handle, fieldnames=header)
+            writer.writeheader()
+            writer.writerows(csv_rows)
+
+        logger.info("CSV Orders saved to: %s", csv_file_path)
+        return csv_file_path
+
+    def _map_order_to_csv_rows(
+        self,
+        trade: dict[str, object],
+        order: Order,
+        trade_group_id: str,
+        strategy_display_name: str,
+    ) -> list[dict[str, object]]:
+        """Maps an order model and its legs to structured CSV row dictionaries."""
+        rows = []
+        if order.entry:
+            entry_leg = order.entry
+            rows.append({
+                "trade_group_id": trade_group_id,
+                "bracket_role": "ENTRY",
+                "symbol": order.symbol,
+                "sec_type": "STK",
+                "exchange": "SMART",
+                "account_id": "U19605236",
+                "action": entry_leg.action,
+                "quantity": (
+                    entry_leg.quantity
+                    if entry_leg.quantity is not None
+                    else order.quantity
+                ),
+                "order_type": entry_leg.type,
+                "target_price": f"{entry_leg.price:.2f}",
+                "tif": entry_leg.time_in_force,
+                "strategy_name": strategy_display_name,
+            })
+
+        for exit_leg in order.exits:
+            bracket_role = "SL" if exit_leg.type == "STP" else "TP"
+            rows.append({
+                "trade_group_id": trade_group_id,
+                "bracket_role": bracket_role,
+                "symbol": order.symbol,
+                "sec_type": "STK",
+                "exchange": "SMART",
+                "account_id": "U19605236",
+                "action": exit_leg.action,
+                "quantity": (
+                    exit_leg.quantity
+                    if exit_leg.quantity is not None
+                    else order.quantity
+                ),
+                "order_type": exit_leg.type,
+                "target_price": f"{exit_leg.price:.2f}",
+                "tif": exit_leg.time_in_force,
+                "strategy_name": strategy_display_name,
+            })
+
+        return rows
 
 
 def _resolve_history_start_date(trade: dict[str, object]) -> str:
@@ -362,3 +493,18 @@ def _remove_none_values(data: object) -> object:
     if isinstance(data, list):
         return [_remove_none_values(item) for item in data]
     return data
+
+
+def _get_strategy_display_name(strategy_enum: Strategies) -> str:
+    """Returns the standardized display name of a strategy for order reporting."""
+    if strategy_enum == Strategies.NDXMomentum:
+        return "NDXMomentum"
+    if strategy_enum == Strategies.TurnOverTiming:
+        return "TurnoverTiming"
+    if strategy_enum == Strategies.TurnOverTiming_10:
+        return "TurnoverTiming_1.0"
+    if strategy_enum == Strategies.TurnOverTiming_05:
+        return "TurnoverTiming_0.5"
+    if strategy_enum == Strategies.TwoPercent:
+        return "TwoPercent"
+    return str(strategy_enum.value)
