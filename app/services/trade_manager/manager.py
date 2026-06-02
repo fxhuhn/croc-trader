@@ -248,7 +248,7 @@ class TradeManager:
             )
 
     def generate_daily_orders(self) -> str | None:
-        """Generates daily order file in CSV format for CREATED trades.
+        """Generates daily order file in CSV format for CREATED and ACTIVE trades.
 
         Processes only specific strategies (ndx_momentum, turnover_timing,
         two_percent) and writes the result to a CSV file in data/orders/.
@@ -260,15 +260,43 @@ class TradeManager:
 
         try:
             created_trades = self.trade_repository.get_by_status(TradeStatus.CREATED)
+            active_trades = self.trade_repository.get_by_status(TradeStatus.ACTIVE)
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
                 "Database unavailable during order generation. Halting."
             ) from database_error
 
+        # Active symbols by strategy for checking duplicates
+        active_symbols_by_strategy: dict[Strategies, set[str]] = {}
+        for active_trade in active_trades:
+            resolved_strategy = self._resolve_strategy_name(
+                str(active_trade.get("strategy", ""))
+            )
+            if resolved_strategy:
+                active_symbols_by_strategy.setdefault(
+                    resolved_strategy, set()
+                ).add(str(active_trade.get("symbol", "")))
+
         orders_data: list[tuple[dict[str, object], Order]] = []
 
+        # 1. Process CREATED trades (Entries)
         for trade in created_trades:
             symbol = str(trade.get("symbol", ""))
+            resolved_strategy = self._resolve_strategy_name(
+                str(trade.get("strategy", ""))
+            )
+
+            # Skip if position is already active (avoids duplicate entry orders)
+            if resolved_strategy and symbol in active_symbols_by_strategy.get(
+                resolved_strategy, set()
+            ):
+                logger.info(
+                    "Skipping entry order generation for [%s] (%s) - position already active.",
+                    symbol,
+                    resolved_strategy,
+                )
+                continue
+
             try:
                 order = self._generate_order_for_trade(trade)
                 if order:
@@ -282,6 +310,26 @@ class TradeManager:
             except (ValueError, KeyError, TypeError) as data_error:
                 logger.warning(
                     "Data error generating order for [%s]: %s", symbol, data_error
+                )
+
+        # 2. Process ACTIVE trades (Exits)
+        for trade in active_trades:
+            symbol = str(trade.get("symbol", ""))
+            try:
+                order = self._generate_order_for_trade(trade)
+                if order:
+                    orders_data.append((trade, order))
+                    logger.info("Exit order generated for [%s].", symbol)
+
+            except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+                raise RuntimeError(
+                    f"Database error generating exit order for [{symbol}]."
+                ) from database_error
+            except (ValueError, KeyError, TypeError) as data_error:
+                logger.warning(
+                    "Data error generating exit order for [%s]: %s",
+                    symbol,
+                    data_error,
                 )
 
         if not orders_data:
@@ -433,7 +481,10 @@ class TradeManager:
             })
 
         for exit_leg in order.exits:
-            bracket_role = "SL" if exit_leg.type == "STP" else "TP"
+            if order.entry is None:
+                bracket_role = "EXIT"
+            else:
+                bracket_role = "SL" if exit_leg.type == "STP" else "TP"
             rows.append({
                 "trade_group_id": trade_group_id,
                 "bracket_role": bracket_role,
@@ -468,10 +519,33 @@ def _resolve_history_start_date(trade: dict[str, object]) -> str:
     Returns:
         str: ISO date string (YYYY-MM-DD) to use as the history query start.
     """
-    for date_key in ("entry_date", "created_at", "signal_date"):
+    # 1. Prefer entry_date if available
+    entry_date = trade.get("entry_date")
+    if entry_date:
+        return str(entry_date).split(" ")[0]
+
+    # 2. Prefer date from signal_context if available (crucial for CREATED trades)
+    signal_context = trade.get("signal_context")
+    if signal_context:
+        try:
+            import json
+
+            if isinstance(signal_context, str):
+                ctx = json.loads(signal_context)
+            else:
+                ctx = signal_context
+
+            if isinstance(ctx, dict) and "date" in ctx:
+                return str(ctx["date"]).split(" ")[0]
+        except Exception:
+            pass
+
+    # 3. Fall back to other keys
+    for date_key in ("created_at", "signal_date"):
         date_value = trade.get(date_key)
         if date_value:
             return str(date_value).split(" ")[0]
+
     return _HARDCODED_HISTORY_FALLBACK_DATE
 
 

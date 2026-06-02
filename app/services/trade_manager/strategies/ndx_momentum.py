@@ -245,7 +245,43 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             An Order object or None if generation failed.
         """
         symbol = trade.get("symbol", "UNKNOWN")
+        status = trade.get("status")
 
+        # 1. Exit Order (ACTIVE) - triggered when a symbol is dropped from the leaders list
+        if status == "ACTIVE":
+            # Fetch all CREATED trades for ndx_momentum to get the new leaders
+            created_trades = repository.get_by_status(TradeStatus.CREATED)
+            leaders_symbols = {
+                str(t.get("symbol", ""))
+                for t in created_trades
+                if t.get("strategy") == self.name
+            }
+
+            if symbol not in leaders_symbols:
+                quantity = int(trade.get("current_size") or 0)
+                if quantity <= 0:
+                    return None
+
+                exit_leg_definition = OrderLeg(
+                    action="SELL",
+                    type="MKT",
+                    price=0.0,
+                    quantity=quantity,
+                    time_in_force="OPG",
+                )
+
+                return Order(
+                    id=f"{symbol}_{self.name}_EXIT",
+                    symbol=symbol,
+                    quantity=quantity,
+                    mode="SIMPLE",
+                    entry=None,
+                    exits=[exit_leg_definition],
+                    last_status="ACTIVE",
+                )
+            return None
+
+        # 2. Entry Order (CREATED)
         # Determine specific budget for this position
         trade_budget = float(trade.get("budget") or budget or self.DEFAULT_BUDGET)
 

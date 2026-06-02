@@ -29,6 +29,7 @@ from ..tasks import (
     run_db_maintenance,
     run_db_backup,
     run_cache_prewarm,
+    run_order_generation,
 )
 
 logger = logging.getLogger(__name__)
@@ -283,6 +284,20 @@ def configure_scheduler(app, config):
                 timezone=pytz.timezone("Europe/Berlin"),
             ),
             id="trade_manager_process",
+            replace_existing=True,
+        )
+
+        # --- JOB 3.5: Order Generation (NACH Trade Manager) ---
+        scheduler.add_job(
+            func=run_order_generation,
+            args=[app],
+            trigger=CronTrigger(
+                day_of_week="mon-sat",
+                hour=7,
+                minute=5,
+                timezone=pytz.timezone("Europe/Berlin"),
+            ),
+            id="order_generation",
             replace_existing=True,
         )
 

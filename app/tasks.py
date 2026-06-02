@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+from flask import Flask
 from .services.market.updater import MarketDataUpdater
 from .services.market.quality import MarketQualityService
 from .database.session import DatabaseSession
@@ -178,3 +179,28 @@ def run_db_backup(db_path: Path):
 
     except Exception as e:
         logger.error(f"Fehler beim DB Backup: {e}", exc_info=True)
+
+
+def run_order_generation(app: Flask) -> None:
+    """Generates the daily order CSV files for created trades.
+
+    Args:
+        app: The Flask application instance.
+    """
+    with app.app_context():
+        logger.info("⏰ Scheduler: Starte tägliche Order-Generierung...")
+        trade_manager = app.extensions.get("trade_manager")
+        if trade_manager:
+            try:
+                res = trade_manager.generate_daily_orders()
+                if res:
+                    logger.info("✅ Order-Generierung erfolgreich: %s", res)
+                else:
+                    logger.info("ℹ️ Keine Orders zu generieren.")
+            except Exception as e:
+                logger.error(
+                    "Fehler bei der Order-Generierung: %s", e, exc_info=True
+                )
+        else:
+            logger.error("TradeManager nicht gefunden!")
+
