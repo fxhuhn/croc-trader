@@ -28,16 +28,14 @@
             class="bg-transparent md:bg-white md:rounded-3xl md:shadow-sm border-0 md:border border-slate-200 overflow-hidden">
             <!-- Desktop Header -->
             <div
-                class="hidden md:grid grid-cols-10 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+                class="hidden md:grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
                 <div>Date</div>
                 <div>Symbol</div>
                 <div>Signal</div>
-                <div class="text-right">Days</div>
                 <div class="text-right">Quantity</div>
                 <div class="text-right">Entry</div>
-                <div class="text-right">SL</div>
-                <div class="text-right">TP1</div>
-                <div class="text-right">TP3</div>
+                <div class="text-right">Stop</div>
+                <div class="text-right">Target</div>
                 <div class="text-right">PnL</div>
             </div>
 
@@ -49,19 +47,19 @@
 
                     <!-- SINGLE-DOM RESPONSIVE ROW -->
                     <!-- Mobile: Visible header, click to expand. Desktop: Always visible row -->
-                    <div class="flex flex-col md:grid md:grid-cols-10 md:gap-4 md:px-4 md:py-3 md:items-center text-sm">
+                    <div class="flex flex-col md:grid md:grid-cols-8 md:gap-4 md:px-4 md:py-3 md:items-center text-sm">
 
                         <!-- Header / Symbol Row -->
                         <div class="p-4 md:p-0 flex justify-between items-start md:contents cursor-pointer md:cursor-auto"
                             onclick="toggleTradeCard(this)">
                             <div class="flex flex-col gap-1 md:contents flex-1 min-w-0">
-                                <div class="hidden md:block font-mono text-slate-500">{{ t.display_entry }}</div>
+                                <div class="hidden md:block text-slate-500 tabular-nums whitespace-nowrap">{{ t.display_entry }} ({{ t.days_held }}d)</div>
                                 <div class="flex items-center gap-2 md:gap-0">
                                     <span
-                                        class="text-lg md:text-base font-black text-slate-900 leading-none md:font-bold md:text-slate-700">
+                                        class="text-lg md:text-base font-black text-slate-900 leading-none md:font-bold md:text-slate-700 whitespace-nowrap">
                                         <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
                                             target="_blank"
-                                            class="hover:text-indigo-500 transition-colors flex items-center gap-1 md:pointer-events-auto pointer-events-none"
+                                            class="hover:text-indigo-500 transition-colors flex items-center gap-1 md:pointer-events-auto pointer-events-none whitespace-nowrap"
                                             onclick="event.stopPropagation()">
                                             {{ t.symbol }}
                                             <i data-lucide="chart-candlestick"
@@ -75,10 +73,13 @@
                                     </span>
 
                                 </div>
-                                <div class="hidden md:block text-slate-500"><span
-                                        class="text-xs font-bold text-indigo-500">{{
-                                        (t.context.original_signal or t.context.match_rule.Signal or
-                                        t.strategy).replace('Croc_', '') }}</span></div>
+                                <div class="hidden md:block whitespace-nowrap">
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                                        {{ (t.context.original_signal or t.context.match_rule.Signal or
+                                        t.strategy).replace('Croc_', '') }}
+                                    </span>
+                                </div>
 
                             </div>
                             <!-- PnL + Chevron (Mobile only) -->
@@ -99,7 +100,7 @@
 
                         <!-- Details Row (Hidden on mobile by default, grid on desktop) -->
                         <div
-                            class="hidden md:contents pt-3 mt-3 border-t border-slate-200 md:border-none md:mt-0 md:pt-0 pb-4 px-4 md:p-0 md:col-span-7">
+                            class="hidden md:contents pt-3 mt-3 border-t border-slate-200 md:border-none md:mt-0 md:pt-0 pb-4 px-4 md:p-0 md:col-span-5">
 
                             <!-- New 2-Column Detail Layout -->
                             <div class="grid grid-cols-2 gap-x-6 text-xs mb-2 md:contents md:gap-0 md:text-sm">
@@ -109,11 +110,6 @@
                                         <span class="text-slate-500 font-medium">Date</span>
                                         <span class="text-slate-700 font-bold text-xs">{{ t.display_entry }} ({{ t.days_held }}d)</span>
                                     </div>
-                                    <div class="hidden md:contents">
-                                        <span
-                                            class="font-bold text-slate-800 md:text-slate-500 md:font-normal md:text-right">{{
-                                            t.days_held }}</span>
-                                    </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
                                         <span class="text-slate-500 font-medium">Index</span>
                                         <span class="font-bold text-slate-800">{% if t.context.indices %}{{
@@ -122,7 +118,7 @@
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Quantity</span>
                                         <span
-                                            class="font-bold text-slate-800 md:text-slate-500 md:font-mono md:text-right">{{
+                                            class="font-bold text-slate-800 md:text-slate-500 md:font-mono md:text-right tabular-nums whitespace-nowrap">{{
                                             t.current_size|int }}</span>
                                     </div>
                                 </div>
@@ -130,32 +126,48 @@
                                 <div class="flex flex-col md:contents">
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Entry</span>
-                                        <span class="tabular-nums text-slate-800 md:text-slate-500 md:text-right">{{
+                                        <span class="tabular-nums text-slate-800 md:text-slate-500 md:text-right whitespace-nowrap">{{
                                             "{:,.2f}".format(t.entry_price|float) }}</span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
-                                        <span class="text-slate-500 font-medium md:hidden">Stop Loss</span>
-                                        <span class="tabular-nums text-rose-600 md:text-rose-500/80 md:text-right">{{
+                                        <span class="text-slate-500 font-medium md:hidden">Stop</span>
+                                        <span class="tabular-nums text-rose-600 md:text-rose-500/80 md:text-right whitespace-nowrap">{{
                                             "{:,.2f}".format(t.current_stop_loss|float) }}</span>
                                     </div>
-                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
-                                        <span class="text-slate-500 font-medium md:hidden">Target 1</span>
-                                        <span class="tabular-nums text-emerald-600 md:text-emerald-500/80 md:text-right">
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
+                                        <span class="text-slate-500 font-medium">Target 1</span>
+                                        <span class="tabular-nums text-emerald-600">
                                             {% if t.context.tp1 %}{{ "{:,.2f}".format(t.context.tp1|float) }}{% else
                                             %}-{% endif %}
                                         </span>
                                     </div>
-                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
-                                        <span class="text-slate-500 font-medium md:hidden">Target 2</span>
-                                        <span class="tabular-nums text-emerald-600 md:text-emerald-500/80 md:text-right">
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
+                                        <span class="text-slate-500 font-medium">Target 2</span>
+                                        <span class="tabular-nums text-emerald-600">
                                             {% if t.context.tp3 %}{{ "{:,.2f}".format(t.context.tp3|float) }}{% else
                                             %}-{% endif %}
                                         </span>
                                     </div>
-                                    <!-- Desktop PnL -->
-                                    <div
-                                        class="hidden md:block text-right font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} tabular-nums">
-                                        {{ "{:+,.2f}".format(t.unrealized_pnl) }}
+                                    <!-- Desktop Combined Target Column -->
+                                    <div class="hidden md:flex flex-col items-end gap-0.5 text-[11px] text-emerald-600/80 font-medium text-right tabular-nums whitespace-nowrap">
+                                        {% if t.context.tp1 %}
+                                        <div class="whitespace-nowrap">TP1: {{ "{:,.2f}".format(t.context.tp1|float) }}</div>
+                                        {% endif %}
+                                        {% if t.context.tp3 %}
+                                        <div class="whitespace-nowrap">TP2: {{ "{:,.2f}".format(t.context.tp3|float) }}</div>
+                                        {% endif %}
+                                        {% if not t.context.tp1 and not t.context.tp3 %}
+                                        <div class="whitespace-nowrap">-</div>
+                                        {% endif %}
+                                    </div>
+                                    <!-- Desktop PnL Column -->
+                                    <div class="hidden md:flex flex-col items-end text-right whitespace-nowrap">
+                                        <div class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
+                                            {{ "{:+,.2f}".format(t.unrealized_pnl) }}
+                                        </div>
+                                        <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
+                                            {{ "{:+.2f}".format(t.pnl_pct) }}%
+                                        </div>
                                     </div>
                                 </div>
                                 <!-- TradingView Button (Mobile only) -->
@@ -370,11 +382,10 @@
         <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <!-- Desktop Header -->
             <div
-                class="hidden md:grid grid-cols-9 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+                class="hidden md:grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
                 <div>Date</div>
                 <div>Symbol</div>
                 <div>Signal</div>
-                <div class="text-right">Days</div>
                 <div class="text-right">Quantity</div>
                 <div class="text-right">Entry</div>
                 <div class="text-right">Exit</div>
@@ -390,19 +401,18 @@
                 <!-- SINGLE-DOM HISTORY ROW -->
                 <div
                     class="px-4 py-1.5 md:py-2 border-b border-slate-100/50 last:border-none hover:bg-slate-50/50 transition-colors md:divide-y md:divide-slate-100 md:border-b md:border-slate-200 md:last:border-0 md:active:bg-slate-50/30 md:hover:bg-slate-50/30">
-                    <div class="flex flex-col md:grid md:grid-cols-9 md:gap-4 md:items-center text-sm">
+                    <div class="flex flex-col md:grid md:grid-cols-8 md:gap-4 md:items-center text-sm">
 
                         <!-- Header Row (Mobile) / First Columns (Desktop) -->
                         <div class="flex justify-between items-start md:contents mb-2 md:mb-0 gap-2">
                             <!-- Symbol & Entry Date -->
                             <div class="flex flex-col md:contents min-w-0 flex-1">
                                 <div class="flex items-center gap-2 md:contents min-w-0">
-                                    <div class="hidden md:block font-mono text-slate-500">{{ t.display_entry }}
-                                    </div>
-                                    <div class="font-bold text-slate-700 truncate max-w-[120px] sm:max-w-[200px]">
+                                    <div class="hidden md:block text-slate-500 tabular-nums whitespace-nowrap">{{ t.display_entry }} ({{ t.days_held }}d)</div>
+                                    <div class="font-bold text-slate-700 truncate max-w-[120px] sm:max-w-[200px] whitespace-nowrap">
                                         <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
                                             target="_blank"
-                                            class="hover:text-indigo-500 transition-colors flex items-center gap-1">
+                                            class="hover:text-indigo-500 transition-colors flex items-center gap-1 whitespace-nowrap">
                                             {{ t.symbol }}
                                             <i data-lucide="chart-candlestick"
                                                 class="w-3 h-3 text-slate-300 hidden md:inline-block"></i>
@@ -420,7 +430,10 @@
                                     class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} whitespace-nowrap tabular-nums">
                                     {{ "{:+,.2f}".format(t.realized_pnl) }}
                                 </div>
-                                <div class="mt-0.5">
+                                <div class="text-xs font-medium text-slate-500 mt-0.5 tabular-nums">
+                                    {{ "{:+.2f}".format(t.pnl_pct) }}%
+                                </div>
+                                <div class="mt-1">
                                     {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in
                                     t.exit_reason %}
                                     <span
@@ -455,9 +468,10 @@
                                     </div>
                                 </div>
 
-                                <div class="hidden md:block text-slate-500"><span
-                                        class="text-xs font-bold text-indigo-500">{{ (t.context.original_signal or
-                                        t.context.match_rule.Signal or t.strategy).replace('Croc_', '') }}</span>
+                                <div class="hidden md:block whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                                        {{ (t.context.original_signal or t.context.match_rule.Signal or t.strategy).replace('Croc_', '') }}
+                                    </span>
                                 </div>
                             </div>
 
@@ -470,38 +484,38 @@
                                     <span class="text-slate-600 font-normal ml-1">x{{ t.initial_size|int }}</span>
                                 </div>
 
-                                <div class="hidden md:block text-right text-slate-500">{{ t.days_held }}</div>
-                                <div class="hidden md:block text-right tabular-nums text-slate-500">{{
-                                    t.initial_size|int }}</div>
-                                <div class="hidden md:block text-right tabular-nums text-slate-500">{{
-                                    "{:,.2f}".format(t.entry_price|float) }}</div>
-                                <div class="hidden md:block text-right tabular-nums text-slate-500">{{
-                                    "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}</div>
+                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{ t.initial_size|int }}</div>
+                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{ "{:,.2f}".format(t.entry_price|float) }}</div>
+                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{ "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}</div>
                             </div>
                         </div>
 
                         <!-- PnL (Desktop) -->
-                        <div
-                            class="hidden md:block text-right font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} tabular-nums">
-                            {{ "{:+,.2f}".format(t.realized_pnl) }}
+                        <div class="hidden md:flex flex-col items-end text-right whitespace-nowrap">
+                            <div class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
+                                {{ "{:+,.2f}".format(t.realized_pnl) }}
+                            </div>
+                            <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
+                                {{ "{:+.2f}".format(t.pnl_pct) }}%
+                            </div>
                         </div>
 
                         <!-- Reason (Desktop) -->
-                        <div class="hidden md:block text-right">
+                        <div class="hidden md:block text-right whitespace-nowrap">
                             {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in t.exit_reason
                             %}
                             <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50">
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50 whitespace-nowrap">
                                 {{ t.exit_reason }}
                             </span>
                             {% elif 'STOP_LOSS' in t.exit_reason %}
                             <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50">
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50 whitespace-nowrap">
                                 {{ t.exit_reason }}
                             </span>
                             {% else %}
                             <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-50 text-slate-600 border border-slate-200">
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
                                 {{ t.exit_reason }}
                             </span>
                             {% endif %}
@@ -513,7 +527,7 @@
 
             </div>
 
-            {{ cards.history_footer(closed_summary, "9") }}
+            {{ cards.history_footer(closed_summary, "8") }}
 
         </div>
     </section>

@@ -215,7 +215,7 @@
             <article class="bg-white rounded-2xl p-6 shadow-saas flex flex-col justify-between items-center h-56">
                 <div class="w-full relative group">
                     {{ chart_sqn | safe }}
-                    <div class="text-[10px] text-slate-300 font-light -mt-2">
+                    <div class="text-xs text-slate-300 font-light -mt-2">
                         Safe Kelly: {{ "{:.2f}".format(metrics.kelly_safe) }}
                     </div>
                 </div>
@@ -485,7 +485,7 @@
                                         {{ item.status }}
                                     </span>
                                     {% if item.reason %}
-                                    <span class="block text-[10px] text-slate-400 mt-1">{{ item.reason }}</span>
+                                    <span class="block text-xs text-slate-400 mt-1">{{ item.reason }}</span>
                                     {% endif %}
                                 </td>
                                 <td class="px-4 py-3 text-right font-medium text-slate-900">
