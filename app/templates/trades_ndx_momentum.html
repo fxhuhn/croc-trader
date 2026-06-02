@@ -27,76 +27,48 @@
 
         <div class="flex flex-col gap-4">
             {% for trade in active_trades %}
-            <div
-                class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-                <!-- Header Block (Always Visible) -->
-                <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
-                    onclick="toggleTradeCard(this)">
-                    <div class="flex justify-between items-center p-4 md:px-6 md:py-4">
-                        <!-- Symbol -->
-                        <div class="flex items-center gap-3">
-                            <span class="text-xl md:text-2xl font-bold text-slate-900 leading-none">{{ trade.symbol
-                                }}</span>
+            {% call cards.trade_accordion_card(
+                symbol=trade.symbol,
+                pnl_value=trade.unrealized_pnl,
+                pnl_pct=trade.pnl_pct
+            ) %}
+                <div class="grid grid-cols-2 gap-8 items-start">
+                    <!-- Left Column: Period & Quantity -->
+                    <div class="flex flex-col">
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500 font-medium text-xs">Date</span>
+                            <span class="text-slate-700 font-bold text-xs">{{ trade.entry_date }} ({{
+                                trade.days_held }}d)</span>
                         </div>
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500 font-medium text-xs">Quantity</span>
+                            <span class="text-slate-700 font-bold text-xs">{{ trade.current_size|int }}</span>
+                        </div>
+                    </div>
 
-                        <!-- PnL & Chevron -->
-                        <div class="flex items-center gap-4 text-right">
-                            <div class="flex flex-col items-end">
-                                <div
-                                    class="text-lg md:text-xl font-bold {{ 'text-emerald-500' if trade.unrealized_pnl >= 0 else 'text-rose-500' }} leading-none">
-                                    {{ "{:+,.2f}".format(trade.unrealized_pnl) }} $
-                                </div>
-                                <div class="text-xs font-medium text-slate-500 mt-1">{{ "{:+.2f}".format(trade.pnl_pct)
-                                    }}%</div>
-                            </div>
-                            <i data-lucide="chevron-down"
-                                class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                    <!-- Right Column: Entry & Target -->
+                    <div class="flex flex-col">
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500 font-medium text-xs">Entry</span>
+                            <span class="tabular-nums text-slate-700 font-bold text-xs">{{
+                                "{:,.2f}".format(trade.entry_price|float) }}</span>
                         </div>
+                        {% if trade.current_target %}
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500 font-medium text-xs text-emerald-600">Target</span>
+                            <span class="tabular-nums text-emerald-600 font-bold text-xs">{{
+                                "{:,.2f}".format(trade.current_target|float) }}</span>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
 
-                <!-- Minimalist Detail View (Accordion) -->
-                <div class="hidden-details hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
-                    <div class="px-4 py-3 md:px-8 md:py-4">
-                        <div class="grid grid-cols-2 gap-8 items-start">
-                            <!-- Left Column: Period & Quantity -->
-                            <div class="flex flex-col">
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span class="text-slate-500 font-medium text-xs">Date</span>
-                                    <span class="text-slate-700 font-bold text-xs">{{ trade.entry_date }} ({{
-                                        trade.days_held }}d)</span>
-                                </div>
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span class="text-slate-500 font-medium text-xs">Quantity</span>
-                                    <span class="text-slate-700 font-bold text-xs">{{ trade.current_size|int }}</span>
-                                </div>
-                            </div>
-
-                            <!-- Right Column: Entry & Target -->
-                            <div class="flex flex-col">
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span class="text-slate-500 font-medium text-xs">Entry</span>
-                                    <span class="font-mono text-slate-700 font-bold text-xs">{{
-                                        "{:,.2f}".format(trade.entry_price|float) }} $</span>
-                                </div>
-                                {% if trade.current_target %}
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span class="text-slate-500 font-medium text-xs text-emerald-600">Target</span>
-                                    <span class="font-mono text-emerald-600 font-bold text-xs">{{
-                                        "{:,.2f}".format(trade.current_target|float) }} $</span>
-                                </div>
-                                {% endif %}
-                            </div>
-                        </div>
-
-                        <!-- Full Width Button (Fat-finger safe) -->
-                        <a href="https://www.tradingview.com/chart/?symbol={{ trade.symbol }}" target="_blank"
-                            class="w-full flex items-center justify-center gap-2 py-2.5 mt-4 md:mt-6 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-700 text-xs md:text-sm font-semibold transition-transform active:scale-[0.98] active:bg-slate-50 md:hover:bg-slate-50">
-                            <i data-lucide="chart-candlestick" class="w-4 h-4 text-slate-400"></i> View on TradingView
-                        </a>
-                    </div>
-                </div>
-            </div>
+                <!-- Full Width Button (Fat-finger safe) -->
+                <a href="https://www.tradingview.com/chart/?symbol={{ trade.symbol }}" target="_blank"
+                    class="w-full flex items-center justify-center gap-2 py-2.5 mt-4 md:mt-6 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-700 text-xs md:text-sm font-semibold transition-transform active:scale-[0.98] active:bg-slate-50 md:hover:bg-slate-50">
+                    <i data-lucide="chart-candlestick" class="w-4 h-4 text-slate-400"></i> View on TradingView
+                </a>
+            {% endcall %}
             {% endfor %}
         </div>
     </section>
@@ -126,8 +98,8 @@
                 </div>
                 <div class="flex flex-col items-end">
                     <span
-                        class="font-bold text-sm md:text-base leading-none {{ 'text-emerald-500' if trade.realized_pnl >= 0 else 'text-rose-500' }}">
-                        {{ "{:+,.2f}".format(trade.realized_pnl) }} $
+                        class="font-bold text-sm md:text-base leading-none {{ 'text-emerald-500' if trade.realized_pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                        {{ "{:+,.2f}".format(trade.realized_pnl) }}
                     </span>
                     <span
                         class="mt-1.5 px-2 py-0.5 rounded-md text-xs font-medium border border-slate-200 text-slate-600 bg-slate-50">

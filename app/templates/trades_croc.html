@@ -33,7 +33,7 @@
                 <div>Symbol</div>
                 <div>Signal</div>
                 <div class="text-right">Days</div>
-                <div class="text-right">Qty</div>
+                <div class="text-right">Quantity</div>
                 <div class="text-right">Entry</div>
                 <div class="text-right">SL</div>
                 <div class="text-right">TP1</div>
@@ -82,10 +82,15 @@
 
                             </div>
                             <!-- PnL + Chevron (Mobile only) -->
-                            <div class="flex md:hidden items-center gap-3 flex-shrink-0 pl-2">
-                                <div
-                                    class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
-                                    {{ "{:+,.2f}".format(t.unrealized_pnl) }}&nbsp;$
+                            <div class="flex md:hidden items-center gap-4 text-right flex-shrink-0 pl-2">
+                                <div class="flex flex-col items-end">
+                                    <div
+                                        class="text-sm font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} leading-none tabular-nums">
+                                        {{ "{:+,.2f}".format(t.unrealized_pnl) }}
+                                    </div>
+                                    <div class="text-xs font-medium text-slate-500 mt-1 tabular-nums">
+                                        {{ "{:+.2f}".format(t.pnl_pct) }}%
+                                    </div>
                                 </div>
                                 <i data-lucide="chevron-down"
                                     class="w-4 h-4 text-slate-600 transition-transform duration-200"></i>
@@ -101,11 +106,10 @@
                                 <!-- Left Column -->
                                 <div class="flex flex-col md:contents">
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
-                                        <span class="text-slate-500 font-medium">In Date</span>
-                                        <span class="font-mono text-slate-600">{{ t.display_entry }}</span>
+                                        <span class="text-slate-500 font-medium">Date</span>
+                                        <span class="text-slate-700 font-bold text-xs">{{ t.display_entry }} ({{ t.days_held }}d)</span>
                                     </div>
-                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
-                                        <span class="text-slate-500 font-medium md:hidden">Days Held</span>
+                                    <div class="hidden md:contents">
                                         <span
                                             class="font-bold text-slate-800 md:text-slate-500 md:font-normal md:text-right">{{
                                             t.days_held }}</span>
@@ -116,7 +120,7 @@
                                             t.context.indices }}{% else %}-{% endif %}</span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
-                                        <span class="text-slate-500 font-medium md:hidden">Qty</span>
+                                        <span class="text-slate-500 font-medium md:hidden">Quantity</span>
                                         <span
                                             class="font-bold text-slate-800 md:text-slate-500 md:font-mono md:text-right">{{
                                             t.current_size|int }}</span>
@@ -126,33 +130,40 @@
                                 <div class="flex flex-col md:contents">
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Entry</span>
-                                        <span class="font-mono text-slate-800 md:text-slate-500 md:text-right">{{
+                                        <span class="tabular-nums text-slate-800 md:text-slate-500 md:text-right">{{
                                             "{:,.2f}".format(t.entry_price|float) }}</span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Stop Loss</span>
-                                        <span class="font-mono text-rose-600 md:text-rose-500/80 md:text-right">{{
+                                        <span class="tabular-nums text-rose-600 md:text-rose-500/80 md:text-right">{{
                                             "{:,.2f}".format(t.current_stop_loss|float) }}</span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Target 1</span>
-                                        <span class="font-mono text-emerald-600 md:text-emerald-500/80 md:text-right">
+                                        <span class="tabular-nums text-emerald-600 md:text-emerald-500/80 md:text-right">
                                             {% if t.context.tp1 %}{{ "{:,.2f}".format(t.context.tp1|float) }}{% else
                                             %}-{% endif %}
                                         </span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Target 2</span>
-                                        <span class="font-mono text-emerald-600 md:text-emerald-500/80 md:text-right">
+                                        <span class="tabular-nums text-emerald-600 md:text-emerald-500/80 md:text-right">
                                             {% if t.context.tp3 %}{{ "{:,.2f}".format(t.context.tp3|float) }}{% else
                                             %}-{% endif %}
                                         </span>
                                     </div>
                                     <!-- Desktop PnL -->
                                     <div
-                                        class="hidden md:block text-right font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }}">
-                                        {{ "{:+,.2f}".format(t.unrealized_pnl) }}&nbsp;$
+                                        class="hidden md:block text-right font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                                        {{ "{:+,.2f}".format(t.unrealized_pnl) }}
                                     </div>
+                                </div>
+                                <!-- TradingView Button (Mobile only) -->
+                                <div class="col-span-2 mt-4 md:hidden">
+                                    <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}" target="_blank"
+                                        class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-700 text-xs font-semibold transition-transform active:scale-[0.98] active:bg-slate-50">
+                                        <i data-lucide="chart-candlestick" class="w-4 h-4 text-slate-400"></i> View on TradingView
+                                    </a>
                                 </div>
                             </div>
                         </div>
@@ -205,8 +216,8 @@
                             </td>
                             <td class="px-4 md:px-6 py-3 text-right">
                                 <div
-                                    class="text-sm font-black md:font-medium {{ 'text-emerald-500 md:text-emerald-500/80' if row.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }}">
-                                    {{ "{:+.0f}".format(row.pnl) }}&nbsp;$
+                                    class="text-sm font-black md:font-medium {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }} tabular-nums">
+                                    {{ "{:+.0f}".format(row.pnl) }}
                                 </div>
                             </td>
                         </tr>
@@ -226,8 +237,8 @@
                             </td>
                             <td class="px-4 md:px-6 py-3 md:py-4 text-right border-none">
                                 <div
-                                    class="text-xs md:text-sm font-black md:font-semibold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'md:text-rose-500/90' }}">
-                                    {{ "{:+,.2f}".format(closed_summary.total_pnl) }}&nbsp;$
+                                    class="text-xs md:text-sm font-black md:font-semibold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'md:text-rose-500/90' }} tabular-nums">
+                                    {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
                                 </div>
                             </td>
                         </tr>
@@ -249,10 +260,10 @@
                         </div>
                         <div class="text-right">
                             <div
-                                class="text-sm font-black {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500' }}">
-                                {{ "{:+.0f}".format(row.pnl) }}&nbsp;$
+                                class="text-sm font-black {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                                {{ "{:+.0f}".format(row.pnl) }}
                             </div>
-                            <div class="text-xs text-slate-600 font-medium">
+                            <div class="text-xs text-slate-600 font-medium tabular-nums">
                                 {{ "{:+.2f}".format(row.average_pnl) }}&nbsp;∅
                             </div>
                         </div>
@@ -263,10 +274,10 @@
                     <div class="bg-slate-50/50 px-4 py-3 flex justify-between items-center">
                         <span class="text-xs uppercase font-bold text-slate-600 tracking-wider">Overall</span>
                         <div class="text-right">
-                            <div class="text-sm font-black text-slate-700">
-                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }}&nbsp;$
+                            <div class="text-sm font-black text-slate-700 tabular-nums">
+                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
                             </div>
-                            <div class="text-xs text-slate-600 font-bold">
+                            <div class="text-xs text-slate-600 font-bold tabular-nums">
                                 {{ "{:+,.2f}".format(closed_summary.average_pnl) }}&nbsp;∅
                             </div>
                         </div>
@@ -306,13 +317,13 @@
                                     <span class="text-rose-500 whitespace-nowrap">{{ stats.loss }}L</span>
                                 </span>
                             </td>
-                            <td class="px-4 md:px-6 py-3 text-right font-medium text-slate-600">
+                            <td class="px-4 md:px-6 py-3 text-right font-medium text-slate-600 tabular-nums">
                                 {{ "{:+,.0f}".format(stats.average_pnl) }}
                             </td>
                             <td class="px-4 md:px-6 py-3 text-right">
                                 <div
-                                    class="text-sm font-black md:font-medium {{ 'text-emerald-500 md:text-emerald-500/80' if stats.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }}">
-                                    {{ "{:+.0f}".format(stats.pnl) }}&nbsp;$
+                                    class="text-sm font-black md:font-medium {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                                    {{ "{:+.0f}".format(stats.pnl) }}
                                 </div>
                             </td>
                         </tr>
@@ -334,10 +345,10 @@
                         </div>
                         <div class="text-right">
                             <div
-                                class="text-sm font-black {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }}">
-                                {{ "{:+.0f}".format(stats.pnl) }}&nbsp;$
+                                class="text-sm font-black {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                                {{ "{:+.0f}".format(stats.pnl) }}
                             </div>
-                            <div class="text-xs text-slate-600 font-medium">
+                            <div class="text-xs text-slate-600 font-medium tabular-nums">
                                 {{ "{:+.2f}".format(stats.average_pnl) }}&nbsp;∅
                             </div>
                         </div>
@@ -364,7 +375,7 @@
                 <div>Symbol</div>
                 <div>Signal</div>
                 <div class="text-right">Days</div>
-                <div class="text-right">Qty</div>
+                <div class="text-right">Quantity</div>
                 <div class="text-right">Entry</div>
                 <div class="text-right">Exit</div>
                 <div class="text-right">PnL</div>
@@ -406,8 +417,8 @@
                             <!-- PnL (Mobile) -->
                             <div class="text-right md:hidden flex-shrink-0 pl-2">
                                 <div
-                                    class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
-                                    {{ "{:+,.2f}".format(t.realized_pnl) }}&nbsp;$
+                                    class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} whitespace-nowrap tabular-nums">
+                                    {{ "{:+,.2f}".format(t.realized_pnl) }}
                                 </div>
                                 <div class="mt-0.5">
                                     {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in
@@ -438,8 +449,8 @@
                             <div class="md:contents">
                                 <div class="text-slate-600 mb-0.5 uppercase tracking-tighter md:hidden">Exit / Date
                                 </div>
-                                <div class="text-slate-700 font-bold md:hidden">
-                                    {{ "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}&nbsp;$
+                                <div class="text-slate-700 font-bold md:hidden tabular-nums">
+                                    {{ "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}
                                     <div class="text-xs text-slate-600 font-medium mt-0.5">{{ t.display_exit }}
                                     </div>
                                 </div>
@@ -452,7 +463,7 @@
 
                             <!-- Metrics -->
                             <div class="text-right md:contents">
-                                <div class="text-slate-600 mb-0.5 uppercase tracking-tighter md:hidden">Held / Qty
+                                <div class="text-slate-600 mb-0.5 uppercase tracking-tighter md:hidden">Held / Quantity
                                 </div>
                                 <div class="text-slate-600 font-bold md:hidden">
                                     {{ t.days_held }}d
@@ -460,19 +471,19 @@
                                 </div>
 
                                 <div class="hidden md:block text-right text-slate-500">{{ t.days_held }}</div>
-                                <div class="hidden md:block text-right font-mono text-slate-500">{{
+                                <div class="hidden md:block text-right tabular-nums text-slate-500">{{
                                     t.initial_size|int }}</div>
-                                <div class="hidden md:block text-right font-mono text-slate-500">{{
+                                <div class="hidden md:block text-right tabular-nums text-slate-500">{{
                                     "{:,.2f}".format(t.entry_price|float) }}</div>
-                                <div class="hidden md:block text-right font-mono text-slate-500">{{
+                                <div class="hidden md:block text-right tabular-nums text-slate-500">{{
                                     "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}</div>
                             </div>
                         </div>
 
                         <!-- PnL (Desktop) -->
                         <div
-                            class="hidden md:block text-right font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }}">
-                            {{ "{:+,.2f}".format(t.realized_pnl) }}&nbsp;$
+                            class="hidden md:block text-right font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                            {{ "{:+,.2f}".format(t.realized_pnl) }}
                         </div>
 
                         <!-- Reason (Desktop) -->
@@ -509,27 +520,7 @@
 
 </main>
 
-<script>
-    function toggleTradeCard(header) {
-        // Toggle visibility of the next element (details container)
-        const details = header.nextElementSibling;
-        const isHidden = details.classList.contains('hidden');
 
-        if (isHidden) {
-            details.classList.remove('hidden');
-            header.classList.add('opacity-90');
-        } else {
-            details.classList.add('hidden');
-            header.classList.remove('opacity-90');
-        }
-
-        // Rotate Chevron
-        const icon = header.querySelector('[data-lucide="chevron-down"]');
-        if (icon) {
-            icon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-        }
-    }
-</script>
 
 {% set active_page = 'trades' %}
 {% include "partials/mobile_nav.html" with context %}

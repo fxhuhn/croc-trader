@@ -36,117 +36,87 @@
             {% set variant_metrics.green_candle_count = variant.green_candle_count|default(0) %}
             {% endfor %}
 
-            <div
-                class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-                <!-- Header Block (Always Visible) -->
-                <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
-                    onclick="toggleTradeCard(this)">
-                    <!-- Main Header Row -->
-                    <div class="flex justify-between items-center p-4 md:px-6 md:py-4">
-                        <!-- Symbol & Badges -->
-                        <div class="flex items-center gap-3">
-                            <span class="text-xl md:text-2xl font-bold text-slate-900 leading-none">{{ group.symbol
+            {% set active_badges = [] %}
+            {% if variant_metrics.half_percent_variant %}
+                {% set _ = active_badges.append({'text': '0.5', 'class': 'bg-indigo-50 text-indigo-600'}) %}
+            {% endif %}
+            {% if variant_metrics.one_percent_variant %}
+                {% set _ = active_badges.append({'text': '1.0', 'class': 'bg-indigo-50 text-indigo-600'}) %}
+            {% endif %}
+
+            {% call cards.trade_accordion_card(
+                symbol=group.symbol,
+                badges=active_badges,
+                pnl_value=group.total_pnl,
+                pnl_pct=group.total_pnl_pct,
+                progress_current=variant_metrics.max_days,
+                progress_max=5
+            ) %}
+                <div class="grid grid-cols-2 gap-8 items-start">
+                    <!-- Left Column: Date & Qty -->
+                    <div class="flex flex-col">
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500 font-medium text-xs">Date</span>
+                            <span class="text-slate-700 font-bold text-xs">
+                                {{ variant_metrics.half_percent_variant.display_entry if
+                                variant_metrics.half_percent_variant else
+                                variant_metrics.one_percent_variant.display_entry }} ({{
+                                variant_metrics.max_days
+                                }}d)
+                            </span>
+                        </div>
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500 font-medium text-xs">Quantity</span>
+                            <span class="text-slate-700 font-bold text-xs">{{ variant_metrics.total_quantity
                                 }}</span>
-                            <div class="flex gap-1.5">
-                                {% if variant_metrics.half_percent_variant %}
-                                <span
-                                    class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">0.5</span>
-                                {% endif %}
-                                {% if variant_metrics.one_percent_variant %}
-                                <span
-                                    class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">1.0</span>
-                                {% endif %}
-                            </div>
                         </div>
-
-                        <!-- PnL & Chevron -->
-                        <div class="flex items-center gap-4 text-right">
-                            <div
-                                class="text-lg md:text-xl font-bold {{ 'text-emerald-500' if group.total_pnl >= 0 else 'text-rose-500' }} leading-none">
-                                {{ "{:+,.2f}".format(group.total_pnl) }}&nbsp;$
-                            </div>
-                            <i data-lucide="chevron-down"
-                                class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span class="text-slate-500 font-medium text-xs">Green Candle</span>
+                            <span class="text-slate-700 font-bold text-xs">{{ variant_metrics.green_candle_count }}/2</span>
                         </div>
                     </div>
 
-                    <!-- Segmented Full-Width Progress Bar -->
-                    <div class="grid grid-cols-5 gap-0.5 w-full h-2 bg-slate-50 border-t border-b border-slate-100">
-                        {% for i in range(1, 6) %}
-                        <div class="h-full {{ 'bg-indigo-500' if i <= variant_metrics.max_days else 'bg-slate-100' }}">
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <!-- Minimalist Detail View (Accordion) -->
-                <div class="hidden-details hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
-                    <div class="px-4 py-3 md:px-8 md:py-4">
-                        <div class="grid grid-cols-2 gap-8 items-start">
-                            <!-- Left Column: Date & Qty -->
-                            <div class="flex flex-col">
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span class="text-slate-500 font-medium text-xs">Date</span>
-                                    <span class="text-slate-700 font-bold text-xs">
-                                        {{ variant_metrics.half_percent_variant.display_entry if
-                                        variant_metrics.half_percent_variant else
-                                        variant_metrics.one_percent_variant.display_entry }} ({{
-                                        variant_metrics.max_days
-                                        }}d)
-                                    </span>
-                                </div>
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span class="text-slate-500 font-medium text-xs">Quantity</span>
-                                    <span class="text-slate-700 font-bold text-xs">{{ variant_metrics.total_quantity
-                                        }}</span>
-                                </div>
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span class="text-slate-500 font-medium text-xs">Green Candle</span>
-                                    <span class="text-slate-700 font-bold text-xs">{{ variant_metrics.green_candle_count }}/2</span>
-                                </div>
+                    <!-- Right Column: Entry Prices -->
+                    <div class="flex flex-col">
+                        {% if variant_metrics.half_percent_variant %}
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-slate-500 font-medium text-xs">Entry</span>
+                                <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">0.5</span>
                             </div>
-
-                            <!-- Right Column: Entry Prices -->
-                            <div class="flex flex-col">
-                                {% if variant_metrics.half_percent_variant %}
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span
-                                        class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">0.5</span>
-                                    <span class="font-mono text-slate-500 font-bold text-xs">
-                                        {{ "{:,.2f}".format(variant_metrics.half_percent_variant.entry_price|float)
-                                        }}&nbsp;$
-                                    </span>
-                                </div>
-                                {% endif %}
-                                {% if variant_metrics.one_percent_variant %}
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span
-                                        class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">1.0</span>
-                                    <span class="font-mono text-slate-500 font-bold text-xs">
-                                        {{ "{:,.2f}".format(variant_metrics.one_percent_variant.entry_price|float)
-                                        }}&nbsp;$
-                                    </span>
-                                </div>
-                                {% endif %}
-                                {% if not variant_metrics.half_percent_variant and not
-                                variant_metrics.one_percent_variant %}
-                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                    <span
-                                        class="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-100 text-slate-500">Entry</span>
-                                    <span class="text-slate-500 font-bold text-xs">-</span>
-                                </div>
-                                {% endif %}
-                            </div>
+                            <span class="tabular-nums text-slate-500 font-bold text-xs">
+                                {{ "{:,.2f}".format(variant_metrics.half_percent_variant.entry_price|float) }}
+                            </span>
                         </div>
-
-                        <!-- Full Width Button (Fat-finger safe) -->
-                        <a href="https://www.tradingview.com/chart/?symbol={{ group.symbol }}" target="_blank"
-                            class="w-full flex items-center justify-center gap-2 py-2.5 mt-4 md:mt-6 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-700 text-xs md:text-sm font-semibold transition-transform active:scale-[0.98] active:bg-slate-50 md:hover:bg-slate-50">
-                            <i data-lucide="chart-candlestick" class="w-4 h-4 text-slate-400"></i> View on TradingView
-                        </a>
+                        {% endif %}
+                        {% if variant_metrics.one_percent_variant %}
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-slate-500 font-medium text-xs">Entry</span>
+                                <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">1.0</span>
+                            </div>
+                            <span class="tabular-nums text-slate-500 font-bold text-xs">
+                                {{ "{:,.2f}".format(variant_metrics.one_percent_variant.entry_price|float) }}
+                            </span>
+                        </div>
+                        {% endif %}
+                        {% if not variant_metrics.half_percent_variant and not
+                        variant_metrics.one_percent_variant %}
+                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                            <span
+                                class="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-100 text-slate-500">Entry</span>
+                            <span class="text-slate-500 font-bold text-xs">-</span>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
-            </div>
+
+                <!-- Full Width Button (Fat-finger safe) -->
+                <a href="https://www.tradingview.com/chart/?symbol={{ group.symbol }}" target="_blank"
+                    class="w-full flex items-center justify-center gap-2 py-2.5 mt-4 md:mt-6 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-700 text-xs md:text-sm font-semibold transition-transform active:scale-[0.98] active:bg-slate-50 md:hover:bg-slate-50">
+                    <i data-lucide="chart-candlestick" class="w-4 h-4 text-slate-400"></i> View on TradingView
+                </a>
+            {% endcall %}
             {% endfor %}
         </div>
     </section>
@@ -182,8 +152,8 @@
                                 class="font-bold md:font-medium text-sm text-slate-800 md:text-slate-700 md:order-1">{{
                                 row.name }}</span>
                             <span
-                                class="text-sm font-bold {{ 'text-emerald-600' if row.pnl >= 0 else 'text-rose-600' }} md:order-4 md:text-right">
-                                {{ "{:+.0f}".format(row.pnl) }}&nbsp;$
+                                class="text-sm font-bold {{ 'text-emerald-600' if row.pnl >= 0 else 'text-rose-600' }} md:order-4 md:text-right tabular-nums">
+                                {{ "{:+.0f}".format(row.pnl) }}
                             </span>
                         </div>
                         <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
@@ -193,7 +163,7 @@
                                 <span class="text-rose-600">{{ row.loss }}L</span>
                             </span>
                             <span
-                                class="text-xs text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right">
+                                class="text-xs text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
                                 {{ "{:+.2f}".format(row.average_pnl) }} ∅
                             </span>
                         </div>
@@ -216,8 +186,8 @@
                                 class="text-xs md:text-sm uppercase md:normal-case font-bold md:font-semibold text-slate-500 md:text-slate-900 tracking-wider md:tracking-normal md:order-1">Overall
                                 <span class="hidden md:inline">(Unique)</span></span>
                             <span
-                                class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right">
-                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }}&nbsp;$
+                                class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right tabular-nums">
+                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
                             </span>
                         </div>
                         <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
@@ -225,7 +195,7 @@
                                 class="text-xs font-medium text-slate-500 md:text-sm md:font-medium md:order-2 md:text-center">{{
                                 closed_summary.count }} Trades</span>
                             <span
-                                class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right">
+                                class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
                                 {{ "{:+,.2f}".format(closed_summary.average_pnl) }} ∅
                             </span>
                         </div>
@@ -266,8 +236,8 @@
                                 {% endif %}
                             </span>
                             <span
-                                class="text-sm font-bold {{ 'text-emerald-600' if row.pnl >= 0 else 'text-rose-600' }} md:order-4 md:text-right">
-                                {{ "{:+.0f}".format(row.pnl) }}&nbsp;$
+                                class="text-sm font-bold {{ 'text-emerald-600' if row.pnl >= 0 else 'text-rose-600' }} md:order-4 md:text-right tabular-nums">
+                                {{ "{:+.0f}".format(row.pnl) }}
                             </span>
                         </div>
                         <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
@@ -277,7 +247,7 @@
                                 <span class="text-rose-600">{{ row.loss }}L</span>
                             </span>
                             <span
-                                class="text-xs text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right">
+                                class="text-xs text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
                                 {{ "{:+.2f}".format(row.average_pnl) }} ∅
                             </span>
                         </div>
@@ -298,8 +268,8 @@
                             <span
                                 class="text-xs md:text-sm uppercase md:normal-case font-bold md:font-semibold text-slate-500 md:text-slate-900 tracking-wider md:tracking-normal md:order-1">Total</span>
                             <span
-                                class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right">
-                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }}&nbsp;$
+                                class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right tabular-nums">
+                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
                             </span>
                         </div>
                         <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
@@ -307,7 +277,7 @@
                                 class="text-xs font-medium text-slate-500 md:text-sm md:font-medium md:order-2 md:text-center">{{
                                 closed_summary.count }} Trades</span>
                             <span
-                                class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right">
+                                class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
                                 {{ "{:+,.2f}".format(closed_summary.average_pnl) }} ∅
                             </span>
                         </div>
@@ -343,8 +313,8 @@
                 </div>
                 <div class="flex flex-col items-end">
                     <span
-                        class="font-bold text-sm md:text-base leading-none {{ 'text-emerald-500' if trade.realized_pnl >= 0 else 'text-rose-500' }}">
-                        {{ "{:+,.2f}".format(trade.realized_pnl) }}&nbsp;$
+                        class="font-bold text-sm md:text-base leading-none {{ 'text-emerald-500' if trade.realized_pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                        {{ "{:+,.2f}".format(trade.realized_pnl) }}
                     </span>
                     <span
                         class="mt-1.5 px-2 py-0.5 rounded-md text-xs font-medium border border-slate-200 text-slate-600 bg-slate-50">
@@ -374,8 +344,8 @@
                         class="text-xs md:text-sm uppercase md:normal-case font-bold md:font-semibold text-slate-500 md:text-slate-900 tracking-wider md:tracking-normal md:order-1">Overall
                         History</span>
                     <span
-                        class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right">
-                        {{ "{:+,.2f}".format(closed_summary.total_pnl) }}&nbsp;$
+                        class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right tabular-nums">
+                        {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
                     </span>
                 </div>
                 <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
@@ -383,7 +353,7 @@
                         class="text-xs font-medium text-slate-500 md:text-sm md:font-medium md:order-2 md:text-center">{{
                         closed_summary.count }} Trades</span>
                     <span
-                        class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right">
+                        class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
                         {{ "{:+,.2f}".format(closed_summary.average_pnl) }} ∅
                     </span>
                 </div>

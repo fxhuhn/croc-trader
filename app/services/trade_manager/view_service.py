@@ -448,9 +448,20 @@ class TradeViewService:
         for trade in trades:
             symbol = trade["symbol"]
             if symbol not in grouped:
-                grouped[symbol] = {"symbol": symbol, "total_pnl": 0.0, "variants": []}
+                grouped[symbol] = {
+                    "symbol": symbol,
+                    "total_pnl": 0.0,
+                    "total_invested": 0.0,
+                    "total_pnl_pct": 0.0,
+                    "variants": [],
+                }
             grouped[symbol]["variants"].append(trade)
             grouped[symbol]["total_pnl"] += trade["unrealized_pnl"]
+            grouped[symbol]["total_invested"] += trade["entry_price"] * trade["initial_size"]
+
+        for group in grouped.values():
+            if group["total_invested"] > 0:
+                group["total_pnl_pct"] = (group["total_pnl"] / group["total_invested"]) * 100
 
         return sorted(list(grouped.values()), key=lambda x: x["symbol"])
 
