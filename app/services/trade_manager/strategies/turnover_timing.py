@@ -37,6 +37,9 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
     name: str = Strategies.TurnOverTiming
     """Unique identifier for the strategy."""
 
+    DEFAULT_BUDGET: float = 2500.0
+    """Default capital allocation for the trade."""
+
     DEFAULT_SLIPPAGE: float = 0.0
     """Default slippage applied to executions."""
 

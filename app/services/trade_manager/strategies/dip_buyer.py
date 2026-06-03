@@ -22,7 +22,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
     """
 
     name = Strategies.DipBuyer
-    DEFAULT_BUDGET: float = 2000.0
+    DEFAULT_BUDGET: float = 5000.0
     TIME_STOP_DAYS: int = 8
 
     @override

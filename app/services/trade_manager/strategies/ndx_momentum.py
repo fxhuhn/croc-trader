@@ -40,7 +40,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
     """
 
     name = Strategies.NDXMomentum
-    DEFAULT_BUDGET: float = 2000.0
+    DEFAULT_BUDGET: float = 10000.0
     _rebalance_cache: _RebalanceCache | None = None
 
     @override
