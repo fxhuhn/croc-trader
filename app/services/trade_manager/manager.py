@@ -363,7 +363,10 @@ class TradeManager:
             symbol, start_date=start_date
         )
 
-        budget = float(trade.get("budget") or 2000.0)
+        strategy_default_budget: float = float(
+            getattr(strategy, "DEFAULT_BUDGET", 2000.0)
+        )
+        budget: float = float(trade.get("budget") or strategy_default_budget)
 
         # Call strategy order generation
         return strategy.generate_orders(
@@ -397,8 +400,6 @@ class TradeManager:
             return None
 
         csv_rows = []
-        trade_group_counter = 1
-        date_compact = date_string.replace("-", "")
 
         for trade, order in filtered_orders_data:
             resolved_strategy = self._resolve_strategy_name(
@@ -408,15 +409,16 @@ class TradeManager:
                 continue
 
             strategy_display_name = _get_strategy_display_name(resolved_strategy)
+            trade_database_id = trade.get("id")
+            symbol = str(trade.get("symbol", ""))
             trade_group_id = (
-                f"{date_compact}_{strategy_display_name}_{trade_group_counter:03d}"
+                f"{trade_database_id}_{strategy_display_name}_{symbol}"
             )
 
             rows = self._map_order_to_csv_rows(
                 trade, order, trade_group_id, strategy_display_name
             )
             csv_rows.extend(rows)
-            trade_group_counter += 1
 
         if not csv_rows:
             return None
