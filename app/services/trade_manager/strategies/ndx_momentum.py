@@ -134,6 +134,29 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             trade, repository, fill_price, "REBALANCE_ENTRY", date_string
         )
 
+    def _is_month_switch(self, dataframe_history: pd.DataFrame) -> bool:
+        """Determines if the current candle represents a month transition.
+
+        Args:
+            dataframe_history: Historical price data.
+
+        Returns:
+            bool: True if the current date is in a different month/year
+                than the previous date.
+        """
+        if len(dataframe_history) < 2:
+            return False
+
+        current_candle = dataframe_history.iloc[-1]
+        previous_candle = dataframe_history.iloc[-2]
+        current_date = pd.Timestamp(current_candle["date"])
+        previous_date = pd.Timestamp(previous_candle["date"])
+
+        return (
+            current_date.month != previous_date.month
+            or current_date.year != previous_date.year
+        )
+
     @override
     def manage_active_trade(
         self,
@@ -156,21 +179,10 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         Returns:
             A status string if the trade was closed, otherwise None.
         """
-        if len(dataframe_history) < 2:
+        if not self._is_month_switch(dataframe_history):
             return None
 
         current_candle = dataframe_history.iloc[-1]
-        previous_candle = dataframe_history.iloc[-2]
-        current_date = pd.Timestamp(current_candle["date"])
-        previous_date = pd.Timestamp(previous_candle["date"])
-
-        # Rule: Only rebalance on month-switch (First Trading Day)
-        if (
-            current_date.month == previous_date.month
-            and current_date.year == previous_date.year
-        ):
-            return None
-
         date_string = str(current_candle["date"])
         symbol = trade.get("symbol")
 
@@ -249,6 +261,9 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
 
         # 1. Exit Order (ACTIVE) - triggered when a symbol is dropped from the leaders list
         if status == "ACTIVE":
+            if not self._is_month_switch(dataframe_history):
+                return None
+
             # Fetch all CREATED trades for ndx_momentum to get the new leaders
             created_trades = repository.get_by_status(TradeStatus.CREATED)
             leaders_symbols = {

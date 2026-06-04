@@ -35,16 +35,18 @@ from ..tasks import (
 logger = logging.getLogger(__name__)
 
 
-def register_services(app, config):
-    """Initialisiert alle Services und hängt sie an app.extensions."""
+def register_services(app: "Flask", config: "ConfigManager") -> None:
+    """Initializes all services and attaches them to app.extensions."""
 
     db_stocks = Path(config.get_db_path("stocks"))
     db_signals = Path(config.get_db_path("signals"))
 
     # 1. Telegram Service
-    tele_conf = config.app.telegram
+    telegram_config = config.app.telegram
     telegram = TelegramBot(
-        token=tele_conf.token, chat_id=tele_conf.chat_id, enabled=tele_conf.enabled
+        token=telegram_config.token,
+        chat_id=telegram_config.chat_id,
+        enabled=telegram_config.enabled,
     )
     app.extensions["telegram"] = telegram
 
@@ -235,8 +237,8 @@ def register_services(app, config):
     app.extensions["trade_manager"] = tm
 
 
-def configure_scheduler(app, config):
-    """Konfiguriert den Scheduler und die Jobs."""
+def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
+    """Configures the APScheduler background jobs."""
     scheduler = BackgroundScheduler()
     db_stocks = Path(config.get_db_path("stocks"))
 

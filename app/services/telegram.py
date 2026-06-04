@@ -45,9 +45,9 @@ class TelegramBot:
         }
 
         try:
-            r = requests.post(url, json=payload, timeout=10.0)
-            r.raise_for_status()
-            return r.json()
+            response = requests.post(url, json=payload, timeout=10.0)
+            response.raise_for_status()
+            return response.json()
         except requests.exceptions.RequestException as e:
             # Mask token in logs (Security Hardening)
             error_msg = str(e)

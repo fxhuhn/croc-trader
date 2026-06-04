@@ -2,7 +2,7 @@ import logging
 import threading
 import json
 from pathlib import Path
-from typing import Optional
+
 import pandas as pd
 
 # Setup Logger
@@ -21,7 +21,7 @@ class ExchangeSymbol:
     Supports background loading and local caching to speed up startup.
     """
 
-    _instance: Optional["ExchangeSymbol"] = None
+    _instance: "ExchangeSymbol | None" = None
     _initialized: bool = False
     _lock = threading.Lock()  # Lock for thread-safety
 
@@ -279,7 +279,7 @@ if __name__ == "__main__":
     # Wait for thread to finish to see results in a script run
     import time
 
-    print("Waiting for background thread (max 30s)...")
+    logger.info("Waiting for background thread (max 30s)...")
     time.sleep(5)
 
-    print(f"Total Unique Symbols: {len(exchange.all)}")
+    logger.info("Total Unique Symbols: %d", len(exchange.all))

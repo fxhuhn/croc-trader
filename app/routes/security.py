@@ -11,7 +11,9 @@ P = ParamSpec("P")
 R = TypeVar("R", bound=Response | object)
 
 
-def _is_ip_whitelisted(client_ip: str, whitelist: list[str]) -> bool:
+def _is_ip_whitelisted(
+    client_ip: str, whitelist: list[str] | tuple[str, ...]
+) -> bool:
     """
     Checks if a given IP is whitelisted.
 

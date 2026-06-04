@@ -2,14 +2,10 @@ import datetime
 import logging
 import threading
 from pathlib import Path
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 import yaml
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +21,7 @@ class MarketHolidayChecker:
     Thread-safe implementation.
     """
 
-    _instance: Optional["MarketHolidayChecker"] = None
+    _instance: "MarketHolidayChecker | None" = None
     _initialized: bool = False
     _lock = threading.Lock()
 
@@ -158,6 +154,6 @@ if __name__ == "__main__":
     checker = MarketHolidayChecker()
     test_date = "2025-12-25"
     if checker.is_holiday(test_date):
-        print(f"{test_date} is a holiday: {checker.get_holiday_name(test_date)}")
+        logger.info("%s is a holiday: %s", test_date, checker.get_holiday_name(test_date))
     else:
-        print(f"{test_date} is NOT a holiday")
+        logger.info("%s is NOT a holiday", test_date)

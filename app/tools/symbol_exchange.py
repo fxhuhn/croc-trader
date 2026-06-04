@@ -135,5 +135,5 @@ if __name__ == "__main__":
     exchange_manager = SymbolExchange()
     # Wait for background thread for a bit if running as script
     time.sleep(10)
-    print(f"Total symbols: {len(exchange_manager.mapping)}")
-    print(f"AAPL exchange: {exchange_manager.get_exchange('AAPL')}")
+    logger.info("Total symbols: %d", len(exchange_manager.mapping))
+    logger.info("AAPL exchange: %s", exchange_manager.get_exchange("AAPL"))

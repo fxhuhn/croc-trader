@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import sqlite3
@@ -273,9 +274,9 @@ class TradeManager:
                 str(active_trade.get("strategy", ""))
             )
             if resolved_strategy:
-                active_symbols_by_strategy.setdefault(
-                    resolved_strategy, set()
-                ).add(str(active_trade.get("symbol", "")))
+                active_symbols_by_strategy.setdefault(resolved_strategy, set()).add(
+                    str(active_trade.get("symbol", ""))
+                )
 
         orders_data: list[tuple[dict[str, object], Order]] = []
 
@@ -359,9 +360,7 @@ class TradeManager:
             return None
 
         start_date = _resolve_history_start_date(trade)
-        df_hist = self.market_repo.get_symbol_history_raw(
-            symbol, start_date=start_date
-        )
+        df_hist = self.market_repo.get_symbol_history_raw(symbol, start_date=start_date)
 
         strategy_default_budget: float = float(
             getattr(strategy, "DEFAULT_BUDGET", 2000.0)
@@ -369,9 +368,7 @@ class TradeManager:
         budget: float = float(trade.get("budget") or strategy_default_budget)
 
         # Call strategy order generation
-        return strategy.generate_orders(
-            trade, df_hist, budget, self.trade_repository
-        )
+        return strategy.generate_orders(trade, df_hist, budget, self.trade_repository)
 
     def _write_csv_orders_file(
         self,
@@ -411,9 +408,7 @@ class TradeManager:
             strategy_display_name = _get_strategy_display_name(resolved_strategy)
             trade_database_id = trade.get("id")
             symbol = str(trade.get("symbol", ""))
-            trade_group_id = (
-                f"{trade_database_id}_{strategy_display_name}_{symbol}"
-            )
+            trade_group_id = f"{trade_database_id}_{strategy_display_name}_{symbol}"
 
             rows = self._map_order_to_csv_rows(
                 trade, order, trade_group_id, strategy_display_name
@@ -429,6 +424,7 @@ class TradeManager:
         csv_file_path = output_directory / csv_filename
 
         import csv
+
         header = [
             "trade_group_id",
             "bracket_role",
@@ -463,48 +459,52 @@ class TradeManager:
         rows = []
         if order.entry:
             entry_leg = order.entry
-            rows.append({
-                "trade_group_id": trade_group_id,
-                "bracket_role": "ENTRY",
-                "symbol": order.symbol,
-                "sec_type": "STK",
-                "exchange": "SMART",
-                "account_id": "U19605236",
-                "action": entry_leg.action,
-                "quantity": (
-                    entry_leg.quantity
-                    if entry_leg.quantity is not None
-                    else order.quantity
-                ),
-                "order_type": entry_leg.type,
-                "target_price": f"{entry_leg.price:.2f}",
-                "tif": entry_leg.time_in_force,
-                "strategy_name": strategy_display_name,
-            })
+            rows.append(
+                {
+                    "trade_group_id": trade_group_id,
+                    "bracket_role": "ENTRY",
+                    "symbol": order.symbol,
+                    "sec_type": "STK",
+                    "exchange": "SMART",
+                    "account_id": "U19605236",
+                    "action": entry_leg.action,
+                    "quantity": (
+                        entry_leg.quantity
+                        if entry_leg.quantity is not None
+                        else order.quantity
+                    ),
+                    "order_type": entry_leg.type,
+                    "target_price": f"{entry_leg.price:.2f}",
+                    "tif": entry_leg.time_in_force,
+                    "strategy_name": strategy_display_name,
+                }
+            )
 
         for exit_leg in order.exits:
             if order.entry is None:
                 bracket_role = "EXIT"
             else:
                 bracket_role = "SL" if exit_leg.type == "STP" else "TP"
-            rows.append({
-                "trade_group_id": trade_group_id,
-                "bracket_role": bracket_role,
-                "symbol": order.symbol,
-                "sec_type": "STK",
-                "exchange": "SMART",
-                "account_id": "U19605236",
-                "action": exit_leg.action,
-                "quantity": (
-                    exit_leg.quantity
-                    if exit_leg.quantity is not None
-                    else order.quantity
-                ),
-                "order_type": exit_leg.type,
-                "target_price": f"{exit_leg.price:.2f}",
-                "tif": exit_leg.time_in_force,
-                "strategy_name": strategy_display_name,
-            })
+            rows.append(
+                {
+                    "trade_group_id": trade_group_id,
+                    "bracket_role": bracket_role,
+                    "symbol": order.symbol,
+                    "sec_type": "STK",
+                    "exchange": "SMART",
+                    "account_id": "U19605236",
+                    "action": exit_leg.action,
+                    "quantity": (
+                        exit_leg.quantity
+                        if exit_leg.quantity is not None
+                        else order.quantity
+                    ),
+                    "order_type": exit_leg.type,
+                    "target_price": f"{exit_leg.price:.2f}",
+                    "tif": exit_leg.time_in_force,
+                    "strategy_name": strategy_display_name,
+                }
+            )
 
         return rows
 
@@ -530,8 +530,6 @@ def _resolve_history_start_date(trade: dict[str, object]) -> str:
     signal_context = trade.get("signal_context")
     if signal_context:
         try:
-            import json
-
             if isinstance(signal_context, str):
                 ctx = json.loads(signal_context)
             else:
@@ -539,8 +537,8 @@ def _resolve_history_start_date(trade: dict[str, object]) -> str:
 
             if isinstance(ctx, dict) and "date" in ctx:
                 return str(ctx["date"]).split(" ")[0]
-        except Exception:
-            pass
+        except (json.JSONDecodeError, TypeError) as parse_error:
+            logger.warning("Failed to parse date from signal_context: %s", parse_error)
 
     # 3. Fall back to other keys
     for date_key in ("created_at", "signal_date"):

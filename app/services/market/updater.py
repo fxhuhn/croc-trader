@@ -138,25 +138,20 @@ class MarketDataUpdater:
             if df_sym.empty:
                 continue
 
-            # Parse Rows
-            # Lowercase columns for standardized access
+            # Standardize column names and clean data
             df_sym.columns = df_sym.columns.str.lower()
+            df_sym = df_sym.dropna(subset=["close"])
 
-            # Clean
-            df_sym.dropna(subset=["close"], inplace=True)
+            # Vectorized: reset index to make date a column
+            df_sym = df_sym.reset_index().rename(columns={"index": "date"})
 
-            for date_idx, row in df_sym.iterrows():
+            # Batch-construct MarketPrice objects from dict records
+            for row_dict in df_sym.to_dict("records"):
                 try:
-                    # Prepare row dict with date
-                    row_dict = row.to_dict()
-                    # date_idx is typically Timestamp
-                    row_dict["date"] = date_idx
-
                     price_model = MarketPrice.from_yahoo(symbol, row_dict)
                     bulk_data.append(price_model)
-                except ValueError as ve:
-                    # e.g. Negative Price
-                    logger.debug(f"Skipping row for {symbol}: {ve}")
+                except ValueError as value_error:
+                    logger.debug("Skipping row for %s: %s", symbol, value_error)
                     continue
 
         # Persist

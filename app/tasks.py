@@ -157,8 +157,11 @@ def run_db_backup(db_path: Path):
             backup_file.unlink()
 
         with session_factory.connect() as conn:
-            # VACUUM INTO erwartet einen Dateipfad als String literal
-            conn.execute(f"VACUUM INTO '{str(backup_file)}'")
+            # SAFETY NOTE: VACUUM INTO does not support parameterized queries
+            # (SQLite limitation). The path is constructed from controlled inputs
+            # (db_path.name + timestamp), not from user input.
+            backup_path_string = str(backup_file.resolve())
+            conn.execute(f"VACUUM INTO '{backup_path_string}'")
 
         logger.info(f"Backup erfolgreich erstellt: {backup_file}")
 
@@ -170,12 +173,14 @@ def run_db_backup(db_path: Path):
         keep_count = 5
         if len(all_backups) > keep_count:
             files_to_delete = all_backups[:-keep_count]
-            for f in files_to_delete:
+            for file_to_delete in files_to_delete:
                 try:
-                    f.unlink()
-                    logger.info(f"Altes Backup gelöscht: {f.name}")
-                except Exception as del_err:
-                    logger.error(f"Fehler beim Löschen von {f.name}: {del_err}")
+                    file_to_delete.unlink()
+                    logger.info("Old backup deleted: %s", file_to_delete.name)
+                except Exception as delete_error:
+                    logger.error(
+                        "Error deleting %s: %s", file_to_delete.name, delete_error
+                    )
 
     except Exception as e:
         logger.error(f"Fehler beim DB Backup: {e}", exc_info=True)
@@ -192,15 +197,14 @@ def run_order_generation(app: Flask) -> None:
         trade_manager = app.extensions.get("trade_manager")
         if trade_manager:
             try:
-                res = trade_manager.generate_daily_orders()
-                if res:
-                    logger.info("✅ Order-Generierung erfolgreich: %s", res)
+                order_file_path = trade_manager.generate_daily_orders()
+                if order_file_path:
+                    logger.info(
+                        "Order generation successful: %s", order_file_path
+                    )
                 else:
                     logger.info("ℹ️ Keine Orders zu generieren.")
             except Exception as e:
-                logger.error(
-                    "Fehler bei der Order-Generierung: %s", e, exc_info=True
-                )
+                logger.error("Fehler bei der Order-Generierung: %s", e, exc_info=True)
         else:
             logger.error("TradeManager nicht gefunden!")
-

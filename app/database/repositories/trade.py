@@ -117,8 +117,10 @@ class TradeRepository(BaseRepository):
             sql = f"SELECT * FROM trades WHERE status IN ({placeholders})"
             rows = self.fetch_all(sql, tuple(statuses))
         else:
-            s_val = status.value if isinstance(status, Enum) else status
-            rows = self.fetch_all("SELECT * FROM trades WHERE status = ?", (s_val,))
+            status_value = status.value if isinstance(status, Enum) else status
+            rows = self.fetch_all(
+                "SELECT * FROM trades WHERE status = ?", (status_value,)
+            )
 
         return [dict(r) for r in rows]
 

@@ -1,6 +1,8 @@
 import logging
 import threading
+from collections.abc import Callable
 from functools import wraps
+from typing import ParamSpec, TypeVar
 
 
 import pandas as pd
@@ -12,15 +14,23 @@ logger = logging.getLogger(__name__)
 REQUEST_TIMEOUT = 30
 _provider_lock = threading.Lock()
 
+P = ParamSpec("P")
+R = TypeVar("R")
 
-def require_lock(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
+
+def require_lock(func: Callable[P, R]) -> Callable[P, R | None]:
+    """Decorator that acquires a global lock before executing the function.
+
+    If the lock is already held, the function call is skipped and None is returned.
+    """
+
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | None:
         if not _provider_lock.acquire(blocking=False):
-            logger.warning(f"SKIP {f.__name__}: Provider is busy (Lock active).")
+            logger.warning("SKIP %s: Provider is busy (Lock active).", func.__name__)
             return None
         try:
-            return f(*args, **kwargs)
+            return func(*args, **kwargs)
         finally:
             _provider_lock.release()
 

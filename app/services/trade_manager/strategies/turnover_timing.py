@@ -8,7 +8,7 @@ import pandas as pd
 from ....database.repositories.trade import TradeRepository
 from ....models import Order, OrderLeg, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
-from ....types import ExitReason, TradeData
+from ....types import ExitReason, TradeData, OrderType, TimeInForce
 from ....const import Strategies
 from .abstract import BaseTradeStrategy
 
@@ -122,15 +122,29 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             )
             return {"green_candle_count": 0}
 
-    def _create_exit_order(self, symbol: str, quantity: int) -> Order:
-        """Generates an immediate Market Sell Order."""
+    def _create_exit_order(
+        self,
+        symbol: str,
+        quantity: int,
+        order_type: OrderType = "MKT",
+        time_in_force: TimeInForce = "OPG",
+    ) -> Order:
+        """Generates a Sell Exit Order."""
         return Order(
             id=str(uuid.uuid4()),
             symbol=symbol,
             quantity=quantity,
             mode="Exit",
             entry=None,
-            exits=[OrderLeg(action="SELL", type="MKT", price=0.0, quantity=quantity)],
+            exits=[
+                OrderLeg(
+                    action="SELL",
+                    type=order_type,
+                    price=0.0,
+                    quantity=quantity,
+                    time_in_force=time_in_force,
+                )
+            ],
         )
 
     def _create_entry_order(
@@ -192,7 +206,12 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
             # a) Green Sequence Exit (TRIGGERED)
             if green_candle_count >= 2:
-                return self._create_exit_order(trade["symbol"], quantity)
+                return self._create_exit_order(
+                    trade["symbol"],
+                    quantity,
+                    order_type="MKT",
+                    time_in_force="OPG",
+                )
 
             # b) Friday Time Stop
             if not dataframe_history.empty:
@@ -203,10 +222,14 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                 # We want to exit on Friday.
                 # If we are generating orders based on THURSDAY data (day=3),
                 # we generate an exit for Friday.
-                # Note: Real execution will be Friday Open (MKT) or Close (MOC).
-                # Assuming MKT for now as strict "Close" requires MOC support.
+                # Note: Real execution will be Friday Close (MOC).
                 if day_of_week == self.THURSDAY_INDEX:  # Thursday
-                    return self._create_exit_order(trade["symbol"], quantity)
+                    return self._create_exit_order(
+                        trade["symbol"],
+                        quantity,
+                        order_type="MOC",
+                        time_in_force="DAY",
+                    )
 
         return None
 

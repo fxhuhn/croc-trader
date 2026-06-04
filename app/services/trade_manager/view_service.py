@@ -457,11 +457,15 @@ class TradeViewService:
                 }
             grouped[symbol]["variants"].append(trade)
             grouped[symbol]["total_pnl"] += trade["unrealized_pnl"]
-            grouped[symbol]["total_invested"] += trade["entry_price"] * trade["initial_size"]
+            grouped[symbol]["total_invested"] += (
+                trade["entry_price"] * trade["initial_size"]
+            )
 
         for group in grouped.values():
             if group["total_invested"] > 0:
-                group["total_pnl_pct"] = (group["total_pnl"] / group["total_invested"]) * 100
+                group["total_pnl_pct"] = (
+                    group["total_pnl"] / group["total_invested"]
+                ) * 100
 
         return sorted(list(grouped.values()), key=lambda x: x["symbol"])
 

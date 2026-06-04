@@ -11,9 +11,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class TradeParams:
-    """General container for strategy-specific state parameters."""
+    """Immutable container for strategy-specific state parameters."""
 
     stop_loss: float
     take_profit_1: float | None = None
@@ -22,8 +22,9 @@ class TradeParams:
     extras: dict = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True)
 class OrderLeg:
+    """Immutable representation of a single order leg (entry or exit)."""
     action: "OrderAction"
     type: "OrderType"
     price: float
@@ -45,8 +46,9 @@ class Order:
     )
 
 
-@dataclass
+@dataclass(frozen=True)
 class CrocContext:
+    """Immutable high/low price context for Croc signals."""
     high: float
     low: float
 
@@ -277,25 +279,27 @@ class MarketPrice:
         Validation logic (e.g., non-negative prices) implies here.
         """
         # Close must be valid, others can be 0 if missing.
-        c = float(row.get("close", 0.0))
-        if c < 0:
+        close_price = float(row.get("close", 0.0))
+        if close_price < 0:
             raise ValueError(f"Negative close price for {symbol}")
 
         # Ensure date format is correct (Yahoo often gives Timestamp)
-        d_val = row.get("date")
-        if hasattr(d_val, "strftime"):
-            d_str = d_val.strftime("%Y-%m-%d")
+        date_value = row.get("date")
+        if hasattr(date_value, "strftime"):
+            date_string = date_value.strftime("%Y-%m-%d")
         else:
             # Fallback for string or index-based date passed as column
-            d_str = str(d_val) if d_val else datetime.now().strftime("%Y-%m-%d")
+            date_string = (
+                str(date_value) if date_value else datetime.now().strftime("%Y-%m-%d")
+            )
 
         return cls(
             symbol=symbol,
-            date=d_str,
+            date=date_string,
             open=float(row.get("open", 0.0)),
             high=float(row.get("high", 0.0)),
             low=float(row.get("low", 0.0)),
-            close=c,
+            close=close_price,
             volume=int(row.get("volume", 0)),
         )
 

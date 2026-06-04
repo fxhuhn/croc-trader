@@ -49,41 +49,51 @@ DEFAULT_DB_FOLDERS = {"orders": "orders"}
 
 @dataclass
 class DatabaseConfig:
-    """Verwaltet Pfade zu Datenbanken und Datendateien."""
+    """Manages paths to databases and data files."""
 
     base_folder: str = "data"
     files: dict[str, str] = field(default_factory=lambda: DEFAULT_DB_FILES.copy())
     folders: dict[str, str] = field(default_factory=lambda: DEFAULT_DB_FOLDERS.copy())
 
 
-@dataclass
+@dataclass(frozen=True)
 class WebserverConfig:
+    """Web server binding configuration."""
+
     host: str = "127.0.0.1"
     port: int = 5000
     debug: bool = False
 
 
-@dataclass
+@dataclass(frozen=True)
 class LoggingConfig:
+    """Logging output configuration."""
+
     base_folder: str = "logs"
     file_name: str = "croc-trader.log"
     level: str = "info"
 
 
-@dataclass
+@dataclass(frozen=True)
 class WebhookWorkerConfig:
+    """Webhook worker pool configuration."""
+
     size: int = 40
     timeout: int = 5
 
 
-@dataclass
+@dataclass(frozen=True)
 class SecurityConfig:
+    """IP whitelist and access control configuration."""
+
     mode: str = "warning"
-    whitelist: list[str] = field(default_factory=list)
+    whitelist: tuple[str, ...] = ()
 
 
-@dataclass
+@dataclass(frozen=True)
 class TelegramConfig:
+    """Telegram notification bot configuration."""
+
     token: str = ""
     chat_id: str = ""
     enabled: bool = False
@@ -145,19 +155,28 @@ class AppConfig:
             WebhookWorkerConfig(**worker_data) if worker_data else WebhookWorkerConfig()
         )
 
-        sec_data = data.get("security", {})
-        sec_config = SecurityConfig(**sec_data) if sec_data else SecurityConfig()
+        security_data = data.get("security", {})
+        # Convert list whitelist to tuple for frozen SecurityConfig
+        if security_data and "whitelist" in security_data:
+            security_data["whitelist"] = tuple(security_data["whitelist"])
+        security_config = (
+            SecurityConfig(**security_data) if security_data else SecurityConfig()
+        )
 
-        tele_data = data.get("telegram", {})
-        tele_config = TelegramConfig(**tele_data) if tele_data else TelegramConfig()
+        telegram_data = data.get("telegram", {})
+        telegram_config = (
+            TelegramConfig(**telegram_data)
+            if telegram_data
+            else TelegramConfig()
+        )
 
         return cls(
             database=db_config,
             webserver=web_config,
             logging=logging_config,
             worker=worker_config,
-            security=sec_config,
-            telegram=tele_config,
+            security=security_config,
+            telegram=telegram_config,
         )
 
 
@@ -202,21 +221,39 @@ class ConfigManager:
             SECRET_KEY=os.getenv("FLASK_SECRET_KEY", "dev-fallback-key"),
         )
 
-    def _apply_env_overrides(self):
-        self.app.telegram.token = os.getenv("TELEGRAM_TOKEN", self.app.telegram.token)
-        self.app.telegram.chat_id = os.getenv(
+    def _apply_env_overrides(self) -> None:
+        """Applies environment variable overrides to the loaded config.
+
+        Creates a new frozen TelegramConfig with overridden values rather
+        than mutating the existing instance.
+        """
+        telegram_token = os.getenv("TELEGRAM_TOKEN", self.app.telegram.token)
+        telegram_chat_id = os.getenv(
             "TELEGRAM_CHAT_ID", self.app.telegram.chat_id
         )
-        if env_enabled := os.getenv("TELEGRAM_ENABLED"):
-            self.app.telegram.enabled = env_enabled.lower() == "true"
+        env_enabled = os.getenv("TELEGRAM_ENABLED")
+        telegram_enabled = (
+            env_enabled.lower() == "true"
+            if env_enabled
+            else self.app.telegram.enabled
+        )
+
+        # Replace the frozen TelegramConfig with a new instance
+        overridden_telegram = TelegramConfig(
+            token=telegram_token,
+            chat_id=telegram_chat_id,
+            enabled=telegram_enabled,
+        )
+        # AppConfig is not frozen, so we can reassign its telegram attribute
+        self.app.telegram = overridden_telegram
 
     def _load_or_create_yaml(self) -> AppConfig:
         # Prüfen ob settings.yaml in data/ liegt (Migrationsempfehlung) oder im Root
         # Hier behalten wir die Logik bei: CONFIG_FILE zeigt auf Root/settings.yaml laut Zeile 17
 
         if not CONFIG_FILE.exists():
-            logger.info(f"Erstelle Standard Config: {CONFIG_FILE}")
-            default_conf = AppConfig()
+            logger.info("Creating default config: %s", CONFIG_FILE)
+            default_config = AppConfig()
 
             def dataclass_to_dict(obj):
                 if hasattr(obj, "__dataclass_fields__"):
@@ -225,11 +262,11 @@ class ConfigManager:
 
             try:
                 with open(CONFIG_FILE, "w") as f:
-                    yaml.dump(dataclass_to_dict(default_conf), f, sort_keys=False)
-            except Exception as e:
-                logger.error(f"Konnte Config nicht schreiben: {e}")
+                    yaml.dump(dataclass_to_dict(default_config), f, sort_keys=False)
+            except Exception as error:
+                logger.error("Could not write config: %s", error)
 
-            return default_conf
+            return default_config
 
         try:
             with open(CONFIG_FILE) as f:

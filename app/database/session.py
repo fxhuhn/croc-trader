@@ -1,23 +1,38 @@
+"""Database session management with SQLite WAL mode.
+
+Provides a context-managed connection factory ensuring consistent
+PRAGMA configuration, row_factory setup, and transaction handling.
+"""
+
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
 
+# Pre-built PRAGMA statements from class constants to avoid f-strings in SQL
+_PRAGMA_BUSY_TIMEOUT = "PRAGMA busy_timeout = 30000;"
+_PRAGMA_JOURNAL_MODE = "PRAGMA journal_mode = WAL;"
+_PRAGMA_SYNCHRONOUS = "PRAGMA synchronous = NORMAL;"
+
 
 class DatabaseSession:
-    BUSY_TIMEOUT = 30000  # Increased to 30s for high concurrency
-    JOURNAL_MODE = "WAL"
+    """Context-managed SQLite connection factory with WAL mode.
 
-    def __init__(self, db_path: str):
+    All connections share the same PRAGMA configuration for consistency.
+    Uses WAL journal mode for improved read concurrency.
+    """
+
+    def __init__(self, db_path: str) -> None:
         self.db_path = db_path
 
     @contextmanager
     def connect(self) -> Generator[sqlite3.Connection, None, None]:
+        """Yields a configured SQLite connection with automatic commit/rollback."""
         conn = sqlite3.connect(self.db_path)
 
         # WAL Mode & Timeout & Performance optimizations
-        conn.execute(f"PRAGMA busy_timeout = {self.BUSY_TIMEOUT};")
-        conn.execute(f"PRAGMA journal_mode = {self.JOURNAL_MODE};")
-        conn.execute("PRAGMA synchronous = NORMAL;")  # Faster WAL writes
+        conn.execute(_PRAGMA_BUSY_TIMEOUT)
+        conn.execute(_PRAGMA_JOURNAL_MODE)
+        conn.execute(_PRAGMA_SYNCHRONOUS)
 
         conn.row_factory = sqlite3.Row
         try:
@@ -28,3 +43,4 @@ class DatabaseSession:
             raise
         finally:
             conn.close()
+

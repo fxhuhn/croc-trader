@@ -196,66 +196,52 @@
                 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
                 <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Index
             </h2>
-            <div
-                class="bg-white md:bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 md:overflow-hidden">
-                <!-- Desktop Table -->
-                <table class="w-full text-sm text-left hidden md:table">
-                    <thead>
-                        <tr
-                            class="text-xs md:text-sm text-slate-600 uppercase md:normal-case tracking-wider md:tracking-normal font-bold md:font-medium border-b border-slate-200 bg-slate-50">
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal">Index</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-center">W — L</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">Avg</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">PnL</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
+            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <!-- Desktop View -->
+                <div class="hidden md:block">
+                    <!-- Desktop Header -->
+                    <div class="grid grid-cols-4 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+                        <div>Index</div>
+                        <div class="text-center">W — L</div>
+                        <div class="text-right">Avg</div>
+                        <div class="text-right">PnL</div>
+                    </div>
+                    <!-- Body Rows -->
+                    <div class="divide-y divide-slate-100">
                         {% for row in index_stats.values() %}
                         {% if row.win > 0 or row.loss > 0 %}
-                        <tr class="active:bg-slate-50/50 md:hover:bg-slate-50/50 transition-colors">
-                            <td class="px-4 md:px-6 py-3 font-medium text-slate-700">
+                        <div class="grid grid-cols-4 gap-4 px-4 py-3 items-center text-sm hover:bg-slate-50/50 transition-colors">
+                            <div class="font-medium text-slate-700">
                                 <span>{{ row.name }}</span>
-                            </td>
-                            <td class="px-4 md:px-6 py-3 text-center">
+                            </div>
+                            <div class="text-center">
                                 <span class="text-xs md:text-sm font-bold">
                                     <span class="text-emerald-500 whitespace-nowrap">{{ row.win }}W</span>
                                     <span class="text-slate-300 mx-1">-</span>
                                     <span class="text-rose-500 whitespace-nowrap">{{ row.loss }}L</span>
                                 </span>
-                            </td>
-                            <td class="px-4 md:px-6 py-3 text-right font-medium text-slate-600">
+                            </div>
+                            <div class="text-right font-medium text-slate-600 tabular-nums">
                                 {{ "{:+,.0f}".format(row.average_pnl) }}
-                            </td>
-                            <td class="px-4 md:px-6 py-3 text-right">
-                                <div
-                                    class="text-sm font-black md:font-medium {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }} tabular-nums">
-                                    {{ "{:+.0f}".format(row.pnl) }}
-                                </div>
-                            </td>
-                        </tr>
+                            </div>
+                            <div class="text-right font-bold {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }} tabular-nums">
+                                {{ "{:+.0f}".format(row.pnl) }}
+                            </div>
+                        </div>
                         {% endif %}
                         {% endfor %}
-                    </tbody>
-                    <tfoot class="bg-slate-50 border-t border-slate-200">
-                        <tr class="font-semibold">
-                            <td class="px-4 md:px-6 py-3 md:py-4 text-slate-900 border-none">
-                                <span>Total (Unique)</span>
-                            </td>
-                            <td class="px-4 md:px-6 py-3 md:py-4 text-right text-slate-500 border-none">
-                                {{ closed_summary.count }} Trades
-                            </td>
-                            <td class="px-4 md:px-6 py-3 md:py-4 text-right text-slate-600 border-none">
-                                {{ "{:+,.0f}".format(closed_summary.average_pnl) }}
-                            </td>
-                            <td class="px-4 md:px-6 py-3 md:py-4 text-right border-none">
-                                <div
-                                    class="text-xs md:text-sm font-black md:font-semibold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'md:text-rose-500/90' }} tabular-nums">
-                                    {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
-                                </div>
-                            </td>
-                        </tr>
-                    </tfoot>
-                </table>
+                        
+                        <!-- Footer -->
+                        <div class="grid grid-cols-4 gap-4 px-4 py-3 md:py-4 bg-slate-50 border-t border-slate-200 font-semibold items-center text-sm">
+                            <div class="text-slate-900">Total (Unique)</div>
+                            <div class="text-center text-slate-500">{{ closed_summary.count }} Trades</div>
+                            <div class="text-right text-slate-600 tabular-nums">{{ "{:+,.0f}".format(closed_summary.average_pnl) }}</div>
+                            <div class="text-right text-slate-700 md:text-slate-900 {{ 'md:text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'md:text-rose-500/90' }} tabular-nums">
+                                {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- Mobile List -->
                 <div class="md:hidden flex flex-col divide-y divide-slate-100">
@@ -304,44 +290,40 @@
                 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
                 <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Signals
             </h2>
-            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 md:overflow-hidden">
-                <!-- Desktop Table -->
-                <table class="w-full text-sm text-left hidden md:table">
-                    <thead>
-                        <tr
-                            class="text-xs md:text-sm text-slate-600 uppercase md:normal-case tracking-wider md:tracking-normal font-bold md:font-medium border-b border-slate-200 bg-slate-50">
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal">Signal</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-center">W — L</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">Avg</th>
-                            <th class="px-4 md:px-6 py-2 md:py-4 font-normal text-right">PnL</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100">
+            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <!-- Desktop View -->
+                <div class="hidden md:block">
+                    <!-- Desktop Header -->
+                    <div class="grid grid-cols-4 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+                        <div>Signal</div>
+                        <div class="text-center">W — L</div>
+                        <div class="text-right">Avg</div>
+                        <div class="text-right">PnL</div>
+                    </div>
+                    <!-- Body Rows -->
+                    <div class="divide-y divide-slate-100">
                         {% for sig_name, stats in signal_stats.items() %}
-                        <tr class="active:bg-slate-50/50 md:hover:bg-slate-50/50 transition-colors">
-                            <td class="px-4 md:px-6 py-3 font-medium text-slate-600">
+                        <div class="grid grid-cols-4 gap-4 px-4 py-3 items-center text-sm hover:bg-slate-50/50 transition-colors">
+                            <div class="font-medium text-slate-600">
                                 <span>{{ sig_name }}</span>
-                            </td>
-                            <td class="px-4 md:px-6 py-3 text-center">
+                            </div>
+                            <div class="text-center">
                                 <span class="text-xs md:text-sm font-bold">
                                     <span class="text-emerald-500 whitespace-nowrap">{{ stats.win }}W</span>
                                     <span class="text-slate-300 mx-1">-</span>
                                     <span class="text-rose-500 whitespace-nowrap">{{ stats.loss }}L</span>
                                 </span>
-                            </td>
-                            <td class="px-4 md:px-6 py-3 text-right font-medium text-slate-600 tabular-nums">
+                            </div>
+                            <div class="text-right font-medium text-slate-600 tabular-nums">
                                 {{ "{:+,.0f}".format(stats.average_pnl) }}
-                            </td>
-                            <td class="px-4 md:px-6 py-3 text-right">
-                                <div
-                                    class="text-sm font-black md:font-medium {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }} tabular-nums">
-                                    {{ "{:+.0f}".format(stats.pnl) }}
-                                </div>
-                            </td>
-                        </tr>
+                            </div>
+                            <div class="text-right font-bold {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                                {{ "{:+.0f}".format(stats.pnl) }}
+                            </div>
+                        </div>
                         {% endfor %}
-                    </tbody>
-                </table>
+                    </div>
+                </div>
 
                 <!-- Mobile List -->
                 <div class="md:hidden flex flex-col divide-y divide-slate-100">

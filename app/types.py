@@ -15,7 +15,7 @@ from .const import (
 
 OrderAction = Literal["BUY", "SELL"]
 OrderType = Literal["LMT", "MKT", "LOC", "STP", "MOC"]
-TimeInForce = Literal["DAY", "GTC"]
+TimeInForce = Literal["DAY", "GTC", "OPG"]
 
 
 class TradeData(TypedDict, total=False):

@@ -1,7 +1,10 @@
+"""Domain constants and enumerations for trade management."""
+
 from enum import StrEnum
 
 
 class Strategies(StrEnum):
+    """Canonical identifiers for all trading strategies."""
     # Core Strategies
     DipBuyer = "dip_buyer"
     TwoPercent = "two_percent"
@@ -71,6 +74,7 @@ STRATEGY_ALIASES = {
 
 
 class TradeStatus(StrEnum):
+    """Lifecycle states of a trade record."""
     CREATED = "CREATED"
     ACTIVE = "ACTIVE"
     CLOSED = "CLOSED"
@@ -80,6 +84,7 @@ class TradeStatus(StrEnum):
 
 
 class ExitReason(StrEnum):
+    """Reasons why a trade was closed."""
     # Profit Exits
     TAKE_PROFIT = "TAKE_PROFIT"
     LOC_PROFIT = "LOC_PROFIT"
@@ -99,6 +104,7 @@ class ExitReason(StrEnum):
 
 
 class TradeEventType(StrEnum):
+    """Types of events logged in the trade lifecycle."""
     ENTRY = "ENTRY"
     EXIT = "EXIT"
 
@@ -113,6 +119,7 @@ class TradeEventType(StrEnum):
 
 
 class EntryReason(StrEnum):
+    """Specific conditions that triggered a trade entry."""
     GAP_UP = "GAP UP (Stop)"
     BREAKOUT = "BREAKOUT (Stop)"
     GAP_DOWN = "GAP DOWN (Stop)"
@@ -120,6 +127,7 @@ class EntryReason(StrEnum):
 
 
 class TargetColumn(StrEnum):
+    """Database column names for various take-profit targets."""
     TARGET_PRICE = "target_price"
     TP3 = "tp3"
     TAKE_PROFIT_3 = "take_profit_3"
@@ -128,6 +136,7 @@ class TargetColumn(StrEnum):
 
 
 class IndexAliases(StrEnum):
+    """Short-name aliases for major market indices."""
     SPX = "SPX"
     NDX = "NDX"
     DOW = "DOW"

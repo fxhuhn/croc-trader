@@ -1,7 +1,7 @@
 import logging.config
 from flask import Flask, send_from_directory
 
-from .config import settings
+from .config import ConfigManager, settings
 from .extensions import cache
 from .mapping import mapper
 
@@ -12,7 +12,18 @@ from .routes import main_bp
 from .services.setup import register_services, configure_scheduler
 
 
-def create_app(config_object=settings):
+def create_app(config_object: ConfigManager = settings) -> Flask:
+    """Application factory for the Croc-Trader Flask application.
+
+    Creates and configures the Flask app instance, initializes logging,
+    registers blueprints, and starts background services.
+
+    Args:
+        config_object: The configuration manager providing all settings.
+
+    Returns:
+        A fully configured Flask application instance.
+    """
     app = Flask(__name__, static_url_path="", static_folder="static")
 
     # 1. Config & Cache
