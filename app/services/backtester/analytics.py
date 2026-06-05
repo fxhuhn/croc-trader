@@ -487,8 +487,21 @@ class MetricsCalculator:
         maximum_drawdown = metrics.calculate_max_drawdown(working_df["equity"])
 
         # Performance Ratios
+        sharpe_annualization_factor = 252.0
+        if "exit_date" in working_df.columns and len(working_df) >= 2:
+            exit_dates = pd.to_datetime(working_df["exit_date"])
+            first_exit = exit_dates.min()
+            last_exit = exit_dates.max()
+            days_range = (last_exit - first_exit).days
+            days_span = max(1.0, float(days_range))
+            years_span = days_span / 365.25
+            trades_per_year = len(working_df) / years_span
+            sharpe_annualization_factor = min(252.0, max(1.0, float(trades_per_year)))
+
         sharpe_ratio = metrics.calculate_sharpe_ratio(
-            working_df["net_pnl"], initial_capital
+            working_df["net_pnl"],
+            initial_capital,
+            annualization_factor=sharpe_annualization_factor,
         )
         strategy_return = safe_divide(net_profit, initial_capital)
         exposure_efficiency = safe_divide(strategy_return, exposure_percentage)

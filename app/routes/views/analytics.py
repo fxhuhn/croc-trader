@@ -132,7 +132,8 @@ def view_analytics_dashboard() -> str:
         )
 
         # Vectorized Risk Calculations
-        average_risk_dollar = 100.0
+        average_risk_dollar = 0.0
+        has_valid_risk = False
         if not strategy_dataframe.empty:
             entry_prices = pd.to_numeric(
                 strategy_dataframe["entry_price"], errors="coerce"
@@ -145,25 +146,46 @@ def view_analytics_dashboard() -> str:
             ).fillna(0.0)
 
             valid_trades_mask = (
-                (entry_prices > 0.0) & (stop_losses > 0.0) & (initial_sizes > 0.0)
+                (entry_prices > 0.0)
+                & (stop_losses > 0.0)
+                & (initial_sizes > 0.0)
             )
             risks_series = (entry_prices - stop_losses).abs() * initial_sizes
             valid_risks = risks_series[valid_trades_mask & (risks_series > 0.0)]
 
             if not valid_risks.empty:
                 average_risk_dollar = float(valid_risks.mean())
+                has_valid_risk = True
 
-        average_risk_percent = (average_risk_dollar / initial_capital) * 100.0
+        if has_valid_risk:
+            average_risk_percent = (average_risk_dollar / initial_capital) * 100.0
+            expectancy_r = (
+                strategy_expectancy / average_risk_dollar
+                if average_risk_dollar > 0.0
+                else 0.0
+            )
+            average_risk_display_text = f"{average_risk_percent:.2f}%"
+            expectancy_display_text = f"{expectancy_r:.2f} R"
+        else:
+            average_risk_display_text = "N/A"
+            expectancy_display_text = "N/A"
+
         rate_of_return_percent = (
             (float(strategy_dataframe["realized_pnl"].sum()) / initial_capital) * 100.0
             if not strategy_dataframe.empty
             else 0.0
         )
-        expectancy_r = (
-            strategy_expectancy / average_risk_dollar
-            if average_risk_dollar > 0.0
-            else 0.0
-        )
+
+        # Calculate Sharpe Ratio with adjusted annualization factor based on trade frequency
+        sharpe_annualization_factor = 252.0
+        if not strategy_dataframe.empty and len(strategy_dataframe) >= 2:
+            first_exit = strategy_dataframe["exit_date_dt"].min()
+            last_exit = strategy_dataframe["exit_date_dt"].max()
+            days_range = (last_exit - first_exit).days
+            days_span = max(1.0, float(days_range))
+            years_span = days_span / 365.25
+            trades_per_year = len(strategy_dataframe) / years_span
+            sharpe_annualization_factor = min(252.0, max(1.0, float(trades_per_year)))
 
         # Combine realized P&L of closed trades with unrealized P&L of active trades
         closed_profit_and_loss_list = (
@@ -210,7 +232,7 @@ def view_analytics_dashboard() -> str:
                 "metrics": {
                     "trades": len(strategy_dataframe),
                     "active_positions": len(strategy_active),
-                    "avg_risk": f"{average_risk_percent:.2f}%",
+                    "avg_risk": average_risk_display_text,
                     "win_count": len(winning_trades),
                     "loss_count": len(losing_trades),
                     "avg_win": float(winning_trades["realized_pnl"].mean())
@@ -224,10 +246,12 @@ def view_analytics_dashboard() -> str:
                     )
                     if not strategy_dataframe.empty
                     else 0.0,
-                    "expectancy": f"{expectancy_r:.2f} R",
+                    "expectancy": expectancy_display_text,
                     "ror": f"{rate_of_return_percent:.2f}%",
                     "sharpe": metrics.calculate_sharpe_ratio(
-                        strategy_dataframe["realized_pnl"], initial_capital
+                        strategy_dataframe["realized_pnl"],
+                        initial_capital,
+                        annualization_factor=sharpe_annualization_factor,
                     )
                     if not strategy_dataframe.empty
                     else 0.0,
