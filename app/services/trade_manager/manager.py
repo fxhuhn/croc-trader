@@ -199,8 +199,37 @@ class TradeManager:
 
             if not df_hist.empty:
                 current_close = df_hist.iloc[-1]["close"]
+                updates = {"current_price": current_close}
+
+                # Update the LOC threshold in database context for Dip Buyer if trade remains active
+                resolved_strategy = self._resolve_strategy_name(strategy_name)
+                if resolved_strategy == Strategies.DipBuyer and not result and len(df_hist) >= 2:
+                    previous_candle = df_hist.iloc[-2]
+                    previous_day_high = float(previous_candle["high"])
+                    new_threshold_loc = round(previous_day_high + 0.01, 2)
+
+                    signal_context_json = trade.get("signal_context")
+                    if signal_context_json:
+                        try:
+                            if isinstance(signal_context_json, str):
+                                signal_context_dict = json.loads(signal_context_json)
+                            else:
+                                signal_context_dict = signal_context_json
+
+                            if isinstance(signal_context_dict, dict):
+                                signal_context_dict["threshold_loc"] = new_threshold_loc
+                                updates["signal_context"] = json.dumps(
+                                    signal_context_dict, ensure_ascii=False
+                                )
+                        except Exception as parse_error:
+                            logger.warning(
+                                "Failed to parse signal_context JSON for trade %s: %s",
+                                trade.get("id"),
+                                parse_error,
+                            )
+
                 self.trade_repository.update_trade(
-                    trade["id"], {"current_price": current_close}
+                    trade["id"], updates
                 )
 
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:

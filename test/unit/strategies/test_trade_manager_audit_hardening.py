@@ -783,3 +783,67 @@ class TestHoldTargetLoggingStyle:
         # Assert
         assert result is None
         assert "MSFT" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# DipBuyer: Dynamic LOC Threshold Update in TradeManager
+# ---------------------------------------------------------------------------
+
+
+class TestTradeManagerDipBuyerDynamicLOCUpdate:
+    """Validates that TradeManager updates the LOC threshold dynamically in DB."""
+
+    def test_process_active_trade_updates_loc_threshold(self, tmp_path: Path) -> None:
+        """Verifies that active DipBuyer trade updates threshold_loc in signal_context."""
+        # Arrange
+        with (
+            patch("app.services.trade_manager.manager.DatabaseSession"),
+            patch("app.services.trade_manager.manager.TradeRepository") as mock_trade_repository_class,
+            patch("app.services.trade_manager.manager.MarketRepository") as mock_market_repository_class,
+        ):
+            mock_trade_repository = MagicMock()
+            mock_market_repository = MagicMock()
+
+            mock_trade_repository_class.return_value = mock_trade_repository
+            mock_market_repository_class.return_value = mock_market_repository
+
+            manager_instance = TradeManager(
+                db_path=tmp_path / "signals.db",
+                stocks_db_path=tmp_path / "stocks.db",
+            )
+            manager_instance.trade_repository = mock_trade_repository
+            manager_instance.market_repo = mock_market_repository
+
+            # Mock history: previous high is 100.0, current close is 95.0
+            history_data = [
+                {"date": "2026-06-01", "open": 98.0, "high": 100.0, "low": 97.0, "close": 99.0},
+                {"date": "2026-06-02", "open": 99.0, "high": 101.0, "low": 94.0, "close": 95.0},
+            ]
+            mock_market_repository.get_symbol_history_raw.return_value = pd.DataFrame(history_data)
+
+            # Active trade definition
+            trade_data = {
+                "id": 123,
+                "symbol": "CBOE",
+                "strategy": "dip_buyer",
+                "status": "ACTIVE",
+                "signal_context": json.dumps({"date": "2026-06-01", "threshold_loc": 329.52}),
+            }
+
+            # Act
+            manager_instance._process_active_trade(trade_data)
+
+            # Assert
+            # Since mock_trade_repository.update_trade is called with the updates:
+            # We expect key "signal_context" in the updates to contain "threshold_loc": 100.01 (100.0 + 0.01)
+            mock_trade_repository.update_trade.assert_called_once()
+            call_arguments = mock_trade_repository.update_trade.call_args[0]
+            assert call_arguments[0] == 123  # trade_id
+
+            updates = call_arguments[1]
+            assert updates["current_price"] == 95.0
+            assert "signal_context" in updates
+
+            updated_context = json.loads(updates["signal_context"])
+            assert updated_context["threshold_loc"] == 100.01
+            assert updated_context["date"] == "2026-06-01"
