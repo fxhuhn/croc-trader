@@ -115,6 +115,11 @@
                                         <span class="font-bold text-slate-800">{% if t.context.indices %}{{
                                             t.context.indices }}{% else %}-{% endif %}</span>
                                     </div>
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
+                                        <span class="text-slate-500 font-medium">Direction</span>
+                                        {% set direction = t.context.get('direction', 'long') | lower %}
+                                        <span class="font-bold {% if direction == 'short' %}text-rose-600{% else %}text-emerald-600{% endif %} uppercase">{{ direction }}</span>
+                                    </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Quantity</span>
                                         <span
