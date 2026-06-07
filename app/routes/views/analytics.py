@@ -61,7 +61,7 @@ def view_analytics_dashboard() -> str:
     summary = {
         "net_pnl": float(dataframe["realized_pnl"].sum()),
         "win_rate": metrics.calculate_win_rate(dataframe["realized_pnl"]),
-        "max_drawdown": metrics.calculate_max_drawdown(dataframe["equity"]),
+        "max_drawdown": metrics.calculate_max_drawdown(dataframe["equity"], initial_capital),
         "total_trades": len(dataframe),
     }
 

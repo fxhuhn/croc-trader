@@ -36,6 +36,7 @@ class TradeData(TypedDict, total=False):
     initial_size: int | None
     current_size: int | None
     budget: float | None
+    risk_amount: float | None
 
     # Management
     current_stop_loss: float | None

@@ -121,3 +121,19 @@ def test_calculate_ulcer_index():
     # Mean Sq DD%: 125 / 5 = 25
     # Ulcer = sqrt(25) = 5.0
     assert ulcer == pytest.approx(5.0)
+
+
+def test_calculate_max_drawdown_with_initial_value():
+    """Tests maximum drawdown calculation with initial value prepended."""
+    # Arrange
+    equity = pd.Series([95.0, 105.0, 98.0])
+
+    # Act
+    max_dd = metrics.calculate_max_drawdown(equity, initial_value=100.0)
+
+    # Assert
+    # Extended series: [100.0, 95.0, 105.0, 98.0]
+    # Running peaks:   [100.0, 100.0, 105.0, 105.0]
+    # Drawdowns:       [0.0, -0.05, 0.0, -0.0666666]
+    # Max drawdown:    -0.0666666
+    assert max_dd == pytest.approx(-0.0666666, abs=1e-5)

@@ -88,17 +88,22 @@ def calculate_risk_reward_ratio(trades_pnl: pd.Series) -> float:
     return float(average_win / average_loss) if average_loss > EPSILON else 0.0
 
 
-def calculate_max_drawdown(equity_curve: pd.Series) -> float:
+def calculate_max_drawdown(equity_curve: pd.Series, initial_value: float | None = None) -> float:
     """Calculates the maximum peak-to-trough decline.
 
     Args:
         equity_curve: Series of portfolio equity values over time.
+        initial_value: Optional initial capital. If provided, prepended to the series
+                       to ensure the initial peak is correctly registered.
 
     Returns:
         float: Maximum drawdown as a negative decimal (e.g., -0.15 for 15%).
     """
     if equity_curve.empty:
         return 0.0
+
+    if initial_value is not None:
+        equity_curve = pd.concat([pd.Series([initial_value]), equity_curve], ignore_index=True)
 
     running_maximum = equity_curve.cummax()
     drawdown = (equity_curve - running_maximum) / running_maximum
