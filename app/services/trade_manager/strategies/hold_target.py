@@ -114,10 +114,9 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 return self._execute_immediate_loss(
                     trade, repository, fill_price, reason, stop_loss, date_string
                 )
-            else:
-                return self._execute_activation(
-                    trade, repository, fill_price, reason, date_string
-                )
+            return self._execute_activation(
+                trade, repository, fill_price, reason, date_string
+            )
 
         if is_stop_hit:
             # Setup Invalidated (Stop hit before Entry)

@@ -208,7 +208,9 @@ def test_screener_signals_on_thursday_if_friday_missing(
     thursday_date = "2026-04-02"  # Week 14
     # Simulate running on the following Monday
     mock_now.return_value = pd.Timestamp("2026-04-06")
-    screener_strategy._get_real_today = MagicMock(return_value=pd.Timestamp("2026-04-06").date())
+    screener_strategy._get_real_today = MagicMock(
+        return_value=pd.Timestamp("2026-04-06").date()
+    )
 
     candle = create_candle(thursday_date, 1000.0)
     screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame(
@@ -235,7 +237,9 @@ def test_screener_signals_on_wednesday_if_thursday_and_friday_missing(
     wednesday_date = "2026-04-01"  # Week 14
     # Simulate running on the following Monday
     mock_now.return_value = pd.Timestamp("2026-04-06")
-    screener_strategy._get_real_today = MagicMock(return_value=pd.Timestamp("2026-04-06").date())
+    screener_strategy._get_real_today = MagicMock(
+        return_value=pd.Timestamp("2026-04-06").date()
+    )
 
     candle = create_candle(wednesday_date, 1000.0)
     screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame(

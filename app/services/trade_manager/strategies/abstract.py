@@ -1,12 +1,11 @@
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Any
 
 import pandas as pd
 
 from ....database.repositories.trade import TradeRepository
-from ....types import TradeStatus, ExitReason
+from ....types import TradeData, TradeStatus, ExitReason
 from ....models import Order, TradeParams
 
 logger = logging.getLogger(__name__)
@@ -19,11 +18,42 @@ class BaseTradeStrategy(ABC):
     """
 
     DEFAULT_BUDGET: float = 2000.0
+    FRIDAY_INDEX: int = 4
+    THURSDAY_INDEX: int = 3
+
+    def _is_end_of_trading_week(
+        self,
+        current_date: pd.Timestamp,
+        holiday_checker: object,
+    ) -> bool:
+        """Checks if today is the last trading day of the week.
+
+        Accounts for Friday holidays by treating Thursday as week-end.
+        This is the single authoritative end-of-week check (DRY).
+
+        Args:
+            current_date: The date to evaluate.
+            holiday_checker: An object with an `is_holiday(date)` method.
+
+        Returns:
+            bool: True if this is the last trading day of the week.
+        """
+        if current_date.dayofweek == self.FRIDAY_INDEX:
+            return True
+
+        if current_date.dayofweek == self.THURSDAY_INDEX:
+            next_day = current_date + pd.Timedelta(days=1)
+            # Use getattr for duck typing — accepts any checker with is_holiday()
+            is_holiday_fn = getattr(holiday_checker, "is_holiday", None)
+            if is_holiday_fn and is_holiday_fn(next_day.date()):
+                return True
+
+        return False
 
     @abstractmethod
     def check_entry(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
         repository: TradeRepository,
@@ -45,7 +75,7 @@ class BaseTradeStrategy(ABC):
     @abstractmethod
     def manage_active_trade(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         dataframe_history: pd.DataFrame,
         repository: TradeRepository,
     ) -> str | None:
@@ -65,7 +95,7 @@ class BaseTradeStrategy(ABC):
     @abstractmethod
     def generate_orders(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
         repository: TradeRepository,
@@ -87,7 +117,7 @@ class BaseTradeStrategy(ABC):
     @abstractmethod
     def get_current_parameters(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         dataframe_history: pd.DataFrame | None,
         repository: TradeRepository | None,
     ) -> TradeParams | None:
@@ -106,7 +136,7 @@ class BaseTradeStrategy(ABC):
 
     # --- Shared Logic & Helpers (DRY) ---
 
-    def _get_signal_date(self, trade: dict[str, Any]) -> pd.Timestamp | None:
+    def _get_signal_date(self, trade: TradeData) -> pd.Timestamp | None:
         """
         Extracts the signal date from the JSON context.
 
@@ -126,8 +156,21 @@ class BaseTradeStrategy(ABC):
                 return None
         return None
 
-    def _get_context_value(self, trade: dict[str, Any], key: str) -> Any | None:
-        """Helper to extract values from the JSON signal_context."""
+    def _get_context_value(
+        self, trade: TradeData, key: str
+    ) -> str | float | int | bool | None:
+        """Extracts a single value from the JSON signal_context field.
+
+        Handles both pre-parsed dict and raw JSON string formats
+        since the repository layer may or may not have parsed the context.
+
+        Args:
+            trade: The trade data dictionary.
+            key: The context key to look up.
+
+        Returns:
+            The extracted value, or None if not found or unparseable.
+        """
         try:
             context_data = trade.get("signal_context")
             if not context_data:
@@ -144,7 +187,7 @@ class BaseTradeStrategy(ABC):
             return None
 
     def _get_trading_days_post_signal(
-        self, trade: dict[str, Any], dataframe_history: pd.DataFrame
+        self, trade: TradeData, dataframe_history: pd.DataFrame
     ) -> int:
         """
         Calculates how many trading days have passed since the signal.
@@ -168,7 +211,7 @@ class BaseTradeStrategy(ABC):
         self, fill_price: float, stop_loss: float, risk_amount: float
     ) -> int:
         """
-        Centralized position sizing based on risk.
+        Calculates position size based on per-share risk.
 
         Args:
             fill_price: The entry price.
@@ -184,17 +227,83 @@ class BaseTradeStrategy(ABC):
         risk_per_share = abs(fill_price - stop_loss)
         return int(risk_amount / risk_per_share)
 
+    def _resolve_position_size(
+        self,
+        trade: TradeData,
+        fill_price: float,
+        stop_loss: float = 0.0,
+    ) -> int:
+        """Determines position size via risk-based or budget-based fallback.
+
+        This is the single authoritative sizing calculation (DRY).
+        Called by _execute_activation, _execute_immediate_loss, and subclass
+        immediate-target handlers.
+
+        Strategy:
+        1. Use pre-existing size from database (initial_size or current_size).
+        2. Try risk-based sizing if a valid stop loss exists.
+        3. Fall back to budget-based sizing.
+
+        Args:
+            trade: The trade data dictionary.
+            fill_price: The execution fill price.
+            stop_loss: The stop loss price (0 if not applicable).
+
+        Returns:
+            int: The calculated number of shares. May be 0 if invalid inputs.
+        """
+        # 1. Pre-existing size from database
+        existing_size = float(
+            trade.get("initial_size") or trade.get("current_size") or 0.0
+        )
+        if existing_size > 0:
+            return int(existing_size)
+
+        # 2. Risk-based sizing
+        if stop_loss > 0 and fill_price != stop_loss:
+            risk_amount = float(
+                self._get_context_value(trade, "risk_amount")
+                or trade.get("risk_amount")
+                or 100.0
+            )
+            risk_based_size = self._calculate_position_size(
+                fill_price, stop_loss, risk_amount
+            )
+            if risk_based_size > 0:
+                return risk_based_size
+
+        # 3. Budget-based fallback
+        if fill_price > 0:
+            budget = float(
+                self._get_context_value(trade, "budget")
+                or trade.get("budget")
+                or self.DEFAULT_BUDGET
+            )
+            budget_based_size = int(budget / fill_price)
+            if budget_based_size > 0:
+                logger.debug(
+                    "Using budget-based sizing (%s) for %s",
+                    budget,
+                    trade.get("symbol"),
+                )
+                return budget_based_size
+
+        return 0
+
     def _execute_activation(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         repository: TradeRepository,
         fill_price: float,
         reason: str,
         date_string: str,
-        extra_updates: dict[str, Any] | None = None,
+        extra_updates: dict[str, object] | None = None,
     ) -> str:
         """
         Moves a trade from CREATED to ACTIVE status.
+
+        Delegates position sizing to the centralized _resolve_position_size
+        method to maintain a single source of truth for sizing logic.
 
         Args:
             trade: The trade dictionary.
@@ -207,37 +316,13 @@ class BaseTradeStrategy(ABC):
         Returns:
             str: Status message.
         """
-        # Centralized size calculation
-        size = float(trade.get("initial_size") or trade.get("current_size") or 0.0)
-        if size <= 0:
-            stop_loss = float(trade.get("current_stop_loss") or 0.0)
-
-            # 1. Try Risk-Based sizing (if SL exists)
-            if stop_loss > 0 and fill_price != stop_loss:
-                risk_amount = float(
-                    self._get_context_value(trade, "risk_amount")
-                    or trade.get("risk_amount")
-                    or 100.0
-                )
-                size = self._calculate_position_size(fill_price, stop_loss, risk_amount)
-
-            # 2. Try Budget-Based sizing (if size still 0 or no SL)
-            if size <= 0 and fill_price > 0:
-                budget = float(
-                    self._get_context_value(trade, "budget")
-                    or trade.get("budget")
-                    or self.DEFAULT_BUDGET
-                )
-                size = int(budget / fill_price)
-                if size > 0:
-                    logger.debug(
-                        f"Using budget-based sizing ({budget}) for {trade.get('symbol')}"
-                    )
+        stop_loss = float(trade.get("current_stop_loss") or 0.0)
+        size = self._resolve_position_size(trade, fill_price, stop_loss)
 
         if size <= 0:
             return "ERROR: Zero Size"
 
-        update_payload = {
+        update_payload: dict[str, object] = {
             "status": TradeStatus.ACTIVE,
             "entry_date": date_string,
             "entry_price": fill_price,
@@ -256,7 +341,7 @@ class BaseTradeStrategy(ABC):
 
     def _execute_immediate_loss(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         repository: TradeRepository,
         fill_price: float,
         reason: str,
@@ -265,6 +350,9 @@ class BaseTradeStrategy(ABC):
     ) -> str:
         """
         Handles Day 1 turnarounds: entry and stop hit on same day.
+
+        Delegates position sizing to the centralized _resolve_position_size
+        method to maintain a single source of truth.
 
         Args:
             trade: The trade dictionary.
@@ -277,23 +365,7 @@ class BaseTradeStrategy(ABC):
         Returns:
             str: Status message.
         """
-        size = float(trade.get("initial_size") or trade.get("current_size") or 0.0)
-        if size <= 0:
-            if stop_loss > 0 and fill_price != stop_loss:
-                risk_amount = float(
-                    self._get_context_value(trade, "risk_amount")
-                    or trade.get("risk_amount")
-                    or 100.0
-                )
-                size = self._calculate_position_size(fill_price, stop_loss, risk_amount)
-
-            if size <= 0:
-                budget = float(
-                    self._get_context_value(trade, "budget")
-                    or trade.get("budget")
-                    or self.DEFAULT_BUDGET
-                )
-                size = int(budget / fill_price)
+        size = self._resolve_position_size(trade, fill_price, stop_loss)
 
         if size <= 0:
             return "ERROR: Zero Size"
@@ -326,7 +398,7 @@ class BaseTradeStrategy(ABC):
 
     def _close_trade(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         repository: TradeRepository,
         exit_price: float,
         reason: str,
@@ -371,7 +443,7 @@ class BaseTradeStrategy(ABC):
 
     def _invalidate_trade(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         repository: TradeRepository,
         low_price: float,
         stop_loss: float,
@@ -406,7 +478,7 @@ class BaseTradeStrategy(ABC):
         return outcome_reason
 
     def _expire_trade(
-        self, trade: dict[str, Any], repository: TradeRepository, date_string: str
+        self, trade: TradeData, repository: TradeRepository, date_string: str
     ) -> str:
         """
         Signals expiration when entry isn't hit within time limit.
@@ -433,7 +505,7 @@ class BaseTradeStrategy(ABC):
 
     def _reject_setup(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         repository: TradeRepository,
         date_string: str,
         reason: str,

@@ -189,6 +189,7 @@ class SignalRepository(BaseRepository):
         sql = """
             SELECT 
                 signal,
+                data,
                 json_extract(data, '$.status') as status,
                 json_extract(data, '$.kerze') as kerze,
                 json_extract(data, '$.wolke') as wolke,
@@ -218,6 +219,17 @@ class SignalRepository(BaseRepository):
                 val = row[db_key]
                 if val is not None:
                     attributes[yaml_key].add(str(val))
+
+            if row["data"]:
+                try:
+                    payload = json.loads(row["data"])
+                    if isinstance(payload, dict):
+                        for k, v in payload.items():
+                            if str(v).lower().strip() in ("1", "true", "yes", "on", "1.0"):
+                                if k not in ("symbol", "timestamp", "timeframe", "exchange", "price"):
+                                    attributes["Signal"].add(k)
+                except Exception:
+                    pass
 
         return attributes
 

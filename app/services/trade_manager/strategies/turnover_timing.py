@@ -43,11 +43,6 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
     DEFAULT_SLIPPAGE: float = 0.0
     """Default slippage applied to executions."""
 
-    THURSDAY_INDEX: int = 3
-    """Zero-based index for Thursday (pd.Timestamp.dayofweek)."""
-
-    FRIDAY_INDEX: int = 4
-    """Zero-based index for Friday (pd.Timestamp.dayofweek)."""
 
     def __init__(self, strategy_name: str | None = None) -> None:
         """Initializes the strategy, optionally overriding the default name.
@@ -395,17 +390,10 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
         # 2. End of Week Time Stop (Friday or Holiday-Thursday Close)
         current_date_timestamp = pd.Timestamp(current_candle["date"])
-        day_of_week = current_date_timestamp.dayofweek
 
-        is_end_of_week = False
-        if day_of_week == self.FRIDAY_INDEX:
-            is_end_of_week = True
-        elif day_of_week == self.THURSDAY_INDEX:
-            tomorrow = current_date_timestamp + pd.Timedelta(days=1)
-            if self._holiday_checker.is_holiday(tomorrow.date()):
-                is_end_of_week = True
-
-        if is_end_of_week:
+        if self._is_end_of_trading_week(
+            current_date_timestamp, self._holiday_checker
+        ):
             return self._close_trade(
                 trade,
                 repository,

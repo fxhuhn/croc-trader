@@ -1,3 +1,4 @@
+import datetime
 import logging
 import pandas as pd
 from typing import override, TypedDict
@@ -6,7 +7,6 @@ from ....database.repositories.trade import TradeRepository
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ...telegram import TelegramBot
 from .base import BaseStrategy
-from ....tools.market_holidays import MarketHolidayChecker
 from ....const import Strategies
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,6 @@ class TwoPercentStrategy(BaseStrategy):
         super().__init__(data_provider, telegram_bot)
         self.name = self.STRATEGY_IDENTIFIER
         self.trade_repository = trade_repository
-        self.holiday_checker = MarketHolidayChecker()
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
@@ -77,8 +76,6 @@ class TwoPercentStrategy(BaseStrategy):
             return 0
 
         last_candle_timestamp = self._extract_timestamp(last_candle)
-        if not self._is_valid_setup_day(last_candle_timestamp):
-            return 0
 
         close_price = self._extract_close_price(last_candle)
         if close_price is None:
@@ -105,6 +102,14 @@ class TwoPercentStrategy(BaseStrategy):
             return pd.Timestamp(analysis_date)
         return pd.Timestamp.now().normalize()
 
+    def _get_real_today(self) -> datetime.date:
+        """
+        Returns the current date in real time.
+
+        This boundary helper isolates the side-effect of querying the system clock.
+        """
+        return pd.Timestamp.now().normalize().date()
+
     def _fetch_price_history(self, analysis_timestamp: pd.Timestamp) -> pd.DataFrame:
         """Fetches historical price data with sufficient lookback."""
         lookback = self.DEFAULT_LOOKBACK_PERIOD
@@ -127,16 +132,30 @@ class TwoPercentStrategy(BaseStrategy):
     def _get_last_valid_candle(
         self, history: pd.DataFrame, analysis_timestamp: pd.Timestamp
     ) -> pd.Series | None:
-        """Filters history up to the analysis date and returns the latest candle."""
+        """
+        Filters history up to the analysis_timestamp and returns the candle ONLY IF
+        it is definitively the final trading day of that calendar week.
+
+        This foolproof logic ensures robust backtesting and live execution
+        without relying on an external holiday calendar.
+        """
+        if history.empty:
+            logger.warning("History is empty")
+            return None
+
+        # 1. Fast date lookup via vectorization
         if "date" in history.columns:
-            history["date"] = pd.to_datetime(history["date"])
-            mask = history["date"] <= analysis_timestamp
-            filtered = history.loc[mask]
+            date_col = pd.to_datetime(history["date"]).dt.date
         else:
             if not isinstance(history.index, pd.DatetimeIndex):
                 logger.error("[%s] Missing DatetimeIndex or 'date' column.", self.name)
                 return None
-            filtered = history.loc[history.index <= analysis_timestamp]
+            date_col = history.index.to_series().dt.date
+
+        # 2. Filter history strictly up to analysis_timestamp
+        analysis_date = analysis_timestamp.date()
+        mask = date_col <= analysis_date
+        filtered = history.loc[mask]
 
         if filtered.empty:
             logger.debug("[%s] No data up to %s", self.name, analysis_timestamp)
@@ -145,35 +164,44 @@ class TwoPercentStrategy(BaseStrategy):
         last_candle = filtered.iloc[-1]
         candle_date = self._extract_timestamp(last_candle).date()
 
-        if candle_date != analysis_timestamp.date():
+        # Ensures the trigger strictly matches the requested execution date
+        if candle_date != analysis_date:
             return None
 
-        return last_candle
+        # 3. Definitively check if this is the final trading day of the week
+        weekday = candle_date.weekday()
+        if weekday == 4:
+            return last_candle  # Friday is intrinsically the end of the week.
+
+        if weekday < 4:
+            # For Mon-Thu, it is only the end of the week if all subsequent days
+            # up to Friday are missing from the FULL database history.
+            friday = candle_date + datetime.timedelta(days=4 - weekday)
+
+            # Check for any future days in the same week using standard python set membership
+            future_days = [
+                candle_date + datetime.timedelta(days=i)
+                for i in range(1, 4 - weekday + 1)
+            ]
+            existing_dates = set(date_col)
+            for future_day in future_days:
+                if future_day in existing_dates:
+                    # A subsequent day in this week exists in the DB.
+                    # Therefore, this candle is NOT the end of the week.
+                    return None
+
+            # Ensure those missing days have actually happened in real time
+            real_today = self._get_real_today()
+            if friday <= real_today:
+                return last_candle
+
+        return None
 
     def _extract_timestamp(self, candle: pd.Series) -> pd.Timestamp:
         """Extracts the timestamp from a candle series."""
         if "date" in candle:
             return pd.Timestamp(candle["date"])
         return pd.Timestamp(candle.name)
-
-    def _is_valid_setup_day(self, timestamp: pd.Timestamp) -> bool:
-        """Checks if the given timestamp is a valid strategy execution day."""
-        weekday = timestamp.weekday()
-
-        if weekday == 4:  # Friday
-            return True
-
-        if weekday == 3:  # Thursday
-            next_day = (timestamp + pd.Timedelta(days=1)).date()
-            if self.holiday_checker.is_holiday(next_day):
-                logger.info(
-                    "[%s] Thursday (%s) accepted (Friday holiday).",
-                    self.name,
-                    timestamp.date(),
-                )
-                return True
-
-        return False
 
     def _extract_close_price(self, candle: pd.Series) -> float | None:
         """Safely extracts the close price from a candle."""
@@ -201,7 +229,11 @@ class TwoPercentStrategy(BaseStrategy):
         """Returns a human-readable label for the execution day."""
         if timestamp.weekday() == 4:
             return "Friday"
-        return "Thursday (Holiday Exception)"
+        elif timestamp.weekday() == 3:
+            return "Thursday (Fallback)"
+        elif timestamp.weekday() == 2:
+            return "Wednesday (Fallback)"
+        return "Fallback"
 
     def _create_trade_proposal(
         self, date_str: str, close: float, entry: float, day_label: str

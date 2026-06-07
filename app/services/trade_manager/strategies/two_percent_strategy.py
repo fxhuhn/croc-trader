@@ -1,7 +1,7 @@
 import logging
 import uuid
 import pandas as pd
-from typing import override, final, Any
+from typing import override, final
 
 from ....database.repositories.trade import TradeRepository
 from ....types import ExitReason, TradeData
@@ -71,7 +71,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
     @override
     def generate_orders(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
         repository: TradeRepository,
@@ -114,7 +114,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
     @override
     def check_entry(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
         repository: TradeRepository,
@@ -233,7 +233,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
     @override
     def manage_active_trade(
         self,
-        trade: dict[str, Any],
+        trade: TradeData,
         dataframe_history: pd.DataFrame,
         repository: TradeRepository,
     ) -> str | None:
@@ -286,15 +286,9 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 )
 
         # 2. Time Stop (Friday Close or Thursday if Friday is a holiday)
-        is_end_of_week = False
-        if current_date_timestamp.dayofweek == 4:  # Friday
-            is_end_of_week = True
-        elif current_date_timestamp.dayofweek == 3:  # Thursday
-            next_day = current_date_timestamp + pd.Timedelta(days=1)
-            if self.holiday_checker.is_holiday(next_day.date()):
-                is_end_of_week = True
-
-        if is_end_of_week:
+        if self._is_end_of_trading_week(
+            current_date_timestamp, self.holiday_checker
+        ):
             return self._close_trade(
                 trade, repository, close_price, ExitReason.TIME_STOP, date_string
             )

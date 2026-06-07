@@ -72,8 +72,10 @@ class SplitTargetStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         repository: TradeRepository,
     ) -> str | None:
-        """
-        Checks for a breakout entry (Stop Buy) and validates the stop loss.
+        """Checks for a breakout entry (Stop Buy) and validates the stop loss.
+
+        Orchestrates the entry check by delegating to specialized helpers
+        for signal expiration, fill detection, and same-day target checks.
 
         Args:
             trade: The trade data.
@@ -90,99 +92,176 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if entry_price <= 0:
             return None
 
-        current_date_obj = pd.Timestamp(candle["date"])
         date_string = str(candle["date"])
 
-        # 1. Signal Date validation
-        signal_date = self._get_signal_date(trade)
-        if signal_date:
-            if current_date_obj.date() <= signal_date.date():
-                return None
-            if (current_date_obj.date() - signal_date.date()).days > 5:
-                # Expire the setup if not triggered
-                return self._expire_trade(trade, repository, date_string)
+        # 1. Signal expiration check — returns False to skip, str message, or None
+        expiration_result = self._check_signal_expiration(
+            trade, candle, repository, date_string
+        )
+        if expiration_result is False:
+            return None  # Too early to act on this signal
+        if expiration_result is not None:
+            return expiration_result
 
-        # 2. Market Data
+        # 2. Detect fill and stop invalidation
+        context = self._get_context(trade)
+        direction = str(context.get("direction", "long")).lower()
+        filled, fill_price, reason = self._detect_entry_fill(
+            candle, entry_price, direction
+        )
+        is_stop_hit = self._is_stop_invalidated(candle, stop_loss, direction)
+
+        if not filled:
+            if is_stop_hit:
+                low_price = float(candle["low"])
+                return self._invalidate_trade(
+                    trade, repository, low_price, stop_loss, date_string
+                )
+            return None
+
+        # 3. Same-day exit checks (stop has priority over target)
+        if is_stop_hit:
+            return self._execute_immediate_loss(
+                trade, repository, fill_price, reason, stop_loss, date_string
+            )
+
+        tp3_exit_price = self._check_same_day_tp3(candle, context, direction)
+        if tp3_exit_price is not None:
+            return self._execute_immediate_target(
+                trade,
+                repository,
+                fill_price,
+                reason,
+                tp3_exit_price,
+                stop_loss,
+                date_string,
+                context,
+            )
+
+        return self._execute_activation(
+            trade, repository, fill_price, reason, date_string
+        )
+
+    def _check_signal_expiration(
+        self,
+        trade: TradeData,
+        candle: pd.Series,
+        repository: TradeRepository,
+        date_string: str,
+    ) -> str | bool | None:
+        """Checks if the signal has expired or is too early to act on.
+
+        Returns:
+            str: Expiration status message (trade was expired).
+            False: Signal is too early — skip without action.
+            None: Signal is within the valid window — continue processing.
+        """
+        signal_date = self._get_signal_date(trade)
+        if not signal_date:
+            return None
+
+        current_date_obj = pd.Timestamp(candle["date"])
+        if current_date_obj.date() <= signal_date.date():
+            return False  # Too early — not yet actionable
+
+        if (current_date_obj.date() - signal_date.date()).days > 5:
+            return self._expire_trade(trade, repository, date_string)
+
+        return None
+
+    def _detect_entry_fill(
+        self,
+        candle: pd.Series,
+        entry_price: float,
+        direction: str,
+    ) -> tuple[bool, float, str]:
+        """Detects whether the candle triggers a breakout fill.
+
+        Handles both long (gap-up / breakout) and short (gap-down / breakdown)
+        entry detection.
+
+        Args:
+            candle: The current price candle.
+            entry_price: The trigger price for entry.
+            direction: Trade direction ("long" or "short").
+
+        Returns:
+            Tuple of (filled, fill_price, reason).
+        """
         high_price = float(candle["high"])
         low_price = float(candle["low"])
         open_price = float(candle["open"])
 
-        # 3. Entry Logic
-        filled, fill_price, reason = False, 0.0, ""
-        direction = str(self._get_context(trade).get("direction", "long")).lower()
-
-        is_stop_hit = False
         if direction == "long":
             if open_price >= entry_price:
-                filled, fill_price, reason = True, open_price, EntryReason.GAP_UP
-            elif high_price >= entry_price:
-                filled, fill_price, reason = True, entry_price, EntryReason.BREAKOUT
-
-            # Stop Loss Invalidation
-            is_stop_hit = stop_loss > 0 and low_price <= stop_loss
+                return True, open_price, EntryReason.GAP_UP
+            if high_price >= entry_price:
+                return True, entry_price, EntryReason.BREAKOUT
         else:
             if open_price <= entry_price:
-                filled, fill_price, reason = True, open_price, EntryReason.GAP_DOWN
-            elif low_price <= entry_price:
-                filled, fill_price, reason = True, entry_price, EntryReason.BREAKDOWN
+                return True, open_price, EntryReason.GAP_DOWN
+            if low_price <= entry_price:
+                return True, entry_price, EntryReason.BREAKDOWN
 
-            # Stop Loss Invalidation
-            is_stop_hit = stop_loss > 0 and high_price >= stop_loss
+        return False, 0.0, ""
 
-        if filled:
-            # Same Day Final Profit (TP3) Check
-            context = self._get_context(trade)
-            take_profit_3 = float(
-                context.get("take_profit_3") or context.get("tp3") or 0.0
-            )
-            is_tp3_hit = False
-            tp3_exit_price = take_profit_3
+    def _is_stop_invalidated(
+        self,
+        candle: pd.Series,
+        stop_loss: float,
+        direction: str,
+    ) -> bool:
+        """Checks if the stop loss was hit on this candle.
 
-            if (
-                direction == "long"
-                and take_profit_3 > 0
-                and high_price >= take_profit_3
-            ):
-                is_tp3_hit = True
-                if open_price > take_profit_3:
-                    tp3_exit_price = open_price
-            elif (
-                direction == "short"
-                and take_profit_3 > 0
-                and low_price <= take_profit_3
-            ):
-                is_tp3_hit = True
-                if open_price < take_profit_3:
-                    tp3_exit_price = open_price
+        Args:
+            candle: The current price candle.
+            stop_loss: The stop loss price level.
+            direction: Trade direction ("long" or "short").
 
-            if is_stop_hit:
-                # Immediate Loss (Day 1 turnaround)
-                # Prioritize Stop Loss to be conservative if both are theoretically hit
-                return self._execute_immediate_loss(
-                    trade, repository, fill_price, reason, stop_loss, date_string
-                )
-            elif is_tp3_hit:
-                return self._execute_immediate_target(
-                    trade,
-                    repository,
-                    fill_price,
-                    reason,
-                    tp3_exit_price,
-                    stop_loss,
-                    date_string,
-                    context,
-                )
-            else:
-                return self._execute_activation(
-                    trade, repository, fill_price, reason, date_string
-                )
+        Returns:
+            bool: True if stop loss was breached.
+        """
+        if stop_loss <= 0:
+            return False
 
-        if is_stop_hit:
-            return self._invalidate_trade(
-                trade, repository, low_price, stop_loss, date_string
-            )
+        if direction == "long":
+            return float(candle["low"]) <= stop_loss
+        return float(candle["high"]) >= stop_loss
+
+    def _check_same_day_tp3(
+        self,
+        candle: pd.Series,
+        context: dict[str, object],
+        direction: str,
+    ) -> float | None:
+        """Checks if the final target (TP3) was hit on the same candle as entry.
+
+        Args:
+            candle: The current price candle.
+            context: The parsed signal context.
+            direction: Trade direction ("long" or "short").
+
+        Returns:
+            float | None: The TP3 exit price if hit, None otherwise.
+        """
+        take_profit_3 = float(
+            context.get("take_profit_3") or context.get("tp3") or 0.0
+        )
+        if take_profit_3 <= 0:
+            return None
+
+        high_price = float(candle["high"])
+        low_price = float(candle["low"])
+        open_price = float(candle["open"])
+
+        if direction == "long" and high_price >= take_profit_3:
+            return open_price if open_price > take_profit_3 else take_profit_3
+
+        if direction == "short" and low_price <= take_profit_3:
+            return open_price if open_price < take_profit_3 else take_profit_3
 
         return None
+
 
     @override
     def manage_active_trade(
@@ -527,21 +606,25 @@ class SplitTargetStrategy(BaseTradeStrategy):
         date_string: str,
         context: dict[str, object],
     ) -> str:
-        """Handles Day 1 massive targets: entry and full target hit on same day."""
-        size = float(trade.get("initial_size") or trade.get("current_size") or 0.0)
-        if size <= 0:
-            if stop_loss > 0 and fill_price != stop_loss:
-                risk_amount = float(
-                    context.get("risk_amount") or trade.get("risk_amount") or 100.0
-                )
-                size = self._calculate_position_size(fill_price, stop_loss, risk_amount)
+        """Handles Day 1 massive targets: entry and full target hit on same day.
 
-            if size <= 0:
-                budget = float(
-                    context.get("budget") or trade.get("budget") or self.DEFAULT_BUDGET
-                )
-                if fill_price > 0:
-                    size = int(budget / fill_price)
+        Delegates position sizing to the centralized _resolve_position_size
+        method to maintain a single source of truth.
+
+        Args:
+            trade: The trade dictionary.
+            repository: The trade repository.
+            fill_price: The entry fill price.
+            reason: The entry reason.
+            exit_price: The TP3 exit price.
+            stop_loss: The stop loss price.
+            date_string: The date of the trade.
+            context: The parsed signal context.
+
+        Returns:
+            str: Status message.
+        """
+        size = self._resolve_position_size(trade, fill_price, stop_loss)
 
         if size <= 0:
             return "ERROR: Zero Size"
@@ -571,3 +654,4 @@ class SplitTargetStrategy(BaseTradeStrategy):
             f"FILLED @ {fill_price:.2f} -> TARGET HIT @ {exit_price:.2f} "
             f"(PnL: {profit_and_loss:.2f})"
         )
+
