@@ -286,9 +286,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 )
 
         # 2. Time Stop (Friday Close or Thursday if Friday is a holiday)
-        if self._is_end_of_trading_week(
-            current_date_timestamp, self.holiday_checker
-        ):
+        if self._is_end_of_trading_week(current_date_timestamp, self.holiday_checker):
             return self._close_trade(
                 trade, repository, close_price, ExitReason.TIME_STOP, date_string
             )

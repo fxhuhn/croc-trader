@@ -154,6 +154,8 @@ if __name__ == "__main__":
     checker = MarketHolidayChecker()
     test_date = "2025-12-25"
     if checker.is_holiday(test_date):
-        logger.info("%s is a holiday: %s", test_date, checker.get_holiday_name(test_date))
+        logger.info(
+            "%s is a holiday: %s", test_date, checker.get_holiday_name(test_date)
+        )
     else:
         logger.info("%s is NOT a holiday", test_date)

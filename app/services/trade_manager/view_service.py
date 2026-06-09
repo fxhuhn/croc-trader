@@ -81,9 +81,13 @@ class TradeViewService:
         try:
             # Check if it's already a valid Enum value
             Strategies(raw)
-        except ValueError:
+        except ValueError as val_error:
             # Not a valid enum member, proceed to alias lookup
-            pass
+            logger.debug(
+                "Strategy '%s' is not direct member of Strategies enum: %s",
+                raw,
+                val_error,
+            )
 
         resolved = STRATEGY_ALIASES.get(raw)
         return resolved if resolved else raw
@@ -116,10 +120,7 @@ class TradeViewService:
         context = self._parse_context(trade)
 
         # Harmonize Indices
-        if "indices" in context:
-            # Indices already present in correct format, no action needed
-            pass
-        elif "bucket" in context:
+        if "indices" not in context and "bucket" in context:
             # Backward compatibility for old 'bucket' key
             context["indices"] = context["bucket"]
 

@@ -25,6 +25,7 @@ class TradeParams:
 @dataclass(frozen=True)
 class OrderLeg:
     """Immutable representation of a single order leg (entry or exit)."""
+
     action: "OrderAction"
     type: "OrderType"
     price: float
@@ -49,6 +50,7 @@ class Order:
 @dataclass(frozen=True)
 class CrocContext:
     """Immutable high/low price context for Croc signals."""
+
     high: float
     low: float
 

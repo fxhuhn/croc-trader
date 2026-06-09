@@ -450,8 +450,12 @@ class CrocSetupStrategy(BaseStrategy):
             handler = TechnicalIndicatorConfig.get_handler(cond_str)
             if handler:
                 return handler(val)
-        except (ValueError, TypeError):
-            pass
+        except (ValueError, TypeError) as parse_error:
+            logger.debug(
+                "Value '%s' is not numeric, falling back to string match: %s",
+                market_val,
+                parse_error,
+            )
 
         # Fallback to string match
         return str(market_val).lower().replace(" ", "") == str(

@@ -484,7 +484,9 @@ class MetricsCalculator:
 
         # Equity and Drawdown
         working_df["equity"] = initial_capital + working_df["net_pnl"].cumsum()
-        maximum_drawdown = metrics.calculate_max_drawdown(working_df["equity"], initial_capital)
+        maximum_drawdown = metrics.calculate_max_drawdown(
+            working_df["equity"], initial_capital
+        )
 
         # Performance Ratios
         sharpe_annualization_factor = 252.0
@@ -1030,7 +1032,9 @@ class BacktestAnalytics:
         final_theoretical = theoretical_equity[-1]
 
         # Drawdown Calculation (incorporating initial capital for correct peak reference)
-        active_equity_extended = pd.concat([pd.Series([capital]), pd.Series(active_equity)], ignore_index=True)
+        active_equity_extended = pd.concat(
+            [pd.Series([capital]), pd.Series(active_equity)], ignore_index=True
+        )
         peak = active_equity_extended.cummax()
         drawdowns_extended = (active_equity_extended / peak - 1.0).fillna(0.0)
         drawdowns = drawdowns_extended.iloc[1:].reset_index(drop=True)
@@ -1351,11 +1355,15 @@ class BacktestAnalytics:
         working_df["net_pnl"] = working_df["realized_pnl"] - costs
         working_df["exit_date"] = pd.to_datetime(working_df["exit_date"])
         working_df["equity"] = capital + working_df["net_pnl"].cumsum()
-        equity_extended = pd.concat([pd.Series([capital]), working_df["equity"]], ignore_index=True)
+        equity_extended = pd.concat(
+            [pd.Series([capital]), working_df["equity"]], ignore_index=True
+        )
         peak_extended = equity_extended.cummax()
         drawdown_extended = (equity_extended - peak_extended) / peak_extended
         working_df["peak"] = peak_extended.iloc[1:].reset_index(drop=True).values
-        working_df["drawdown_percentage"] = drawdown_extended.iloc[1:].reset_index(drop=True).values
+        working_df["drawdown_percentage"] = (
+            drawdown_extended.iloc[1:].reset_index(drop=True).values
+        )
         return working_df[["exit_date", "net_pnl", "equity", "drawdown_percentage"]]
 
     def get_trade_lists(self) -> dict[str, list[dict[str, object]]]:
@@ -1420,10 +1428,16 @@ class BacktestAnalytics:
 
         # Calculate Theoretical Drawdown (incorporating initial capital for correct peak reference)
         capital = constrained_simulation.get("capital", self.INITIAL_CAPITAL)
-        theoretical_equity_extended = pd.concat([pd.Series([capital]), equity_kelly["equity"]], ignore_index=True)
+        theoretical_equity_extended = pd.concat(
+            [pd.Series([capital]), equity_kelly["equity"]], ignore_index=True
+        )
         theoretical_peak = theoretical_equity_extended.cummax()
-        theoretical_drawdowns_extended = (theoretical_equity_extended / theoretical_peak - 1.0).fillna(0.0)
-        equity_kelly["drawdown_pct"] = theoretical_drawdowns_extended.iloc[1:].reset_index(drop=True)
+        theoretical_drawdowns_extended = (
+            theoretical_equity_extended / theoretical_peak - 1.0
+        ).fillna(0.0)
+        equity_kelly["drawdown_pct"] = theoretical_drawdowns_extended.iloc[
+            1:
+        ].reset_index(drop=True)
 
         equity_df = pd.concat([equity_safe, equity_kelly], ignore_index=True)
 
@@ -1672,7 +1686,9 @@ class PerformancePeriods:
                 sharpe_proxy = safe_divide(mean_pnl, standard_deviation_pnl)
 
                 # Local Peak-to-Trough Drawdown (PnL based, starting at 0.0)
-                cumulative_pnl_extended = pd.concat([pd.Series([0.0]), pnl_series.cumsum()], ignore_index=True)
+                cumulative_pnl_extended = pd.concat(
+                    [pd.Series([0.0]), pnl_series.cumsum()], ignore_index=True
+                )
                 peak_pnl_extended = cumulative_pnl_extended.cummax()
                 drawdown_pnl_extended = cumulative_pnl_extended - peak_pnl_extended
                 maximum_drawdown_pnl = drawdown_pnl_extended.iloc[1:].min()

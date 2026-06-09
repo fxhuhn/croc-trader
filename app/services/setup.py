@@ -305,9 +305,7 @@ def verify_ranking_system(
                     f"aus {ranking_yaml_path.name} in DB vorhanden."
                 )
     except Exception as e:
-        logger.error(
-            f"Fehler beim Ranking-Check für {ranking_yaml_path.name}: {e}"
-        )
+        logger.error(f"Fehler beim Ranking-Check für {ranking_yaml_path.name}: {e}")
 
 
 def check_ranking_attributes(
@@ -389,9 +387,7 @@ def _collect_values_from_list(ranking_list: list[Any], key: str) -> set[str]:
     return values
 
 
-def _collect_values_from_dict(
-    ranking_dict: dict[str, Any], key: str
-) -> set[str]:
+def _collect_values_from_dict(ranking_dict: dict[str, Any], key: str) -> set[str]:
     """Extracts values for a key from a dictionary of configuration items."""
     values = set()
     if key == "Signal":

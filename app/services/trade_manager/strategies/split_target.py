@@ -244,9 +244,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
         Returns:
             float | None: The TP3 exit price if hit, None otherwise.
         """
-        take_profit_3 = float(
-            context.get("take_profit_3") or context.get("tp3") or 0.0
-        )
+        take_profit_3 = float(context.get("take_profit_3") or context.get("tp3") or 0.0)
         if take_profit_3 <= 0:
             return None
 
@@ -261,7 +259,6 @@ class SplitTargetStrategy(BaseTradeStrategy):
             return open_price if open_price < take_profit_3 else take_profit_3
 
         return None
-
 
     @override
     def manage_active_trade(
@@ -654,4 +651,3 @@ class SplitTargetStrategy(BaseTradeStrategy):
             f"FILLED @ {fill_price:.2f} -> TARGET HIT @ {exit_price:.2f} "
             f"(PnL: {profit_and_loss:.2f})"
         )
-

@@ -54,8 +54,12 @@ class PortfolioAllocator:
         if not strategy_enum:
             try:
                 strategy_enum = Strategies(raw_strategy)
-            except ValueError:
-                pass
+            except ValueError as val_error:
+                logger.debug(
+                    "Fallback Strategies resolution failed for '%s': %s",
+                    raw_strategy,
+                    val_error,
+                )
 
         if not strategy_enum:
             # Try prefix matching for Turnover variants (e.g. turnover_timing_1.0)

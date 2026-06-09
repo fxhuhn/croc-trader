@@ -165,9 +165,7 @@ class AppConfig:
 
         telegram_data = data.get("telegram", {})
         telegram_config = (
-            TelegramConfig(**telegram_data)
-            if telegram_data
-            else TelegramConfig()
+            TelegramConfig(**telegram_data) if telegram_data else TelegramConfig()
         )
 
         return cls(
@@ -228,14 +226,10 @@ class ConfigManager:
         than mutating the existing instance.
         """
         telegram_token = os.getenv("TELEGRAM_TOKEN", self.app.telegram.token)
-        telegram_chat_id = os.getenv(
-            "TELEGRAM_CHAT_ID", self.app.telegram.chat_id
-        )
+        telegram_chat_id = os.getenv("TELEGRAM_CHAT_ID", self.app.telegram.chat_id)
         env_enabled = os.getenv("TELEGRAM_ENABLED")
         telegram_enabled = (
-            env_enabled.lower() == "true"
-            if env_enabled
-            else self.app.telegram.enabled
+            env_enabled.lower() == "true" if env_enabled else self.app.telegram.enabled
         )
 
         # Replace the frozen TelegramConfig with a new instance

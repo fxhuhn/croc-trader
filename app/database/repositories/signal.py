@@ -225,11 +225,23 @@ class SignalRepository(BaseRepository):
                     payload = json.loads(row["data"])
                     if isinstance(payload, dict):
                         for k, v in payload.items():
-                            if str(v).lower().strip() in ("1", "true", "yes", "on", "1.0"):
-                                if k not in ("symbol", "timestamp", "timeframe", "exchange", "price"):
+                            if str(v).lower().strip() in (
+                                "1",
+                                "true",
+                                "yes",
+                                "on",
+                                "1.0",
+                            ):
+                                if k not in (
+                                    "symbol",
+                                    "timestamp",
+                                    "timeframe",
+                                    "exchange",
+                                    "price",
+                                ):
                                     attributes["Signal"].add(k)
-                except Exception:
-                    pass
+                except Exception as parse_error:
+                    logger.debug("Failed to parse signal JSON: %s", parse_error)
 
         return attributes
 

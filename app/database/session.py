@@ -43,4 +43,3 @@ class DatabaseSession:
             raise
         finally:
             conn.close()
-

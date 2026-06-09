@@ -199,9 +199,7 @@ def run_order_generation(app: Flask) -> None:
             try:
                 order_file_path = trade_manager.generate_daily_orders()
                 if order_file_path:
-                    logger.info(
-                        "Order generation successful: %s", order_file_path
-                    )
+                    logger.info("Order generation successful: %s", order_file_path)
                 else:
                     logger.info("ℹ️ Keine Orders zu generieren.")
             except Exception as e:

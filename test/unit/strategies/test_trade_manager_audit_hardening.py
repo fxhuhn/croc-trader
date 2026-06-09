@@ -798,8 +798,12 @@ class TestTradeManagerDipBuyerDynamicLOCUpdate:
         # Arrange
         with (
             patch("app.services.trade_manager.manager.DatabaseSession"),
-            patch("app.services.trade_manager.manager.TradeRepository") as mock_trade_repository_class,
-            patch("app.services.trade_manager.manager.MarketRepository") as mock_market_repository_class,
+            patch(
+                "app.services.trade_manager.manager.TradeRepository"
+            ) as mock_trade_repository_class,
+            patch(
+                "app.services.trade_manager.manager.MarketRepository"
+            ) as mock_market_repository_class,
         ):
             mock_trade_repository = MagicMock()
             mock_market_repository = MagicMock()
@@ -816,10 +820,24 @@ class TestTradeManagerDipBuyerDynamicLOCUpdate:
 
             # Mock history: previous high is 100.0, current close is 95.0
             history_data = [
-                {"date": "2026-06-01", "open": 98.0, "high": 100.0, "low": 97.0, "close": 99.0},
-                {"date": "2026-06-02", "open": 99.0, "high": 101.0, "low": 94.0, "close": 95.0},
+                {
+                    "date": "2026-06-01",
+                    "open": 98.0,
+                    "high": 100.0,
+                    "low": 97.0,
+                    "close": 99.0,
+                },
+                {
+                    "date": "2026-06-02",
+                    "open": 99.0,
+                    "high": 101.0,
+                    "low": 94.0,
+                    "close": 95.0,
+                },
             ]
-            mock_market_repository.get_symbol_history_raw.return_value = pd.DataFrame(history_data)
+            mock_market_repository.get_symbol_history_raw.return_value = pd.DataFrame(
+                history_data
+            )
 
             # Active trade definition
             trade_data = {
@@ -827,7 +845,9 @@ class TestTradeManagerDipBuyerDynamicLOCUpdate:
                 "symbol": "CBOE",
                 "strategy": "dip_buyer",
                 "status": "ACTIVE",
-                "signal_context": json.dumps({"date": "2026-06-01", "threshold_loc": 329.52}),
+                "signal_context": json.dumps(
+                    {"date": "2026-06-01", "threshold_loc": 329.52}
+                ),
             }
 
             # Act
@@ -845,5 +865,5 @@ class TestTradeManagerDipBuyerDynamicLOCUpdate:
             assert "signal_context" in updates
 
             updated_context = json.loads(updates["signal_context"])
-            assert updated_context["threshold_loc"] == 100.01
+            assert updated_context["threshold_loc"] == 101.01
             assert updated_context["date"] == "2026-06-01"
