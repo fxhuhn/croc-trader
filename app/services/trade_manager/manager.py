@@ -86,8 +86,12 @@ class TradeManager:
 
         try:
             return Strategies(name)
-        except ValueError:
-            pass
+        except ValueError as val_error:
+            logger.debug(
+                "Strategy name '%s' is not direct member of Strategies enum: %s",
+                name,
+                val_error,
+            )
 
         lower_name = name.lower()
         if lower_name in STRATEGY_ALIASES:
@@ -203,8 +207,12 @@ class TradeManager:
 
                 # Update the LOC threshold in database context for Dip Buyer if trade remains active
                 resolved_strategy = self._resolve_strategy_name(strategy_name)
-                if resolved_strategy == Strategies.DipBuyer and not result and len(df_hist) >= 2:
-                    previous_candle = df_hist.iloc[-2]
+                if (
+                    resolved_strategy == Strategies.DipBuyer
+                    and not result
+                    and len(df_hist) >= 1
+                ):
+                    previous_candle = df_hist.iloc[-1]
                     previous_day_high = float(previous_candle["high"])
                     new_threshold_loc = round(previous_day_high + 0.01, 2)
 
@@ -228,9 +236,7 @@ class TradeManager:
                                 parse_error,
                             )
 
-                self.trade_repository.update_trade(
-                    trade["id"], updates
-                )
+                self.trade_repository.update_trade(trade["id"], updates)
 
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
