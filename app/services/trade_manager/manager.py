@@ -417,6 +417,7 @@ class TradeManager:
             Strategies.TurnOverTiming_10,
             Strategies.TurnOverTiming_05,
             Strategies.TwoPercent,
+            Strategies.DipBuyer,
         }
 
         filtered_orders_data = []
@@ -614,6 +615,8 @@ def _get_strategy_display_name(strategy_enum: Strategies) -> str:
         return "TurnoverTiming_1.0"
     if strategy_enum == Strategies.TurnOverTiming_05:
         return "TurnoverTiming_0.5"
+    if strategy_enum == Strategies.DipBuyer:
+        return "DipBuyer"
     if strategy_enum == Strategies.TwoPercent:
         return "TwoPercent"
     return str(strategy_enum.value)

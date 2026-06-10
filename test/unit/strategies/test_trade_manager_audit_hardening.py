@@ -867,3 +867,98 @@ class TestTradeManagerDipBuyerDynamicLOCUpdate:
             updated_context = json.loads(updates["signal_context"])
             assert updated_context["threshold_loc"] == 101.01
             assert updated_context["date"] == "2026-06-01"
+
+
+# ---------------------------------------------------------------------------
+# DipBuyer: CSV Export Integration
+# ---------------------------------------------------------------------------
+
+
+class TestTradeManagerDipBuyerCSVExport:
+    """Validates that DipBuyer strategy is included in CSV order export."""
+
+    def test_write_csv_orders_file_includes_dip_buyer(self, tmp_path: Path) -> None:
+        """Verifies that DipBuyer trade is included in _write_csv_orders_file."""
+        # Arrange
+        with (
+            patch("app.services.trade_manager.manager.DatabaseSession"),
+            patch("app.services.trade_manager.manager.TradeRepository"),
+            patch("app.services.trade_manager.manager.MarketRepository"),
+        ):
+            manager_instance = TradeManager(
+                db_path=tmp_path / "signals.db",
+                stocks_db_path=tmp_path / "stocks.db",
+            )
+
+            # Create a mock DipBuyer Order
+            from app.models import Order, OrderLeg
+
+            order = Order(
+                id="CBOE_dip_buyer",
+                symbol="CBOE",
+                quantity=10,
+                mode="BRACKET",
+                entry=OrderLeg(
+                    action="BUY",
+                    type="LMT",
+                    price=280.0,
+                    quantity=10,
+                    time_in_force="DAY",
+                ),
+                exits=[
+                    OrderLeg(
+                        action="SELL",
+                        type="LOC",
+                        price=290.0,
+                        quantity=10,
+                        time_in_force="DAY",
+                    )
+                ],
+                last_status="CREATED",
+            )
+
+            trade = {
+                "id": 781,
+                "symbol": "CBOE",
+                "strategy": "dip_buyer",
+                "status": "CREATED",
+            }
+
+            orders_data = [(trade, order)]
+
+            # Patch Path to write to a temp directory instead of data/orders
+            temp_orders_dir = tmp_path / "orders"
+            temp_orders_dir.mkdir()
+
+            with patch(
+                "app.services.trade_manager.manager.Path",
+                return_value=temp_orders_dir,
+            ):
+                result_path_str = manager_instance._write_csv_orders_file(
+                    orders_data, "2026-06-10"
+                )
+
+            # Assert
+            assert result_path_str is not None
+            result_path = Path(result_path_str)
+            assert result_path.exists()
+
+            # Read CSV content
+            df = pd.read_csv(result_path)
+            assert len(df) == 2  # 1 entry leg, 1 exit leg
+
+            # Verify entry row
+            entry_row = df[df["bracket_role"] == "ENTRY"].iloc[0]
+            assert entry_row["symbol"] == "CBOE"
+            assert entry_row["action"] == "BUY"
+            assert entry_row["order_type"] == "LMT"
+            assert entry_row["target_price"] == 280.0
+            assert entry_row["strategy_name"] == "DipBuyer"
+
+            # Verify exit row
+            exit_row = df[df["bracket_role"] == "TP"].iloc[0]
+            assert exit_row["symbol"] == "CBOE"
+            assert exit_row["action"] == "SELL"
+            assert exit_row["order_type"] == "LOC"
+            assert exit_row["target_price"] == 290.0
+            assert exit_row["strategy_name"] == "DipBuyer"
