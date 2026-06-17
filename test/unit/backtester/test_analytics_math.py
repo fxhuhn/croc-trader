@@ -37,11 +37,13 @@ def test_safe_percentile_calculates_correctly(
 def test_monte_carlo_simulator_kelly_bootstrap_handles_all_losses() -> None:
     """Verifies that all losses result in zero Kelly expectancy."""
     # Arrange
-    trades_dataframe = pd.DataFrame({
-        "net_pnl": [-100.0, -50.0] * 10,
-        "entry_price": [100.0] * 20,
-        "initial_size": [1.0] * 20
-    })
+    trades_dataframe = pd.DataFrame(
+        {
+            "net_pnl": [-100.0, -50.0] * 10,
+            "entry_price": [100.0] * 20,
+            "initial_size": [1.0] * 20,
+        }
+    )
     simulator = MonteCarloSimulator(iterations=100)
 
     # Act
@@ -70,11 +72,13 @@ def test_monte_carlo_simulator_kelly_bootstrap_handles_mixed_trades() -> None:
     # Arrange
     # 30 trades to satisfy minimum requirements in implementation
     pnl_history = [100.0, -50.0] * 15
-    trades_dataframe = pd.DataFrame({
-        "net_pnl": pnl_history,
-        "entry_price": [100.0] * 30,
-        "initial_size": [1.0] * 30
-    })
+    trades_dataframe = pd.DataFrame(
+        {
+            "net_pnl": pnl_history,
+            "entry_price": [100.0] * 30,
+            "initial_size": [1.0] * 30,
+        }
+    )
     simulator = MonteCarloSimulator(iterations=100)
 
     # Act
@@ -89,11 +93,13 @@ def test_monte_carlo_simulator_kelly_bootstrap_handles_all_wins() -> None:
     """Verifies that consistent wins result in high Kelly scores."""
     # Arrange
     pnl_history = [100.0] * 25
-    trades_dataframe = pd.DataFrame({
-        "net_pnl": pnl_history,
-        "entry_price": [100.0] * 25,
-        "initial_size": [1.0] * 25
-    })
+    trades_dataframe = pd.DataFrame(
+        {
+            "net_pnl": pnl_history,
+            "entry_price": [100.0] * 25,
+            "initial_size": [1.0] * 25,
+        }
+    )
     simulator = MonteCarloSimulator(iterations=100)
 
     # Act

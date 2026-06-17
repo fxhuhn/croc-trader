@@ -144,7 +144,10 @@ def test_config_manager_rejects_path_traversal(tmp_path):
     SECURITY: Verifies that ConfigManager doesn't allow escaping the data directory.
     """
     # Assuming ConfigManager.get_path checks for '..'
-    with patch("app.config.BASE_DIR", tmp_path):
+    with (
+        patch("app.config.BASE_DIR", tmp_path),
+        patch("app.config.CONFIG_FILE", tmp_path / "settings.yaml"),
+    ):
         manager = ConfigManager()
         # Mocking the dictionary structure based on previous view_file (if I saw it) or standard patterns
         if hasattr(manager, "app") and hasattr(manager.app, "database"):

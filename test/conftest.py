@@ -86,7 +86,10 @@ def wrap_strategy_methods():
                             }
                     except Exception as error:
                         import logging
-                        logging.getLogger(__name__).debug("Mocking failed to retrieve active_symbols: %s", error)
+
+                        logging.getLogger(__name__).debug(
+                            "Mocking failed to retrieve active_symbols: %s", error
+                        )
 
                 res = orig(
                     self,
@@ -160,7 +163,10 @@ def wrap_strategy_methods():
                                 )
                     except Exception as error:
                         import logging
-                        logging.getLogger(__name__).debug("Mocking failed in latest_leaders cache bypass: %s", error)
+
+                        logging.getLogger(__name__).debug(
+                            "Mocking failed in latest_leaders cache bypass: %s", error
+                        )
 
                 if repo and not latest_leaders:
                     try:
@@ -171,7 +177,10 @@ def wrap_strategy_methods():
                             )
                     except Exception as error:
                         import logging
-                        logging.getLogger(__name__).debug("Mocking failed to retrieve latest_leaders: %s", error)
+
+                        logging.getLogger(__name__).debug(
+                            "Mocking failed to retrieve latest_leaders: %s", error
+                        )
 
                 res = orig(
                     self, trade, dataframe_history, latest_leaders=latest_leaders
@@ -230,7 +239,10 @@ def wrap_strategy_methods():
                             }
                     except Exception as error:
                         import logging
-                        logging.getLogger(__name__).debug("Mocking failed to retrieve created_symbols: %s", error)
+
+                        logging.getLogger(__name__).debug(
+                            "Mocking failed to retrieve created_symbols: %s", error
+                        )
 
                 return orig(
                     self,
