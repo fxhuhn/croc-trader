@@ -1,12 +1,14 @@
 import json
 import logging
+import uuid
 from abc import ABC, abstractmethod
+from decimal import Decimal
 
 import pandas as pd
 
-from ....database.repositories.trade import TradeRepository
+from ..types import TradeTransition
 from ....types import TradeData, TradeStatus, ExitReason
-from ....models import Order, TradeParams
+from ....models import Order, TradeParams, OrderLeg
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,6 @@ class BaseTradeStrategy(ABC):
     Provides shared logic for trade activation, exit management, and position sizing.
     """
 
-    DEFAULT_BUDGET: float = 2000.0
     FRIDAY_INDEX: int = 4
     THURSDAY_INDEX: int = 3
 
@@ -50,14 +51,25 @@ class BaseTradeStrategy(ABC):
 
         return False
 
+    def _extract_entry_price(self, trade: TradeData) -> float:
+        """Extracts and parses the entry limit price from the trade context.
+        
+        Args:
+            trade: The trade data from the database.
+            
+        Returns:
+            float: The parsed entry price or 0.0.
+        """
+        return float(trade.get("entry_price") or 0.0)
+
     @abstractmethod
     def check_entry(
         self,
         trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        active_symbols: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Checks for CREATED trades if the entry was filled.
 
@@ -65,10 +77,10 @@ class BaseTradeStrategy(ABC):
             trade: The trade data from the database.
             candle: The current price candle.
             dataframe_history: Historical price data.
-            repository: The trade repository for database updates.
+            active_symbols: Set of symbols with currently active positions.
 
         Returns:
-            str | None: A status message if filled/invalidated, else None.
+            TradeTransition | None: The computed transition, or None.
         """
         raise NotImplementedError("Subclasses must implement check_entry")
 
@@ -77,18 +89,18 @@ class BaseTradeStrategy(ABC):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        latest_leaders: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Manages ACTIVE trades (Exit checks).
 
         Args:
             trade: The trade data from the database.
             dataframe_history: Historical price data.
-            repository: The trade repository for database updates.
+            latest_leaders: Set of leader symbols from the strategy.
 
         Returns:
-            str | None: A status message if closed/updated, else None.
+            TradeTransition | None: The computed transition, or None.
         """
         raise NotImplementedError("Subclasses must implement manage_active_trade")
 
@@ -98,7 +110,7 @@ class BaseTradeStrategy(ABC):
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
-        repository: TradeRepository,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
         """
         Generates orders for the next trading day.
@@ -107,7 +119,7 @@ class BaseTradeStrategy(ABC):
             trade: The trade data from the database.
             dataframe_history: Historical price data.
             budget: Total available budget for the trade.
-            repository: The trade repository for database access.
+            created_symbols: Set of symbols with currently pending (CREATED) trades.
 
         Returns:
             Order | None: The generated order object or None.
@@ -119,7 +131,6 @@ class BaseTradeStrategy(ABC):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None,
-        repository: TradeRepository | None,
     ) -> TradeParams | None:
         """
         Calculates parameters for logging or display.
@@ -127,14 +138,102 @@ class BaseTradeStrategy(ABC):
         Args:
             trade: The trade data from the database.
             dataframe_history: Historical price data (optional).
-            repository: The trade repository (optional).
 
         Returns:
             TradeParams | None: The calculated trade parameters.
         """
         raise NotImplementedError("Subclasses must implement get_current_parameters")
 
+    def get_daily_updates(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+    ) -> dict[str, object]:
+        """
+        Calculates daily state updates (e.g. dynamic thresholds, targets) for the trade.
+        Base implementation returns empty updates.
+
+        Args:
+            trade: The current trade data.
+            dataframe_history: The market history for the traded symbol.
+
+        Returns:
+            dict[str, object]: A dictionary containing fields to be merged into signal_context.
+        """
+        return {}
+
     # --- Shared Logic & Helpers (DRY) ---
+
+    def _create_order(
+        self,
+        symbol: str,
+        quantity: int,
+        mode: str,
+        entry: OrderLeg | None = None,
+        exits: list[OrderLeg] | None = None,
+        order_id: str | None = None,
+    ) -> Order:
+        """Universal order factory helper to construct an Order object."""
+        return Order(
+            id=order_id or str(uuid.uuid4()),
+            symbol=symbol,
+            quantity=quantity,
+            mode=mode,
+            entry=entry,
+            exits=exits or [],
+        )
+
+    def _create_entry_order(
+        self,
+        symbol: str,
+        quantity: int,
+        entry_price: Decimal,
+        order_type: str = "LMT",
+        time_in_force: str = "DAY",
+        order_id: str | None = None,
+    ) -> Order:
+        """Generates a standard Buy Entry Order."""
+        return self._create_order(
+            symbol=symbol,
+            quantity=quantity,
+            mode="Entry",
+            entry=OrderLeg(
+                action="BUY",
+                type=order_type,
+                price=entry_price,
+                quantity=quantity,
+                time_in_force=time_in_force,
+            ),
+            exits=[],
+            order_id=order_id,
+        )
+
+    def _create_exit_order(
+        self,
+        symbol: str,
+        quantity: int,
+        price: Decimal | None = None,
+        order_type: str = "MKT",
+        time_in_force: str = "OPG",
+        order_id: str | None = None,
+    ) -> Order:
+        """Generates a standard Sell Exit Order."""
+        return self._create_order(
+            symbol=symbol,
+            quantity=quantity,
+            mode="Exit",
+            entry=None,
+            exits=[
+                OrderLeg(
+                    action="SELL",
+                    type=order_type,
+                    price=price if price is not None else Decimal("0.0"),
+                    quantity=quantity,
+                    time_in_force=time_in_force,
+                )
+            ],
+            order_id=order_id,
+        )
 
     def _get_signal_date(self, trade: TradeData) -> pd.Timestamp | None:
         """
@@ -186,6 +285,35 @@ class BaseTradeStrategy(ABC):
         except (json.JSONDecodeError, TypeError):
             return None
 
+    def _get_full_context(self, trade: TradeData) -> dict[str, object]:
+        """Single authoritative parser for the full signal_context dictionary.
+
+        This is the DRY replacement for all per-strategy context parsers.
+        It handles both pre-parsed dicts (if the repository already deserialised
+        the JSON) and raw JSON strings, so callers never need to branch on the
+        type themselves.
+
+        Args:
+            trade: The trade data dictionary.
+
+        Returns:
+            dict[str, object]: The parsed context, or an empty dict on failure.
+        """
+        context_data = trade.get("signal_context")
+        if not context_data:
+            return {}
+        if isinstance(context_data, dict):
+            return context_data
+        try:
+            return json.loads(context_data)
+        except (json.JSONDecodeError, TypeError) as error:
+            logger.warning(
+                "Failed to parse signal_context for trade %s: %s",
+                trade.get("id"),
+                error,
+            )
+            return {}
+
     def _get_trading_days_post_signal(
         self, trade: TradeData, dataframe_history: pd.DataFrame
     ) -> int:
@@ -222,7 +350,6 @@ class BaseTradeStrategy(ABC):
             int: Number of shares.
         """
         if stop_loss <= 0 or fill_price == stop_loss:
-            logger.warning("Invalid SL or Fill Price for risk calculation.")
             return 0
         risk_per_share = abs(fill_price - stop_loss)
         return int(risk_amount / risk_per_share)
@@ -232,25 +359,12 @@ class BaseTradeStrategy(ABC):
         trade: TradeData,
         fill_price: float,
         stop_loss: float = 0.0,
+        fallback_budget: float = 0.0,
+        fallback_risk: float = 100.0,
     ) -> int:
         """Determines position size via risk-based or budget-based fallback.
 
-        This is the single authoritative sizing calculation (DRY).
-        Called by _execute_activation, _execute_immediate_loss, and subclass
-        immediate-target handlers.
-
-        Strategy:
-        1. Use pre-existing size from database (initial_size or current_size).
-        2. Try risk-based sizing if a valid stop loss exists.
-        3. Fall back to budget-based sizing.
-
-        Args:
-            trade: The trade data dictionary.
-            fill_price: The execution fill price.
-            stop_loss: The stop loss price (0 if not applicable).
-
-        Returns:
-            int: The calculated number of shares. May be 0 if invalid inputs.
+        This is a pure computation function (no direct settings lookup or logging side-effects).
         """
         # 1. Pre-existing size from database
         existing_size = float(
@@ -264,7 +378,7 @@ class BaseTradeStrategy(ABC):
             risk_amount = float(
                 self._get_context_value(trade, "risk_amount")
                 or trade.get("risk_amount")
-                or 100.0
+                or fallback_risk
             )
             risk_based_size = self._calculate_position_size(
                 fill_price, stop_loss, risk_amount
@@ -277,50 +391,62 @@ class BaseTradeStrategy(ABC):
             budget = float(
                 self._get_context_value(trade, "budget")
                 or trade.get("budget")
-                or self.DEFAULT_BUDGET
+                or fallback_budget
             )
-            budget_based_size = int(budget / fill_price)
-            if budget_based_size > 0:
-                logger.debug(
-                    "Using budget-based sizing (%s) for %s",
-                    budget,
-                    trade.get("symbol"),
-                )
-                return budget_based_size
+            if budget > 0:
+                return int(budget / fill_price)
 
         return 0
 
     def _execute_activation(
         self,
         trade: TradeData,
-        repository: TradeRepository,
         fill_price: float,
         reason: str,
         date_string: str,
         extra_updates: dict[str, object] | None = None,
-    ) -> str:
-        """
-        Moves a trade from CREATED to ACTIVE status.
+    ) -> TradeTransition:
+        """Moves a trade from CREATED to ACTIVE status.
 
         Delegates position sizing to the centralized _resolve_position_size
         method to maintain a single source of truth for sizing logic.
-
-        Args:
-            trade: The trade dictionary.
-            repository: The trade repository.
-            fill_price: The price at which the trade filled.
-            reason: The reason for fill (e.g. BREAKOUT).
-            date_string: The date of activation.
-            extra_updates: Optional dictionary of additional fields to update.
-
-        Returns:
-            str: Status message.
         """
+        from ....config import settings
+
+        strategy_key = getattr(
+            getattr(self, "name", ""), "value", str(getattr(self, "name", ""))
+        )
+
+        fallback_budget = settings.app.portfolio.get_budget(strategy_key)
+        fallback_risk = settings.app.portfolio.get_risk_amount(strategy_key)
+
         stop_loss = float(trade.get("current_stop_loss") or 0.0)
-        size = self._resolve_position_size(trade, fill_price, stop_loss)
+        size = self._resolve_position_size(
+            trade,
+            fill_price,
+            stop_loss,
+            fallback_budget=fallback_budget,
+            fallback_risk=fallback_risk,
+        )
 
         if size <= 0:
-            return "ERROR: Zero Size"
+            logger.warning(
+                "[%s] No budget found for sizing fallback or size calculated is 0. "
+                "Check settings.yaml and signal_context.",
+                trade.get("symbol"),
+            )
+            return TradeTransition(
+                updates={},
+                reason="ERROR: Zero Size",
+                message="ERROR: Zero Size",
+            )
+
+        if not (trade.get("initial_size") or trade.get("current_size")):
+            logger.debug(
+                "Using fallback sizing for %s (size: %s)",
+                trade.get("symbol"),
+                size,
+            )
 
         update_payload: dict[str, object] = {
             "status": TradeStatus.ACTIVE,
@@ -332,43 +458,52 @@ class BaseTradeStrategy(ABC):
         if extra_updates:
             update_payload.update(extra_updates)
 
-        repository.update_trade(
-            trade["id"],
-            update_payload,
+        return TradeTransition(
+            updates=update_payload,
             reason=f"{reason} FILLED @ {fill_price:.2f}",
+            message=f"FILLED @ {fill_price:.2f} ({int(size)} Shares)",
         )
-        return f"FILLED @ {fill_price:.2f} ({int(size)} Shares)"
 
     def _execute_immediate_loss(
         self,
         trade: TradeData,
-        repository: TradeRepository,
         fill_price: float,
         reason: str,
         stop_loss: float,
         date_string: str,
-    ) -> str:
-        """
-        Handles Day 1 turnarounds: entry and stop hit on same day.
+    ) -> TradeTransition:
+        """Handles Day 1 turnarounds: entry and stop hit on same day.
 
         Delegates position sizing to the centralized _resolve_position_size
         method to maintain a single source of truth.
-
-        Args:
-            trade: The trade dictionary.
-            repository: The trade repository.
-            fill_price: The entry price.
-            reason: The entry reason.
-            stop_loss: The stopped price.
-            date_string: The date.
-
-        Returns:
-            str: Status message.
         """
-        size = self._resolve_position_size(trade, fill_price, stop_loss)
+        from ....config import settings
+
+        strategy_key = getattr(
+            getattr(self, "name", ""), "value", str(getattr(self, "name", ""))
+        )
+
+        fallback_budget = settings.app.portfolio.get_budget(strategy_key)
+        fallback_risk = settings.app.portfolio.get_risk_amount(strategy_key)
+
+        size = self._resolve_position_size(
+            trade,
+            fill_price,
+            stop_loss,
+            fallback_budget=fallback_budget,
+            fallback_risk=fallback_risk,
+        )
 
         if size <= 0:
-            return "ERROR: Zero Size"
+            logger.warning(
+                "[%s] Sizing failed during immediate loss execution.",
+                trade.get("symbol"),
+            )
+            return TradeTransition(
+                updates={},
+                reason="ERROR: Zero Size",
+                message="ERROR: Zero Size",
+            )
 
         direction = str(self._get_context_value(trade, "direction") or "long").lower()
         if direction == "short":
@@ -376,9 +511,8 @@ class BaseTradeStrategy(ABC):
         else:
             profit_and_loss = (stop_loss - fill_price) * size
 
-        repository.update_trade(
-            trade["id"],
-            {
+        return TradeTransition(
+            updates={
                 "status": TradeStatus.CLOSED,
                 "entry_date": date_string,
                 "entry_price": fill_price,
@@ -390,47 +524,46 @@ class BaseTradeStrategy(ABC):
                 "realized_pnl": profit_and_loss,
             },
             reason=f"{reason} FILLED @ {fill_price:.2f} -> STOPPED @ {stop_loss:.2f}",
-        )
-        return (
-            f"FILLED @ {fill_price:.2f} -> STOPPED @ {stop_loss:.2f} "
-            f"(PnL: {profit_and_loss:.2f})"
+            message=(
+                f"FILLED @ {fill_price:.2f} -> STOPPED @ {stop_loss:.2f} "
+                f"(PnL: {profit_and_loss:.2f})"
+            ),
         )
 
     def _close_trade(
         self,
         trade: TradeData,
-        repository: TradeRepository,
         exit_price: float,
         reason: str,
         date_string: str,
-    ) -> str:
-        """
-        Closes a trade and calculates final PnL.
+    ) -> TradeTransition:
+        """Closes a trade and calculates final PnL.
 
         Args:
             trade: The trade dictionary.
-            repository: The trade repository.
             exit_price: The price at exit.
             reason: The exit reason.
             date_string: The date of exit.
 
         Returns:
-            str: Status message.
+            TradeTransition: Computed state updates.
         """
         entry_price = float(trade.get("entry_price") or 0.0)
         current_size = float(trade.get("current_size") or 0.0)
+        dec_entry = Decimal(str(entry_price))
+        dec_exit = Decimal(str(exit_price))
+        dec_qty = Decimal(str(int(current_size)))
 
         direction = str(self._get_context_value(trade, "direction") or "long").lower()
         if direction == "short":
-            pnl_chunk = (entry_price - exit_price) * current_size
+            pnl_chunk = (dec_entry - dec_exit) * dec_qty
         else:
-            pnl_chunk = (exit_price - entry_price) * current_size
+            pnl_chunk = (dec_exit - dec_entry) * dec_qty
 
-        total_pnl = float(trade.get("realized_pnl") or 0.0) + pnl_chunk
+        total_pnl = float(Decimal(str(trade.get("realized_pnl") or "0.0")) + pnl_chunk)
 
-        repository.update_trade(
-            trade["id"],
-            {
+        return TradeTransition(
+            updates={
                 "status": TradeStatus.CLOSED,
                 "exit_reason": reason,
                 "exit_price": exit_price,
@@ -438,98 +571,86 @@ class BaseTradeStrategy(ABC):
                 "realized_pnl": total_pnl,
                 "current_size": 0,
             },
+            reason=reason,
+            message=f"{reason} @ {exit_price:.2f} (PnL: {total_pnl:.2f})",
         )
-        return f"{reason} @ {exit_price:.2f} (PnL: {total_pnl:.2f})"
 
     def _invalidate_trade(
         self,
         trade: TradeData,
-        repository: TradeRepository,
         low_price: float,
         stop_loss: float,
         date_string: str,
-    ) -> str:
-        """
-        Invalidates a setup before entry.
+    ) -> TradeTransition:
+        """Invalidates a setup before entry.
 
         Args:
             trade: The trade.
-            repository: The repository.
             low_price: The low of the day.
             stop_loss: The stop loss level.
             date_string: The date.
 
         Returns:
-            str: Status message.
+            TradeTransition: Computed state updates.
         """
         outcome_reason = (
             f"SETUP INVALIDATED: Low {low_price:.2f} <= Stop {stop_loss:.2f}"
         )
-        repository.update_trade(
-            trade["id"],
-            {
+        return TradeTransition(
+            updates={
                 "status": TradeStatus.INVALID,
                 "exit_reason": ExitReason.INVALIDATED,
                 "exit_date": date_string,
                 "realized_pnl": 0.0,
             },
             reason=outcome_reason,
+            message=outcome_reason,
         )
-        return outcome_reason
 
-    def _expire_trade(
-        self, trade: TradeData, repository: TradeRepository, date_string: str
-    ) -> str:
-        """
-        Signals expiration when entry isn't hit within time limit.
+    def _expire_trade(self, trade: TradeData, date_string: str) -> TradeTransition:
+        """Signals expiration when entry isn't hit within time limit.
 
         Args:
             trade: The trade.
-            repository: The repository.
             date_string: The date.
 
         Returns:
-            str: Status message.
+            TradeTransition: Computed state updates.
         """
-        repository.update_trade(
-            trade["id"],
-            {
+        return TradeTransition(
+            updates={
                 "status": TradeStatus.CLOSED,
                 "exit_reason": ExitReason.EXPIRED,
                 "exit_date": date_string,
                 "realized_pnl": 0.0,
             },
             reason="EXPIRED (Time Limit Exceeded)",
+            message="EXPIRED",
         )
-        return "EXPIRED"
 
     def _reject_setup(
         self,
         trade: TradeData,
-        repository: TradeRepository,
         date_string: str,
         reason: str,
-    ) -> str:
-        """
-        Rejects a setup that never became active (e.g. missed entry window).
+    ) -> TradeTransition:
+        """Rejects a setup that never became active (e.g. missed entry window).
 
         Args:
             trade: The trade data.
-            repository: The repository.
             date_string: Current date.
             reason: Detailed reason for rejection.
 
         Returns:
-            str: Status message.
+            TradeTransition: Computed state updates.
         """
-        repository.update_trade(
-            trade["id"],
-            {
+        return TradeTransition(
+            updates={
                 "status": TradeStatus.INVALID,
                 "exit_reason": ExitReason.INVALIDATED,
                 "exit_date": date_string,
                 "realized_pnl": 0.0,
             },
             reason=f"REJECTED: {reason}",
+            message=f"REJECTED: {reason}",
         )
-        return f"REJECTED: {reason}"

@@ -1,14 +1,14 @@
-import logging
 import json
-import uuid
+import logging
+from decimal import Decimal
 from typing import TypedDict, final, override
 
 import pandas as pd
 
-from ....database.repositories.trade import TradeRepository
-from ....models import Order, OrderLeg, TradeParams
+from ..types import TradeTransition
+from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
-from ....types import ExitReason, TradeData, OrderType, TimeInForce
+from ....types import ExitReason, TradeData
 from ....const import Strategies
 from .abstract import BaseTradeStrategy
 
@@ -34,11 +34,8 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
        - Time: Friday Close.
     """
 
-    name: str = Strategies.TurnOverTiming
+    name = Strategies.TurnOverTiming
     """Unique identifier for the strategy."""
-
-    DEFAULT_BUDGET: float = 2500.0
-    """Default capital allocation for the trade."""
 
     DEFAULT_SLIPPAGE: float = 0.0
     """Default slippage applied to executions."""
@@ -74,14 +71,12 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
-        repository: TradeRepository | None = None,
     ) -> TradeParams:
         """Standardizes TradeParams for turnover strategy.
 
         Args:
             trade: The trade data dictionary.
             dataframe_history: Optional historical market data.
-            repository: Optional trade repository.
 
         Returns:
             TradeParams: Object containing strategy parameters.
@@ -95,74 +90,13 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             },
         )
 
-    def _parse_turnover_context(self, trade: TradeData) -> TurnoverContext:
-        """
-        Safely extracts and parses the TurnoverContext from the trade JSON.
-
-        Args:
-            trade: The active or created trade data.
-
-        Returns:
-            TurnoverContext: The parsed dictionary containing context data.
-        """
-        raw_context = trade.get("signal_context") or "{}"
-        try:
-            return json.loads(raw_context)
-        except json.JSONDecodeError as json_error:
-            logger.error(
-                "Failed to decode signal_context for trade %s: %s",
-                trade.get("id"),
-                json_error,
-            )
-            return {"green_candle_count": 0}
-
-    def _create_exit_order(
-        self,
-        symbol: str,
-        quantity: int,
-        order_type: OrderType = "MKT",
-        time_in_force: TimeInForce = "OPG",
-    ) -> Order:
-        """Generates a Sell Exit Order."""
-        return Order(
-            id=str(uuid.uuid4()),
-            symbol=symbol,
-            quantity=quantity,
-            mode="Exit",
-            entry=None,
-            exits=[
-                OrderLeg(
-                    action="SELL",
-                    type=order_type,
-                    price=0.0,
-                    quantity=quantity,
-                    time_in_force=time_in_force,
-                )
-            ],
-        )
-
-    def _create_entry_order(
-        self, symbol: str, quantity: int, entry_price: float
-    ) -> Order:
-        """Generates a Limit Buy Entry Order."""
-        return Order(
-            id=str(uuid.uuid4()),
-            symbol=symbol,
-            quantity=quantity,
-            mode="Entry",
-            entry=OrderLeg(
-                action="BUY", type="LMT", price=entry_price, quantity=quantity
-            ),
-            exits=[],
-        )
-
     @override
     def generate_orders(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
-        repository: TradeRepository,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
         """Generates Entry or Exit Orders based on current trade state.
 
@@ -170,7 +104,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             trade: The current trade data.
             dataframe_history: Historical market data.
             budget: Total allocated budget for the trade.
-            repository: Repository for trade updates.
+            created_symbols: Set of symbols with currently pending trades.
 
         Returns:
             Order | None: The generated order or None if no action is needed.
@@ -179,7 +113,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
         # 1. Entry Order (CREATED)
         if status == "CREATED":
-            entry_price = float(trade.get("entry_price") or 0.0)
+            entry_price = self._extract_entry_price(trade)
             if entry_price <= 0 or budget <= 0:
                 return None
 
@@ -187,11 +121,13 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             if quantity < 1:
                 return None
 
-            return self._create_entry_order(trade["symbol"], quantity, entry_price)
+            return self._create_entry_order(
+                trade["symbol"], quantity, Decimal(str(entry_price))
+            )
 
         # 2. Exit Order (ACTIVE)
         if status == "ACTIVE":
-            context = self._parse_turnover_context(trade)
+            context = self._get_full_context(trade)
             green_candle_count = context.get("green_candle_count", 0)
             quantity = int(trade.get("current_size") or 0)
 
@@ -233,20 +169,20 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        active_symbols: set[str] | None = None,
+    ) -> TradeTransition | None:
         """Checks if the limit entry was reached on the NEXT trading day only.
 
         Args:
             trade: The trade data.
             candle: The current market candle.
             dataframe_history: Historical market data.
-            repository: Repository for trade updates.
+            active_symbols: Currently active symbols set.
 
         Returns:
-            str | None: Result message or None if no entry occurred.
+            TradeTransition | None: Result transition or None if no entry occurred.
         """
-        limit_price = float(trade.get("entry_price") or 0.0)
+        limit_price = self._extract_entry_price(trade)
 
         if limit_price <= 0:
             return None
@@ -268,77 +204,73 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
         # 2. Evaluation for the first trading day after setup (Day 1)
         if days_post_signal == 1:
-            low_price = float(candle["low"])
-            open_price = float(candle["open"])
-
-            if low_price <= limit_price:
-                fill_price = (
-                    min(open_price, limit_price)
-                    if open_price < limit_price
-                    else limit_price
-                )
-                # Ensure fill_price is valid
-                if fill_price <= 0:
-                    return None
-
-                # Now we DO inherit the setup's green state. If the setup day was green
-                # (which the screener passes generically), we use it to exit earlier.
-                close_price = float(candle["close"])
-                context = self._parse_turnover_context(trade)
-
-                # Use strict helper to determine if entry day is green
-                entry_is_green = self._is_green_candle(open_price, close_price)
-
-                # Inherit setup's green state if the entry day is also green
-                setup_was_green = context.get("setup_candle_green", False)
-
-                if entry_is_green:
-                    count = 2 if setup_was_green else 1
-                else:
-                    count = 0
-
-                # Update context correctly
-                context["green_candle_count"] = count
-                context["last_processed_date"] = current_date
-
-                return self._execute_activation(
-                    trade,
-                    repository,
-                    fill_price,
-                    "LIMIT",
-                    current_date,
-                    extra_updates={
-                        "signal_context": json.dumps(
-                            context, default=str, ensure_ascii=False
-                        )
-                    },
-                )
-            else:
-                # Day 1 finished and price was never below limit -> Expire immediately!
-                return self._expire_trade(trade, repository, current_date)
+            return self._evaluate_day_one_entry(
+                trade, candle, limit_price, current_date
+            )
 
         # 3. Too late (Expired) -> count > 1
-        if days_post_signal > 1:
-            return self._expire_trade(trade, repository, current_date)
+        return self._expire_trade(trade, current_date)
 
-        return None
+    def _evaluate_day_one_entry(
+        self,
+        trade: TradeData,
+        candle: pd.Series,
+        limit_price: float,
+        current_date: str,
+    ) -> TradeTransition | None:
+        """Evaluates entry triggers strictly on the first day after the signal."""
+        low_price = float(candle["low"])
+        open_price = float(candle["open"])
+
+        if low_price > limit_price:
+            # Day 1 finished and price was never below limit -> Expire immediately!
+            return self._expire_trade(trade, current_date)
+
+        fill_price = (
+            min(open_price, limit_price) if open_price < limit_price else limit_price
+        )
+
+        if fill_price <= 0:
+            return None
+
+        # Calculate initial green candle context
+        close_price = float(candle["close"])
+        context = self._get_full_context(trade)
+
+        entry_is_green = self._is_green_candle(open_price, close_price)
+        setup_was_green = context.get("setup_candle_green", False)
+
+        context["green_candle_count"] = (
+            2 if (entry_is_green and setup_was_green) else (1 if entry_is_green else 0)
+        )
+        context["last_processed_date"] = current_date
+
+        return self._execute_activation(
+            trade,
+            fill_price,
+            "LIMIT",
+            current_date,
+            extra_updates={
+                "signal_context": json.dumps(context, default=str, ensure_ascii=False)
+            },
+        )
 
     @override
     def manage_active_trade(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        latest_leaders: set[str] | None = None,
+    ) -> TradeTransition | None:
         """Manages Exits: Multi-Day Green sequence (Next Open) or Time Stop (EOD).
 
         Args:
             trade: The active trade data.
             dataframe_history: Historical market data.
-            repository: Repository for trade updates.
+            latest_leaders: Latest leaders symbols set.
 
         Returns:
-            str | None: Result message or None if no exit occurred.
+            TradeTransition | None: Result transition or None if no exit occurred.
         """
         if dataframe_history.empty:
             return None
@@ -348,9 +280,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
         # 1. Signal-Specific Exit (State-Based Green Candles sequence)
         # Rule: If count >= 2, exit at current candle OPEN (Next Open Rule).
-        # Otherwise, update count based on current candle color.
-
-        context = self._parse_turnover_context(trade)
+        context = self._get_full_context(trade)
 
         # Idempotency check: Do not process the same candle twice
         last_processed_date = context.get("last_processed_date")
@@ -363,29 +293,10 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         if green_candle_count >= 2:
             return self._close_trade(
                 trade,
-                repository,
                 float(current_candle["open"]),
                 ExitReason.GREEN_SEQUENCE,
                 date_string,
             )
-
-        # Update Count for the NEXT day
-        # Use strict helper
-        if self._is_green_candle(
-            float(current_candle["open"]), float(current_candle["close"])
-        ):
-            green_candle_count += 1
-        else:
-            green_candle_count = 0
-
-        # Persist Count back to context
-        context["green_candle_count"] = green_candle_count
-        context["last_processed_date"] = date_string
-        repository.update_trade(
-            trade["id"],
-            {"signal_context": json.dumps(context, default=str, ensure_ascii=False)},
-            reason=f"Update Green Candle Count: {green_candle_count}",
-        )
 
         # 2. End of Week Time Stop (Friday or Holiday-Thursday Close)
         current_date_timestamp = pd.Timestamp(current_candle["date"])
@@ -393,10 +304,45 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         if self._is_end_of_trading_week(current_date_timestamp, self._holiday_checker):
             return self._close_trade(
                 trade,
-                repository,
                 float(current_candle["close"]),
                 ExitReason.TIME_STOP,
                 date_string,
             )
 
+        # No exit occurred; get_daily_updates handles green candle count tracking.
         return None
+
+    @override
+    def get_daily_updates(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+    ) -> dict[str, object]:
+        """Provides daily updates to the trade context, specifically tracking the green candle count."""
+        if dataframe_history.empty:
+            return {}
+
+        current_candle = dataframe_history.iloc[-1]
+        date_string = str(current_candle["date"])
+
+        context = self._get_full_context(trade)
+
+        # Avoid duplicate updates for the same day
+        last_processed_date = context.get("last_processed_date")
+        if last_processed_date == date_string:
+            return {}
+
+        green_candle_count = context.get("green_candle_count", 0)
+
+        # Track consecutive green candles
+        if self._is_green_candle(
+            float(current_candle["open"]), float(current_candle["close"])
+        ):
+            green_candle_count += 1
+        else:
+            green_candle_count = 0
+
+        return {
+            "green_candle_count": green_candle_count,
+            "last_processed_date": date_string,
+        }

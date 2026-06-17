@@ -1,27 +1,31 @@
+import json
 import logging
+import sqlite3
+from ...config import PortfolioConfig
 from ...database.repositories.trade import TradeRepository
 from ...types import TradeStatus
 from .allocator import PortfolioAllocator
-import json
 
 logger = logging.getLogger(__name__)
 
 
 class PortfolioManager:
-    """
-    Central Logic for Capital Allocation.
+    """Central Logic for Capital Allocation.
+
     Process: Screener -> [PortfolioManager] -> TradeManager(Execution)
     """
 
     def __init__(
-        self, trade_repository: TradeRepository, portfolio_config: dict | None = None
-    ):
+        self,
+        trade_repository: TradeRepository,
+        portfolio_config: PortfolioConfig | None = None,
+    ) -> None:
         self.trade_repository = trade_repository
         self.allocator = PortfolioAllocator(portfolio_config=portfolio_config)
 
     def process_daily_signals(self) -> int:
-        """
-        Fetches all CREATED trades, allocates size, and updates them.
+        """Fetches all CREATED trades, allocates size, and updates them.
+
         Returns: Number of allocated trades.
         """
         logger.info("PortfolioManager: Starting Daily Allocation...")
@@ -49,7 +53,12 @@ class PortfolioManager:
 
                 if allocation.size > 0:
                     # 3. Update DB (Store metadata in Context)
-                    context = json.loads(trade.get("signal_context") or "{}")
+                    raw_context = trade.get("signal_context") or {}
+                    context = (
+                        raw_context
+                        if isinstance(raw_context, dict)
+                        else json.loads(raw_context or "{}")
+                    )
                     context["budget"] = allocation.budget_used
                     context["risk_amount"] = allocation.risk_amount
 
@@ -78,6 +87,10 @@ class PortfolioManager:
             )
             return allocated_count
 
-        except Exception as exception:
-            logger.error(f"PortfolioManager Error: {exception}", exc_info=True)
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+            raise RuntimeError(
+                "PortfolioManager: Database unavailable."
+            ) from database_error
+        except (ValueError, KeyError, TypeError) as data_error:
+            logger.warning("Allocation data error: %s", data_error)
             return 0

@@ -169,9 +169,39 @@ def test_generate_orders(strategy, mock_trade_repo):
     """Tests the order generation logic."""
     trade = {"symbol": "AAPL", "entry_price": 100.0, "initial_size": 10}
 
-    orders = strategy.generate_orders(trade, pd.DataFrame(), 2000.0, mock_trade_repo)
+    dataframe_history = pd.DataFrame([pd.Series({"high": 98.49})])
+    orders = strategy.generate_orders(trade, dataframe_history, 2000.0, mock_trade_repo)
 
     assert orders is not None
     assert orders.symbol == "AAPL"
     assert orders.quantity == 10
     assert orders.entry.price == 100.0
+
+
+def test_generate_orders_active_trade(strategy, mock_trade_repo):
+    """Tests the order generation logic for an active trade."""
+    trade = {
+        "symbol": "AAPL",
+        "entry_price": 100.0,
+        "initial_size": 10,
+        "status": "ACTIVE",
+        "current_target": 105.0,
+        "signal_context": '{"threshold_loc": 98.5}',
+    }
+
+    dataframe_history = pd.DataFrame([pd.Series({"high": 98.49})])
+    orders = strategy.generate_orders(trade, dataframe_history, 2000.0, mock_trade_repo)
+
+    assert orders is not None
+    assert orders.symbol == "AAPL"
+    assert orders.quantity == 10
+    assert orders.entry is None
+    assert len(orders.exits) == 2
+    # Exit 1: TP Sell LMT at 105
+    assert orders.exits[0].action == "SELL"
+    assert orders.exits[0].type == "LMT"
+    assert orders.exits[0].price == 105.0
+    # Exit 2: Threshold Sell LOC at 98.5
+    assert orders.exits[1].action == "SELL"
+    assert orders.exits[1].type == "LOC"
+    assert orders.exits[1].price == 98.5

@@ -1,6 +1,7 @@
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, TYPE_CHECKING
 
 from .mapping import mapper
@@ -28,7 +29,7 @@ class OrderLeg:
 
     action: "OrderAction"
     type: "OrderType"
-    price: float
+    price: Decimal
     quantity: int | None = None
     time_in_force: "TimeInForce" = "DAY"
 

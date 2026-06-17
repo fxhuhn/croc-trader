@@ -2,6 +2,7 @@ import duckdb
 import pandas as pd
 import numpy as np
 import logging
+import warnings
 from dataclasses import dataclass
 from typing import Any
 
@@ -466,8 +467,22 @@ class MetricsCalculator:
         if total_trades >= MIN_TRADES_FOR_SQN:
             sqn = metrics.calculate_sqn(working_df["r_multiple"])
 
-        risk_reward_ratio = metrics.calculate_risk_reward_ratio(working_df["net_pnl"])
-        kelly = metrics.calculate_kelly_criterion(win_rate, risk_reward_ratio)
+        # ROI calculations for Kelly
+        entry_prices = pd.to_numeric(working_df["entry_price"], errors="coerce").fillna(
+            0.0
+        )
+        initial_sizes = pd.to_numeric(
+            working_df["initial_size"], errors="coerce"
+        ).fillna(0.0)
+        invested_capital = entry_prices * initial_sizes
+
+        working_df["roi"] = np.where(
+            invested_capital > EPSILON, working_df["net_pnl"] / invested_capital, 0.0
+        )
+
+        roi_win_rate = metrics.calculate_win_rate(working_df["roi"])
+        roi_risk_reward_ratio = metrics.calculate_risk_reward_ratio(working_df["roi"])
+        kelly = metrics.calculate_kelly_criterion(roi_win_rate, roi_risk_reward_ratio)
 
         # Kelly Defaults (Heuristics)
         kelly_mean = kelly
@@ -581,13 +596,29 @@ class MonteCarloSimulator:
         if len(trades_dataframe) < MIN_TRADES_FOR_KELLY:
             return {"mean": 0.0, "std": 0.0, "safe": 0.0}
 
-        pnl_values = trades_dataframe["net_pnl"].values
-        number_of_trades = len(pnl_values)
+        entry_prices = (
+            pd.to_numeric(trades_dataframe["entry_price"], errors="coerce")
+            .fillna(0.0)
+            .values
+        )
+        initial_sizes = (
+            pd.to_numeric(trades_dataframe["initial_size"], errors="coerce")
+            .fillna(0.0)
+            .values
+        )
+        invested_capital = entry_prices * initial_sizes
+
+        net_pnls = trades_dataframe["net_pnl"].values
+        roi_values = np.where(
+            invested_capital > EPSILON, net_pnls / invested_capital, 0.0
+        )
+
+        number_of_trades = len(roi_values)
 
         kelly_values = []
         for _ in range(self.iterations):
             # Uniform sampling (replace=True)
-            sample = np.random.choice(pnl_values, size=number_of_trades, replace=True)
+            sample = np.random.choice(roi_values, size=number_of_trades, replace=True)
             wins = sample[sample > EPSILON]
             losses = sample[sample < -EPSILON]
 
@@ -819,6 +850,11 @@ class BacktestAnalytics:
     INITIAL_CAPITAL = 100_000.0
 
     def __init__(self, backtest_db_path: str, market_db_path: str):
+        warnings.warn(
+            "The Backtester module is deprecated. TradeManager is now the sole source of truth for OrderTypes, Limits, and Sizing.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.backtest_db = backtest_db_path
         self.market_db = market_db_path
         self.loader = BacktestDataLoader(backtest_db_path, market_db_path)
@@ -1480,6 +1516,11 @@ class WFAMetrics:
 
 class WalkForwardAnalyzer:
     def __init__(self, trades_dataframe: pd.DataFrame):
+        warnings.warn(
+            "The Backtester module is deprecated. TradeManager is now the sole source of truth for OrderTypes, Limits, and Sizing.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.trades = trades_dataframe.sort_values("exit_date").reset_index(drop=True)
 
     def _calculate_metrics(self, dataframe: pd.DataFrame) -> WFAMetrics:

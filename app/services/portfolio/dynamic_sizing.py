@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List
 import numpy as np
 
 
@@ -8,7 +7,7 @@ import numpy as np
 class CapacityMonitor:
     """Tracks active trades to calculate utilization percentiles."""
 
-    _concurrent_trades: Dict[str, List[Dict[str, object]]] = field(
+    _concurrent_trades: dict[str, list[dict[str, object]]] = field(
         default_factory=lambda: {
             "dip_buyer": [],
             "turnover_0.5": [],
@@ -18,7 +17,11 @@ class CapacityMonitor:
         }
     )
 
-    def update(self, date: datetime, active_trades: Dict[str, List[dict]]):
+    def update(
+        self,
+        date: datetime,
+        active_trades: dict[str, list[dict[str, object]]],
+    ) -> None:
         """
         Track daily concurrent trades.
 
@@ -45,7 +48,7 @@ class CapacityMonitor:
         if strategy not in self._concurrent_trades:
             return 0.0
 
-        counts = [d["count"] for d in self._concurrent_trades[strategy]]
+        counts = [entry["count"] for entry in self._concurrent_trades[strategy]]
         if not counts:
             return 0.0
 
@@ -59,11 +62,11 @@ class CapacityMonitor:
             strategy: Strategy name (or 'global').
             current_count: Number of currently active trades.
         """
-        p95 = self.get_percentile(strategy, 95)
+        percentile_95 = self.get_percentile(strategy, 95)
 
         # Safety: If P95 is 0 (no history), avoid division by zero
         # Return 0.0 utilization (safe default)
-        return float(current_count) / p95 if p95 > 0 else 0.0
+        return float(current_count) / percentile_95 if percentile_95 > 0 else 0.0
 
 
 class DynamicPositionSizer:
@@ -74,7 +77,7 @@ class DynamicPositionSizer:
         base_kelly: float = 0.39,
         target_percentile: int = 95,
         max_multiplier: float = 2.0,
-    ):
+    ) -> None:
         self.base_kelly = base_kelly
         self.target_percentile = target_percentile
         self.max_multiplier = max_multiplier
@@ -128,12 +131,15 @@ class DynamicPositionSizer:
 class OverflowProtection:
     """Safeguards against excessive total portfolio exposure."""
 
-    def __init__(self, max_total_exposure: float = 1.0):
+    def __init__(self, max_total_exposure: float = 1.0) -> None:
         self.max_total_exposure = max_total_exposure
 
     def apply_limits(
-        self, new_trades: List[dict], current_exposure: float, capital: float
-    ) -> List[dict]:
+        self,
+        new_trades: list[dict[str, object]],
+        current_exposure: float,
+        capital: float,
+    ) -> list[dict[str, object]]:
         """
         Adjusts proposed trade sizes if total exposure exceeds limit.
 

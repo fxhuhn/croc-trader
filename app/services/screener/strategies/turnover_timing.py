@@ -206,8 +206,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         setup_date: pd.Timestamp,
         indices_map: dict[str, list[str]],
     ) -> list[TurnoverCandidate]:
-        """
-        Identifies potential trading candidates across all indices.
+        """Identifies potential trading candidates across all indices.
 
         Uses vectorized Pandas operations to rank by turnover and filter by trend.
         """
@@ -216,36 +215,74 @@ class TurnoverTimingStrategy(BaseStrategy):
         lows = data_frames["low"].ffill()
         volumes = data_frames["volume"].fillna(0)
 
-        # Slice inputs for calculation window (Step-down: internal helpers)
+        # Slice inputs for calculation window
         required_window = self.configuration.sma_window
         start_location = max(0, closes.index.get_loc(setup_date) - required_window)
+        end_location = closes.index.get_loc(setup_date) + 1
 
-        closes_slice = closes.iloc[
-            start_location : closes.index.get_loc(setup_date) + 1
-        ]
-        highs_slice = highs.iloc[start_location : highs.index.get_loc(setup_date) + 1]
-        lows_slice = lows.iloc[start_location : lows.index.get_loc(setup_date) + 1]
-        volumes_slice = volumes.iloc[
-            start_location : volumes.index.get_loc(setup_date) + 1
-        ]
+        closes_slice = closes.iloc[start_location:end_location]
+        highs_slice = highs.iloc[start_location:end_location]
+        lows_slice = lows.iloc[start_location:end_location]
+        volumes_slice = volumes.iloc[start_location:end_location]
 
         # Calculate Indicators (Vectorized)
-        turnover_slice = closes_slice * volumes_slice
-        sma_turnover_20 = indicators.calculate_sma(turnover_slice, 20)
-        sma_price_150 = indicators.calculate_sma(closes_slice, 150)
-        atr_series = indicators.calculate_atr(
-            highs_slice, lows_slice, closes_slice, self.configuration.atr_window
+        indicators_dict = self._calculate_indicators_slice(
+            closes_slice, highs_slice, lows_slice, volumes_slice
         )
 
         try:
             current_close = closes.loc[setup_date]
-            current_sma_price = sma_price_150.loc[setup_date]
-            current_sma_turnover = sma_turnover_20.loc[setup_date]
-            current_atr = atr_series.loc[setup_date]
-        except KeyError:
+            current_sma_price = indicators_dict["sma_price"].loc[setup_date]
+            current_sma_turnover = indicators_dict["sma_turnover"].loc[setup_date]
+            current_atr = indicators_dict["atr"].loc[setup_date]
+        except KeyError as missing_data_error:
+            logger.warning(
+                "[%s] Setup date missing from indicators: %s",
+                self.name,
+                missing_data_error,
+            )
             return []
 
-        candidates: list[TurnoverCandidate] = []
+        return self._rank_and_filter_candidates(
+            closes,
+            indices_map,
+            current_close,
+            current_sma_price,
+            current_sma_turnover,
+            current_atr,
+        )
+
+    def _calculate_indicators_slice(
+        self,
+        closes: pd.DataFrame,
+        highs: pd.DataFrame,
+        lows: pd.DataFrame,
+        volumes: pd.DataFrame,
+    ) -> dict[str, pd.DataFrame]:
+        """Calculates indicators on sliced data."""
+        turnover = closes * volumes
+        sma_turnover_20 = indicators.calculate_sma(turnover, 20)
+        sma_price_150 = indicators.calculate_sma(closes, 150)
+        atr_series = indicators.calculate_atr(
+            highs, lows, closes, self.configuration.atr_window
+        )
+        return {
+            "sma_turnover": sma_turnover_20,
+            "sma_price": sma_price_150,
+            "atr": atr_series,
+        }
+
+    def _rank_and_filter_candidates(
+        self,
+        closes: pd.DataFrame,
+        indices_map: dict[str, list[str]],
+        current_close: pd.Series,
+        current_sma_price: pd.Series,
+        current_sma_turnover: pd.Series,
+        current_atr: pd.Series,
+    ) -> list[TurnoverCandidate]:
+        """Ranks and filters candidates based on turnover and trend metrics."""
+        candidates = []
         symbol_filter = SymbolFilter()
 
         for index_name, symbols_in_index in indices_map.items():
@@ -283,17 +320,22 @@ class TurnoverTimingStrategy(BaseStrategy):
                 "close > sma_price and atr > 0"
             ).head(4)
 
-            for symbol, row in final_selection.iterrows():
-                candidates.append(
-                    {
-                        "symbol": str(symbol),
-                        "close": float(row["close"]),
-                        "sma_price": float(row["sma_price"]),
-                        "sma_turnover": float(row["turnover_sma"]),
-                        "atr": float(row["atr"]),
-                        "indices": index_name,
-                    }
+            # Vectorized object creation
+            candidates.extend(
+                final_selection.reset_index()
+                .apply(
+                    lambda row: TurnoverCandidate(
+                        symbol=str(row["index"]),
+                        close=float(row["close"]),
+                        sma_price=float(row["sma_price"]),
+                        sma_turnover=float(row["turnover_sma"]),
+                        atr=float(row["atr"]),
+                        indices=index_name,
+                    ),
+                    axis=1,
                 )
+                .tolist()
+            )
 
         return candidates
 
@@ -303,8 +345,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         data_frames: dict[str, pd.DataFrame],
         setup_date: pd.Timestamp,
     ) -> int:
-        """
-        Deduplicates candidates and stores signals in the database.
+        """Deduplicates candidates and stores signals in the database.
 
         If a symbol is in multiple indices, their names are concatenated.
         """
@@ -327,51 +368,71 @@ class TurnoverTimingStrategy(BaseStrategy):
         unique_candidates = merged_candidates.values()
 
         for candidate in unique_candidates:
-            symbol = str(candidate["symbol"])
-            close_price = float(candidate["close"])
-            atr_value = float(candidate["atr"])
-
-            for factor in self.configuration.entry_factors:
-                strategy_name = f"{self.name}_{factor}"
-
-                # Calculate Limit Entry: Close - (Factor * ATR)
-                limit_price = round(close_price - (atr_value * factor), 2)
-
-                if self.trade_repository.exists(symbol, strategy_name, setup_date_str):
-                    continue
-
-                context: TurnoverSignalContext = {
-                    "setup_date": setup_date_str,
-                    "setup_close": close_price,
-                    "setup_candle_green": bool(
-                        close_price > data_frames["open"].loc[setup_date][symbol]
-                    ),
-                    "green_candle_count": (
-                        1
-                        if close_price > data_frames["open"].loc[setup_date][symbol]
-                        else 0
-                    ),
-                    "setup_sma_price": float(candidate["sma_price"]),
-                    "setup_turnover_sma": round(float(candidate["sma_turnover"]), 0),
-                    "setup_atr": round(atr_value, 2),
-                    "factor": factor,
-                    "indices": str(candidate["indices"]),
-                    "source": "screener",
-                    "date": setup_date_str,
-                }
-
-                self.trade_repository.create_trade(
-                    symbol=symbol,
-                    strategy=strategy_name,
-                    size=0,
-                    entry=limit_price,
-                    stop_loss=0.0,
-                    target=0.0,
-                    context=dict(context),
-                )
-                signal_count += 1
+            signal_count += self._store_turnover_signals_for_candidate(
+                candidate, data_frames, setup_date, setup_date_str
+            )
 
         return signal_count
+
+    def _store_turnover_signals_for_candidate(
+        self,
+        candidate: dict[str, object],
+        data_frames: dict[str, pd.DataFrame],
+        setup_date: pd.Timestamp,
+        setup_date_str: str,
+    ) -> int:
+        """Stores entry limit order signal variants for a candidate in database.
+
+        Args:
+            candidate: Aggregated turnover candidate data.
+            data_frames: Universe daily dataframes.
+            setup_date: Setup timestamp.
+            setup_date_str: Setup ISO date string.
+
+        Returns:
+            int: Number of signals created.
+        """
+        symbol = str(candidate["symbol"])
+        close_price = float(candidate["close"])
+        atr_value = float(candidate["atr"])
+        created_signals = 0
+
+        for factor in self.configuration.entry_factors:
+            strategy_name = f"{self.name}_{factor}"
+
+            # Calculate Limit Entry: Close - (Factor * ATR)
+            limit_price = round(close_price - (atr_value * factor), 2)
+
+            if self.trade_repository.exists(symbol, strategy_name, setup_date_str):
+                continue
+
+            is_green = bool(close_price > data_frames["open"].loc[setup_date][symbol])
+            context: TurnoverSignalContext = {
+                "setup_date": setup_date_str,
+                "setup_close": close_price,
+                "setup_candle_green": is_green,
+                "green_candle_count": 1 if is_green else 0,
+                "setup_sma_price": float(candidate["sma_price"]),
+                "setup_turnover_sma": round(float(candidate["sma_turnover"]), 0),
+                "setup_atr": round(atr_value, 2),
+                "factor": factor,
+                "indices": str(candidate["indices"]),
+                "source": "screener",
+                "date": setup_date_str,
+            }
+
+            self.trade_repository.create_trade(
+                symbol=symbol,
+                strategy=strategy_name,
+                size=0,
+                entry=limit_price,
+                stop_loss=0.0,
+                target=0.0,
+                context=dict(context),
+            )
+            created_signals += 1
+
+        return created_signals
 
     def _report_signals_to_telegram(
         self, candidates: list[dict[str, object]], setup_date: pd.Timestamp
@@ -410,16 +471,21 @@ class TurnoverTimingStrategy(BaseStrategy):
     def analyze_single_symbol(self, symbol: str) -> dict[str, object]:
         """
         Calculates indicators for a single symbol for debugging purposes.
-
-        Note:
-            Ranking (Top 20 / Top 4) cannot be fully verified in isolation
-            as it depends on other stocks. This checks absolute criteria only.
+        This represents the Imperative Shell: it fetches data and delegates to the Functional Core.
         """
         days_lookback = 400
         dataframe = self.data_provider.get_symbol_history(symbol, days=days_lookback)
         if dataframe.empty:
             return {"symbol": symbol, "error": "No data found"}
 
+        return self._compute_single_symbol_analysis(symbol, dataframe)
+
+    def _compute_single_symbol_analysis(
+        self, symbol: str, dataframe: pd.DataFrame
+    ) -> dict[str, object]:
+        """
+        Functional Core: Computes the indicators for the analysis output without side effects.
+        """
         try:
             closes = pd.Series(dataframe["close"].values, index=dataframe["date"])
             highs = pd.Series(dataframe["high"].values, index=dataframe["date"])

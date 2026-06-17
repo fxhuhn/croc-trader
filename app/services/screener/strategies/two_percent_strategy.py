@@ -145,16 +145,16 @@ class TwoPercentStrategy(BaseStrategy):
 
         # 1. Fast date lookup via vectorization
         if "date" in history.columns:
-            date_col = pd.to_datetime(history["date"]).dt.date
+            date_column = pd.to_datetime(history["date"]).dt.date
         else:
             if not isinstance(history.index, pd.DatetimeIndex):
                 logger.error("[%s] Missing DatetimeIndex or 'date' column.", self.name)
                 return None
-            date_col = history.index.to_series().dt.date
+            date_column = history.index.to_series().dt.date
 
         # 2. Filter history strictly up to analysis_timestamp
         analysis_date = analysis_timestamp.date()
-        mask = date_col <= analysis_date
+        mask = date_column <= analysis_date
         filtered = history.loc[mask]
 
         if filtered.empty:
@@ -174,28 +174,44 @@ class TwoPercentStrategy(BaseStrategy):
             return last_candle  # Friday is intrinsically the end of the week.
 
         if weekday < 4:
-            # For Mon-Thu, it is only the end of the week if all subsequent days
-            # up to Friday are missing from the FULL database history.
-            friday = candle_date + datetime.timedelta(days=4 - weekday)
-
-            # Check for any future days in the same week using standard python set membership
-            future_days = [
-                candle_date + datetime.timedelta(days=i)
-                for i in range(1, 4 - weekday + 1)
-            ]
-            existing_dates = set(date_col)
-            for future_day in future_days:
-                if future_day in existing_dates:
-                    # A subsequent day in this week exists in the DB.
-                    # Therefore, this candle is NOT the end of the week.
-                    return None
-
-            # Ensure those missing days have actually happened in real time
-            real_today = self._get_real_today()
-            if friday <= real_today:
+            if self._is_fallback_weekday_end_of_week(
+                candle_date, weekday, set(date_column)
+            ):
                 return last_candle
 
         return None
+
+    def _is_fallback_weekday_end_of_week(
+        self,
+        candle_date: datetime.date,
+        weekday: int,
+        existing_dates: set[datetime.date],
+    ) -> bool:
+        """Helper to determine if a non-Friday weekday is the weekly EOD due to holiday.
+
+        Args:
+            candle_date: Date of the current candle.
+            weekday: Weekday index (0=Monday, etc.).
+            existing_dates: Set of all trading dates in the history.
+
+        Returns:
+            bool: True if this is the last trading day of the week.
+        """
+        friday = candle_date + datetime.timedelta(days=4 - weekday)
+
+        # Check for any future days in the same week using standard python set membership
+        future_days = [
+            candle_date + datetime.timedelta(days=i) for i in range(1, 4 - weekday + 1)
+        ]
+        for future_day in future_days:
+            if future_day in existing_dates:
+                # A subsequent day in this week exists in the DB.
+                # Therefore, this candle is NOT the end of the week.
+                return False
+
+        # Ensure those missing days have actually happened in real time
+        real_today = self._get_real_today()
+        return friday < real_today
 
     def _extract_timestamp(self, candle: pd.Series) -> pd.Timestamp:
         """Extracts the timestamp from a candle series."""

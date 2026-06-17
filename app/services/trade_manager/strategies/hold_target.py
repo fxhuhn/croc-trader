@@ -1,11 +1,12 @@
 import logging
+from decimal import Decimal
 from typing import override, final
 
 import pandas as pd
 
+from ..types import TradeTransition
 from ....types import EntryReason, ExitReason, TradeData
 from ....models import TradeParams, Order, OrderLeg
-from ....database.repositories.trade import TradeRepository
 from .abstract import BaseTradeStrategy
 from ....const import Strategies
 
@@ -27,7 +28,6 @@ class HoldTargetStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
-        repository: TradeRepository | None = None,
     ) -> TradeParams:
         """
         Calculates current strategy parameters for display/logging.
@@ -35,7 +35,6 @@ class HoldTargetStrategy(BaseTradeStrategy):
         Args:
             trade: The trade data structure.
             dataframe_history: Historical price data (unused here).
-            repository: The trade repository (unused here).
 
         Returns:
             TradeParams: Container with stop loss, target, and extras.
@@ -56,8 +55,8 @@ class HoldTargetStrategy(BaseTradeStrategy):
         trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        active_symbols: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Checks for a breakout entry (Stop Buy) and validates the stop loss.
 
@@ -65,10 +64,10 @@ class HoldTargetStrategy(BaseTradeStrategy):
             trade: The trade data from the database.
             candle: The current price candle.
             dataframe_history: Historical price data.
-            repository: The trade repository for database updates.
+            active_symbols: Currently active symbols set.
 
         Returns:
-            str | None: A status message if filled or invalidated, otherwise None.
+            TradeTransition | None: A transition if filled or invalidated, otherwise None.
         """
         entry_price = float(trade.get("entry_price") or 0.0)
         stop_loss = float(trade.get("current_stop_loss") or 0.0)
@@ -80,6 +79,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         date_string = str(candle["date"])
 
         # 1. Signal Date Validation
+        # Signal date is used to check entry timing
         signal_date = self._get_signal_date(trade)
         if signal_date:
             # Entry must occur STRICTLY AFTER the signal date
@@ -88,7 +88,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
 
             # Expiration Check (5 Calendar Days)
             if (current_date_obj.date() - signal_date.date()).days > 5:
-                return self._expire_trade(trade, repository, date_string)
+                return self._expire_trade(trade, date_string)
 
         # 2. Market Data
         high_price = float(candle["high"])
@@ -112,17 +112,13 @@ class HoldTargetStrategy(BaseTradeStrategy):
             if is_stop_hit:
                 # Day 1 Turnaround: Filled then Stopped on same day
                 return self._execute_immediate_loss(
-                    trade, repository, fill_price, reason, stop_loss, date_string
+                    trade, fill_price, reason, stop_loss, date_string
                 )
-            return self._execute_activation(
-                trade, repository, fill_price, reason, date_string
-            )
+            return self._execute_activation(trade, fill_price, reason, date_string)
 
         if is_stop_hit:
             # Setup Invalidated (Stop hit before Entry)
-            return self._invalidate_trade(
-                trade, repository, low_price, stop_loss, date_string
-            )
+            return self._invalidate_trade(trade, low_price, stop_loss, date_string)
 
         return None
 
@@ -131,18 +127,18 @@ class HoldTargetStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        latest_leaders: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Manages exits for active trades: Stop Loss vs. Target.
 
         Args:
             trade: The active trade data.
             dataframe_history: Price history (includes current candle).
-            repository: The trade repository.
+            latest_leaders: Latest leaders symbols set.
 
         Returns:
-            str | None: Status message if closed, otherwise None.
+            TradeTransition | None: Computed transition if closed, otherwise None.
         """
         if dataframe_history is None or dataframe_history.empty:
             return None
@@ -175,7 +171,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 exit_price = open_price  # Gap down execution
 
             return self._close_trade(
-                trade, repository, exit_price, ExitReason.STOP_LOSS, date_string
+                trade, exit_price, ExitReason.STOP_LOSS, date_string
             )
 
         # 5. Target Logic
@@ -185,7 +181,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 exit_price = open_price  # Gap up execution (Benefit)
 
             return self._close_trade(
-                trade, repository, exit_price, ExitReason.TARGET_HIT, date_string
+                trade, exit_price, ExitReason.TARGET_HIT, date_string
             )
 
         return None
@@ -196,7 +192,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
-        repository: TradeRepository,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
         """
         Generates an Order object for IBKR export.
@@ -205,7 +201,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
             trade: The trade data.
             dataframe_history: Price history.
             budget: Total available budget.
-            repository: Trade repository.
+            created_symbols: Set of symbols with CREATED status.
 
         Returns:
             Order | None: The generated bracket order or None.
@@ -223,7 +219,14 @@ class HoldTargetStrategy(BaseTradeStrategy):
         if database_size > 0:
             quantity = int(database_size)
         else:
-            risk_amount = float(trade.get("risk_amount") or 100.0)
+            from ....config import settings
+
+            risk_amount = float(
+                self._get_context_value(trade, "risk_amount")
+                or trade.get("risk_amount")
+                or settings.app.portfolio.get_risk_amount("hold_target")
+                or 100.0
+            )
             quantity = self._calculate_position_size(
                 entry_price, stop_loss, risk_amount
             )
@@ -238,7 +241,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         entry_leg = OrderLeg(
             action="BUY",
             type="STP",
-            price=entry_price,
+            price=Decimal(str(entry_price)),
             quantity=quantity,
             time_in_force="DAY",
         )
@@ -251,7 +254,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 OrderLeg(
                     action="SELL",
                     type="STP",
-                    price=stop_loss,
+                    price=Decimal(str(stop_loss)),
                     quantity=quantity,
                     time_in_force="GTC",
                 )
@@ -267,7 +270,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 OrderLeg(
                     action="SELL",
                     type="LMT",
-                    price=target_price,
+                    price=Decimal(str(target_price)),
                     quantity=quantity,
                     time_in_force="GTC",
                 )

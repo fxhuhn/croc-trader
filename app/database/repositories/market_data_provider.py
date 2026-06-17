@@ -1,14 +1,14 @@
 import logging
 from functools import lru_cache
 
-import pandas as pd
+import pandas
 
 from ..session import DatabaseSession  # NEU: Zentrale Session
 
 logger = logging.getLogger(__name__)
 
 # Type Alias für die Rückgabestruktur (Open, High, Low, Close, Volume als DataFrames)
-type MarketDataDict = dict[str, pd.DataFrame]
+type MarketDataDict = dict[str, pandas.DataFrame]
 
 
 class MarketDataProvider:
@@ -28,26 +28,28 @@ class MarketDataProvider:
         Loads ALL market data into memory for high-speed access.
         Critical for backtesting performance.
         """
-        logger.info(f"[MarketData] Preloading ALL data into memory (Lines: {days}d)...")
+        logger.info(
+            "[MarketData] Preloading ALL data into memory (Lines: %dd)...", days
+        )
         # Reuse existing logic but store it
         # We assume universe is all symbols in DB or we fetch all.
         try:
-            start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime(
-                "%Y-%m-%d"
-            )
-            with self.session.connect() as conn:
+            start_date = (
+                pandas.Timestamp.now() - pandas.Timedelta(days=days)
+            ).strftime("%Y-%m-%d")
+            with self.session.connect() as connection:
                 # Fetch EVERYTHING
                 query = "SELECT date, symbol, open, high, low, close, volume FROM market_prices WHERE date >= ? AND timeframe='1D' ORDER BY date ASC"
-                df = pd.read_sql_query(query, conn, params=(start_date,))
+                df = pandas.read_sql_query(query, connection, params=(start_date,))
 
             if not df.empty:
                 self._in_memory_cache = self._pivot_data(df)
                 self._cache_lookback = days
-                logger.info(f"[MarketData] Cache Warm! Loaded {len(df)} rows.")
+                logger.info("[MarketData] Cache Warm! Loaded %d rows.", len(df))
             else:
                 logger.warning("[MarketData] Preload returned empty.")
-        except Exception as e:
-            logger.error(f"[MarketData] Preload Failed: {e}")
+        except Exception as error:
+            logger.error("[MarketData] Preload Failed: %s", error)
 
     @lru_cache(maxsize=4)
     def get_all_daily_data(self, days: int) -> MarketDataDict | None:
@@ -61,13 +63,15 @@ class MarketDataProvider:
         if self._in_memory_cache and days <= self._cache_lookback:
             return self._in_memory_cache
 
-        start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
-        logger.info(f"[MarketData] Lade Daten aus DB (Lookback: {days}d)...")
+        start_date = (pandas.Timestamp.now() - pandas.Timedelta(days=days)).strftime(
+            "%Y-%m-%d"
+        )
+        logger.info("[MarketData] Lade Daten aus DB (Lookback: %dd)...", days)
 
         try:
             # NEU: Nutzung der zentralen Session
             # yieldet eine konfigurierte Connection (WAL-Mode aktiv)
-            with self.session.connect() as conn:
+            with self.session.connect() as connection:
                 # Optimierte Query auf '1D' (entspricht neuem Schema)
                 query = """
                     SELECT date, symbol, open, high, low, close, volume
@@ -76,9 +80,9 @@ class MarketDataProvider:
                     ORDER BY date ASC
                 """
                 # Pandas kann direkt mit dem sqlite3 Connection-Objekt arbeiten
-                df = pd.read_sql_query(query, conn, params=(start_date,))
-        except Exception as e:
-            logger.error(f"[MarketData] DB Fehler: {e}")
+                df = pandas.read_sql_query(query, connection, params=(start_date,))
+        except Exception as error:
+            logger.error("[MarketData] DB Fehler: %s", error)
             return None
 
         if df.empty:
@@ -102,23 +106,27 @@ class MarketDataProvider:
             # Filter the pivoted cache for requested symbols
             filtered = {}
             for col, df in self._in_memory_cache.items():
-                available_cols = [s for s in symbols if s in df.columns]
+                available_cols = [symbol for symbol in symbols if symbol in df.columns]
                 if available_cols:
                     filtered[col] = df[available_cols]  # Slice columns
                 else:
-                    filtered[col] = pd.DataFrame(index=df.index)
+                    filtered[col] = pandas.DataFrame(index=df.index)
             return filtered
 
-        start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime("%Y-%m-%d")
+        start_date = (pandas.Timestamp.now() - pandas.Timedelta(days=days)).strftime(
+            "%Y-%m-%d"
+        )
         logger.info(
-            f"[MarketData] Lade Universe-Daten ({len(symbols)} Symbole, {days}d)..."
+            "[MarketData] Lade Universe-Daten (%d Symbole, %dd)...",
+            len(symbols),
+            days,
         )
 
         all_dfs = []
         chunk_size = 500  # Safe limit for SQLite variables
 
         try:
-            with self.session.connect() as conn:
+            with self.session.connect() as connection:
                 for i in range(0, len(symbols), chunk_size):
                     chunk = symbols[i : i + chunk_size]
                     placeholders = ",".join("?" for _ in chunk)
@@ -132,25 +140,25 @@ class MarketDataProvider:
                     """
                     # Params: symbols + start_date
                     params = tuple(chunk) + (start_date,)
-                    chunk_df = pd.read_sql_query(query, conn, params=params)
+                    chunk_df = pandas.read_sql_query(query, connection, params=params)
                     if not chunk_df.empty:
                         all_dfs.append(chunk_df)
 
-        except Exception as e:
-            logger.error(f"[MarketData] Universe Fetch Fehler: {e}")
+        except Exception as error:
+            logger.error("[MarketData] Universe Fetch Fehler: %s", error)
             return None
 
         if not all_dfs:
             logger.warning("[MarketData] Keine Daten für Universe gefunden.")
             return None
 
-        full_df = pd.concat(all_dfs, ignore_index=True)
+        full_df = pandas.concat(all_dfs, ignore_index=True)
         return self._pivot_data(full_df)
 
-    def _pivot_data(self, df: pd.DataFrame) -> MarketDataDict:
+    def _pivot_data(self, df: pandas.DataFrame) -> MarketDataDict:
         """Helper to pivot raw dataframe into MarketDataDict structure."""
         # Datentyp-Konvertierung
-        df["date"] = pd.to_datetime(df["date"])
+        df["date"] = pandas.to_datetime(df["date"])
 
         # Pivotisierung für vektorisierte Strategien
         # Erzeugt ein Dict mit DataFrames (Index=Date, Columns=Symbols)
@@ -168,7 +176,7 @@ class MarketDataProvider:
         self._in_memory_cache = None
         logger.info("[MarketData] Cache geleert.")
 
-    def get_symbol_history(self, symbol: str, days: int = 400) -> pd.DataFrame:
+    def get_symbol_history(self, symbol: str, days: int = 400) -> pandas.DataFrame:
         """Lädt OHLCV Historie für ein Symbol ohne Pivot. Nutzt Cache wenn möglich."""
         # 1. Try Memory Cache
         if self._in_memory_cache and days <= self._cache_lookback:
@@ -176,7 +184,7 @@ class MarketDataProvider:
             try:
                 data = {}
                 # Start date filter
-                cutoff = pd.Timestamp.now() - pd.Timedelta(days=days)
+                cutoff = pandas.Timestamp.now() - pandas.Timedelta(days=days)
 
                 has_data = False
                 for col in ["open", "high", "low", "close", "volume"]:
@@ -186,81 +194,90 @@ class MarketDataProvider:
                         has_data = True
 
                 if has_data:
-                    df = pd.DataFrame(data)
+                    df = pandas.DataFrame(data)
                     df.index.name = "date"
                     return df.reset_index()
-            except Exception as e:
-                logger.warning(f"Failed to extract {symbol} from cache: {e}")
+            except Exception as error:
+                logger.warning("Failed to extract %s from cache: %s", symbol, error)
                 # Fallback to DB
 
         # Da BaseRepository SQL erlaubt (Layer-Grenze), ist das hier ok.
-        with self.session.connect() as conn:
+        with self.session.connect() as connection:
             # end_date not used in query
-            start_date = (pd.Timestamp.now() - pd.Timedelta(days=days)).strftime(
-                "%Y-%m-%d"
-            )
+            start_date = (
+                pandas.Timestamp.now() - pandas.Timedelta(days=days)
+            ).strftime("%Y-%m-%d")
 
-            df = pd.read_sql_query(
+            df = pandas.read_sql_query(
                 "SELECT date, open, high, low, close, volume FROM market_prices WHERE symbol = ? AND date >= ? AND timeframe='1D' ORDER BY date ASC",
-                conn,
+                connection,
                 params=(symbol, start_date),
             )
             if not df.empty:
-                df["date"] = pd.to_datetime(df["date"])
+                df["date"] = pandas.to_datetime(df["date"])
             return df
 
     def get_batch_history(
-        self, symbols: list, days: int = 100, end_date: str = None
-    ) -> dict:
+        self,
+        symbols: list[str],
+        days: int = 100,
+        end_date: str | None = None,
+    ) -> dict[str, pandas.DataFrame]:
         """Lädt Historie für mehrere Symbole."""
         if not symbols:
             return {}
 
-        with self.session.connect() as conn:
+        with self.session.connect() as connection:
             if not end_date:
-                end_date = pd.Timestamp.now().strftime("%Y-%m-%d")
-            start_date = (pd.Timestamp(end_date) - pd.Timedelta(days=days)).strftime(
-                "%Y-%m-%d"
-            )
+                end_date = pandas.Timestamp.now().strftime("%Y-%m-%d")
+            start_date = (
+                pandas.Timestamp(end_date) - pandas.Timedelta(days=days)
+            ).strftime("%Y-%m-%d")
 
             placeholders = ",".join("?" for _ in symbols)
             sql = f"""SELECT symbol, date, open, high, low, close, volume FROM market_prices 
                       WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ? AND timeframe='1D' ORDER BY date ASC"""
 
-            df = pd.read_sql(sql, conn, params=symbols + [start_date, end_date])
+            df = pandas.read_sql(
+                sql, connection, params=symbols + [start_date, end_date]
+            )
 
-        res = {}
+        result = {}
         if not df.empty:
-            df["date"] = pd.to_datetime(df["date"])
-            for sym, grp in df.groupby("symbol"):
-                res[sym] = grp
-        return res
+            df["date"] = pandas.to_datetime(df["date"])
+            for symbol, group in df.groupby("symbol"):
+                result[symbol] = group
+        return result
 
-    def get_available_dates(self, start_date: str, end_date: str) -> list[pd.Timestamp]:
+    def get_available_dates(
+        self, start_date: str, end_date: str
+    ) -> list[pandas.Timestamp]:
         """Holt eine Liste aller verfügbaren Handelstage im Zeitraum (Fallback für fehlendes SPY)."""
-        with self.session.connect() as conn:
+        with self.session.connect() as connection:
             query = """
                 SELECT DISTINCT date 
                 FROM market_prices 
                 WHERE date >= ? AND date <= ? AND timeframe='1D' 
                 ORDER BY date ASC
             """
-            rows = conn.execute(query, (start_date, end_date)).fetchall()
+            rows = connection.execute(query, (start_date, end_date)).fetchall()
 
-        return [pd.Timestamp(r[0]) for r in rows]
+        return [pandas.Timestamp(row[0]) for row in rows]
 
     def get_latest_date(self) -> str | None:
-        """
-        Gibt das Datum des letzten verfügbaren Datensatzes zurück (Timeframe '1D').
+        """Gibt das Datum des letzten verfügbaren Datensatzes zurück (Timeframe '1D').
+
         Dient als 'Global Analysis Date' für den Screener.
         """
         try:
-            with self.session.connect() as conn:
+            with self.session.connect() as connection:
                 query = "SELECT MAX(date) FROM market_prices WHERE timeframe='1D'"
-                row = conn.execute(query).fetchone()
+                row = connection.execute(query).fetchone()
                 if row and row[0]:
                     # Schneide Zeitstempel ab falls vorhanden "2026-02-04 00:00:00" -> "2026-02-04"
                     return str(row[0]).split(" ")[0]
-        except Exception as e:
-            logger.error(f"[MarketData] Konnte aktuellstes Datum nicht ermitteln: {e}")
+        except Exception as error:
+            logger.error(
+                "[MarketData] Konnte aktuellstes Datum nicht ermitteln: %s", error
+            )
         return None

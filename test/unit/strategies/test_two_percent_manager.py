@@ -149,11 +149,69 @@ def test_manage_active_friday_time_stop(strategy, mock_trade_repo):
 
 
 def test_generate_orders(strategy, mock_trade_repo):
-    """Tests order generation logic."""
-    trade = {"symbol": "AAPL", "entry_price": 100.0}
+    """Tests order generation logic for CREATED status."""
+    trade = {"symbol": "AAPL", "entry_price": 100.0, "status": "CREATED"}
 
     order = strategy.generate_orders(trade, pd.DataFrame(), 2000.0, mock_trade_repo)
     assert order is not None
     assert order.mode == "Entry"
     assert order.entry.price == 100.0
     assert order.quantity == 20
+
+
+def test_generate_orders_active_no_exit(strategy, mock_trade_repo):
+    """Tests that no orders are generated for active trades on regular days if entry date is missing."""
+    trade = {
+        "symbol": "AAPL",
+        "status": "ACTIVE",
+        "current_size": 20,
+        "entry_price": 100.0,
+    }
+    df_hist = pd.DataFrame([{"date": pd.Timestamp("2026-02-17")}])
+
+    with patch.object(strategy, "_is_end_of_trading_week", return_value=False):
+        order = strategy.generate_orders(trade, df_hist, 2000.0, mock_trade_repo)
+        assert order is None
+
+
+def test_generate_orders_active_limit_sell(strategy, mock_trade_repo):
+    """Tests that a limit sell order is generated for active trades when target is active."""
+    trade = {
+        "symbol": "AAPL",
+        "status": "ACTIVE",
+        "current_size": 20,
+        "entry_price": 100.0,
+        "entry_date": "2026-02-16",
+        "current_target": 102.0,
+    }
+    df_hist = pd.DataFrame([{"date": pd.Timestamp("2026-02-16")}])
+
+    with patch.object(strategy, "_is_end_of_trading_week", return_value=False):
+        order = strategy.generate_orders(trade, df_hist, 2000.0, mock_trade_repo)
+        assert order is not None
+        assert order.mode == "Exit"
+        assert len(order.exits) == 1
+        assert order.exits[0].action == "SELL"
+        assert order.exits[0].type == "LMT"
+        assert order.exits[0].price == 102.0
+        assert order.exits[0].quantity == 20
+
+
+def test_generate_orders_active_friday_time_stop(strategy, mock_trade_repo):
+    """Tests exit order generation for active trades prior to weekend."""
+    trade = {
+        "symbol": "AAPL",
+        "status": "ACTIVE",
+        "current_size": 20,
+        "entry_price": 100.0,
+    }
+    df_hist = pd.DataFrame([{"date": pd.Timestamp("2026-02-19")}])
+
+    with patch.object(strategy, "_is_end_of_trading_week", return_value=True):
+        order = strategy.generate_orders(trade, df_hist, 2000.0, mock_trade_repo)
+        assert order is not None
+        assert order.mode == "Exit"
+        assert len(order.exits) == 1
+        assert order.exits[0].action == "SELL"
+        assert order.exits[0].type == "MOC"
+        assert order.exits[0].quantity == 20

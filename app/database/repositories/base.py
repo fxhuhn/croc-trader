@@ -22,57 +22,57 @@ class BaseRepository:
         self,
         sql: str,
         params: tuple = (),
-        conn: sqlite3.Connection | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> sqlite3.Cursor:
         """Executes a SQL statement.
 
         Args:
             sql: The SQL query to execute.
             params: Query parameters for parameterized queries.
-            conn: Optional existing connection for transactional use.
+            connection: Optional existing connection for transactional use.
         """
 
-        if conn:
-            return conn.execute(sql, params)
+        if connection:
+            return connection.execute(sql, params)
 
-        with self.session.connect() as new_conn:
-            return new_conn.execute(sql, params)
+        with self.session.connect() as new_connection:
+            return new_connection.execute(sql, params)
 
     def fetch_one(
         self,
         sql: str,
         params: tuple = (),
-        conn: sqlite3.Connection | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> sqlite3.Row | None:
         """Fetches a single row from the database."""
 
-        if conn:
-            return conn.execute(sql, params).fetchone()
+        if connection:
+            return connection.execute(sql, params).fetchone()
 
-        with self.session.connect() as new_conn:
-            return new_conn.execute(sql, params).fetchone()
+        with self.session.connect() as new_connection:
+            return new_connection.execute(sql, params).fetchone()
 
     def fetch_all(
         self,
         sql: str,
         params: tuple = (),
-        conn: sqlite3.Connection | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> list[sqlite3.Row]:
         """Fetches all matching rows from the database."""
 
-        if conn:
-            return conn.execute(sql, params).fetchall()
+        if connection:
+            return connection.execute(sql, params).fetchall()
 
-        with self.session.connect() as new_conn:
-            return new_conn.execute(sql, params).fetchall()
+        with self.session.connect() as new_connection:
+            return new_connection.execute(sql, params).fetchall()
 
-    def fetch_val(
+    def fetch_value(
         self,
         sql: str,
         params: tuple = (),
-        conn: sqlite3.Connection | None = None,
+        connection: sqlite3.Connection | None = None,
     ) -> int | float | str | None:
         """Fetches a single scalar value (e.g., COUNT(*))."""
 
-        row = self.fetch_one(sql, params, conn)
+        row = self.fetch_one(sql, params, connection)
         return row[0] if row else None

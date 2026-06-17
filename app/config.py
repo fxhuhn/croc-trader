@@ -99,6 +99,52 @@ class TelegramConfig:
     enabled: bool = False
 
 
+@dataclass(frozen=True)
+class PortfolioStrategyConfig:
+    """Sizing parameters for a single strategy."""
+
+    budget: float = 0.0
+    risk_amount: float = 0.0
+
+
+@dataclass(frozen=True)
+class PortfolioConfig:
+    """Central sizing configuration for all strategies."""
+
+    dip_buyer: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(budget=2500.0)
+    )
+    turnover_timing: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(budget=2500.0)
+    )
+    two_percent: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(budget=2000.0)
+    )
+    ndx_momentum: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(budget=10000.0)
+    )
+    hold_target: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(risk_amount=100.0)
+    )
+    split_target: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(risk_amount=100.0)
+    )
+
+    def get_budget(self, strategy_key: str) -> float:
+        """Returns the budget for a strategy. 0.0 if not budget-based."""
+        normalized_key = strategy_key.replace(".", "_")
+        if normalized_key.startswith("turnover_timing"):
+            normalized_key = "turnover_timing"
+        config = getattr(self, normalized_key, None)
+        return config.budget if config else 0.0
+
+    def get_risk_amount(self, strategy_key: str) -> float:
+        """Returns the risk amount for a strategy. 0.0 if not risk-based."""
+        normalized_key = strategy_key.replace(".", "_")
+        config = getattr(self, normalized_key, None)
+        return config.risk_amount if config else 0.0
+
+
 # ---------------------------------------------------------
 # Teil 2: Die Haupt-Applikations-Konfiguration
 # ---------------------------------------------------------
@@ -114,11 +160,12 @@ class AppConfig:
     worker: WebhookWorkerConfig = field(default_factory=WebhookWorkerConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
+    portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppConfig":
-        """
-        Wandelt ein Dictionary (aus YAML) rekursiv in Dataclasses um.
+        """Wandelt ein Dictionary (aus YAML) rekursiv in Dataclasses um.
+
         Führt Smart-Merging durch, um fehlende Keys in alten Config-Files zu ergänzen.
         """
         # 1. Datenbank Config mit Merge-Logik
@@ -168,6 +215,66 @@ class AppConfig:
             TelegramConfig(**telegram_data) if telegram_data else TelegramConfig()
         )
 
+        portfolio_data = data.get("portfolio", {})
+        if portfolio_data and "strategies" in portfolio_data:
+            strategies_data = portfolio_data["strategies"]
+            strat_configs = {}
+            if isinstance(strategies_data, dict):
+                for strat_name, strat_val in strategies_data.items():
+                    if isinstance(strat_val, dict):
+                        strat_configs[strat_name] = PortfolioStrategyConfig(
+                            budget=float(strat_val.get("budget") or 0.0),
+                            risk_amount=float(strat_val.get("risk_amount") or 0.0),
+                        )
+            elif isinstance(strategies_data, list):
+                for entry in strategies_data:
+                    if isinstance(entry, dict):
+                        for strat_name, strat_val in entry.items():
+                            budget_val = 0.0
+                            risk_val = 0.0
+                            if isinstance(strat_val, list):
+                                for prop in strat_val:
+                                    if isinstance(prop, dict):
+                                        if "quantity" in prop:
+                                            budget_val = float(prop["quantity"])
+                                        elif "budget" in prop:
+                                            budget_val = float(prop["budget"])
+                                        elif "risk_amount" in prop:
+                                            risk_val = float(prop["risk_amount"])
+                            elif isinstance(strat_val, dict):
+                                budget_val = float(
+                                    strat_val.get("budget")
+                                    or strat_val.get("quantity")
+                                    or 0.0
+                                )
+                                risk_val = float(strat_val.get("risk_amount") or 0.0)
+                            strat_configs[strat_name] = PortfolioStrategyConfig(
+                                budget=budget_val,
+                                risk_amount=risk_val,
+                            )
+
+            def get_strat_config(
+                name: str, default_budget: float = 0.0, default_risk: float = 0.0
+            ) -> PortfolioStrategyConfig:
+                if name in strat_configs:
+                    return strat_configs[name]
+                return PortfolioStrategyConfig(
+                    budget=default_budget, risk_amount=default_risk
+                )
+
+            portfolio_config = PortfolioConfig(
+                dip_buyer=get_strat_config("dip_buyer", default_budget=2500.0),
+                turnover_timing=get_strat_config(
+                    "turnover_timing", default_budget=2500.0
+                ),
+                two_percent=get_strat_config("two_percent", default_budget=2000.0),
+                ndx_momentum=get_strat_config("ndx_momentum", default_budget=10000.0),
+                hold_target=get_strat_config("hold_target", default_risk=100.0),
+                split_target=get_strat_config("split_target", default_risk=100.0),
+            )
+        else:
+            portfolio_config = PortfolioConfig()
+
         return cls(
             database=db_config,
             webserver=web_config,
@@ -175,6 +282,7 @@ class AppConfig:
             worker=worker_config,
             security=security_config,
             telegram=telegram_config,
+            portfolio=portfolio_config,
         )
 
 

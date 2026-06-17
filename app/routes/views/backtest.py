@@ -22,6 +22,13 @@ def view_backtest_dashboard() -> str:
     Returns:
         str: Rendered HTML dashboard template or error message.
     """
+    import warnings
+
+    warnings.warn(
+        "The Backtester module is deprecated. TradeManager is now the sole source of truth for OrderTypes, Limits, and Sizing.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     # 1. Configuration & Paths
     backtest_database_path = _get_backtest_database_path()
     market_database_path = _get_database_path("stocks")

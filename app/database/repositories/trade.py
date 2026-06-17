@@ -1,5 +1,6 @@
 import json
 import logging
+import sqlite3
 from enum import Enum
 from typing import Any
 
@@ -9,14 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 class TradeRepository(BaseRepository):
-    def init_schema(self):
+    def init_schema(self) -> None:
         """Erstellt das DB-Schema neu (Unified Table)."""
-        with self.session.connect() as conn:
-            # self.execute("DROP TABLE IF EXISTS active_trades", conn=conn)
-            # self.execute("DROP TABLE IF EXISTS trades_croc", conn=conn)
-            # self.execute("DROP TABLE IF EXISTS trades_dip_buyer", conn=conn)
-            # self.execute("DROP TABLE IF EXISTS trades", conn=conn)
-            # self.execute("DROP TABLE IF EXISTS trade_logs", conn=conn)
+        with self.session.connect() as connection:
+            # self.execute("DROP TABLE IF EXISTS active_trades", connection=connection)
+            # self.execute("DROP TABLE IF EXISTS trades_croc", connection=connection)
+            # self.execute("DROP TABLE IF EXISTS trades_dip_buyer", connection=connection)
+            # self.execute("DROP TABLE IF EXISTS trades", connection=connection)
+            # self.execute("DROP TABLE IF EXISTS trade_logs", connection=connection)
 
             self.execute(
                 """
@@ -55,16 +56,16 @@ class TradeRepository(BaseRepository):
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """,
-                conn=conn,
+                connection=connection,
             )
 
             self.execute(
                 "CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status)",
-                conn=conn,
+                connection=connection,
             )
             self.execute(
                 "CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol)",
-                conn=conn,
+                connection=connection,
             )
 
             self.execute(
@@ -80,36 +81,38 @@ class TradeRepository(BaseRepository):
                     FOREIGN KEY(trade_id) REFERENCES trades(id)
                 )
             """,
-                conn=conn,
+                connection=connection,
             )
 
-    def clear_trades(self):
+    def clear_trades(self) -> None:
         """Truncates the trades and trade_logs tables to restart a backtest run."""
-        with self.session.connect() as conn:
-            self.execute("DELETE FROM trade_logs", conn=conn)
-            self.execute("DELETE FROM trades", conn=conn)
-            conn.commit()
+        with self.session.connect() as connection:
+            self.execute("DELETE FROM trade_logs", connection=connection)
+            self.execute("DELETE FROM trades", connection=connection)
+            connection.commit()
             logger.info("Trade history cleared for new backtest run.")
 
-    def get_trade(self, trade_id: int, conn=None) -> dict[str, Any] | None:
+    def get_trade(
+        self,
+        trade_id: int,
+        connection: sqlite3.Connection | None = None,
+    ) -> dict[str, Any] | None:
         row = self.fetch_one(
-            "SELECT * FROM trades WHERE id = ?", (trade_id,), conn=conn
+            "SELECT * FROM trades WHERE id = ?", (trade_id,), connection=connection
         )
         return dict(row) if row else None
 
-    def get_active_trades(self) -> list[dict[str, Any]]:
+    def get_active_trades(self) -> list[dict[str, object]]:
         """Legacy Helper: Holt CREATED und ACTIVE."""
         rows = self.fetch_all(
             "SELECT * FROM trades WHERE status IN ('CREATED', 'ACTIVE')"
         )
-        return [dict(r) for r in rows]
+        return [dict(row) for row in rows]
 
     def get_by_status(
         self, status: str | Enum | list[str | Enum]
-    ) -> list[dict[str, Any]]:
-        """
-        Holt Trades basierend auf Status. Akzeptiert Enums oder Strings.
-        """
+    ) -> list[dict[str, object]]:
+        """Holt Trades basierend auf Status. Akzeptiert Enums oder Strings."""
         if isinstance(status, list):
             # Enums in Strings wandeln
             statuses = [s.value if isinstance(s, Enum) else s for s in status]
@@ -122,14 +125,14 @@ class TradeRepository(BaseRepository):
                 "SELECT * FROM trades WHERE status = ?", (status_value,)
             )
 
-        return [dict(r) for r in rows]
+        return [dict(row) for row in rows]
 
     def get_all_traded_symbols(self) -> list[str]:
         """Returns a list of all distinct symbols ever traded."""
         rows = self.fetch_all("SELECT DISTINCT symbol FROM trades")
-        return [r["symbol"] for r in rows if r["symbol"]]
+        return [row["symbol"] for row in rows if row["symbol"]]
 
-    def get_all_by_strategy(self, strategy: str | Enum) -> list[dict[str, Any]]:
+    def get_all_by_strategy(self, strategy: str | Enum) -> list[dict[str, object]]:
         """Holt alle Trades für eine bestimmte Strategie."""
         strategy_value = strategy.value if isinstance(strategy, Enum) else strategy
         rows = self.fetch_all(
@@ -138,15 +141,151 @@ class TradeRepository(BaseRepository):
         results = []
         for row in rows:
             trade_dict = dict(row)
-            if trade_dict.get("signal_context"):
+            signal_context_raw = trade_dict.get("signal_context")
+            if signal_context_raw:
                 try:
-                    trade_dict["signal_context"] = json.loads(
-                        trade_dict["signal_context"]
-                    )
-                except (json.JSONDecodeError, TypeError):
+                    trade_dict["signal_context"] = json.loads(str(signal_context_raw))
+                except (json.JSONDecodeError, TypeError) as parse_error:
                     trade_dict["signal_context"] = {}
+                    logger.warning(
+                        "Failed to decode signal_context for strategy trade: %s",
+                        parse_error,
+                    )
             results.append(trade_dict)
         return results
+
+    def _validate_financial_inputs(
+        self, symbol: str, entry: float, stop_loss: float, target: float
+    ) -> None:
+        """Security Hardening: Validate financial inputs."""
+        import math
+
+        for value, name in [
+            (entry, "entry"),
+            (stop_loss, "stop_loss"),
+            (target, "target"),
+        ]:
+            if not math.isfinite(value) or value < 0:
+                logger.error(
+                    "❌ SECURITY: Invalid financial input for %s: %s=%f",
+                    symbol,
+                    name,
+                    value,
+                )
+                raise ValueError(
+                    f"Value for {name} must be a finite non-negative number"
+                )
+
+    def _fetch_existing_trade_info(
+        self,
+        connection: sqlite3.Connection,
+        symbol: str,
+        strategy: str,
+        signal_date: str,
+    ) -> tuple[int, str] | None:
+        """Fetches existing trade ID and status based on context date."""
+        check_sql = """
+            SELECT id, status FROM trades 
+            WHERE symbol = ? 
+            AND strategy = ? 
+            AND json_extract(signal_context, '$.date') = ?
+        """
+        row = connection.execute(check_sql, (symbol, strategy, signal_date)).fetchone()
+        return (row[0], row[1]) if row else None
+
+    def _reset_existing_trade(
+        self,
+        connection: sqlite3.Connection,
+        trade_id: int,
+        quantity: int,
+        entry: float,
+        stop_loss: float,
+        target: float,
+        context_json: str,
+        current_status: str,
+    ) -> None:
+        """Resets a non-active trade candidate's fields."""
+        update_sql = """
+            UPDATE trades SET 
+                status = 'CREATED',
+                initial_size = ?, current_size = ?,
+                entry_price = ?, current_stop_loss = ?, current_target = ?,
+                signal_context = ?,
+                exit_price = NULL, exit_date = NULL, exit_reason = NULL,
+                entry_date = NULL, realized_pnl = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """
+        connection.execute(
+            update_sql,
+            (
+                quantity,
+                quantity,
+                entry,
+                stop_loss,
+                target,
+                context_json,
+                trade_id,
+            ),
+        )
+
+        connection.execute(
+            "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
+            (
+                trade_id,
+                "RESET",
+                current_status,
+                "CREATED",
+                "Strategy Re-Sync",
+            ),
+        )
+
+    def _insert_new_trade(
+        self,
+        connection: sqlite3.Connection,
+        symbol: str,
+        strategy: str,
+        quantity: int,
+        entry: float,
+        stop_loss: float,
+        target: float,
+        context_json: str,
+    ) -> int:
+        """Inserts a new trade candidate into the trades table."""
+        sql = """
+            INSERT INTO trades (
+                symbol, strategy, status,
+                initial_size, current_size,
+                entry_price, current_stop_loss, current_target,
+                signal_context
+            ) VALUES (?, ?, 'CREATED', ?, ?, ?, ?, ?, ?)
+        """
+        cursor = connection.execute(
+            sql,
+            (
+                symbol,
+                strategy,
+                quantity,
+                quantity,
+                entry,
+                stop_loss,
+                target,
+                context_json,
+            ),
+        )
+        trade_id = cursor.lastrowid
+
+        connection.execute(
+            "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
+            (
+                trade_id,
+                "ENTRY",
+                None,
+                f"Quantity: {quantity} @ {entry}",
+                "Setup Found",
+            ),
+        )
+        return trade_id
 
     def create_trade(
         self,
@@ -156,156 +295,84 @@ class TradeRepository(BaseRepository):
         entry: float,
         stop_loss: float,
         target: float,
-        context: dict,
+        context: dict[str, object],
     ) -> int:
-        # Security Hardening: Validate financial inputs
-        import math
-
-        for val, name in [
-            (entry, "entry"),
-            (stop_loss, "stop_loss"),
-            (target, "target"),
-        ]:
-            if not math.isfinite(val) or val < 0:
-                logger.error(
-                    f"❌ SECURITY: Invalid financial input for {symbol}: {name}={val}"
-                )
-                raise ValueError(
-                    f"Value for {name} must be a finite non-negative number"
-                )
+        self._validate_financial_inputs(symbol, entry, stop_loss, target)
 
         context_json = json.dumps(context, default=str, ensure_ascii=False)
         quantity = int(size)
-
-        # 1. Datum extrahieren für den Eindeutigkeits-Check
         signal_date = context.get("date")
 
-        with self.session.connect() as conn:
-            trade_id = None
-
-            # 2. Prüfen: Gibt es diesen Trade schon? (Symbol + Strategy + Datum im JSON)
+        with self.session.connect() as connection:
             if signal_date:
-                check_sql = """
-                    SELECT id, status FROM trades 
-                    WHERE symbol = ? 
-                    AND strategy = ? 
-                    AND json_extract(signal_context, '$.date') = ?
-                """
-                existing = conn.execute(
-                    check_sql, (symbol, strategy, signal_date)
-                ).fetchone()
+                existing_trade = self._fetch_existing_trade_info(
+                    connection, symbol, strategy, str(signal_date)
+                )
 
-                if existing:
-                    trade_id, current_status = existing
+                if existing_trade:
+                    trade_id, current_status = existing_trade
 
                     # If the trade is already ACTIVE, we don't want to reset it!
                     if current_status == "ACTIVE":
                         logger.debug(
-                            f"Trade {trade_id} for {symbol} is already ACTIVE. Skipping reset."
+                            "Trade %d for %s is already ACTIVE. Skipping reset.",
+                            trade_id,
+                            symbol,
                         )
                         return trade_id
 
                     # UPDATE existierenden Trade (Reset auf Startbedingungen)
-                    update_sql = """
-                        UPDATE trades SET 
-                            status = 'CREATED',
-                            initial_size = ?, current_size = ?,
-                            entry_price = ?, current_stop_loss = ?, current_target = ?,
-                            signal_context = ?,
-                            exit_price = NULL, exit_date = NULL, exit_reason = NULL,
-                            entry_date = NULL, realized_pnl = 0,
-                            updated_at = CURRENT_TIMESTAMP
-                        WHERE id = ?
-                    """
-                    conn.execute(
-                        update_sql,
-                        (
-                            quantity,
-                            quantity,
-                            entry,
-                            stop_loss,
-                            target,
-                            context_json,
-                            trade_id,
-                        ),
+                    self._reset_existing_trade(
+                        connection,
+                        trade_id,
+                        quantity,
+                        entry,
+                        stop_loss,
+                        target,
+                        context_json,
+                        current_status,
                     )
-
-                    conn.execute(
-                        "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
-                        (
-                            trade_id,
-                            "RESET",
-                            current_status,
-                            "CREATED",
-                            "Strategy Re-Sync",
-                        ),
-                    )
-
-                    conn.commit()
                     return trade_id
 
-            # 3. INSERT (falls neu)
-            sql = """
-                INSERT INTO trades (
-                    symbol, strategy, status,
-                    initial_size, current_size,
-                    entry_price, current_stop_loss, current_target,
-                    signal_context
-                ) VALUES (?, ?, 'CREATED', ?, ?, ?, ?, ?, ?)
-            """
-
-            cursor = conn.execute(
-                sql,
-                (
-                    symbol,
-                    strategy,
-                    quantity,
-                    quantity,
-                    entry,
-                    stop_loss,
-                    target,
-                    context_json,
-                ),
-            )
-            trade_id = cursor.lastrowid
-
-            conn.execute(
-                "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
-                (
-                    trade_id,
-                    "ENTRY",
-                    None,
-                    f"Quantity: {quantity} @ {entry}",
-                    "Setup Found",
-                ),
+            return self._insert_new_trade(
+                connection,
+                symbol,
+                strategy,
+                quantity,
+                entry,
+                stop_loss,
+                target,
+                context_json,
             )
 
-            conn.commit()
-            return trade_id
-
-    def update_trade(self, trade_id: int, updates: dict, reason: str = None):
+    def update_trade(
+        self,
+        trade_id: int,
+        updates: dict[str, object],
+        reason: str | None = None,
+    ) -> None:
         """Generisches Update."""
         if not updates:
             return
 
         # Enums in updates behandeln
         safe_updates = {}
-        for k, v in updates.items():
+        for key, value in updates.items():
             # Enum conversion
-            val = v.value if isinstance(v, Enum) else v
+            safe_value = value.value if isinstance(value, Enum) else value
 
             # Robust Date Normalization for entry_date and exit_date
             # Ensures "YYYY-MM-DD" instead of "YYYY-MM-DD HH:MM:SS"
-            if k in ("entry_date", "exit_date"):
-                if isinstance(val, str) and " " in val:
-                    val = val.split(" ")[0]
-                elif hasattr(val, "strftime"):
-                    val = val.strftime("%Y-%m-%d")
+            if key in ("entry_date", "exit_date"):
+                if isinstance(safe_value, str) and " " in safe_value:
+                    safe_value = safe_value.split(" ")[0]
+                elif hasattr(safe_value, "strftime"):
+                    safe_value = safe_value.strftime("%Y-%m-%d")
 
-            safe_updates[k] = val
+            safe_updates[key] = safe_value
 
-        with self.session.connect() as conn:
-            trade = self.get_trade(trade_id, conn=conn)
+        with self.session.connect() as connection:
+            trade = self.get_trade(trade_id, connection=connection)
             if not trade:
                 return
 
@@ -313,37 +380,57 @@ class TradeRepository(BaseRepository):
             values = []
             changes = []
 
-            for key, new_val in safe_updates.items():
-                old_val = trade.get(key)
+            for key, new_value in safe_updates.items():
+                old_value = trade.get(key)
                 # Vergleich als String um Typ-Probleme zu vermeiden
-                if str(old_val) != str(new_val):
+                if str(old_value) != str(new_value):
                     set_clauses.append(f"{key} = ?")
-                    values.append(new_val)
-                    changes.append((key, old_val, new_val))
+                    values.append(new_value)
+                    changes.append((key, old_value, new_value))
 
             if not set_clauses:
                 return
 
             values.append(trade_id)
             sql = f"UPDATE trades SET {', '.join(set_clauses)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-            self.execute(sql, values, conn=conn)
+            self.execute(sql, values, connection=connection)
 
-            for key, old, new in changes:
+            for key, old_value, new_value in changes:
                 self._log_event_conn(
-                    conn, trade_id, f"UPDATE_{key.upper()}", old, new, reason
+                    connection,
+                    trade_id,
+                    f"UPDATE_{key.upper()}",
+                    old_value,
+                    new_value,
+                    reason,
                 )
 
-    def _log_event(self, trade_id, event, old, new, reason):
+    def _log_event(
+        self,
+        trade_id: int,
+        event_type: object,
+        old_value: object,
+        new_value: object,
+        reason: str | None,
+    ) -> None:
         self.execute(
             "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
-            (trade_id, str(event), str(old), str(new), reason),
+            (trade_id, str(event_type), str(old_value), str(new_value), reason),
         )
 
-    def _log_event_conn(self, conn, trade_id, event, old, new, reason):
+    def _log_event_conn(
+        self,
+        connection: sqlite3.Connection,
+        trade_id: int,
+        event_type: object,
+        old_value: object,
+        new_value: object,
+        reason: str | None,
+    ) -> None:
         self.execute(
             "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
-            (trade_id, str(event), str(old), str(new), reason),
-            conn=conn,
+            (trade_id, str(event_type), str(old_value), str(new_value), reason),
+            connection=connection,
         )
 
     # --- NEU: Die fehlende Methode für TurnoverTimingStrategy ---

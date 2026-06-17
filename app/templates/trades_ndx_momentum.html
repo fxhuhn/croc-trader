@@ -31,7 +31,7 @@
             {% call cards.trade_accordion_card(
                 symbol=trade.symbol,
                 pnl_value=trade.unrealized_pnl,
-                pnl_pct=trade.pnl_pct
+                pnl_percentage=trade.pnl_percentage
             ) %}
                 <div class="grid grid-cols-2 gap-8 items-start">
                     <!-- Left Column: Period & Quantity -->
@@ -132,7 +132,7 @@
                             {{ "{:+,.2f}".format(trade.unrealized_pnl) }}
                         </div>
                         <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                            {{ "{:+.2f}".format(trade.pnl_pct) }}%
+                            {{ "{:+.2f}".format(trade.pnl_percentage) }}%
                         </div>
                     </div>
                 </div>
@@ -169,7 +169,7 @@
                         {{ "{:+,.2f}".format(trade.realized_pnl) }}
                     </span>
                     <span class="text-xs font-medium text-slate-500 mt-1 tabular-nums">
-                        {{ "{:+.2f}".format(trade.pnl_pct) }}%
+                        {{ "{:+.2f}".format(trade.pnl_percentage) }}%
                     </span>
                     <span
                         class="mt-1.5 px-2 py-0.5 rounded-md text-xs font-medium border border-slate-200 text-slate-600 bg-slate-50">
@@ -242,7 +242,7 @@
                             {{ "{:+,.2f}".format(trade.realized_pnl) }}
                         </div>
                         <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                            {{ "{:+.2f}".format(trade.pnl_pct) }}%
+                            {{ "{:+.2f}".format(trade.pnl_percentage) }}%
                         </div>
                     </div>
 

@@ -56,6 +56,7 @@ def test_check_entry_day_one_turnaround(strategy, mock_trade_repo):
         "id": "H1",
         "entry_price": 150.0,
         "signal_context": '{"date": "2026-02-17"}',
+        "current_size": 10,
     }
     # Open 145, High 152 (hits 150), Close 151
     candle = pd.Series(

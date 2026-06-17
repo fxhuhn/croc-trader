@@ -1,28 +1,20 @@
 # filename: test_ui_quantity_mapping.py
 import pytest
-from unittest.mock import patch
+from unittest.mock import MagicMock
 from app.services.trade_manager.view_service import TradeViewService
+from app.database.repositories.trade import TradeRepository
+from app.database.repositories.market import MarketRepository
 
 
 @pytest.fixture
-def view_service(tmp_path):
+def view_service() -> TradeViewService:
     """Fixture for TradeViewService with mocked repositories."""
-    test_db = tmp_path / "test.db"
-    with (
-        patch("app.services.trade_manager.view_service.DatabaseSession"),
-        patch("app.services.trade_manager.view_service.TradeRepository"),
-        patch(
-            "app.services.trade_manager.view_service.MarketRepository"
-        ) as mock_market_repo_class,
-        patch(
-            "app.services.trade_manager.view_service._get_database_path",
-            return_value=str(test_db),
-        ),
-    ):
-        service = TradeViewService()
-        # Ensure we can return the mock market repo for specific price lookups
-        service.market_repository = mock_market_repo_class.return_value
-        return service
+    mock_trade_repo = MagicMock(spec=TradeRepository)
+    mock_market_repo = MagicMock(spec=MarketRepository)
+    return TradeViewService(
+        trade_repository=mock_trade_repo,
+        market_repository=mock_market_repo,
+    )
 
 
 def test_active_trade_quantity_mapping(view_service: TradeViewService) -> None:
@@ -47,7 +39,7 @@ def test_active_trade_quantity_mapping(view_service: TradeViewService) -> None:
     # Assert
     assert view_data["display_size"] == 10
     assert view_data["unrealized_pnl"] == (110.0 - 100.0) * 10
-    assert view_data["pnl_pct"] == 10.0
+    assert view_data["pnl_percentage"] == 10.0
 
 
 def test_closed_trade_quantity_mapping(view_service: TradeViewService) -> None:

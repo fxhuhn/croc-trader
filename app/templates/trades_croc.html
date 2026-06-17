@@ -90,7 +90,7 @@
                                         {{ "{:+,.2f}".format(t.unrealized_pnl) }}
                                     </div>
                                     <div class="text-xs font-medium text-slate-500 mt-1 tabular-nums">
-                                        {{ "{:+.2f}".format(t.pnl_pct) }}%
+                                        {{ "{:+.2f}".format(t.pnl_percentage) }}%
                                     </div>
                                 </div>
                                 <i data-lucide="chevron-down"
@@ -171,7 +171,7 @@
                                             {{ "{:+,.2f}".format(t.unrealized_pnl) }}
                                         </div>
                                         <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                                            {{ "{:+.2f}".format(t.pnl_pct) }}%
+                                            {{ "{:+.2f}".format(t.pnl_percentage) }}%
                                         </div>
                                     </div>
                                 </div>
@@ -418,7 +418,7 @@
                                     {{ "{:+,.2f}".format(t.realized_pnl) }}
                                 </div>
                                 <div class="text-xs font-medium text-slate-500 mt-0.5 tabular-nums">
-                                    {{ "{:+.2f}".format(t.pnl_pct) }}%
+                                    {{ "{:+.2f}".format(t.pnl_percentage) }}%
                                 </div>
                                 <div class="mt-1">
                                     {% if 'TARGET' in t.exit_reason or 'PROFIT' in t.exit_reason or 'LOC' in
@@ -483,7 +483,7 @@
                                 {{ "{:+,.2f}".format(t.realized_pnl) }}
                             </div>
                             <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                                {{ "{:+.2f}".format(t.pnl_pct) }}%
+                                {{ "{:+.2f}".format(t.pnl_percentage) }}%
                             </div>
                         </div>
 

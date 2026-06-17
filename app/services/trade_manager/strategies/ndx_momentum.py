@@ -1,12 +1,14 @@
+import json
 import logging
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import override, final
 import pandas as pd
 
-from ....types import TradeStatus, TradeData
+from ..types import TradeTransition
+from ....types import TradeData
 from ....const import Strategies
-from ....models import TradeParams, Order, OrderLeg
-from ....database.repositories.trade import TradeRepository
+from ....models import TradeParams, Order
 from .abstract import BaseTradeStrategy
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,6 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
     """
 
     name = Strategies.NDXMomentum
-    DEFAULT_BUDGET: float = 10000.0
     _rebalance_cache: _RebalanceCache | None = None
 
     @override
@@ -48,7 +49,6 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
-        repository: TradeRepository | None = None,
     ) -> TradeParams:
         """
         Extracts current strategy parameters for display and evaluation.
@@ -56,7 +56,6 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         Args:
             trade: The trade data to extract parameters from.
             dataframe_history: Optional historical price data.
-            repository: Optional repository for database access.
 
         Returns:
             A TradeParams object containing the current strategy settings.
@@ -78,8 +77,8 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        active_symbols: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Evaluates and executes entry for a candidate trade.
 
@@ -93,10 +92,10 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             trade: The candidate trade data.
             candle: The current daily price candle.
             dataframe_history: The historical data leading up to the target date.
-            repository: The repository for trade state persistence.
+            active_symbols: Set of symbols with currently active positions.
 
         Returns:
-            A string describing the activation status or None if no entry occurred.
+            TradeTransition | None: Computed transition if entry occurred.
         """
         # 1. Regime Check (Using QQQ SMA Filter, ignoring Breadth)
         qqq_regime = self._get_context_value(trade, "qqq_regime")
@@ -104,19 +103,14 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
 
         if qqq_regime != "BULL":
             return self._reject_setup(
-                trade, repository, str(candle["date"]), f"QQQ Regime: {qqq_regime}"
+                trade, str(candle["date"]), f"QQQ Regime: {qqq_regime}"
             )
 
         # 2. Duplicate Check (Active positions in the same strategy)
-        active_positions = repository.get_by_status(TradeStatus.ACTIVE)
-        for active_trade in active_positions:
-            if (
-                active_trade["symbol"] == symbol
-                and active_trade["strategy"] == self.name
-            ):
-                return self._reject_setup(
-                    trade, repository, str(candle["date"]), "Position already exists"
-                )
+        if active_symbols and symbol in active_symbols:
+            return self._reject_setup(
+                trade, str(candle["date"]), "Position already exists"
+            )
 
         # 3. Execution (Market On Open)
         # We ensure at least one trading day has passed since the signal
@@ -131,7 +125,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         fill_price = float(candle["open"])
 
         return self._execute_activation(
-            trade, repository, fill_price, "REBALANCE_ENTRY", date_string
+            trade, fill_price, "REBALANCE_ENTRY", date_string
         )
 
     def _is_month_switch(self, dataframe_history: pd.DataFrame) -> bool:
@@ -157,13 +151,47 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             or current_date.year != previous_date.year
         )
 
+    @staticmethod
+    def extract_latest_leaders(
+        all_strategy_trades: list[dict[str, object]],
+    ) -> set[str]:
+        """Pure helper to extract the latest signal date's leaders from strategy trades."""
+        latest_signal_date = "0000-00-00"
+        leaders_symbols: set[str] = set()
+
+        for trade in all_strategy_trades:
+            context_data = trade.get("signal_context")
+            date_value = None
+            if context_data:
+                try:
+                    if isinstance(context_data, dict):
+                        date_value = context_data.get("date")
+                    else:
+                        date_value = json.loads(context_data).get("date")
+                except (json.JSONDecodeError, TypeError) as parse_error:
+                    logger.warning(
+                        "Failed to parse signal_context for trade %s: %s",
+                        trade.get("id"),
+                        parse_error,
+                    )
+            date_str = str(date_value) if date_value else "0000-00-00"
+            symbol_str = str(trade.get("symbol", ""))
+            if not symbol_str:
+                continue
+            if date_str > latest_signal_date:
+                latest_signal_date = date_str
+                leaders_symbols = {symbol_str}
+            elif date_str == latest_signal_date:
+                leaders_symbols.add(symbol_str)
+        return leaders_symbols
+
     @override
     def manage_active_trade(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        latest_leaders: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Manages an active position during the monthly rebalance cycle.
 
@@ -174,10 +202,10 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         Args:
             trade: The active trade data.
             dataframe_history: Historical price data.
-            repository: Repository for trade lookups.
+            latest_leaders: Latest leaders symbols set.
 
         Returns:
-            A status string if the trade was closed, otherwise None.
+            TradeTransition | None: Computed transition if closed, otherwise None.
         """
         if not self._is_month_switch(dataframe_history):
             return None
@@ -186,39 +214,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         date_string = str(current_candle["date"])
         symbol = trade.get("symbol")
 
-        # 1. Fetch latest "Rebalance Winners" from the trades table
-        # We use a primitive cache on the strategy instance to avoid O(N^2)
-        # lookups during a full portfolio rebalance on the same day.
-        cache_key = f"latest_leaders_{date_string}"
-        if (
-            self._rebalance_cache is None
-            or self._rebalance_cache.cache_key != cache_key
-        ):
-            all_strategy_trades = repository.get_all_by_strategy(self.name)
-            if not all_strategy_trades:
-                return None
-
-            latest_signal_date = "0000-00-00"
-            leaders_symbols: set[str] = set()
-
-            for historical_trade in all_strategy_trades:
-                context_date_value = (
-                    self._get_context_value(historical_trade, "date") or "0000-00-00"
-                )
-                if context_date_value > latest_signal_date:
-                    latest_signal_date = context_date_value
-                    leaders_symbols = {historical_trade["symbol"]}
-                elif context_date_value == latest_signal_date:
-                    leaders_symbols.add(historical_trade["symbol"])
-
-            self._rebalance_cache = _RebalanceCache(
-                cache_key=cache_key,
-                latest_signal_date=latest_signal_date,
-                leaders_symbols=leaders_symbols,
-            )
-
-        latest_signal_date = self._rebalance_cache.latest_signal_date
-        leaders_symbols = self._rebalance_cache.leaders_symbols
+        leaders_symbols = latest_leaders or set()
 
         # 2. Check if current trade symbol is still in the latest batch of leaders
         # We only exit if the symbol is NOT in the latest winners list.
@@ -230,9 +226,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
                 symbol,
             )
             exit_price = float(current_candle["open"])
-            return self._close_trade(
-                trade, repository, exit_price, "REBALANCE_EXIT", date_string
-            )
+            return self._close_trade(trade, exit_price, "REBALANCE_EXIT", date_string)
 
         return None
 
@@ -242,7 +236,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
-        repository: TradeRepository,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
         """
         Generates formal trading orders for a given trade.
@@ -251,7 +245,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             trade: The trade data to generate orders for.
             dataframe_history: Historical price data.
             budget: Total allocated budget to use for sizing.
-            repository: Repository instance.
+            created_symbols: Set of symbols with currently pending (CREATED) trades.
 
         Returns:
             An Order object or None if generation failed.
@@ -264,41 +258,29 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             if not self._is_month_switch(dataframe_history):
                 return None
 
-            # Fetch all CREATED trades for ndx_momentum to get the new leaders
-            created_trades = repository.get_by_status(TradeStatus.CREATED)
-            leaders_symbols = {
-                str(t.get("symbol", ""))
-                for t in created_trades
-                if t.get("strategy") == self.name
-            }
+            leaders_symbols = created_symbols or set()
 
             if symbol not in leaders_symbols:
                 quantity = int(trade.get("current_size") or 0)
                 if quantity <= 0:
                     return None
 
-                exit_leg_definition = OrderLeg(
-                    action="SELL",
-                    type="MKT",
-                    price=0.0,
-                    quantity=quantity,
-                    time_in_force="OPG",
-                )
-
-                return Order(
-                    id=f"{symbol}_{self.name}_EXIT",
+                return self._create_exit_order(
                     symbol=symbol,
                     quantity=quantity,
-                    mode="SIMPLE",
-                    entry=None,
-                    exits=[exit_leg_definition],
-                    last_status="ACTIVE",
+                    price=Decimal("0.0"),
+                    order_type="MKT",
+                    time_in_force="OPG",
+                    order_id=f"{symbol}_{self.name}_EXIT",
                 )
             return None
 
         # 2. Entry Order (CREATED)
         # Determine specific budget for this position
-        trade_budget = float(trade.get("budget") or budget or self.DEFAULT_BUDGET)
+        from ....config import settings
+
+        config_budget = settings.app.portfolio.get_budget("ndx_momentum")
+        trade_budget = float(trade.get("budget") or budget or config_budget)
 
         # Calculate quantity based on the most recent closing price
         if dataframe_history.empty:
@@ -312,20 +294,11 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         if shares_quantity <= 0:
             return None
 
-        entry_leg_definition = OrderLeg(
-            action="BUY",
-            type="MKT",
-            price=0.0,
-            quantity=shares_quantity,
-            time_in_force="OPG",
-        )
-
-        return Order(
-            id=f"{symbol}_{self.name}",
+        return self._create_entry_order(
             symbol=symbol,
             quantity=shares_quantity,
-            mode="SIMPLE",
-            entry=entry_leg_definition,
-            exits=[],
-            last_status="CREATED",
+            entry_price=Decimal("0.0"),
+            order_type="MKT",
+            time_in_force="OPG",
+            order_id=f"{symbol}_{self.name}",
         )

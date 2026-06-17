@@ -47,7 +47,7 @@ class ScreenerEngine:
         self.trade_repository = trade_repository
         self.signal_repository = signal_repository
         self.data_provider = data_provider
-        self.telegram = telegram_bot
+        self.telegram_bot = telegram_bot
         self.active_strategies: list[StrategyProtocol] = []
         self.configuration = configuration or {}
 

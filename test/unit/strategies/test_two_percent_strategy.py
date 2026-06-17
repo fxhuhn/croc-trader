@@ -255,6 +255,39 @@ def test_screener_signals_on_wednesday_if_thursday_and_friday_missing(
     screener_strategy.trade_repository.create_trade.assert_called_once()
 
 
+@patch("pandas.Timestamp.now")
+def test_screener_skips_thursday_fallback_when_run_on_friday_morning(
+    mock_now: MagicMock, screener_strategy: ScreenerStrategy
+) -> None:
+    """
+    Ensures that running on Friday morning evaluating Thursday does NOT
+    falsely trigger the Thursday fallback end-of-week condition.
+    """
+    thursday_date = "2026-06-11"
+    friday_date = "2026-06-12"
+
+    # Simulate clock is Friday morning (e.g. 06:30)
+    mock_now.return_value = pd.Timestamp(f"{friday_date} 06:30:00")
+    screener_strategy._get_real_today = MagicMock(
+        return_value=pd.Timestamp(friday_date).date()
+    )
+
+    # Database only has history up to Thursday (Friday hasn't traded yet)
+    candle = create_candle(thursday_date, 1000.0)
+    screener_strategy.data_provider.get_symbol_history.return_value = pd.DataFrame(
+        [candle]
+    )
+    screener_strategy.trade_repository.exists.return_value = False
+
+    # Act
+    # Simulating the screener running for Thursday date
+    result = screener_strategy.run(analysis_date=thursday_date)
+
+    # Assert: Should not generate a signal
+    assert result == 0
+    screener_strategy.trade_repository.create_trade.assert_not_called()
+
+
 # --- TRADE MANAGER ENTRY TESTS ---
 
 

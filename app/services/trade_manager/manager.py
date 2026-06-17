@@ -1,10 +1,14 @@
+import csv
 import json
 import logging
+import os
 import re
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
+
+from ...config import settings
 from ...const import Strategies, STRATEGY_ALIASES
 from ...types import TradeStatus
 from ...database.repositories.trade import TradeRepository
@@ -13,6 +17,7 @@ from ...database.session import DatabaseSession
 from ...services.telegram import TelegramBot
 from ...models import Order
 
+from .strategies.abstract import BaseTradeStrategy
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.hold_target import HoldTargetStrategy
 from .strategies.split_target import SplitTargetStrategy
@@ -23,6 +28,36 @@ from .strategies.ndx_momentum import NDXMomentumTradeStrategy
 logger = logging.getLogger(__name__)
 
 _HARDCODED_HISTORY_FALLBACK_DATE = "2024-01-01"
+
+# Strategies that enforce a single position per symbol.
+# For these, a CREATED entry order is suppressed when an ACTIVE position
+# already exists for the same symbol.
+# DipBuyer is intentionally excluded — multiple positions per symbol are allowed.
+_SINGLE_POSITION_STRATEGIES: frozenset[Strategies] = frozenset(
+    {
+        Strategies.NDXMomentum,
+        Strategies.TurnOverTiming,
+        Strategies.TurnOverTiming_10,
+        Strategies.TurnOverTiming_05,
+        Strategies.TwoPercent,
+        Strategies.HoldTarget,
+        Strategies.SplitTarget,
+    }
+)
+
+# Strategies whose orders are written to the daily CSV export.
+# SplitTarget and HoldTarget are managed via the broker UI directly
+# and are therefore intentionally excluded.
+_CSV_SUPPORTED_STRATEGIES: frozenset[Strategies] = frozenset(
+    {
+        Strategies.NDXMomentum,
+        Strategies.TurnOverTiming,
+        Strategies.TurnOverTiming_10,
+        Strategies.TurnOverTiming_05,
+        Strategies.TwoPercent,
+        Strategies.DipBuyer,
+    }
+)
 
 
 class TradeManager:
@@ -38,6 +73,7 @@ class TradeManager:
         db_path: Path,
         stocks_db_path: Path,
         telegram_bot: TelegramBot | None = None,
+        ibkr_account_id: str | None = None,
     ) -> None:
         """Initializes repositories and strategy registry.
 
@@ -45,18 +81,23 @@ class TradeManager:
             db_path: Path to the signals database.
             stocks_db_path: Path to the market data (stocks) database.
             telegram_bot: Optional Telegram notification client.
+            ibkr_account_id: IBKR account identifier for CSV order export.
+                Falls back to settings if not provided.
         """
         self.db_path = db_path
         self.stocks_db_path = stocks_db_path
         self.telegram = telegram_bot
+        self._ibkr_account_id = ibkr_account_id or os.environ.get(
+            "IBKR_ACCOUNT_ID", "YOUR_IBKR_ACCOUNT"
+        )
 
         self.stocks_session = DatabaseSession(str(stocks_db_path))
-        self.market_repo = MarketRepository(self.stocks_session)
+        self.market_repository = MarketRepository(self.stocks_session)
 
         self.signals_session = DatabaseSession(str(db_path))
         self.trade_repository = TradeRepository(self.signals_session)
 
-        self.strategies = {
+        self.strategies: dict[Strategies, BaseTradeStrategy] = {
             Strategies.DipBuyer: DipBuyerStrategy(),
             Strategies.TurnOverTiming: TurnoverTimingStrategy(),
             Strategies.TurnOverTiming_10: TurnoverTimingStrategy(),
@@ -86,11 +127,11 @@ class TradeManager:
 
         try:
             return Strategies(name)
-        except ValueError as val_error:
+        except ValueError as value_error:
             logger.debug(
                 "Strategy name '%s' is not direct member of Strategies enum: %s",
                 name,
-                val_error,
+                value_error,
             )
 
         lower_name = name.lower()
@@ -112,14 +153,14 @@ class TradeManager:
 
         return None
 
-    def _get_strategy(self, strategy_name: str) -> object | None:
+    def _get_strategy(self, strategy_name: str) -> BaseTradeStrategy | None:
         """Resolves a strategy name to its registered handler instance.
 
         Args:
             strategy_name: Raw strategy name string from the trade record.
 
         Returns:
-            The strategy instance, or None if not registered.
+            BaseTradeStrategy | None: The strategy instance, or None if not registered.
         """
         enum_key = self._resolve_strategy_name(strategy_name)
 
@@ -149,13 +190,31 @@ class TradeManager:
                 "Database unavailable during active trade load. Halting daily process."
             ) from database_error
 
+        # Get latest leaders for NDXMomentum strategy
+        try:
+            ndx_trades = self.trade_repository.get_all_by_strategy(
+                Strategies.NDXMomentum
+            )
+            latest_leaders = NDXMomentumTradeStrategy.extract_latest_leaders(ndx_trades)
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+            logger.warning(
+                "Database error loading NDX leaders. Defaulting to empty set: %s",
+                database_error,
+            )
+            latest_leaders = set()
+
         logger.info("Checking %d active trades for exits.", len(active_trades))
         for trade in active_trades:
-            self._process_active_trade(trade)
+            self._process_active_trade(trade, latest_leaders=latest_leaders)
 
         # 2. Pending trade entry checks
         try:
             created_trades = self.trade_repository.get_by_status(TradeStatus.CREATED)
+            # Re-fetch active trades because some might have closed in step 1
+            current_active_trades = self.trade_repository.get_by_status(
+                TradeStatus.ACTIVE
+            )
+            active_symbols = {str(t["symbol"]) for t in current_active_trades}
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
                 "Database unavailable during created trade load. Halting daily process."
@@ -163,11 +222,15 @@ class TradeManager:
 
         logger.info("Checking %d pending trades for entries.", len(created_trades))
         for trade in created_trades:
-            self._process_created_trade(trade)
+            self._process_created_trade(trade, active_symbols=active_symbols)
 
         logger.info("TradeManager: Daily process complete.")
 
-    def _process_active_trade(self, trade: dict[str, object]) -> None:
+    def _process_active_trade(
+        self,
+        trade: dict[str, object],
+        latest_leaders: set[str] | None = None,
+    ) -> None:
         """Processes a single active trade: loads history and evaluates exit conditions.
 
         Data-level errors (bad symbol, missing history) are logged as warnings.
@@ -175,6 +238,7 @@ class TradeManager:
 
         Args:
             trade: The trade record dictionary from the database.
+            latest_leaders: Optional set of active leaders.
         """
         symbol = str(trade.get("symbol", ""))
         strategy_name = str(trade.get("strategy", ""))
@@ -190,53 +254,50 @@ class TradeManager:
 
         try:
             start_date = _resolve_history_start_date(trade)
-            df_hist = self.market_repo.get_symbol_history_raw(
+            history_dataframe = self.market_repository.get_symbol_history_raw(
                 symbol, start_date=start_date
             )
-            if df_hist.empty:
+            if history_dataframe.empty:
                 return
 
-            result = strategy.manage_active_trade(trade, df_hist, self.trade_repository)
+            transition = strategy.manage_active_trade(
+                trade, history_dataframe, latest_leaders=latest_leaders
+            )
 
-            if result:
-                logger.info("Trade update [%s]: %s", symbol, result)
-
-            if not df_hist.empty:
-                current_close = df_hist.iloc[-1]["close"]
+            if not history_dataframe.empty:
+                current_close = history_dataframe.iloc[-1]["close"]
                 updates = {"current_price": current_close}
 
-                # Update the LOC threshold in database context for Dip Buyer if trade remains active
-                resolved_strategy = self._resolve_strategy_name(strategy_name)
-                if (
-                    resolved_strategy == Strategies.DipBuyer
-                    and not result
-                    and len(df_hist) >= 1
-                ):
-                    previous_candle = df_hist.iloc[-1]
-                    previous_day_high = float(previous_candle["high"])
-                    new_threshold_loc = round(previous_day_high + 0.01, 2)
-
-                    signal_context_json = trade.get("signal_context")
-                    if signal_context_json:
-                        try:
-                            if isinstance(signal_context_json, str):
-                                signal_context_dict = json.loads(signal_context_json)
-                            else:
-                                signal_context_dict = signal_context_json
-
-                            if isinstance(signal_context_dict, dict):
-                                signal_context_dict["threshold_loc"] = new_threshold_loc
-                                updates["signal_context"] = json.dumps(
-                                    signal_context_dict, ensure_ascii=False
-                                )
-                        except Exception as parse_error:
-                            logger.warning(
-                                "Failed to parse signal_context JSON for trade %s: %s",
-                                trade.get("id"),
-                                parse_error,
+                # Update dynamic trade state (e.g. thresholds, targets) via the strategy
+                daily_updates = strategy.get_daily_updates(trade, history_dataframe)
+                if daily_updates:
+                    try:
+                        signal_context_raw = trade.get("signal_context") or "{}"
+                        context_dict = (
+                            json.loads(signal_context_raw)
+                            if isinstance(signal_context_raw, str)
+                            else signal_context_raw
+                        )
+                        if isinstance(context_dict, dict):
+                            context_dict.update(daily_updates)
+                            updates["signal_context"] = json.dumps(
+                                context_dict, ensure_ascii=False
                             )
+                    except (json.JSONDecodeError, TypeError) as parse_error:
+                        logger.warning(
+                            "Failed to parse signal_context JSON for trade %s: %s",
+                            trade.get("id"),
+                            parse_error,
+                        )
 
-                self.trade_repository.update_trade(trade["id"], updates)
+                if transition:
+                    updates.update(transition.updates)
+                    self.trade_repository.update_trade(
+                        trade["id"], updates, reason=transition.reason
+                    )
+                    logger.info("Trade update [%s]: %s", symbol, transition.message)
+                else:
+                    self.trade_repository.update_trade(trade["id"], updates)
 
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
@@ -247,11 +308,16 @@ class TradeManager:
                 "Data error during exit check for [%s]: %s", symbol, data_error
             )
 
-    def _process_created_trade(self, trade: dict[str, object]) -> None:
+    def _process_created_trade(
+        self,
+        trade: dict[str, object],
+        active_symbols: set[str] | None = None,
+    ) -> None:
         """Processes a single pending trade: loads history and evaluates entry conditions.
 
         Args:
             trade: The trade record dictionary from the database.
+            active_symbols: Set of active symbols to check duplicate positions.
         """
         symbol = str(trade.get("symbol", ""))
         strategy_name = str(trade.get("strategy", ""))
@@ -262,17 +328,22 @@ class TradeManager:
 
         try:
             start_date = _resolve_history_start_date(trade)
-            df_hist = self.market_repo.get_symbol_history_raw(
+            history_dataframe = self.market_repository.get_symbol_history_raw(
                 symbol, start_date=start_date
             )
-            if df_hist.empty:
+            if history_dataframe.empty:
                 return
 
-            candle = df_hist.iloc[-1]
-            result = strategy.check_entry(trade, candle, df_hist, self.trade_repository)
+            candle = history_dataframe.iloc[-1]
+            transition = strategy.check_entry(
+                trade, candle, history_dataframe, active_symbols=active_symbols
+            )
 
-            if result:
-                logger.info("Entry check [%s]: %s", symbol, result)
+            if transition:
+                self.trade_repository.update_trade(
+                    trade["id"], transition.updates, reason=transition.reason
+                )
+                logger.info("Entry check [%s]: %s", symbol, transition.message)
 
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
@@ -283,11 +354,15 @@ class TradeManager:
                 "Data error during entry check for [%s]: %s", symbol, data_error
             )
 
-    def generate_daily_orders(self) -> str | None:
+    def generate_daily_orders(self, reference_date: str | None = None) -> str | None:
         """Generates daily order file in CSV format for CREATED and ACTIVE trades.
 
         Processes only specific strategies (ndx_momentum, turnover_timing,
         two_percent) and writes the result to a CSV file in data/orders/.
+
+        Args:
+            reference_date: ISO date string (YYYY-MM-DD) for the output filename.
+                Defaults to today's date when None. Injectable for testing.
 
         Returns:
             str | None: Path to the written CSV file, or None if no orders generated.
@@ -302,61 +377,66 @@ class TradeManager:
                 "Database unavailable during order generation. Halting."
             ) from database_error
 
-        # Active symbols by strategy for checking duplicates
+        created_symbols = {str(t["symbol"]) for t in created_trades}
+
+        active_exit_orders, active_symbols_by_strategy = (
+            self._collect_exit_orders_for_active_trades(active_trades, created_symbols)
+        )
+
+        entry_orders = self._collect_entry_orders_for_created_trades(
+            created_trades, created_symbols, active_symbols_by_strategy
+        )
+
+        orders_data = entry_orders + active_exit_orders
+
+        if not orders_data:
+            logger.info("No orders to generate.")
+            return None
+
+        date_string = reference_date or datetime.now().strftime("%Y-%m-%d")
+        csv_file_path = self._write_csv_orders_file(orders_data, date_string)
+
+        if csv_file_path is None:
+            return None
+
+        return str(csv_file_path)
+
+    def _collect_exit_orders_for_active_trades(
+        self,
+        active_trades: list[dict[str, object]],
+        created_symbols: set[str],
+    ) -> tuple[list[tuple[dict[str, object], Order]], dict[Strategies, set[str]]]:
+        """Processes active trades to generate exit orders and track blocked symbols.
+
+        Args:
+            active_trades: List of active trade records from the database.
+            created_symbols: Set of symbols with currently pending trades.
+
+        Returns:
+            Tuple of (exit_orders, blocked_symbols_by_strategy).
+        """
         active_symbols_by_strategy: dict[Strategies, set[str]] = {}
+        active_exit_orders: list[tuple[dict[str, object], Order]] = []
+
         for active_trade in active_trades:
             resolved_strategy = self._resolve_strategy_name(
                 str(active_trade.get("strategy", ""))
             )
-            if resolved_strategy:
-                active_symbols_by_strategy.setdefault(resolved_strategy, set()).add(
-                    str(active_trade.get("symbol", ""))
-                )
-
-        orders_data: list[tuple[dict[str, object], Order]] = []
-
-        # 1. Process CREATED trades (Entries)
-        for trade in created_trades:
-            symbol = str(trade.get("symbol", ""))
-            resolved_strategy = self._resolve_strategy_name(
-                str(trade.get("strategy", ""))
-            )
-
-            # Skip if position is already active (avoids duplicate entry orders)
-            if resolved_strategy and symbol in active_symbols_by_strategy.get(
-                resolved_strategy, set()
-            ):
-                logger.info(
-                    "Skipping entry order generation for [%s] (%s) - position already active.",
-                    symbol,
-                    resolved_strategy,
-                )
+            if not resolved_strategy:
                 continue
 
+            symbol = str(active_trade.get("symbol", ""))
             try:
-                order = self._generate_order_for_trade(trade)
-                if order:
-                    orders_data.append((trade, order))
-                    logger.info("Order generated for [%s].", symbol)
-
-            except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
-                raise RuntimeError(
-                    f"Database error generating order for [{symbol}]."
-                ) from database_error
-            except (ValueError, KeyError, TypeError) as data_error:
-                logger.warning(
-                    "Data error generating order for [%s]: %s", symbol, data_error
+                order = self._generate_order_for_trade(
+                    active_trade, created_symbols=created_symbols
                 )
-
-        # 2. Process ACTIVE trades (Exits)
-        for trade in active_trades:
-            symbol = str(trade.get("symbol", ""))
-            try:
-                order = self._generate_order_for_trade(trade)
                 if order:
-                    orders_data.append((trade, order))
+                    active_exit_orders.append((active_trade, order))
                     logger.info("Exit order generated for [%s].", symbol)
-
+                elif resolved_strategy in _SINGLE_POSITION_STRATEGIES:
+                    active_symbols_by_strategy.setdefault(resolved_strategy, set()).add(
+                        symbol
+                    )
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
                 raise RuntimeError(
                     f"Database error generating exit order for [{symbol}]."
@@ -367,21 +447,81 @@ class TradeManager:
                     symbol,
                     data_error,
                 )
+                if resolved_strategy in _SINGLE_POSITION_STRATEGIES:
+                    active_symbols_by_strategy.setdefault(resolved_strategy, set()).add(
+                        symbol
+                    )
 
-        if not orders_data:
-            logger.info("No orders to generate.")
-            return None
+        return active_exit_orders, active_symbols_by_strategy
 
-        date_string = datetime.now().strftime("%Y-%m-%d")
-        csv_file_path = self._write_csv_orders_file(orders_data, date_string)
+    def _collect_entry_orders_for_created_trades(
+        self,
+        created_trades: list[dict[str, object]],
+        created_symbols: set[str],
+        active_symbols_by_strategy: dict[Strategies, set[str]],
+    ) -> list[tuple[dict[str, object], Order]]:
+        """Processes created trades to generate entry orders.
 
-        if csv_file_path is None:
-            return None
+        Skips trades whose symbol is already active in a single-position strategy.
 
-        return str(csv_file_path)
+        Args:
+            created_trades: List of created trade records from the database.
+            created_symbols: Set of symbols with currently pending trades.
+            active_symbols_by_strategy: Symbols blocked by active single-position trades.
 
-    def _generate_order_for_trade(self, trade: dict[str, object]) -> Order | None:
-        """Generates a single order object for a given trade proposal."""
+        Returns:
+            List of (trade, order) tuples for entry orders.
+        """
+        orders_data: list[tuple[dict[str, object], Order]] = []
+
+        for trade in created_trades:
+            symbol = str(trade.get("symbol", ""))
+            resolved_strategy = self._resolve_strategy_name(
+                str(trade.get("strategy", ""))
+            )
+
+            if resolved_strategy and symbol in active_symbols_by_strategy.get(
+                resolved_strategy, set()
+            ):
+                logger.info(
+                    "Skipping entry order for [%s] (%s) - position already active.",
+                    symbol,
+                    resolved_strategy,
+                )
+                continue
+
+            try:
+                order = self._generate_order_for_trade(
+                    trade, created_symbols=created_symbols
+                )
+                if order:
+                    orders_data.append((trade, order))
+                    logger.info("Order generated for [%s].", symbol)
+            except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
+                raise RuntimeError(
+                    f"Database error generating order for [{symbol}]."
+                ) from database_error
+            except (ValueError, KeyError, TypeError) as data_error:
+                logger.warning(
+                    "Data error generating order for [%s]: %s", symbol, data_error
+                )
+
+        return orders_data
+
+    def _generate_order_for_trade(
+        self,
+        trade: dict[str, object],
+        created_symbols: set[str] | None = None,
+    ) -> Order | None:
+        """Generates a single order object for a given trade proposal.
+
+        Args:
+            trade: The trade record dictionary from the database.
+            created_symbols: Set of symbols with currently pending (CREATED) trades.
+
+        Returns:
+            Order | None: The generated order or None if no handler is found.
+        """
         symbol = str(trade.get("symbol", ""))
         strategy_name = str(trade.get("strategy", ""))
         strategy = self._get_strategy(strategy_name)
@@ -395,15 +535,24 @@ class TradeManager:
             return None
 
         start_date = _resolve_history_start_date(trade)
-        df_hist = self.market_repo.get_symbol_history_raw(symbol, start_date=start_date)
-
-        strategy_default_budget: float = float(
-            getattr(strategy, "DEFAULT_BUDGET", 2000.0)
+        history_dataframe = self.market_repository.get_symbol_history_raw(
+            symbol, start_date=start_date
         )
-        budget: float = float(trade.get("budget") or strategy_default_budget)
+
+        resolved_strategy = self._resolve_strategy_name(strategy_name)
+        config_budget = 0.0
+        if resolved_strategy:
+            config_budget = settings.app.portfolio.get_budget(resolved_strategy.value)
+
+        budget: float = float(trade.get("budget") or config_budget)
 
         # Call strategy order generation
-        return strategy.generate_orders(trade, df_hist, budget, self.trade_repository)
+        return strategy.generate_orders(
+            trade,
+            history_dataframe,
+            budget,
+            created_symbols=created_symbols,
+        )
 
     def _write_csv_orders_file(
         self,
@@ -411,22 +560,13 @@ class TradeManager:
         date_string: str,
     ) -> Path | None:
         """Transforms and saves generated orders to a CSV file in bracket layout."""
-        supported_strategies = {
-            Strategies.NDXMomentum,
-            Strategies.TurnOverTiming,
-            Strategies.TurnOverTiming_10,
-            Strategies.TurnOverTiming_05,
-            Strategies.TwoPercent,
-            Strategies.DipBuyer,
-        }
-
-        filtered_orders_data = []
+        filtered_orders_data: list[tuple[dict[str, object], Order, Strategies]] = []
         for trade, order in orders_data:
             resolved_strategy = self._resolve_strategy_name(
                 str(trade.get("strategy", ""))
             )
-            if resolved_strategy in supported_strategies:
-                filtered_orders_data.append((trade, order))
+            if resolved_strategy in _CSV_SUPPORTED_STRATEGIES:
+                filtered_orders_data.append((trade, order, resolved_strategy))
 
         if not filtered_orders_data:
             logger.info("No orders found for CSV-supported strategies.")
@@ -434,13 +574,7 @@ class TradeManager:
 
         csv_rows = []
 
-        for trade, order in filtered_orders_data:
-            resolved_strategy = self._resolve_strategy_name(
-                str(trade.get("strategy", ""))
-            )
-            if not resolved_strategy:
-                continue
-
+        for trade, order, resolved_strategy in filtered_orders_data:
             strategy_display_name = _get_strategy_display_name(resolved_strategy)
             trade_database_id = trade.get("id")
             symbol = str(trade.get("symbol", ""))
@@ -458,8 +592,6 @@ class TradeManager:
         output_directory.mkdir(parents=True, exist_ok=True)
         csv_filename = f"orders_{date_string.replace('-', '_')}.csv"
         csv_file_path = output_directory / csv_filename
-
-        import csv
 
         header = [
             "trade_group_id",
@@ -502,7 +634,7 @@ class TradeManager:
                     "symbol": order.symbol,
                     "sec_type": "STK",
                     "exchange": "SMART",
-                    "account_id": "U19605236",
+                    "account_id": self._ibkr_account_id,
                     "action": entry_leg.action,
                     "quantity": (
                         entry_leg.quantity
@@ -528,7 +660,7 @@ class TradeManager:
                     "symbol": order.symbol,
                     "sec_type": "STK",
                     "exchange": "SMART",
-                    "account_id": "U19605236",
+                    "account_id": self._ibkr_account_id,
                     "action": exit_leg.action,
                     "quantity": (
                         exit_leg.quantity
@@ -566,13 +698,14 @@ def _resolve_history_start_date(trade: dict[str, object]) -> str:
     signal_context = trade.get("signal_context")
     if signal_context:
         try:
-            if isinstance(signal_context, str):
-                ctx = json.loads(signal_context)
-            else:
-                ctx = signal_context
+            context_dict = (
+                json.loads(signal_context)
+                if isinstance(signal_context, str)
+                else signal_context
+            )
 
-            if isinstance(ctx, dict) and "date" in ctx:
-                return str(ctx["date"]).split(" ")[0]
+            if isinstance(context_dict, dict) and "date" in context_dict:
+                return str(context_dict["date"]).split(" ")[0]
         except (json.JSONDecodeError, TypeError) as parse_error:
             logger.warning("Failed to parse date from signal_context: %s", parse_error)
 
@@ -585,38 +718,28 @@ def _resolve_history_start_date(trade: dict[str, object]) -> str:
     return _HARDCODED_HISTORY_FALLBACK_DATE
 
 
-def _remove_none_values(data: object) -> object:
-    """Recursively removes all keys with None values from nested dicts or lists.
-
-    Args:
-        data: The object to clean (dict, list, or scalar).
-
-    Returns:
-        The cleaned object with all None-valued keys removed.
-    """
-    if isinstance(data, dict):
-        return {
-            key: _remove_none_values(value)
-            for key, value in data.items()
-            if value is not None
-        }
-    if isinstance(data, list):
-        return [_remove_none_values(item) for item in data]
-    return data
+_STRATEGY_DISPLAY_NAMES: dict[Strategies, str] = {
+    Strategies.NDXMomentum: "NDXMomentum",
+    Strategies.TurnOverTiming: "TurnoverTiming",
+    Strategies.TurnOverTiming_10: "TurnoverTiming_1.0",
+    Strategies.TurnOverTiming_05: "TurnoverTiming_0.5",
+    Strategies.DipBuyer: "DipBuyer",
+    Strategies.TwoPercent: "TwoPercent",
+    Strategies.HoldTarget: "HoldTarget",
+    Strategies.SplitTarget: "SplitTarget",
+}
 
 
 def _get_strategy_display_name(strategy_enum: Strategies) -> str:
-    """Returns the standardized display name of a strategy for order reporting."""
-    if strategy_enum == Strategies.NDXMomentum:
-        return "NDXMomentum"
-    if strategy_enum == Strategies.TurnOverTiming:
-        return "TurnoverTiming"
-    if strategy_enum == Strategies.TurnOverTiming_10:
-        return "TurnoverTiming_1.0"
-    if strategy_enum == Strategies.TurnOverTiming_05:
-        return "TurnoverTiming_0.5"
-    if strategy_enum == Strategies.DipBuyer:
-        return "DipBuyer"
-    if strategy_enum == Strategies.TwoPercent:
-        return "TwoPercent"
-    return str(strategy_enum.value)
+    """Returns the standardized display name of a strategy for order reporting.
+
+    Falls back to the raw enum value for any strategy not listed in the
+    display-name table — new strategies are covered automatically.
+
+    Args:
+        strategy_enum: The resolved Strategies enum member.
+
+    Returns:
+        str: Human-readable display name used in CSV output.
+    """
+    return _STRATEGY_DISPLAY_NAMES.get(strategy_enum, str(strategy_enum.value))

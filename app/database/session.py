@@ -27,19 +27,19 @@ class DatabaseSession:
     @contextmanager
     def connect(self) -> Generator[sqlite3.Connection, None, None]:
         """Yields a configured SQLite connection with automatic commit/rollback."""
-        conn = sqlite3.connect(self.db_path)
+        connection = sqlite3.connect(self.db_path)
 
         # WAL Mode & Timeout & Performance optimizations
-        conn.execute(_PRAGMA_BUSY_TIMEOUT)
-        conn.execute(_PRAGMA_JOURNAL_MODE)
-        conn.execute(_PRAGMA_SYNCHRONOUS)
+        connection.execute(_PRAGMA_BUSY_TIMEOUT)
+        connection.execute(_PRAGMA_JOURNAL_MODE)
+        connection.execute(_PRAGMA_SYNCHRONOUS)
 
-        conn.row_factory = sqlite3.Row
+        connection.row_factory = sqlite3.Row
         try:
-            yield conn
-            conn.commit()
+            yield connection
+            connection.commit()
         except Exception:
-            conn.rollback()
+            connection.rollback()
             raise
         finally:
-            conn.close()
+            connection.close()

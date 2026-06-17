@@ -59,7 +59,7 @@ def test_engine_handles_repository_database_lock(
     engine = BacktestEngine("2025-01-01", "2025-01-31", market, repository, console)
 
     # Act & Assert
-    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+    with pytest.raises(RuntimeError, match="PortfolioManager: Database unavailable."):
         engine.run()
 
 

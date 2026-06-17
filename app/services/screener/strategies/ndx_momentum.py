@@ -121,8 +121,7 @@ class NDXMomentumScreener(BaseStrategy):
     def calculate_analysis(
         self, analysis_date: str | None = None, force_run: bool = False
     ) -> NDXAnalysisResult:
-        """
-        Performs the momentum analysis without creating trades.
+        """Performs the momentum analysis without creating trades.
 
         This method is used both by run() and by the API for status reporting.
         """
@@ -151,29 +150,96 @@ class NDXMomentumScreener(BaseStrategy):
             }
 
         universe_symbols = list(set(nasdaq_100_symbols + ["QQQ"]))
-
-        # Use get_batch_history with 450 calendar days to safely cover 252 trading days
-        full_history_map = self.data_provider.get_batch_history(
-            universe_symbols, days=450, end_date=analysis_date
-        )
-
-        if not full_history_map:
-            logger.warning("[%s] No data found for universe.", self.name)
+        pivoted_data = self._prepare_pivoted_history(universe_symbols, analysis_date)
+        if pivoted_data is None:
             return {
                 "triggered": False,
                 "date": analysis_date,
                 "error": "No market data",
             }
 
-        # Data Pre-processing: Concatenate and Pivot
+        if "QQQ" not in pivoted_data["close"].columns:
+            logger.warning("[%s] QQQ data missing.", self.name)
+            return {
+                "triggered": False,
+                "date": analysis_date,
+                "error": "QQQ data missing",
+            }
+
+        effective_date_result = self._resolve_effective_date(
+            pivoted_data["close"].index, target_date, force_run, analysis_date
+        )
+        if isinstance(effective_date_result, dict):
+            return effective_date_result
+
+        effective_date = effective_date_result
+
+        # 2. Calculation Pipeline
+        qqq_close_series = pivoted_data["close"]["QQQ"]
+        current_qqq_price = qqq_close_series.at[effective_date]
+        index_moving_average = qqq_close_series.loc[:effective_date].tail(200).mean()
+
+        valid_nasdaq_symbols = [
+            symbol
+            for symbol in nasdaq_100_symbols
+            if symbol in pivoted_data["close"].columns
+        ]
+        nasdaq_closes = pivoted_data["close"].loc[:effective_date][valid_nasdaq_symbols]
+
+        is_bull_regime, regime_indicators = self._calculate_market_regime(
+            qqq_close_series,
+            nasdaq_closes,
+            effective_date,
+            current_qqq_price,
+            index_moving_average,
+        )
+
+        momentum_result = self._calculate_momentum_leaders(
+            nasdaq_closes, effective_date
+        )
+        if isinstance(momentum_result, dict):
+            return momentum_result
+
+        target_date_momentum_sum, rolling_roc_results, selected_leaders = (
+            momentum_result
+        )
+
+        return {
+            "triggered": True,
+            "date": effective_date.strftime("%Y-%m-%d"),
+            "requested_date": analysis_date,
+            "is_rebalance_day": is_rebalance_day,
+            "top_symbols": selected_leaders,
+            "momentum_scores": target_date_momentum_sum,
+            "roc_matrices": rolling_roc_results,
+            "price_data": pivoted_data,
+            "regime_indicators": {
+                "bull": bool(is_bull_regime),
+                "qqq": round(float(current_qqq_price), 1),
+                "qqq_sma": round(float(index_moving_average), 1),
+                "breadth_fast": round(float(regime_indicators["breadth_fast"]), 1),
+                "breadth_slow": round(float(regime_indicators["breadth_slow"]), 1),
+            },
+        }
+
+    def _prepare_pivoted_history(
+        self, universe_symbols: list[str], end_date: str
+    ) -> dict[str, pd.DataFrame] | None:
+        """Fetches history and pivots it into aligned DataFrames."""
+        full_history_map = self.data_provider.get_batch_history(
+            universe_symbols, days=450, end_date=end_date
+        )
+        if not full_history_map:
+            logger.warning("[%s] No data found for universe.", self.name)
+            return None
+
         history_dataframes = []
         for symbol, dataframe in full_history_map.items():
             dataframe["symbol"] = symbol
             history_dataframes.append(dataframe)
 
         universe_dataframe = pd.concat(history_dataframes, ignore_index=True)
-
-        pivoted_data = {
+        return {
             "close": universe_dataframe.pivot(
                 index="date", columns="symbol", values="close"
             ),
@@ -185,18 +251,27 @@ class NDXMomentumScreener(BaseStrategy):
             ),
         }
 
-        if "QQQ" not in pivoted_data["close"].columns:
-            logger.warning("[%s] QQQ data missing.", self.name)
-            return {
-                "triggered": False,
-                "date": analysis_date,
-                "error": "QQQ data missing",
-            }
+    def _resolve_effective_date(
+        self,
+        close_index: pd.Index,
+        target_date: pd.Timestamp,
+        force_run: bool,
+        analysis_date: str,
+    ) -> pd.Timestamp | NDXAnalysisResult:
+        """Resolves the last available trading day at or before the target date.
 
+        Args:
+            close_index: Aligned DataFrame date Index.
+            target_date: Requested target Timestamp.
+            force_run: Override rebalance date constraint flag.
+            analysis_date: Date parameter string.
+
+        Returns:
+            pd.Timestamp or NDXAnalysisResult error dict.
+        """
         try:
-            # Resolve the effective date from available data
-            if target_date > pivoted_data["close"].index[-1]:
-                effective_date = pivoted_data["close"].index[-1]
+            if target_date > close_index[-1]:
+                effective_date = close_index[-1]
                 logger.info(
                     "[%s] Requested %s but data ends at %s. Using last available.",
                     self.name,
@@ -204,7 +279,7 @@ class NDXMomentumScreener(BaseStrategy):
                     effective_date,
                 )
             else:
-                effective_date = pivoted_data["close"].index.asof(target_date)
+                effective_date = close_index.asof(target_date)
 
             if pd.isna(effective_date):
                 logger.warning(
@@ -218,7 +293,6 @@ class NDXMomentumScreener(BaseStrategy):
                     "error": "No price data found",
                 }
 
-            # If not forcing, we still require exact match for rebalance logic
             if not force_run and effective_date != target_date:
                 logger.warning(
                     "[%s] %s not in data and not forced. Skip.",
@@ -230,6 +304,8 @@ class NDXMomentumScreener(BaseStrategy):
                     "date": analysis_date,
                     "error": f"{analysis_date} not in data",
                 }
+
+            return effective_date
 
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
@@ -244,16 +320,26 @@ class NDXMomentumScreener(BaseStrategy):
                 "error": str(resolution_error),
             }
 
-        # 2. Calculation Pipeline
-        qqq_close_series = pivoted_data["close"]["QQQ"]
-        current_qqq_price = qqq_close_series.at[effective_date]
-        index_moving_average = qqq_close_series.loc[:effective_date].tail(200).mean()
+    def _calculate_market_regime(
+        self,
+        qqq_close_series: pd.Series,
+        nasdaq_closes: pd.DataFrame,
+        effective_date: pd.Timestamp,
+        current_qqq_price: float,
+        index_moving_average: float,
+    ) -> tuple[bool, dict[str, float]]:
+        """Calculates QQQ trend and NASDAQ breadth regime parameters.
 
-        valid_nasdaq_symbols = [
-            s for s in nasdaq_100_symbols if s in pivoted_data["close"].columns
-        ]
-        nasdaq_closes = pivoted_data["close"].loc[:effective_date][valid_nasdaq_symbols]
+        Args:
+            qqq_close_series: QQQ close price series.
+            nasdaq_closes: Historical index stock closing prices.
+            effective_date: Date of calculation.
+            current_qqq_price: QQQ close on effective date.
+            index_moving_average: SMA200 of QQQ on effective date.
 
+        Returns:
+            tuple of (is_bull_regime, metrics_dict).
+        """
         # Breadth
         sma100_matrix = nasdaq_closes.rolling(window=100).mean()
         percentage_above_sma100 = (nasdaq_closes > sma100_matrix).mean(axis=1) * 100
@@ -268,7 +354,23 @@ class NDXMomentumScreener(BaseStrategy):
             breadth_fast_average > breadth_slow_average
         )
 
-        # Momentum
+        return is_bull_regime, {
+            "breadth_fast": breadth_fast_average,
+            "breadth_slow": breadth_slow_average,
+        }
+
+    def _calculate_momentum_leaders(
+        self, nasdaq_closes: pd.DataFrame, effective_date: pd.Timestamp
+    ) -> tuple[pd.Series, dict[int, pd.DataFrame], list[str]] | NDXAnalysisResult:
+        """Calculates Rate of Change (ROC) and identifies the top momentum leaders.
+
+        Args:
+            nasdaq_closes: Nasdaq close prices.
+            effective_date: Target calculation date.
+
+        Returns:
+            tuple or NDXAnalysisResult error dict.
+        """
         rolling_roc_results = {}
         for window in [21, 63, 126, 252]:
             rolling_roc_results[window] = nasdaq_closes.pct_change(periods=window) * 100
@@ -293,23 +395,7 @@ class NDXMomentumScreener(BaseStrategy):
             self.configuration.maximum_ticker_count
         ).index.tolist()
 
-        return {
-            "triggered": True,
-            "date": effective_date.strftime("%Y-%m-%d"),
-            "requested_date": analysis_date,
-            "is_rebalance_day": is_rebalance_day,
-            "top_symbols": selected_leaders,
-            "momentum_scores": target_date_momentum_sum,
-            "roc_matrices": rolling_roc_results,
-            "price_data": pivoted_data,
-            "regime_indicators": {
-                "bull": bool(is_bull_regime),
-                "qqq": round(float(current_qqq_price), 1),
-                "qqq_sma": round(float(index_moving_average), 1),
-                "breadth_fast": round(float(breadth_fast_average), 1),
-                "breadth_slow": round(float(breadth_slow_average), 1),
-            },
-        }
+        return target_date_momentum_sum, rolling_roc_results, selected_leaders
 
     def _is_last_trading_day(self, date: pd.Timestamp) -> bool:
         """Checks if the date represents the last trading day of its month."""
@@ -343,49 +429,14 @@ class NDXMomentumScreener(BaseStrategy):
         created_count = 0
         for symbol in symbols:
             try:
-                total_momentum_score = float(momentum_scores.at[symbol])
-                closing_price = float(price_data["close"].at[analysis_date, symbol])
-
-                trade_context = {
-                    "source": "screener",
-                    "date": date_iso_string,
-                    "roc_1": round(
-                        float(roc_matrices[21].at[analysis_date, symbol]), 2
-                    ),
-                    "roc_3": round(
-                        float(roc_matrices[63].at[analysis_date, symbol]), 2
-                    ),
-                    "roc_6": round(
-                        float(roc_matrices[126].at[analysis_date, symbol]), 2
-                    ),
-                    "roc_12": round(
-                        float(roc_matrices[252].at[analysis_date, symbol]), 2
-                    ),
-                    "momentum_score": round(total_momentum_score, 2),
-                    "qqq_regime": "BULL"
-                    if (regime_indicators["qqq"] > regime_indicators["qqq_sma"])
-                    else "BEAR",
-                    "breadth_regime": "BULL"
-                    if (
-                        regime_indicators["breadth_fast"]
-                        > regime_indicators["breadth_slow"]
-                    )
-                    else "BEAR",
-                    "regime": "BULL" if regime_indicators["bull"] else "BEAR",
-                    "qqq_abs": regime_indicators["qqq"],
-                    "qqq_sma": regime_indicators["qqq_sma"],
-                    "breadth_fast": regime_indicators["breadth_fast"],
-                    "breadth_slow": regime_indicators["breadth_slow"],
-                }
-
-                self.trade_repository.create_trade(
-                    symbol=symbol,
-                    strategy=self.name,
-                    size=0,
-                    entry=round(closing_price, 2),
-                    stop_loss=0.0,
-                    target=0.0,
-                    context=trade_context,
+                self._create_single_momentum_trade(
+                    symbol,
+                    momentum_scores,
+                    roc_matrices,
+                    analysis_date,
+                    date_iso_string,
+                    price_data,
+                    regime_indicators,
                 )
                 created_count += 1
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
@@ -403,3 +454,58 @@ class NDXMomentumScreener(BaseStrategy):
 
         logger.info("[%s] Created %d CREATED trades.", self.name, created_count)
         return created_count
+
+    def _create_single_momentum_trade(
+        self,
+        symbol: str,
+        momentum_scores: pd.Series,
+        roc_matrices: dict[int, pd.DataFrame],
+        analysis_date: pd.Timestamp,
+        date_iso_string: str,
+        price_data: dict[str, pd.DataFrame],
+        regime_indicators: dict[str, float | bool],
+    ) -> None:
+        """Helper to compute context and save a single momentum trade.
+
+        Args:
+            symbol: Nasdaq ticker symbol.
+            momentum_scores: Calculated series of momentum scores.
+            roc_matrices: Dictionary of ROC dataframes.
+            analysis_date: Setup timestamp.
+            date_iso_string: Setup date string.
+            price_data: Aligned pivoted data.
+            regime_indicators: General market regime metrics.
+        """
+        total_momentum_score = float(momentum_scores.at[symbol])
+        closing_price = float(price_data["close"].at[analysis_date, symbol])
+
+        trade_context = {
+            "source": "screener",
+            "date": date_iso_string,
+            "roc_1": round(float(roc_matrices[21].at[analysis_date, symbol]), 2),
+            "roc_3": round(float(roc_matrices[63].at[analysis_date, symbol]), 2),
+            "roc_6": round(float(roc_matrices[126].at[analysis_date, symbol]), 2),
+            "roc_12": round(float(roc_matrices[252].at[analysis_date, symbol]), 2),
+            "momentum_score": round(total_momentum_score, 2),
+            "qqq_regime": "BULL"
+            if (regime_indicators["qqq"] > regime_indicators["qqq_sma"])
+            else "BEAR",
+            "breadth_regime": "BULL"
+            if (regime_indicators["breadth_fast"] > regime_indicators["breadth_slow"])
+            else "BEAR",
+            "regime": "BULL" if regime_indicators["bull"] else "BEAR",
+            "qqq_abs": regime_indicators["qqq"],
+            "qqq_sma": regime_indicators["qqq_sma"],
+            "breadth_fast": regime_indicators["breadth_fast"],
+            "breadth_slow": regime_indicators["breadth_slow"],
+        }
+
+        self.trade_repository.create_trade(
+            symbol=symbol,
+            strategy=self.name,
+            size=0,
+            entry=round(closing_price, 2),
+            stop_loss=0.0,
+            target=0.0,
+            context=trade_context,
+        )

@@ -1,11 +1,11 @@
 import logging
-import uuid
 import pandas as pd
+from decimal import Decimal
 from typing import override, final
 
-from ....database.repositories.trade import TradeRepository
+from ..types import TradeTransition
 from ....types import ExitReason, TradeData
-from ....models import Order, TradeParams, OrderLeg
+from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
 from .abstract import BaseTradeStrategy
 from ....const import Strategies
@@ -28,6 +28,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
     """
 
     STRATEGY_IDENTIFIER = Strategies.TwoPercent
+    name = Strategies.TwoPercent
     REWARD_TARGET_MULTIPLIER = 1.02
 
     def __init__(self) -> None:
@@ -39,7 +40,6 @@ class TwoPercentStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
-        repository: TradeRepository | None = None,
     ) -> TradeParams | None:
         """
         Calculates current strategy parameters for display.
@@ -47,7 +47,6 @@ class TwoPercentStrategy(BaseTradeStrategy):
         Args:
             trade: The current trade record.
             dataframe_history: Optional historical price data.
-            repository: Optional trade repository.
 
         Returns:
             TradeParams: Object containing stop loss and take profit levels.
@@ -74,42 +73,80 @@ class TwoPercentStrategy(BaseTradeStrategy):
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
-        repository: TradeRepository,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
         """
-        Generates a Limit Buy Order for the entry setup.
+        Generates Entry or Exit Orders based on current trade state.
 
         Args:
             trade: The current trade record.
             dataframe_history: Historical price data.
             budget: Allocated capital for this trade.
-            repository: The trade repository.
+            created_symbols: Set of symbols with currently pending trades.
 
         Returns:
             Order: The generated order shell, or None.
         """
-        entry_price = float(trade.get("entry_price") or 0.0)
-        if entry_price <= 0:
-            return None
+        status = trade.get("status")
 
-        quantity = int(budget / entry_price)
-        if quantity < 1:
-            return None
+        # 1. Entry Order (CREATED)
+        if status == "CREATED":
+            entry_price = float(trade.get("entry_price") or 0.0)
+            if entry_price <= 0:
+                return None
 
-        # Create Entry Leg
-        entry_leg = OrderLeg(
-            action="BUY", type="LMT", price=entry_price, quantity=quantity
-        )
+            quantity = int(budget / entry_price)
+            if quantity < 1:
+                return None
 
-        # Create Order Shell
-        return Order(
-            id=str(uuid.uuid4()),
-            symbol=trade["symbol"],
-            quantity=quantity,
-            mode="Entry",
-            entry=entry_leg,
-            exits=[],
-        )
+            return self._create_entry_order(
+                symbol=trade["symbol"],
+                quantity=quantity,
+                entry_price=Decimal(str(entry_price)),
+            )
+
+        # 2. Exit Order (ACTIVE)
+        if status == "ACTIVE":
+            quantity = int(trade.get("current_size") or 0)
+            if quantity <= 0:
+                return None
+
+            entry_price = float(trade.get("entry_price") or 0.0)
+            target_price = float(trade.get("current_target") or 0.0)
+            if target_price <= 0 and entry_price > 0:
+                target_price = round(entry_price * self.REWARD_TARGET_MULTIPLIER, 2)
+
+            if target_price <= 0:
+                return None
+
+            if not dataframe_history.empty:
+                last_date = pd.Timestamp(dataframe_history.iloc[-1]["date"])
+                next_day = last_date + pd.Timedelta(days=1)
+
+                # Check for Friday Time Stop (MOC)
+                if self._is_end_of_trading_week(next_day, self.holiday_checker):
+                    return self._create_exit_order(
+                        symbol=trade["symbol"],
+                        quantity=quantity,
+                        price=Decimal("0.0"),
+                        order_type="MOC",
+                        time_in_force="DAY",
+                    )
+
+                # Check if Take Profit target is active on next_day (Day + 1 or later)
+                entry_date_str = trade.get("entry_date")
+                if entry_date_str:
+                    entry_date = pd.Timestamp(entry_date_str)
+                    if next_day.date() > entry_date.date():
+                        return self._create_exit_order(
+                            symbol=trade["symbol"],
+                            quantity=quantity,
+                            price=Decimal(str(target_price)),
+                            order_type="LMT",
+                            time_in_force="DAY",
+                        )
+
+        return None
 
     @override
     def check_entry(
@@ -117,8 +154,8 @@ class TwoPercentStrategy(BaseTradeStrategy):
         trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        active_symbols: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Checks if the limit entry was filled on the current 'candle'.
 
@@ -126,10 +163,10 @@ class TwoPercentStrategy(BaseTradeStrategy):
             trade: The trade record.
             candle: The current price candle.
             dataframe_history: Price history.
-            repository: The trade repository.
+            active_symbols: Set of symbols with currently active positions.
 
         Returns:
-            str: Activation message if filled, else None.
+            TradeTransition: Activation transition if filled, else None.
         """
         limit_price = float(trade.get("entry_price") or 0.0)
         if limit_price <= 0:
@@ -165,7 +202,6 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 target_price = round(open_price * self.REWARD_TARGET_MULTIPLIER, 2)
                 return self._execute_activation(
                     trade,
-                    repository,
                     open_price,
                     "Gap Down (Open < Limit)",
                     date_string,
@@ -177,7 +213,6 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 target_price = round(limit_price * self.REWARD_TARGET_MULTIPLIER, 2)
                 return self._execute_activation(
                     trade,
-                    repository,
                     limit_price,
                     "Limit Hit",
                     date_string,
@@ -190,9 +225,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 return None
 
             # Not a holiday and no fill -> Invalidate
-            return self._reject_setup(
-                trade, repository, date_string, "Missed Entry Window (Day 1)"
-            )
+            return self._reject_setup(trade, date_string, "Missed Entry Window (Day 1)")
 
         # 2. Day 2 Processing (Only allowed if Day 1 was a holiday)
         if days_passed == 2 and was_day_1_holiday:
@@ -201,7 +234,6 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 target_price = round(open_price * self.REWARD_TARGET_MULTIPLIER, 2)
                 return self._execute_activation(
                     trade,
-                    repository,
                     open_price,
                     "Gap Down (Tuesday-after-Holiday)",
                     date_string,
@@ -213,7 +245,6 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 target_price = round(limit_price * self.REWARD_TARGET_MULTIPLIER, 2)
                 return self._execute_activation(
                     trade,
-                    repository,
                     limit_price,
                     "Limit Hit (Tuesday-after-Holiday)",
                     date_string,
@@ -221,13 +252,11 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 )
 
             # No fill on Tuesday after Monday holiday -> Invalidate
-            return self._reject_setup(
-                trade, repository, date_string, "Missed Entry Window (Day 2)"
-            )
+            return self._reject_setup(trade, date_string, "Missed Entry Window (Day 2)")
 
         # 3. Everything else: Too late
         return self._reject_setup(
-            trade, repository, date_string, "Missed Entry Window (Stale Signal)"
+            trade, date_string, "Missed Entry Window (Stale Signal)"
         )
 
     @override
@@ -235,18 +264,18 @@ class TwoPercentStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        latest_leaders: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Manages Exits: Take Profit and Time Stop.
 
         Args:
             trade: The active trade record.
             dataframe_history: Historical price data.
-            repository: The trade repository.
+            latest_leaders: Optional set of active leaders.
 
         Returns:
-            str: Close message if exit triggered, else None.
+            TradeTransition: Close transition if exit triggered, else None.
         """
         entry_price = float(trade.get("entry_price") or 0.0)
         entry_date_string = trade.get("entry_date")
@@ -279,7 +308,6 @@ class TwoPercentStrategy(BaseTradeStrategy):
                 exit_execution_price = max(open_price, target_exit_price)
                 return self._close_trade(
                     trade,
-                    repository,
                     exit_execution_price,
                     ExitReason.TARGET_HIT,
                     date_string,
@@ -288,7 +316,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
         # 2. Time Stop (Friday Close or Thursday if Friday is a holiday)
         if self._is_end_of_trading_week(current_date_timestamp, self.holiday_checker):
             return self._close_trade(
-                trade, repository, close_price, ExitReason.TIME_STOP, date_string
+                trade, close_price, ExitReason.TIME_STOP, date_string
             )
 
         return None

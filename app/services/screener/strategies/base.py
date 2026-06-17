@@ -7,6 +7,7 @@ import pandas as pd
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....mapping import mapper
 from ....services.telegram import TelegramBot
+from ....tools.symbol_lists import ExchangeSymbol
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,27 @@ class BaseStrategy(ABC, Generic[T]):
         """
         self.data_provider = data_provider
         self.telegram_bot = telegram_bot
+        self.exchange_symbols = ExchangeSymbol()
+
+    def _get_indices_for_symbol(self, symbol: str) -> list[str]:
+        """Returns the list of indices (SPX, NDX, DOW, RUS) the symbol belongs to.
+
+        Args:
+            symbol: Ticker symbol to look up.
+
+        Returns:
+            list[str]: List of index identifiers.
+        """
+        indices = []
+        if symbol in self.exchange_symbols.dow_30:
+            indices.append("DOW")
+        if symbol in self.exchange_symbols.sp_500:
+            indices.append("SPX")
+        if symbol in self.exchange_symbols.nasdaq_100:
+            indices.append("NDX")
+        if symbol in self.exchange_symbols.russell_1000:
+            indices.append("RUS")
+        return indices
 
     @abstractmethod
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:

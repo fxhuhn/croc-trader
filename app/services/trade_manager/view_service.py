@@ -1,11 +1,9 @@
 import json
 import logging
-from pathlib import Path
 from datetime import date
 
 import pandas as pd
 import plotly.graph_objects as go
-from flask import current_app
 
 from ...const import (
     Strategies,
@@ -16,7 +14,6 @@ from ...const import (
 )
 from ...database.repositories.trade import TradeRepository
 from ...database.repositories.market import MarketRepository
-from ...database.session import DatabaseSession
 
 # Import TradeData from types to avoid duplication definition (if possible), or keep TradeViewData as extended
 # The user asked to avoid duplication with app/types.py.
@@ -24,12 +21,6 @@ from ...database.session import DatabaseSession
 from ...types import TradeData
 
 logger = logging.getLogger(__name__)
-
-
-def _get_database_path(name: str = "signals") -> Path:
-    """Retrieves the absolute path to a specific database."""
-    configuration = current_app.config["APP_CONFIG"]
-    return Path(configuration.get_db_path(name)).resolve()
 
 
 class TradeViewData(TradeData):
@@ -45,7 +36,7 @@ class TradeViewData(TradeData):
     display_exit: str
     days_held: int
     unrealized_pnl: float
-    pnl_pct: float
+    pnl_percentage: float
     is_critical: bool
     progress: float
     display_size: float
@@ -60,48 +51,63 @@ class TradeViewData(TradeData):
 class TradeViewService:
     """Service to prepare trade data for UI views."""
 
-    def __init__(self) -> None:
-        self.trade_repository = self._get_trade_repository()
-        self.market_repository = self._get_market_repository()
+    def __init__(
+        self,
+        trade_repository: TradeRepository,
+        market_repository: MarketRepository,
+    ) -> None:
+        """Initializes the view service with repositories.
 
-    def _get_trade_repository(self) -> TradeRepository:
-        """Instantiates the trade repository."""
-        session = DatabaseSession(str(_get_database_path("signals")))
-        return TradeRepository(session)
-
-    def _get_market_repository(self) -> MarketRepository:
-        """Instantiates the market repository."""
-        session = DatabaseSession(str(_get_database_path("stocks")))
-        return MarketRepository(session)
+        Args:
+            trade_repository: The repository for trade database access.
+            market_repository: The repository for market history database access.
+        """
+        self.trade_repository = trade_repository
+        self.market_repository = market_repository
 
     def resolve_strategy(self, trade: dict[str, object]) -> str:
-        """Resolves a trade's strategy string to its Enum value."""
-        raw = str(trade.get("strategy", "")).lower()
+        """Resolves a trade's strategy string to its Enum value.
+
+        Args:
+            trade: The trade record dictionary.
+
+        Returns:
+            str: The resolved strategy name.
+        """
+        raw_strategy_name = str(trade.get("strategy", "")).lower()
         # Check exact match first
         try:
             # Check if it's already a valid Enum value
-            Strategies(raw)
-        except ValueError as val_error:
+            Strategies(raw_strategy_name)
+        except ValueError as value_error:
             # Not a valid enum member, proceed to alias lookup
             logger.debug(
                 "Strategy '%s' is not direct member of Strategies enum: %s",
-                raw,
-                val_error,
+                raw_strategy_name,
+                value_error,
             )
 
-        resolved = STRATEGY_ALIASES.get(raw)
-        return resolved if resolved else raw
+        resolved = STRATEGY_ALIASES.get(raw_strategy_name)
+        return resolved if resolved else raw_strategy_name
 
     def is_strategy_match(
         self, trade: dict[str, object], target: str | list[str]
     ) -> bool:
-        """Checks if a trade belongs to a strategy or list of strategies."""
-        trade_strat = self.resolve_strategy(trade)
+        """Checks if a trade belongs to a strategy or list of strategies.
+
+        Args:
+            trade: The trade record dictionary.
+            target: Strategy name or list of strategy names.
+
+        Returns:
+            bool: True if the trade strategy matches target.
+        """
+        resolved_strategy = self.resolve_strategy(trade)
 
         if isinstance(target, list):
-            return trade_strat in target
+            return resolved_strategy in target
 
-        return trade_strat == target
+        return resolved_strategy == target
 
     def _parse_context(self, trade: dict[str, object]) -> dict[str, object]:
         """Parses the JSON context string safely."""
@@ -110,107 +116,133 @@ class TradeViewService:
             if isinstance(raw_context, str) and raw_context:
                 return json.loads(raw_context)
             if isinstance(raw_context, dict):
-                return raw_context  # type: ignore
+                return {str(k): v for k, v in raw_context.items()}
             return {}
-        except (json.JSONDecodeError, TypeError):
-            return {}
-
-    def prepare_trade_view(self, trade: dict[str, object]) -> TradeViewData:
-        """Transforms a raw trade dict into a strictly typed TradeViewData."""
-        context = self._parse_context(trade)
-
-        # Harmonize Indices
-        if "indices" not in context and "bucket" in context:
-            # Backward compatibility for old 'bucket' key
-            context["indices"] = context["bucket"]
-
-        # Date Handling
-        entry_date = trade.get("entry_date")
-        exit_date = trade.get("exit_date")
-
-        display_entry = str(entry_date).split(" ")[0] if entry_date else "-"
-        display_exit = str(exit_date).split(" ")[0] if exit_date else "-"
-
-        # Holding Period
-        days_held = 0
-        if entry_date:
-            start_date_str = str(entry_date).split(" ")[0]
-            if exit_date:
-                end_date_str = str(exit_date).split(" ")[0]
-            else:
-                # Use strictly the last available trading day if active
-                # For now, we can fall back to the market repo's latest date if accessible,
-                # or rely on the fact that get_trading_days_count handles open interactions?
-                # User asked to avoid 'now()'. We'll use today's date only for display logic upper bound.
-                # Ideally, we should fetch "last_market_date".
-                # For simplicity and robustness without extra query, we use local date as 'today's view'.
-                end_date_str = date.today().strftime("%Y-%m-%d")
-
-            days_held = self.market_repository.get_trading_days_count(
-                trade.get("symbol", ""), start_date_str, end_date_str
+        except (json.JSONDecodeError, TypeError) as parse_error:
+            logger.warning(
+                "Failed to parse signal_context for trade %s: %s",
+                trade.get("id"),
+                parse_error,
             )
+            return {}
 
-        # Price & PnL
-        entry_price = float(trade.get("entry_price") or 0.0)
-        current_price = float(trade.get("current_price") or 0.0)
-        # Ensure initial_size is fetched correctly.
-        # If DB returns None, we default to 0.0.
-        initial_size = float(trade.get("initial_size") or 0.0)
-        current_size = float(trade.get("current_size") or 0.0)
-        exit_price = float(trade.get("exit_price") or 0.0)
+    def _calculate_days_held(
+        self,
+        symbol: str,
+        entry_date: object | None,
+        exit_date: object | None,
+    ) -> int:
+        """Calculates holding period using trading days.
 
-        # Active Trade Price Update
-        if trade.get("status") == TradeStatus.ACTIVE and current_price == 0.0:
-            latest = self.market_repository.get_latest_price(trade.get("symbol", ""))
-            if latest:
-                current_price = latest
+        Args:
+            symbol: The ticker symbol.
+            entry_date: Date of trade entry.
+            exit_date: Date of trade exit.
 
-        unrealized_pnl = 0.0
-        realized_pnl = float(trade.get("realized_pnl") or 0.0)
-        pnl_pct = 0.0
-        is_critical = False
+        Returns:
+            int: Number of trading days held.
+        """
+        if not entry_date:
+            return 0
+
+        start_date_string = str(entry_date).split(" ")[0]
+        if exit_date:
+            end_date_string = str(exit_date).split(" ")[0]
+        else:
+            end_date_string = date.today().strftime("%Y-%m-%d")
+
+        return self.market_repository.get_trading_days_count(
+            symbol, start_date_string, end_date_string
+        )
+
+    def _prepare_active_trade_view_fields(
+        self,
+        trade: dict[str, object],
+        context_dict: dict[str, object],
+        entry_price: float,
+        current_price: float,
+        initial_size: float,
+    ) -> tuple[float, float, bool, float]:
+        """Calculates PnL, progress, and criticality for an active trade.
+
+        Args:
+            trade: The trade dictionary record.
+            context_dict: The parsed JSON context dictionary.
+            entry_price: The trade entry price.
+            current_price: The current price of the asset.
+            initial_size: The initial share size.
+
+        Returns:
+            tuple[float, float, bool, float]: Tuple of (unrealized_pnl, pnl_percentage, is_critical, progress).
+        """
+        if entry_price <= 0:
+            return 0.0, 0.0, False, 0.0
+
+        direction = str(context_dict.get("direction", "long")).lower()
+        if direction == "short":
+            unrealized_pnl = (entry_price - current_price) * initial_size
+            pnl_percentage = ((entry_price - current_price) / entry_price) * 100
+        else:
+            unrealized_pnl = (current_price - entry_price) * initial_size
+            pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+
+        stop_loss = float(trade.get("current_stop_loss") or 0.0)
+        target_price = 0.0
+
+        # Target Hierarchy using Enums
+        for key in [
+            TargetColumn.TARGET_PRICE,
+            TargetColumn.TP3,
+            TargetColumn.TAKE_PROFIT_3,
+            TargetColumn.TP1,
+            TargetColumn.TAKE_PROFIT_1,
+        ]:
+            if value := context_dict.get(key):
+                target_price = float(value)  # type: ignore[arg-type]  # value is dynamically extracted and expected to be float-convertible
+                break
+
+        # Progress Calculation
         progress = 0.0
+        if stop_loss > 0.0 and target_price > 0.0 and stop_loss != target_price:
+            total_range = target_price - stop_loss
+            current_distance = current_price - stop_loss
+            percentage_value = (current_distance / total_range) * 100
+            progress = max(0.0, min(100.0, percentage_value))
 
-        if trade.get("status") == TradeStatus.ACTIVE and entry_price > 0:
-            direction = str(context.get("direction", "long")).lower()
+        # Critical SL
+        is_critical = False
+        if stop_loss > 0.0:
+            distance = abs(current_price - stop_loss)
+            if current_price > 0 and (distance / current_price) < 0.01:
+                is_critical = True
 
-            if direction == "short":
-                unrealized_pnl = (entry_price - current_price) * initial_size
-                pnl_pct = ((entry_price - current_price) / entry_price) * 100
-            else:
-                unrealized_pnl = (current_price - entry_price) * initial_size
-                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+        return unrealized_pnl, pnl_percentage, is_critical, progress
 
-            stop_loss = float(trade.get("current_stop_loss") or 0.0)
-            target_price = 0.0
+    def _prepare_closed_trade_view_fields(
+        self,
+        trade: dict[str, object],
+        context_dict: dict[str, object],
+        entry_price: float,
+        exit_price: float,
+        initial_size: float,
+    ) -> tuple[float, float]:
+        """Calculates PnL and percentage for a closed trade.
 
-            # Target Hierarchy using Enums
-            for key in [
-                TargetColumn.TARGET_PRICE,
-                TargetColumn.TP3,
-                TargetColumn.TAKE_PROFIT_3,
-                TargetColumn.TP1,
-                TargetColumn.TAKE_PROFIT_1,
-            ]:
-                if value := context.get(key):
-                    target_price = float(value)  # type: ignore
-                    break
+        Args:
+            trade: The trade dictionary record.
+            context_dict: The parsed JSON context dictionary.
+            entry_price: The trade entry price.
+            exit_price: The trade exit price.
+            initial_size: The initial share size.
 
-            # Progress Calculation
-            if stop_loss > 0.0 and target_price > 0.0 and stop_loss != target_price:
-                total_range = target_price - stop_loss
-                current_distance = current_price - stop_loss
-                percentage = (current_distance / total_range) * 100
-                progress = max(0.0, min(100.0, percentage))
+        Returns:
+            tuple[float, float]: Tuple of (realized_pnl, pnl_percentage).
+        """
+        realized_pnl = float(trade.get("realized_pnl") or 0.0)
+        pnl_percentage = 0.0
 
-            # Critical SL
-            if stop_loss > 0.0:
-                distance = abs(current_price - stop_loss)
-                if current_price > 0 and (distance / current_price) < 0.01:
-                    is_critical = True
-
-        elif trade.get("status") == TradeStatus.CLOSED and entry_price > 0:
-            direction = str(context.get("direction", "long")).lower()
+        if entry_price > 0:
+            direction = str(context_dict.get("direction", "long")).lower()
 
             if realized_pnl == 0.0 and exit_price > 0:
                 if direction == "short":
@@ -218,65 +250,165 @@ class TradeViewService:
                 else:
                     realized_pnl = (exit_price - entry_price) * initial_size
 
-            entry_for_pct = entry_price
             if direction == "short":
-                price_diff = entry_price - exit_price
+                price_difference = entry_price - exit_price
             else:
-                price_diff = exit_price - entry_price
+                price_difference = exit_price - entry_price
 
-            pnl_pct = (price_diff / entry_for_pct) * 100
+            pnl_percentage = (price_difference / entry_price) * 100
 
-        # Version extraction
-        version = None
-        strat_str = str(trade.get("strategy", ""))
-        if "0.5" in strat_str:
-            version = "0.5"
-        elif "1.0" in strat_str:
-            version = "1.0"
+        return realized_pnl, pnl_percentage
 
-        # Construct strictly typed response.
-        # Using cast logic implicitly by creating dict matching structure.
-        view_data: TradeViewData = {
+    def prepare_trade_view(self, trade: dict[str, object]) -> TradeViewData:
+        """Transforms a raw trade dict into a strictly typed TradeViewData.
+
+        Args:
+            trade: Raw trade record from database.
+
+        Returns:
+            TradeViewData: Populated data object for UI representation.
+        """
+        context_dict = self._parse_context(trade)
+        if "indices" not in context_dict and "bucket" in context_dict:
+            context_dict["indices"] = context_dict["bucket"]
+
+        display_entry, display_exit, days_held = self._extract_dates_and_holding(trade)
+
+        entry_price = float(trade.get("entry_price") or 0.0)
+        current_price = self._resolve_current_price(
+            str(trade.get("symbol", "")),
+            trade.get("status"),
+            float(trade.get("current_price") or 0.0),
+        )
+        initial_size = float(trade.get("initial_size") or 0.0)
+        current_size = float(trade.get("current_size") or 0.0)
+        exit_price = float(trade.get("exit_price") or 0.0)
+
+        unrealized_pnl = 0.0
+        realized_pnl = float(trade.get("realized_pnl") or 0.0)
+        pnl_percentage = 0.0
+        is_critical = False
+        progress = 0.0
+
+        if trade.get("status") == TradeStatus.ACTIVE:
+            (
+                unrealized_pnl,
+                pnl_percentage,
+                is_critical,
+                progress,
+            ) = self._prepare_active_trade_view_fields(
+                trade, context_dict, entry_price, current_price, initial_size
+            )
+        elif trade.get("status") == TradeStatus.CLOSED:
+            (
+                realized_pnl,
+                pnl_percentage,
+            ) = self._prepare_closed_trade_view_fields(
+                trade, context_dict, entry_price, exit_price, initial_size
+            )
+
+        prices = {
+            "entry": entry_price,
+            "current": current_price,
+            "initial_size": initial_size,
+            "current_size": current_size,
+            "exit": exit_price,
+        }
+        pnl_data = {
+            "unrealized_pnl": unrealized_pnl,
+            "realized_pnl": realized_pnl,
+            "pnl_percentage": pnl_percentage,
+            "is_critical": is_critical,
+            "progress": progress,
+        }
+
+        return self._build_view_data(
+            trade,
+            context_dict,
+            display_entry,
+            display_exit,
+            days_held,
+            prices,
+            pnl_data,
+        )
+
+    def _extract_dates_and_holding(
+        self, trade: dict[str, object]
+    ) -> tuple[str, str, int]:
+        """Extracts display entry/exit dates and trading days holding period."""
+        entry_date = trade.get("entry_date")
+        exit_date = trade.get("exit_date")
+        display_entry = str(entry_date).split(" ")[0] if entry_date else "-"
+        display_exit = str(exit_date).split(" ")[0] if exit_date else "-"
+        days_held = self._calculate_days_held(
+            str(trade.get("symbol", "")), entry_date, exit_date
+        )
+        return display_entry, display_exit, days_held
+
+    def _resolve_current_price(
+        self, symbol: str, status: object, current_price: float
+    ) -> float:
+        """Resolves the current price of an active trade if set to 0.0."""
+        if status == TradeStatus.ACTIVE and current_price == 0.0:
+            latest_price = self.market_repository.get_latest_price(symbol)
+            if latest_price:
+                return latest_price
+        return current_price
+
+    def _extract_strategy_version(self, strategy_string: str) -> str | None:
+        """Extracts the version tag from the strategy name string."""
+        if "0.5" in strategy_string:
+            return "0.5"
+        if "1.0" in strategy_string:
+            return "1.0"
+        return None
+
+    def _build_view_data(
+        self,
+        trade: dict[str, object],
+        context_dict: dict[str, object],
+        display_entry: str,
+        display_exit: str,
+        days_held: int,
+        prices: dict[str, float],
+        pnl_data: dict[str, object],
+    ) -> TradeViewData:
+        """Assembles and returns a TradeViewData dictionary."""
+        entry_date = trade.get("entry_date")
+        exit_date = trade.get("exit_date")
+        return {
             "id": trade.get("id", ""),
             "symbol": trade.get("symbol", ""),
             "strategy": trade.get("strategy", ""),
-            "version": version,
+            "version": self._extract_strategy_version(str(trade.get("strategy", ""))),
             "status": trade.get("status", ""),
             "entry_date": str(entry_date) if entry_date else None,
             "exit_date": str(exit_date) if exit_date else None,
-            "entry_price": entry_price,
-            "exit_price": exit_price,
-            "current_price": current_price,
-            "initial_size": initial_size,
-            "current_size": current_size,
-            "current_stop_loss": float(
-                trade.get("current_stop_loss") or 0.0
-            ),  # TradeData field name
-            "current_target": float(
-                trade.get("current_target") or 0.0
-            ),  # TradeData field name
+            "entry_price": prices["entry"],
+            "exit_price": prices["exit"],
+            "current_price": prices["current"],
+            "initial_size": prices["initial_size"],
+            "current_size": prices["current_size"],
+            "current_stop_loss": float(trade.get("current_stop_loss") or 0.0),
+            "current_target": float(trade.get("current_target") or 0.0),
             "budget": float(trade.get("budget") or 0.0),
             "signal_context": trade.get("signal_context"),
             "exit_reason": trade.get("exit_reason"),
-            # Display Fields
-            "stop_loss": float(
-                trade.get("current_stop_loss") or 0.0
-            ),  # Aliased for view
+            "stop_loss": float(trade.get("current_stop_loss") or 0.0),
             "take_profit": 0.0,
             "display_entry": display_entry,
             "display_exit": display_exit,
             "days_held": days_held,
-            "unrealized_pnl": unrealized_pnl,
-            "realized_pnl": realized_pnl,
-            "pnl_pct": pnl_pct,
-            "is_critical": is_critical,
-            "progress": progress,
-            "display_size": initial_size,
+            "unrealized_pnl": float(pnl_data["unrealized_pnl"]),
+            "realized_pnl": float(pnl_data["realized_pnl"]),
+            "pnl_percentage": float(pnl_data["pnl_percentage"]),
+            "is_critical": bool(pnl_data["is_critical"]),
+            "progress": float(pnl_data["progress"]),
+            "display_size": prices["initial_size"],
             "sparkline": "",
             "max_days": None,
-            "context": context,
+            "context": context_dict,
         }
-        return view_data
 
     def generate_sparkline(
         self, dates: list[str], prices: list[float], is_positive: bool
@@ -453,7 +585,7 @@ class TradeViewService:
                     "symbol": symbol,
                     "total_pnl": 0.0,
                     "total_invested": 0.0,
-                    "total_pnl_pct": 0.0,
+                    "total_pnl_percentage": 0.0,
                     "variants": [],
                 }
             grouped[symbol]["variants"].append(trade)
@@ -464,7 +596,7 @@ class TradeViewService:
 
         for group in grouped.values():
             if group["total_invested"] > 0:
-                group["total_pnl_pct"] = (
+                group["total_pnl_percentage"] = (
                     group["total_pnl"] / group["total_invested"]
                 ) * 100
 
@@ -557,23 +689,23 @@ class TradeViewService:
 
             # Use IndexAliases Enum values for strict containment checks
             if IndexAliases.SPX in raw_indices:
-                self._update_stat(statistics[IndexAliases.SPX], pnl)
+                self._update_statistics(statistics[IndexAliases.SPX], pnl)
                 matched = True
 
             if IndexAliases.NDX in raw_indices:
-                self._update_stat(statistics[IndexAliases.NDX], pnl)
+                self._update_statistics(statistics[IndexAliases.NDX], pnl)
                 matched = True
 
             if IndexAliases.DOW in raw_indices:
-                self._update_stat(statistics[IndexAliases.DOW], pnl)
+                self._update_statistics(statistics[IndexAliases.DOW], pnl)
                 matched = True
 
             if IndexAliases.RUS in raw_indices:
-                self._update_stat(statistics[IndexAliases.RUS], pnl)
+                self._update_statistics(statistics[IndexAliases.RUS], pnl)
                 matched = True
 
             if not matched:
-                self._update_stat(statistics[IndexAliases.NO_INDEX], pnl)
+                self._update_statistics(statistics[IndexAliases.NO_INDEX], pnl)
 
         # Calc averages
         for item in statistics.values():
@@ -583,11 +715,18 @@ class TradeViewService:
 
         return statistics
 
-    def _update_stat(self, stat_dict: dict[str, object], pnl: float) -> None:
-        """Helper to update a stats dictionary entry."""
-        stat_dict["count"] += 1
-        stat_dict["pnl"] += pnl
+    def _update_statistics(
+        self, statistics_dict: dict[str, object], pnl: float
+    ) -> None:
+        """Helper to update a stats dictionary entry.
+
+        Args:
+            statistics_dict: The dictionary holding index stats.
+            pnl: The realized profit and loss value.
+        """
+        statistics_dict["count"] += 1
+        statistics_dict["pnl"] += pnl
         if pnl > 0:
-            stat_dict["win"] += 1
+            statistics_dict["win"] += 1
         else:
-            stat_dict["loss"] += 1
+            statistics_dict["loss"] += 1

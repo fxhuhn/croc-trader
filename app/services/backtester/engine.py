@@ -1,4 +1,5 @@
 import logging
+import warnings
 import pandas as pd
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
@@ -27,14 +28,15 @@ from ...services.trade_manager.strategies.two_percent_strategy import (
 
 from ...types import TradeStatus
 
+from ...config import PortfolioConfig
 from ...services.portfolio.manager import PortfolioManager
 
 logger = logging.getLogger(__name__)
 
 
 class BacktestEngine:
-    """
-    Orchestrates the backtesting simulation.
+    """Orchestrates the backtesting simulation.
+
     Moves 'Virtual Time' forward day by day.
     """
 
@@ -45,13 +47,19 @@ class BacktestEngine:
         market_provider: MarketDataProvider,
         trade_repository: TradeRepository,
         console: Console | None = None,
-        portfolio_config: dict | None = None,
+        portfolio_config: PortfolioConfig | None = None,
     ):
         self.start_date = pd.Timestamp(start_date)
         self.end_date = pd.Timestamp(end_date)
         self.market = market_provider
         self.trade_repository = trade_repository
         self.console = console or Console()
+
+        warnings.warn(
+            "The Backtester module is deprecated. TradeManager is now the sole source of truth for OrderTypes, Limits, and Sizing.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         self.portfolio_manager = PortfolioManager(
             self.trade_repository, portfolio_config=portfolio_config

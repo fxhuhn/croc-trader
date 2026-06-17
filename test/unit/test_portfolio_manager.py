@@ -14,10 +14,10 @@ def allocator():
 @pytest.mark.parametrize(
     "trade_input,expected_size,expected_reason_substr",
     [
-        # Happy Path: DipBuyer (Budget 2000)
+        # Happy Path: DipBuyer (Budget 2500)
         (
             {"strategy": "DipBuyer", "entry_price": 100.0, "symbol": "TEST"},
-            20,
+            25,
             "Budget",
         ),
         (
@@ -27,7 +27,7 @@ def allocator():
         ),
         # Edge Case: DipBuyer Price > Budget
         (
-            {"strategy": "DipBuyer", "entry_price": 2001.0, "symbol": "TEST"},
+            {"strategy": "DipBuyer", "entry_price": 2501.0, "symbol": "TEST"},
             0,
             "Price > Budget",
         ),
@@ -42,10 +42,10 @@ def allocator():
             20,  # Risk/Share = 5. 100/5 = 20.
             "Fixed Risk",
         ),
-        # Happy Path: TurnoverTiming (Budget 2000)
+        # Happy Path: TurnoverTiming (Budget 2500)
         (
             {"strategy": "TurnoverTiming", "entry_price": 50.0, "symbol": "TEST"},
-            40,
+            50,
             "Budget",
         ),
         # Edge Case: Invalid Entry Price
@@ -57,7 +57,7 @@ def allocator():
         # Edge Case: Only Strategy Name Match (Case Insensitive)
         (
             {"strategy": "dipbuyer", "entry_price": 100.0, "symbol": "TEST"},
-            20,
+            25,
             "Budget",
         ),
         # Edge Case: HoldTarget Invalid SL
@@ -142,16 +142,16 @@ def test_manager_processes_trades_successfully(manager, mock_repo):
     # Verify updates
     assert mock_repo.update_trade.call_count == 2
 
-    # Check Trade 1 Update (DipBuyer: 2000/100 = 20)
+    # Check Trade 1 Update (DipBuyer: 2500/100 = 25)
     import json
 
     args_1, kwargs_1 = mock_repo.update_trade.call_args_list[0]
     assert args_1[0] == "1"
-    assert args_1[1]["initial_size"] == 20
+    assert args_1[1]["initial_size"] == 25
 
     # Verify Context (Budget)
     context_1 = json.loads(args_1[1]["signal_context"])
-    assert context_1["budget"] == 2000.0
+    assert context_1["budget"] == 2500.0
 
     # Check Trade 2 Update (HoldTarget: 100/(50-40) = 10)
     args_2, kwargs_2 = mock_repo.update_trade.call_args_list[1]
@@ -184,14 +184,15 @@ def test_manager_skips_trades_with_size(manager, mock_repo):
 
 def test_manager_handles_repo_exception_gracefully(manager, mock_repo):
     # Arrange
-    mock_repo.get_by_status.side_effect = Exception("DB Connection Failed")
+    import sqlite3
 
-    # Act
-    count = manager.process_daily_signals()
+    mock_repo.get_by_status.side_effect = sqlite3.OperationalError(
+        "DB Connection Failed"
+    )
 
-    # Assert
-    assert count == 0
-    # Should log error but not crash (verified by successful return)
+    # Act / Assert
+    with pytest.raises(RuntimeError, match="PortfolioManager: Database unavailable."):
+        manager.process_daily_signals()
 
 
 def test_manager_handles_allocation_failure_gracefully(manager, mock_repo):

@@ -192,27 +192,12 @@ class CrocSetupStrategy(BaseStrategy):
         # 1. Find all matching signal candidates
         candidates = []
         for row in signals:
-            item = self._find_candidate(dict(row))
-            if item:
-                candidates.append(item)
+            candidate = self._find_candidate(dict(row))
+            if candidate:
+                candidates.append(candidate)
 
         # 2. Sort all candidates by SQN / MaxDD Ratio (High to Low)
-        def _sort_by_sqn_over_max_drawdown(candidate_data: dict[str, Any]) -> float:
-            """Pure sort key: higher SQN-to-MaxDD ratio = better risk-adjusted quality."""
-            rule = candidate_data["match"]
-            system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
-            maximum_drawdown = float(rule.get("MaxDD", 0.0))
-            return (
-                (system_quality_number / maximum_drawdown)
-                if maximum_drawdown > 0
-                else 0.0
-            )
-
-        sorted_candidates = sorted(
-            candidates,
-            key=_sort_by_sqn_over_max_drawdown,
-            reverse=True,
-        )
+        sorted_candidates = self._sort_candidates(candidates)
 
         # 3. Limit to top 3 and create trades
         report_rows = []
@@ -231,14 +216,29 @@ class CrocSetupStrategy(BaseStrategy):
 
         return len(report_rows)
 
+    def _sort_candidates(
+        self, candidates: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        """Sorts candidates by SQN/MaxDD ratio descending."""
+
+        def _sort_key(candidate_data: dict[str, object]) -> float:
+            rule = candidate_data["match"]
+            system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
+            maximum_drawdown = float(rule.get("MaxDD", 0.0))
+            return (
+                (system_quality_number / maximum_drawdown)
+                if maximum_drawdown > 0
+                else 0.0
+            )
+
+        return sorted(candidates, key=_sort_key, reverse=True)
+
     def get_all_recommendations(
         self,
         days: int = 0,
         analysis_date: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """
-        Returns all recommended signals without creating trades in the database.
-        """
+    ) -> list[dict[str, object]]:
+        """Returns all recommended signals without creating trades in the database."""
         if not analysis_date and days == 0:
             analysis_date = self.signal_repository.get_latest_signal_date()
 
@@ -263,32 +263,17 @@ class CrocSetupStrategy(BaseStrategy):
         # 1. Find all matching signal candidates
         candidates = []
         for row in signals:
-            item = self._find_candidate(dict(row))
-            if item:
-                candidates.append(item)
+            candidate = self._find_candidate(dict(row))
+            if candidate:
+                candidates.append(candidate)
 
         # 2. Sort using the same SQN/MaxDD key used in run()
-        def _sort_by_sqn_over_max_drawdown(candidate_data: dict[str, Any]) -> float:
-            """Pure sort key: higher SQN-to-MaxDD ratio = better risk-adjusted quality."""
-            rule = candidate_data["match"]
-            system_quality_number = float(rule.get("SQN", rule.get("Score", 0.0)))
-            maximum_drawdown = float(rule.get("MaxDD", 0.0))
-            return (
-                (system_quality_number / maximum_drawdown)
-                if maximum_drawdown > 0
-                else 0.0
-            )
-
-        sorted_candidates = sorted(
-            candidates,
-            key=_sort_by_sqn_over_max_drawdown,
-            reverse=True,
-        )
+        sorted_candidates = self._sort_candidates(candidates)
 
         results = []
-        for c in sorted_candidates:
+        for candidate in sorted_candidates:
             recommendation = self._build_trade_recommendation(
-                c["normalized"], c["prices"], c["match"]
+                candidate["normalized"], candidate["prices"], candidate["match"]
             )
             if recommendation:
                 recommendation.pop("_internal", None)
@@ -296,9 +281,11 @@ class CrocSetupStrategy(BaseStrategy):
 
         return results
 
-    def _process_single_signal(self, row: dict[str, Any]) -> dict[str, Any] | None:
-        """
-        Legacy helper for processing a single signal row.
+    def _process_single_signal(
+        self, row: dict[str, object]
+    ) -> dict[str, object] | None:
+        """Legacy helper for processing a single signal row.
+
         Used primarily by tests to skip the batching/limiting logic.
         """
         candidate = self._find_candidate(row)
@@ -308,14 +295,19 @@ class CrocSetupStrategy(BaseStrategy):
             candidate["normalized"], candidate["prices"], candidate["match"]
         )
 
-    def _find_candidate(self, row: dict[str, Any]) -> dict[str, Any] | None:
+    def _find_candidate(self, row: dict[str, object]) -> dict[str, object] | None:
         """Finds a matching rule for a signal but does not create a trade yet."""
         # 1. Parse JSON data from DB
         try:
             signal_data = (
                 json.loads(row["data"]) if isinstance(row.get("data"), str) else {}
             )
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as error:
+            logger.warning(
+                "Failed to parse signal data JSON for symbol %s: %s",
+                row.get("symbol"),
+                error,
+            )
             signal_data = {}
 
         # 2. Normalize Keys
@@ -337,7 +329,9 @@ class CrocSetupStrategy(BaseStrategy):
 
         return {"normalized": normalized, "prices": prices, "match": match}
 
-    def _enrich_sma(self, row: dict[str, Any], prices: PriceData) -> dict[str, Any]:
+    def _enrich_sma(
+        self, row: dict[str, object], prices: PriceData
+    ) -> dict[str, object]:
         """Returns a new dict enriched with SMA distance metrics (no in-place mutation)."""
         enriched = dict(row)
         if prices.sma_20 > 0:
@@ -350,58 +344,25 @@ class CrocSetupStrategy(BaseStrategy):
             ) * 100
         return enriched
 
-    def _find_best_match(self, row: dict[str, Any]) -> dict[str, Any] | None:
+    def _find_best_match(self, row: dict[str, object]) -> dict[str, object] | None:
         raw_signal = row.get("signal")
         signal_name = str(raw_signal).strip() if raw_signal is not None else ""
         if signal_name.lower() == "none":
             signal_name = ""
 
-        candidates = []
+        matching_rules = []
         for rule in self.ranking_rules:
-            rule_signal = str(rule.get("Signal", ""))
-            # Extract base signal name if it contains a parenthetical suffix like (NEU)
-            base_rule_signal = (
-                rule_signal.split(" (")[0].strip()
-                if " (" in rule_signal
-                else rule_signal.strip()
-            )
-
-            is_string_match = bool(
-                signal_name
-                and (
-                    base_rule_signal == signal_name
-                    or base_rule_signal == signal_name.split(" (")[0].strip()
-                )
-            )
-
-            # Handle combined signals safely, e.g. "bear_1 + bear_rot"
-            base_signals = [s.strip().lower() for s in base_rule_signal.split("+")]
-
-            is_json_flag_active = bool(base_signals)
-            for sig in base_signals:
-                sig_val = str(row.get(sig, "")).lower().strip()
-                if sig_val not in ("true", "1", "yes", "on", "1.0"):
-                    is_json_flag_active = False
-                    break
-
-            if is_string_match or is_json_flag_active:
-                candidates.append(rule)
+            if self._is_rule_signal_match(row, rule, signal_name):
+                matching_rules.append(rule)
 
         best_match = None
         best_score = -float("inf")
         best_rule_length = 0
 
-        for rule in candidates:
+        for rule in matching_rules:
             if self._is_rule_match(row, rule):
-                # Prefer SQN over Score if available
-                score = float(rule.get("SQN", rule.get("Score", 0.0)))
-                rule_length = len(
-                    [
-                        k
-                        for k in rule.keys()
-                        if k.lower() in TechnicalIndicatorConfig.WHITELIST
-                    ]
-                )
+                score = self._get_rule_score(rule)
+                rule_length = self._get_matching_rule_length(rule)
 
                 # If score is better, or if score is equal but rule is more specific (more conditions)
                 if score > best_score or (
@@ -413,8 +374,54 @@ class CrocSetupStrategy(BaseStrategy):
 
         return best_match
 
-    def _is_rule_match(self, row: dict[str, Any], rule: dict[str, Any]) -> bool:
-        for key, expected_val in rule.items():
+    def _is_rule_signal_match(
+        self, row: dict[str, object], rule: dict[str, object], signal_name: str
+    ) -> bool:
+        """Checks if a rule's Signal field matches the active signal in context."""
+        rule_signal = str(rule.get("Signal", ""))
+        # Extract base signal name if it contains a parenthetical suffix like (NEU)
+        base_rule_signal = (
+            rule_signal.split(" (")[0].strip()
+            if " (" in rule_signal
+            else rule_signal.strip()
+        )
+
+        is_string_match = bool(
+            signal_name
+            and (
+                base_rule_signal == signal_name
+                or base_rule_signal == signal_name.split(" (")[0].strip()
+            )
+        )
+
+        # Handle combined signals safely, e.g. "bear_1 + bear_rot"
+        base_signals = [
+            signal_part.strip().lower() for signal_part in base_rule_signal.split("+")
+        ]
+
+        is_json_flag_active = bool(base_signals)
+        for signal_name_part in base_signals:
+            signal_value = str(row.get(signal_name_part, "")).lower().strip()
+            if signal_value not in ("true", "1", "yes", "on", "1.0"):
+                is_json_flag_active = False
+                break
+
+        return is_string_match or is_json_flag_active
+
+    def _get_rule_score(self, rule: dict[str, object]) -> float:
+        """Retrieves score or SQN from a rule dictionary."""
+        return float(rule.get("SQN", rule.get("Score", 0.0)))
+
+    def _get_matching_rule_length(self, rule: dict[str, object]) -> int:
+        """Counts how many technical whitelist keys are present in a rule."""
+        return sum(
+            1
+            for key in rule.keys()
+            if key.lower() in TechnicalIndicatorConfig.WHITELIST
+        )
+
+    def _is_rule_match(self, row: dict[str, object], rule: dict[str, object]) -> bool:
+        for key, expected_value in rule.items():
             # Use Whitelist: skip any key that is not a technical condition
             db_key = key.lower()
             if db_key not in TechnicalIndicatorConfig.WHITELIST:
@@ -430,41 +437,48 @@ class CrocSetupStrategy(BaseStrategy):
                 return False
 
             # Check Value
-            if not self._check_value(row[db_key], expected_val):
+            if not self._check_value(row[db_key], expected_value):
                 return False
         return True
 
-    def _check_value(self, market_val: Any, condition: Any) -> bool:
-        if market_val is None:
+    def _check_value(self, market_value: object, condition: object) -> bool:
+        if market_value is None:
             return False
 
         # Try numeric lookup
         try:
-            val = float(market_val)
-            cond_str = str(condition).lower().strip()
+            value = float(market_value)
+            condition_string = str(condition).lower().strip()
 
             # Strip numeric prefixes like "3. " or "6. "
-            if cond_str and cond_str[0].isdigit() and ". " in cond_str:
-                cond_str = cond_str.split(". ", 1)[1].strip()
+            if (
+                condition_string
+                and condition_string[0].isdigit()
+                and ". " in condition_string
+            ):
+                condition_string = condition_string.split(". ", 1)[1].strip()
 
-            handler = TechnicalIndicatorConfig.get_handler(cond_str)
+            handler = TechnicalIndicatorConfig.get_handler(condition_string)
             if handler:
-                return handler(val)
+                return handler(value)
         except (ValueError, TypeError) as parse_error:
             logger.debug(
                 "Value '%s' is not numeric, falling back to string match: %s",
-                market_val,
+                market_value,
                 parse_error,
             )
 
         # Fallback to string match
-        return str(market_val).lower().replace(" ", "") == str(
+        return str(market_value).lower().replace(" ", "") == str(
             condition
         ).lower().replace(" ", "")
 
     def _create_trade(
-        self, row: dict[str, Any], prices: PriceData, match: dict[str, Any]
-    ) -> dict[str, Any] | None:
+        self,
+        row: dict[str, object],
+        prices: PriceData,
+        match: dict[str, object],
+    ) -> dict[str, object] | None:
         recommendation = self._build_trade_recommendation(row, prices, match)
         if not recommendation:
             return None
@@ -496,9 +510,12 @@ class CrocSetupStrategy(BaseStrategy):
         return recommendation
 
     def _build_trade_recommendation(
-        self, row: dict[str, Any], prices: PriceData, match: dict[str, Any]
-    ) -> dict[str, Any] | None:
-        symbol = row.get("symbol", "UNKNOWN")
+        self,
+        row: dict[str, object],
+        prices: PriceData,
+        match: dict[str, object],
+    ) -> dict[str, object] | None:
+        symbol = str(row.get("symbol", "UNKNOWN"))
         indices = self._get_indices_string(symbol)
 
         if indices == "-" or prices.risk_range <= 0:
@@ -583,26 +600,17 @@ class CrocSetupStrategy(BaseStrategy):
         return target_prices
 
     def _get_indices_string(self, symbol: str) -> str:
-        # Simplified for brevity
-        indices = []
-        if symbol in self.exchange_symbols.sp_500:
-            indices.append("SPX")
-        if symbol in self.exchange_symbols.nasdaq_100:
-            indices.append("NDX")
-        if symbol in self.exchange_symbols.dow_30:
-            indices.append("DOW")
-        if symbol in self.exchange_symbols.russell_1000:
-            indices.append("RUS")
+        indices = self._get_indices_for_symbol(symbol)
         return ",".join(indices) if indices else "-"
 
-    def _send_report(self, rows: list[dict[str, Any]], date: str) -> None:
+    def _send_report(self, rows: list[dict[str, object]], date: str) -> None:
         if not self.telegram_bot:
             return
         df = pd.DataFrame(rows)
         # Select existing columns only
-        cols = [
+        columns = [
             c
             for c in ["Symbol", "Signal", "Score", "Entry", "Stop", "TP"]
             if c in df.columns
         ]
-        self._send_telegram_report("Croc Signals", date, df[cols])
+        self._send_telegram_report("Croc Signals", date, df[columns])

@@ -155,7 +155,7 @@
 </div>
 {% endmacro %}
 
-{% macro trade_accordion_card(symbol, badges=[], pnl_value=0.0, pnl_pct=none, show_currency=false, progress_current=none, progress_max=none) %}
+{% macro trade_accordion_card(symbol, badges=[], pnl_value=0.0, pnl_percentage=none, show_currency=false, progress_current=none, progress_max=none) %}
 <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
     <!-- Header Block (Always Visible) -->
     <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
@@ -178,8 +178,8 @@
             <div class="flex items-center gap-4 text-right whitespace-nowrap">
                 <div class="flex flex-col items-end whitespace-nowrap">
                     <div class="text-lg md:text-xl font-bold {{ 'text-emerald-500' if pnl_value >= 0 else 'text-rose-500' }} leading-none tabular-nums whitespace-nowrap">{{ "{:+,.2f}".format(pnl_value) }}{% if show_currency %}&nbsp;${% endif %}</div>
-                    {% if pnl_pct is not none %}
-                    <div class="text-xs font-medium text-slate-500 mt-1 tabular-nums whitespace-nowrap">{{ "{:+.2f}".format(pnl_pct) }}%</div>
+                    {% if pnl_percentage is not none %}
+                    <div class="text-xs font-medium text-slate-500 mt-1 tabular-nums whitespace-nowrap">{{ "{:+.2f}".format(pnl_percentage) }}%</div>
                     {% endif %}
                 </div>
                 <i data-lucide="chevron-down"

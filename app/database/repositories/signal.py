@@ -1,5 +1,6 @@
 import json
 import logging
+import sqlite3
 
 from typing import Any
 
@@ -10,9 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 class SignalRepository(BaseRepository):
-    def init_schema(self):
+    def init_schema(self) -> None:
         """Erstellt Tabellen für Signale (croc), Mappings und migriert Altdaten (ohne Löschen)."""
-        with self.session.connect() as conn:
+        with self.session.connect() as connection:
             # 1. Neue Haupt-Tabelle 'croc' erstellen
             # WICHTIG: Wir fügen einen UNIQUE Constraint hinzu, damit wir Duplikate beim
             # mehrfachen Ausführen der Migration verhindern.
@@ -31,88 +32,11 @@ class SignalRepository(BaseRepository):
                     UNIQUE(symbol, timeframe, signal, timestamp)
                 )
             """,
-                conn=conn,
+                connection=connection,
             )
 
             # 2. KOMPLEXE MIGRATION: Alte 'signals' Struktur in neue 'croc' Struktur
-            check_old = self.fetch_one(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='signals'",
-                conn=conn,
-            )
-
-            if check_old:
-                logger.info(
-                    "🔄 Migration: 'signals' Tabelle gefunden. Prüfe auf neue Daten..."
-                )
-                try:
-                    # A) Alle alten Daten laden
-                    cursor = conn.execute("SELECT * FROM signals")
-                    # Wir brauchen die Spaltennamen für das Mapping ins JSON
-                    columns = [description[0] for description in cursor.description]
-                    rows = cursor.fetchall()
-
-                    if rows:
-                        migrated_data = []
-
-                        # B) Zeile für Zeile transformieren
-                        for row in rows:
-                            # Row in Dict wandeln
-                            row_dict = dict(zip(columns, row))
-
-                            # 1. Basis-Felder extrahieren
-                            symbol = row_dict.pop("symbol")
-                            timeframe = row_dict.pop("timeframe")
-                            signal = row_dict.pop("signal")
-                            timestamp = row_dict.pop("timestamp")
-                            exchange = row_dict.get("exchange")
-                            created_at = row_dict.get("created_at")
-
-                            # Cleanup: Felder entfernen, die wir nicht im JSON brauchen
-                            row_dict.pop("exchange", None)
-                            row_dict.pop("created_at", None)
-                            row_dict.pop("dist_sma_20", None)
-                            row_dict.pop("dist_sma_200", None)
-
-                            # 2. Der REST kommt in das 'data' JSON Feld
-                            json_payload = json.dumps(row_dict, ensure_ascii=False)
-
-                            migrated_data.append(
-                                (
-                                    symbol,
-                                    timeframe,
-                                    signal,
-                                    timestamp,
-                                    exchange,
-                                    json_payload,
-                                    created_at,
-                                )
-                            )
-
-                        # C) Massen-Insert mit Duplikat-Schutz
-                        # 'INSERT OR IGNORE' überspringt Zeilen, die den UNIQUE Constraint verletzen
-                        if migrated_data:
-                            conn.executemany(
-                                """
-                                INSERT OR IGNORE INTO croc (symbol, timeframe, signal, timestamp, exchange, data, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """,
-                                migrated_data,
-                            )
-
-                            # Wir prüfen, wie viele Zeilen tatsächlich eingefügt wurden (changes()) ist hier ungenau bei Batch,
-                            # aber das Log ist beruhigend.
-                            logger.info(
-                                f"✅ Migration abgeschlossen. {len(migrated_data)} Quell-Datensätze verarbeitet (Duplikate wurden ignoriert)."
-                            )
-
-                    # D) Alte Tabelle behalten (Sicherheitsnetz)
-                    # self.execute("DROP TABLE signals", conn=conn)
-                    # logger.info("🗑️ Alte 'signals' Tabelle gelöscht.")
-
-                except Exception as e:
-                    logger.error(
-                        f"❌ CRITICAL: Fehler bei der Migration von 'signals' zu 'croc': {e}"
-                    )
+            self._migrate_legacy_signals(connection)
 
             # 3. Exchange Mapping Tabelle
             self.execute(
@@ -122,16 +46,18 @@ class SignalRepository(BaseRepository):
                     exchange TEXT NOT NULL
                 )
             """,
-                conn=conn,
+                connection=connection,
             )
 
             self.execute(
                 "CREATE INDEX IF NOT EXISTS idx_map_sym ON exchange_mappings(symbol)",
-                conn=conn,
+                connection=connection,
             )
 
             # 4. View aktualisieren (greift nun auf 'croc' zu)
-            self.execute("DROP VIEW IF EXISTS view_signals_enriched", conn=conn)
+            self.execute(
+                "DROP VIEW IF EXISTS view_signals_enriched", connection=connection
+            )
 
             self.execute(
                 """
@@ -147,7 +73,121 @@ class SignalRepository(BaseRepository):
                 FROM croc s
                 LEFT JOIN exchange_mappings m ON s.symbol = m.symbol
             """,
-                conn=conn,
+                connection=connection,
+            )
+
+    def _migrate_legacy_signals(self, connection: sqlite3.Connection) -> None:
+        """Migrates old 'signals' table structure to new 'croc' structure if present."""
+        check_old = self.fetch_one(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='signals'",
+            connection=connection,
+        )
+
+        if not check_old:
+            return
+
+        logger.info("🔄 Migration: 'signals' Tabelle gefunden. Prüfe auf neue Daten...")
+        try:
+            # A) Alle alten Daten laden
+            cursor = connection.execute("SELECT * FROM signals")
+            # Wir brauchen die Spaltennamen für das Mapping ins JSON
+            columns = [description[0] for description in cursor.description]
+            rows = cursor.fetchall()
+
+            if rows:
+                migrated_data = []
+
+                # B) Zeile für Zeile transformieren
+                for row in rows:
+                    # Row in Dict wandeln
+                    row_dict = dict(zip(columns, row))
+
+                    # 1. Basis-Felder extrahieren
+                    symbol = row_dict.pop("symbol")
+                    timeframe = row_dict.pop("timeframe")
+                    signal = row_dict.pop("signal")
+                    timestamp = row_dict.pop("timestamp")
+                    exchange = row_dict.get("exchange")
+                    created_at = row_dict.get("created_at")
+
+                    # Cleanup: Felder entfernen, die wir nicht im JSON brauchen
+                    row_dict.pop("exchange", None)
+                    row_dict.pop("created_at", None)
+                    row_dict.pop("dist_sma_20", None)
+                    row_dict.pop("dist_sma_200", None)
+
+                    # 2. Der REST kommt in das 'data' JSON Feld
+                    json_payload = json.dumps(row_dict, ensure_ascii=False)
+
+                    migrated_data.append(
+                        (
+                            symbol,
+                            timeframe,
+                            signal,
+                            timestamp,
+                            exchange,
+                            json_payload,
+                            created_at,
+                        )
+                    )
+
+                # C) Massen-Insert mit Duplikat-Schutz
+                # 'INSERT OR IGNORE' überspringt Zeilen, die den UNIQUE Constraint verletzen
+                if migrated_data:
+                    connection.executemany(
+                        """
+                        INSERT OR IGNORE INTO croc (symbol, timeframe, signal, timestamp, exchange, data, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                        migrated_data,
+                    )
+                    logger.info(
+                        "✅ Migration abgeschlossen. %d Quell-Datensätze verarbeitet (Duplikate wurden ignoriert).",
+                        len(migrated_data),
+                    )
+
+        except Exception as error:
+            logger.error(
+                "❌ CRITICAL: Fehler bei der Migration von 'signals' zu 'croc': %s",
+                error,
+            )
+
+            # 3. Exchange Mapping Tabelle
+            self.execute(
+                """
+                CREATE TABLE IF NOT EXISTS exchange_mappings (
+                    symbol TEXT PRIMARY KEY,
+                    exchange TEXT NOT NULL
+                )
+            """,
+                connection=connection,
+            )
+
+            self.execute(
+                "CREATE INDEX IF NOT EXISTS idx_map_sym ON exchange_mappings(symbol)",
+                connection=connection,
+            )
+
+            # 4. View aktualisieren (greift nun auf 'croc' zu)
+            self.execute(
+                "DROP VIEW IF EXISTS view_signals_enriched", connection=connection
+            )
+
+            self.execute(
+                """
+                CREATE VIEW view_signals_enriched AS
+                SELECT 
+                    s.rowid as id,
+                    s.symbol, s.timeframe, s.signal, s.timestamp, s.data,
+                    CASE 
+                        WHEN s.exchange IS NULL OR s.exchange = '' OR s.exchange = 'BATS' 
+                        THEN COALESCE(m.exchange, 'UNKNOWN')
+                        ELSE s.exchange 
+                    END as exchange
+                FROM croc s
+                LEFT JOIN exchange_mappings m ON s.symbol = m.symbol
+            """,
+                connection=connection,
             )
 
     def save_signal(self, data: dict[str, Any]) -> int:
@@ -177,7 +217,7 @@ class SignalRepository(BaseRepository):
         )
         return cursor.lastrowid
 
-    def get_unprocessed_signals(self, limit: int = 100) -> list[dict]:
+    def get_unprocessed_signals(self, limit: int = 100) -> list[sqlite3.Row]:
         """Holt unverarbeitete Signale aus der croc-Tabelle."""
         # Note: 'processed' column is not in original schema, assuming it might be added
         # or we just get the latest signals. Given current schema, we'll just get latest.
@@ -216,9 +256,9 @@ class SignalRepository(BaseRepository):
                 ["Signal", "Status", "Kerze", "Wolke", "Trend", "Setter", "Welle"],
                 ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"],
             ):
-                val = row[db_key]
-                if val is not None:
-                    attributes[yaml_key].add(str(val))
+                value = row[db_key]
+                if value is not None:
+                    attributes[yaml_key].add(str(value))
 
             if row["data"]:
                 try:
@@ -240,41 +280,46 @@ class SignalRepository(BaseRepository):
                                     "price",
                                 ):
                                     attributes["Signal"].add(k)
-                except Exception as parse_error:
+                except (json.JSONDecodeError, TypeError) as parse_error:
                     logger.debug("Failed to parse signal JSON: %s", parse_error)
 
         return attributes
 
-    def get_by_timestamp(self, signal_name: str, timestamp: str) -> list[dict]:
+    def get_by_timestamp(
+        self, signal_name: str, timestamp: str
+    ) -> list[dict[str, object]]:
         """Holt Signale für einen bestimmten Zeitstempel und Strategie."""
         sql = "SELECT * FROM croc WHERE signal = ? AND timestamp = ?"
         rows = self.fetch_all(sql, (signal_name, timestamp))
 
         results = []
         for row in rows:
-            r = dict(row)
+            row_dict = dict(row)
             # Parse signal context from data payload
-            if r.get("data"):
+            data_payload = row_dict.get("data")
+            if data_payload:
                 try:
                     # In our SignalRepository, 'data' is the full JSON encoded dict
-                    payload = json.loads(r["data"])
-                    r["context"] = payload.get("context", {})
-                except (json.JSONDecodeError, TypeError):
-                    r["context"] = {}
-            results.append(r)
+                    payload = json.loads(str(data_payload))
+                    row_dict["context"] = payload.get("context", {})
+                except (json.JSONDecodeError, TypeError) as decode_error:
+                    row_dict["context"] = {}
+                    logger.warning(
+                        "Failed to decode signal data context: %s",
+                        decode_error,
+                    )
+            results.append(row_dict)
         return results
 
-    def get_signal_by_id(self, signal_id: int) -> dict:
+    def get_signal_by_id(self, signal_id: int) -> dict[str, object] | None:
         sql = "SELECT * FROM view_signals_enriched WHERE id = ?"
         row = self.fetch_one(sql, (signal_id,))
         return dict(row) if row else None
 
     def get_signals_by_date(
         self, analysis_date: str = None, days_lookback: int = 0
-    ) -> list[dict]:
-        """
-        Liest Signale aus dem View, gefiltert nach Datum.
-        """
+    ) -> list[dict[str, object]]:
+        """Liest Signale aus dem View, gefiltert nach Datum."""
         # Basis-Query auf den View
         sql = "SELECT * FROM view_signals_enriched WHERE 1=1"
         params = []
@@ -285,10 +330,10 @@ class SignalRepository(BaseRepository):
             params.append(analysis_date)
         elif days_lookback > 0:
             # Zeitraum (Lookback)
-            import pandas as pd
+            import pandas
 
             start_date = (
-                pd.Timestamp.now() - pd.Timedelta(days=days_lookback)
+                pandas.Timestamp.now() - pandas.Timedelta(days=days_lookback)
             ).strftime("%Y-%m-%d")
             sql += " AND date(timestamp) >= ?"
             params.append(start_date)
@@ -309,9 +354,9 @@ class SignalRepository(BaseRepository):
         strategy_prefix: str | Strategies | list[str | Strategies],
         limit: int = 100,
         statuses: list[TradeStatus | str] | None = None,
-    ) -> list[dict]:
-        """
-        Holt potenzielle Trades aus der 'trades' Tabelle.
+    ) -> list[dict[str, object]]:
+        """Holt potenzielle Trades aus der 'trades' Tabelle.
+
         Parst automatisch das 'signal_context' JSON Feld.
 
         Args:
@@ -327,10 +372,10 @@ class SignalRepository(BaseRepository):
         status_placeholders = ", ".join("?" for _ in status_list)
 
         if isinstance(strategy_prefix, (list, tuple)):
-            strat_list = [str(s).lower() for s in strategy_prefix]
-            strat_placeholders = ", ".join("?" for _ in strat_list)
-            strategy_filter = f"LOWER(strategy) IN ({strat_placeholders})"
-            params = tuple(status_list) + tuple(strat_list) + (limit,)
+            strategy_list = [str(s).lower() for s in strategy_prefix]
+            strategy_placeholders = ", ".join("?" for _ in strategy_list)
+            strategy_filter = f"LOWER(strategy) IN ({strategy_placeholders})"
+            params = tuple(status_list) + tuple(strategy_list) + (limit,)
         else:
             strategy_filter = "LOWER(strategy) LIKE LOWER(?)"
             params = tuple(status_list) + (f"{strategy_prefix}%", limit)
@@ -346,43 +391,44 @@ class SignalRepository(BaseRepository):
 
         results = []
         for row in rows:
-            r = dict(row)
+            row_dict = dict(row)
 
             # 1. Context (JSON) parsen
-            ctx = {}
-            if r.get("signal_context"):
+            context = {}
+            signal_context_raw = row_dict.get("signal_context")
+            if signal_context_raw:
                 try:
-                    raw = r["signal_context"]
-                    if isinstance(raw, str):
-                        ctx = json.loads(raw)
+                    if isinstance(signal_context_raw, str):
+                        context = json.loads(signal_context_raw)
                     else:
-                        ctx = raw
-                except Exception:
-                    ctx = {}
+                        context = signal_context_raw
+                except (json.JSONDecodeError, TypeError) as parse_error:
+                    context = {}
+                    logger.warning("Failed to parse signal context: %s", parse_error)
 
-            r["context"] = ctx
+            row_dict["context"] = context
 
             # 2. Hilfsfelder für das Template
-            r["setup_score"] = ctx.get("setup_score", 0)
-            r["market_phase"] = ctx.get("market_phase", "-")
+            row_dict["setup_score"] = context.get("setup_score", 0)
+            row_dict["market_phase"] = context.get("market_phase", "-")
 
             # 3. Datum für Anzeige formatieren (KORRIGIERT)
             # Prio 1: Wenn Entry schon passiert (sollte bei CREATED nicht sein, aber sicherheitshalber)
-            display_ts = r.get("entry_date")
+            display_ts = row_dict.get("entry_date")
 
             # Prio 2: Signal-Datum aus dem Context (Das echte Datum!)
             if not display_ts:
-                display_ts = ctx.get("date") or ctx.get("setup_date")
+                display_ts = context.get("date") or context.get("setup_date")
 
             # Prio 3: No fallback to created_at (STRICT RULE)
             if not display_ts:
                 display_ts = None
 
             # String Cleaning (Trennzeichen entfernen bei ISO Format)
-            r["display_date"] = (
+            row_dict["display_date"] = (
                 str(display_ts).split("T")[0].split(" ")[0] if display_ts else "-"
             )
 
-            results.append(r)
+            results.append(row_dict)
 
         return results

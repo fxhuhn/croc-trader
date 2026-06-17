@@ -582,97 +582,83 @@ class TestAttachSparklinesDeterministicClock:
         # Arrange
         from app.services.trade_manager.view_service import TradeViewService
 
-        with (
-            patch.object(
-                TradeViewService, "_get_trade_repository", return_value=MagicMock()
-            ),
-            patch.object(
-                TradeViewService, "_get_market_repository"
-            ) as mock_market_repo_getter,
-            patch("app.services.trade_manager.view_service._get_database_path"),
-        ):
-            mock_market_repo = MagicMock()
-            mock_market_repo.get_batch_history_raw.return_value = pd.DataFrame(
-                columns=["symbol", "date", "close"]
-            )
-            mock_market_repo_getter.return_value = mock_market_repo
+        mock_market_repo = MagicMock()
+        mock_market_repo.get_batch_history_raw.return_value = pd.DataFrame(
+            columns=["symbol", "date", "close"]
+        )
 
-            service = TradeViewService()
-            fixed_date = pd.Timestamp("2026-03-01")
+        service = TradeViewService(
+            trade_repository=MagicMock(),
+            market_repository=mock_market_repo,
+        )
+        fixed_date = pd.Timestamp("2026-03-01")
 
-            # Act
-            service.attach_sparklines([], reference_date=fixed_date)
+        # Act
+        service.attach_sparklines([], reference_date=fixed_date)
 
-            # Assert — with empty list, no batch call, but verifying no exception
-            mock_market_repo.get_batch_history_raw.assert_not_called()
+        # Assert — with empty list, no batch call, but verifying no exception
+        mock_market_repo.get_batch_history_raw.assert_not_called()
 
     def test_attach_sparklines_uses_reference_date_for_history_window(self) -> None:
         """Verifies the 30-day window is anchored to the injected date, not now()."""
         # Arrange
         from app.services.trade_manager.view_service import TradeViewService
 
-        with (
-            patch.object(
-                TradeViewService, "_get_trade_repository", return_value=MagicMock()
-            ),
-            patch.object(
-                TradeViewService, "_get_market_repository"
-            ) as mock_market_repo_getter,
-            patch("app.services.trade_manager.view_service._get_database_path"),
-        ):
-            mock_market_repo = MagicMock()
-            mock_market_repo.get_batch_history_raw.return_value = pd.DataFrame(
-                columns=["symbol", "date", "close"]
-            )
-            mock_market_repo_getter.return_value = mock_market_repo
+        mock_market_repo = MagicMock()
+        mock_market_repo.get_batch_history_raw.return_value = pd.DataFrame(
+            columns=["symbol", "date", "close"]
+        )
 
-            service = TradeViewService()
-            fixed_date = pd.Timestamp("2026-03-15")
-            fake_trades = [
-                {
-                    "symbol": "AAPL",
-                    "unrealized_pnl": 50.0,
-                    "sparkline": "",
-                    "id": 1,
-                    "strategy": "SplitTarget",
-                    "status": "ACTIVE",
-                    "entry_date": None,
-                    "exit_date": None,
-                    "entry_price": 0.0,
-                    "exit_price": 0.0,
-                    "current_price": 0.0,
-                    "initial_size": 10.0,
-                    "current_size": 10.0,
-                    "current_stop_loss": 0.0,
-                    "current_target": 0.0,
-                    "budget": 2000.0,
-                    "signal_context": None,
-                    "exit_reason": None,
-                    "stop_loss": 0.0,
-                    "take_profit": 0.0,
-                    "display_entry": "-",
-                    "display_exit": "-",
-                    "days_held": 0,
-                    "realized_pnl": 0.0,
-                    "pnl_pct": 0.0,
-                    "is_critical": False,
-                    "progress": 0.0,
-                    "display_size": 10.0,
-                    "max_days": None,
-                    "version": None,
-                    "context": {},
-                    "risk_amount": 100.0,
-                }
-            ]
+        service = TradeViewService(
+            trade_repository=MagicMock(),
+            market_repository=mock_market_repo,
+        )
+        fixed_date = pd.Timestamp("2026-03-15")
+        fake_trades = [
+            {
+                "symbol": "AAPL",
+                "unrealized_pnl": 50.0,
+                "sparkline": "",
+                "id": 1,
+                "strategy": "SplitTarget",
+                "status": "ACTIVE",
+                "entry_date": None,
+                "exit_date": None,
+                "entry_price": 0.0,
+                "exit_price": 0.0,
+                "current_price": 0.0,
+                "initial_size": 10.0,
+                "current_size": 10.0,
+                "current_stop_loss": 0.0,
+                "current_target": 0.0,
+                "budget": 2000.0,
+                "signal_context": None,
+                "exit_reason": None,
+                "stop_loss": 0.0,
+                "take_profit": 0.0,
+                "display_entry": "-",
+                "display_exit": "-",
+                "days_held": 0,
+                "realized_pnl": 0.0,
+                "pnl_percentage": 0.0,
+                "is_critical": False,
+                "progress": 0.0,
+                "display_size": 10.0,
+                "max_days": None,
+                "version": None,
+                "context": {},
+                "risk_amount": 100.0,
+            }
+        ]
 
-            # Act
-            service.attach_sparklines(fake_trades, reference_date=fixed_date)
+        # Act
+        service.attach_sparklines(fake_trades, reference_date=fixed_date)
 
-            # Assert — called with expected window anchored to injected date
-            mock_market_repo.get_batch_history_raw.assert_called_once()
-            call_args = mock_market_repo.get_batch_history_raw.call_args
-            start_arg = call_args[0][1]
-            assert start_arg == "2026-02-13"  # 30 days before 2026-03-15
+        # Assert — called with expected window anchored to injected date
+        mock_market_repo.get_batch_history_raw.assert_called_once()
+        call_args = mock_market_repo.get_batch_history_raw.call_args
+        start_arg = call_args[0][1]
+        assert start_arg == "2026-02-13"  # 30 days before 2026-03-15
 
 
 # ---------------------------------------------------------------------------
@@ -962,3 +948,258 @@ class TestTradeManagerDipBuyerCSVExport:
             assert exit_row["order_type"] == "LOC"
             assert exit_row["target_price"] == 290.0
             assert exit_row["strategy_name"] == "DipBuyer"
+
+
+# ---------------------------------------------------------------------------
+# Exiting Active Trade Does Not Block New Entry
+# ---------------------------------------------------------------------------
+
+
+class TestTradeManagerExitingActiveTradeDoesNotBlockNewEntry:
+    """Validates that active trades generating exit orders do not block entries."""
+
+    def test_generate_daily_orders_with_exiting_active_trade(
+        self, tmp_path: Path
+    ) -> None:
+        """Verifies that exiting active trade does not block new CREATED trade entry."""
+        # Arrange
+        with (
+            patch("app.services.trade_manager.manager.DatabaseSession"),
+            patch(
+                "app.services.trade_manager.manager.TradeRepository"
+            ) as mock_trade_repo_class,
+            patch(
+                "app.services.trade_manager.manager.MarketRepository"
+            ) as mock_market_repo_class,
+        ):
+            mock_trade_repo = MagicMock()
+            mock_market_repo = MagicMock()
+            mock_trade_repo_class.return_value = mock_trade_repo
+            mock_market_repo_class.return_value = mock_market_repo
+
+            manager_instance = TradeManager(
+                db_path=tmp_path / "signals.db",
+                stocks_db_path=tmp_path / "stocks.db",
+            )
+
+            # Active trade that WILL exit today (DipBuyer with Close > Prev High)
+            active_trade = {
+                "id": 101,
+                "symbol": "AKAM",
+                "strategy": "dip_buyer",
+                "status": "ACTIVE",
+                "entry_price": 130.0,
+                "current_target": 140.0,
+                "initial_size": 10.0,
+                "entry_date": "2026-06-09",
+                "signal_context": json.dumps({"threshold_loc": 135.0}),
+            }
+
+            # New created trade for same symbol
+            created_trade = {
+                "id": 102,
+                "symbol": "AKAM",
+                "strategy": "dip_buyer",
+                "status": "CREATED",
+                "entry_price": 120.0,
+                "current_target": 128.0,
+                "initial_size": 10.0,
+                "entry_date": "2026-06-11",
+                "signal_context": "{}",
+            }
+
+            mock_trade_repo.get_by_status.side_effect = lambda status: {
+                TradeStatus.CREATED: [created_trade],
+                TradeStatus.ACTIVE: [active_trade],
+            }[status]
+
+            # Mock history so that ACTIVE trade is exited (close > prev_high)
+            history_data = [
+                {
+                    "date": "2026-06-09",
+                    "open": 130.0,
+                    "high": 132.0,
+                    "low": 129.0,
+                    "close": 131.0,
+                },
+                {
+                    "date": "2026-06-10",
+                    "open": 131.0,
+                    "high": 136.0,
+                    "low": 130.0,
+                    "close": 137.0,
+                },  # Close > prev_high (132.0) -> Exit!
+            ]
+            mock_market_repo.get_symbol_history_raw.return_value = pd.DataFrame(
+                history_data
+            )
+
+            # Patch Path to write to a temp directory
+            temp_orders_dir = tmp_path / "orders"
+            temp_orders_dir.mkdir()
+
+            with patch(
+                "app.services.trade_manager.manager.Path",
+                return_value=temp_orders_dir,
+            ):
+                result_path_str = manager_instance.generate_daily_orders()
+
+            # Assert
+            assert result_path_str is not None
+            result_path = Path(result_path_str)
+            assert result_path.exists()
+
+            # Read CSV content
+            df = pd.read_csv(result_path)
+
+            # We expect:
+            # 1. Entry row for CREATED trade (102)
+            # 2. TP row for CREATED trade (102)
+            # 3. Two Exit rows for ACTIVE trade (101)
+            # Total 4 rows in CSV
+            assert len(df) == 4
+
+            # Verify created trade entry exists
+            entry_rows = df[df["bracket_role"] == "ENTRY"]
+            assert len(entry_rows) == 1
+            assert entry_rows.iloc[0]["trade_group_id"] == "102_DipBuyer_AKAM"
+            assert entry_rows.iloc[0]["target_price"] == 120.0
+
+            # Verify active trade exits exist
+            exit_rows = df[df["bracket_role"] == "EXIT"]
+            assert len(exit_rows) == 2
+            assert all(exit_rows["trade_group_id"] == "101_DipBuyer_AKAM")
+
+
+# ---------------------------------------------------------------------------
+# BaseTradeStrategy: _resolve_position_size sizing logic
+# ---------------------------------------------------------------------------
+
+
+class TestBaseTradeStrategySizing:
+    """Validates the pure positioning sizing resolution logic of BaseTradeStrategy."""
+
+    def test_pre_existing_size_takes_precedence(self) -> None:
+        """Verifies that if initial_size or current_size is present, it is returned directly."""
+        strategy = HoldTargetStrategy()
+        # initial_size in trade
+        trade = {
+            "symbol": "AAPL",
+            "initial_size": 150,
+            "current_size": 0,
+        }
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=100.0,
+            stop_loss=90.0,
+        )
+        assert size == 150
+
+        # current_size in trade (initial_size missing or 0)
+        trade = {
+            "symbol": "AAPL",
+            "initial_size": 0,
+            "current_size": 75,
+        }
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=100.0,
+            stop_loss=90.0,
+        )
+        assert size == 75
+
+    def test_risk_based_sizing(self) -> None:
+        """Verifies risk-based sizing calculation when stop_loss is provided."""
+        strategy = HoldTargetStrategy()
+
+        # Risk amount from context (100.0) -> (100.0 / (100.0 - 90.0)) = 10 shares
+        trade = {
+            "symbol": "AAPL",
+            "signal_context": json.dumps({"risk_amount": 100.0}),
+        }
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=100.0,
+            stop_loss=90.0,
+        )
+        assert size == 10
+
+        # Risk amount from trade direct (50.0) -> (50.0 / 10) = 5 shares
+        trade = {
+            "symbol": "AAPL",
+            "risk_amount": 50.0,
+        }
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=100.0,
+            stop_loss=90.0,
+        )
+        assert size == 5
+
+        # Fallback risk amount (200.0) -> (200.0 / 10) = 20 shares
+        trade = {
+            "symbol": "AAPL",
+        }
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=100.0,
+            stop_loss=90.0,
+            fallback_risk=200.0,
+        )
+        assert size == 20
+
+    def test_budget_based_fallback(self) -> None:
+        """Verifies budget-based fallback sizing when risk calculation is invalid or unavailable."""
+        strategy = HoldTargetStrategy()
+
+        # budget from context (1000.0) / 100.0 = 10 shares (stop_loss = 0.0)
+        trade = {
+            "symbol": "AAPL",
+            "signal_context": json.dumps({"budget": 1000.0}),
+        }
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=100.0,
+            stop_loss=0.0,
+        )
+        assert size == 10
+
+        # budget from trade direct (2000.0) / 100.0 = 20 shares
+        trade = {
+            "symbol": "AAPL",
+            "budget": 2000.0,
+        }
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=100.0,
+            stop_loss=0.0,
+        )
+        assert size == 20
+
+        # Fallback budget (5000.0) / 100.0 = 50 shares
+        trade = {
+            "symbol": "AAPL",
+        }
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=100.0,
+            stop_loss=0.0,
+            fallback_budget=5000.0,
+        )
+        assert size == 50
+
+    def test_sizing_returns_zero_on_invalid_parameters(self) -> None:
+        """Verifies fallback to 0 when sizing parameters are completely missing or invalid."""
+        strategy = HoldTargetStrategy()
+        trade = {
+            "symbol": "AAPL",
+        }
+        # No fallback values, fill_price is 0
+        size = strategy._resolve_position_size(
+            trade=trade,
+            fill_price=0.0,
+            stop_loss=0.0,
+            fallback_budget=0.0,
+            fallback_risk=0.0,
+        )
+        assert size == 0

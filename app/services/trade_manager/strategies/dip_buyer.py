@@ -1,11 +1,12 @@
 import logging
+from decimal import Decimal
 from typing import override, final
 import pandas as pd
 
+from ..types import TradeTransition
 from ....types import ExitReason, TradeData
 from ....const import Strategies
 from ....models import TradeParams, Order, OrderLeg
-from ....database.repositories.trade import TradeRepository
 from .abstract import BaseTradeStrategy
 
 logger = logging.getLogger(__name__)
@@ -21,8 +22,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
         TIME_STOP_DAYS: Maximum holding period in trading days.
     """
 
-    name = Strategies.DipBuyer
-    DEFAULT_BUDGET: float = 5000.0
+    name: Strategies = Strategies.DipBuyer
     TIME_STOP_DAYS: int = 8
 
     @override
@@ -30,14 +30,12 @@ class DipBuyerStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
-        repository: TradeRepository | None = None,
     ) -> TradeParams | None:
         """Extracts current strategy parameters for display.
 
         Args:
             trade: Current trade data.
             dataframe_history: Historical price data.
-            repository: Trade database repository.
 
         Returns:
             TradeParams: Extracted parameters for UI display.
@@ -46,7 +44,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
             stop_loss=0.0,  # No stop loss
             take_profit_1=float(trade.get("current_target") or 0.0),
             extras={
-                "entry_limit": float(trade.get("entry_price") or 0.0),
+                "entry_limit": self._extract_entry_price(trade),
                 "current_size": float(trade.get("current_size") or 0.0),
             },
         )
@@ -57,8 +55,8 @@ class DipBuyerStrategy(BaseTradeStrategy):
         trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        active_symbols: set[str] | None = None,
+    ) -> TradeTransition | None:
         """Checks if the limit entry was reached.
 
         Rules:
@@ -70,12 +68,12 @@ class DipBuyerStrategy(BaseTradeStrategy):
             trade: Current trade record.
             candle: Latest market candle.
             dataframe_history: Historical data for context.
-            repository: Trade repository for updates.
+            active_symbols: Active symbols set.
 
         Returns:
-            str | None: Description of transition if triggered.
+            TradeTransition | None: Description of transition if triggered.
         """
-        limit_price = float(trade.get("entry_price") or 0.0)
+        limit_price = self._extract_entry_price(trade)
         if limit_price <= 0:
             return None
 
@@ -90,9 +88,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
         date_string = str(candle["date"])
         if days_passed > 1:
             # Too late: Missed the entry window
-            return self._reject_setup(
-                trade, repository, date_string, "Missed Entry Window"
-            )
+            return self._reject_setup(trade, date_string, "Missed Entry Window")
 
         # 2. Check Fill (Day 1)
         low_price = float(candle["low"])
@@ -100,26 +96,22 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
         if low_price > limit_price:
             # Missed entry on the target day -> Invalidate the setup
-            return self._invalidate_trade(
-                trade, repository, low_price, limit_price, date_string
-            )
+            return self._invalidate_trade(trade, low_price, limit_price, date_string)
 
         # 3. Execution (with Gap Down benefit)
         fill_price = (
             min(open_price, limit_price) if open_price < limit_price else limit_price
         )
 
-        return self._execute_activation(
-            trade, repository, fill_price, "LIMIT", date_string
-        )
+        return self._execute_activation(trade, fill_price, "LIMIT", date_string)
 
     @override
     def manage_active_trade(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        latest_leaders: set[str] | None = None,
+    ) -> TradeTransition | None:
         """Manages exits: LOC, Target, and Time Stop.
 
         Exits:
@@ -130,10 +122,10 @@ class DipBuyerStrategy(BaseTradeStrategy):
         Args:
             trade: Current active trade.
             dataframe_history: Historical price sequence.
-            repository: Trade repository for updates.
+            latest_leaders: Latest leaders symbols set.
 
         Returns:
-            str | None: Description of transition if triggered.
+            TradeTransition | None: Description of transition if triggered.
         """
         if dataframe_history.empty:
             return None
@@ -160,20 +152,18 @@ class DipBuyerStrategy(BaseTradeStrategy):
         if not is_entry_day and target_price > 0 and high_price >= target_price:
             exit_price = max(open_price, target_price)
             return self._close_trade(
-                trade, repository, exit_price, ExitReason.TARGET_HIT, date_string
+                trade, exit_price, ExitReason.TARGET_HIT, date_string
             )
 
         # 3. LOC (Limit On Close) Logic
         # Rule: Only Limit on Close is possible for same day.
         if len(dataframe_history) >= 2:
-            prev_candle = dataframe_history.iloc[-2]
-            prev_high = float(prev_candle["high"])
+            previous_candle = dataframe_history.iloc[-2]
+            previous_day_high = float(previous_candle["high"])
             close_price = float(candle["close"])
 
-            if close_price > prev_high:
-                return self._close_trade(
-                    trade, repository, close_price, "LOC_HIT", date_string
-                )
+            if close_price > previous_day_high:
+                return self._close_trade(trade, close_price, "LOC_HIT", date_string)
 
         entry_date_str = trade.get("entry_date")
         if entry_date_str:
@@ -186,7 +176,6 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 close_price = float(candle["close"])
                 return self._close_trade(
                     trade,
-                    repository,
                     close_price,
                     ExitReason.TIME_STOP,
                     date_string,
@@ -195,69 +184,178 @@ class DipBuyerStrategy(BaseTradeStrategy):
         return None
 
     @override
+    def get_daily_updates(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+    ) -> dict[str, object]:
+        """Calculates dynamic daily updates, primarily the LOC threshold.
+
+        Args:
+            trade: The current trade data.
+            dataframe_history: Market history for the symbol.
+
+        Returns:
+            dict[str, object]: Updates to be merged into signal_context.
+        """
+        updates: dict[str, object] = {}
+        threshold_loc = self._calculate_threshold_loc(dataframe_history)
+        if threshold_loc is not None:
+            updates["threshold_loc"] = threshold_loc
+
+        return updates
+
+    @override
     def generate_orders(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
-        repository: TradeRepository,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
-        """Generates an Order object for IBKR export.
+        """Generates Entry or Exit Orders based on current trade status.
 
         Args:
             trade: Current trade data.
             dataframe_history: Historical price sequence.
             budget: Strategy allocation budget.
-            repository: Trade database.
+            created_symbols: Set of symbols with CREATED trades.
 
         Returns:
             Order | None: Order descriptor if valid.
         """
-        symbol = trade.get("symbol", "UNKNOWN")
-        entry_price = float(trade.get("entry_price") or 0.0)
+        status_raw = trade.get("status")
+        status = status_raw.value if hasattr(status_raw, "value") else status_raw
+        if not status:
+            status = "CREATED"
 
-        if entry_price <= 0:
-            return None
-
-        # 1. Quantity Calculation
-        database_size = float(trade.get("initial_size") or 0.0)
-        if database_size > 0:
-            quantity = int(database_size)
-        else:
-            trade_budget = float(trade.get("budget") or budget or self.DEFAULT_BUDGET)
-            quantity = int(trade_budget / entry_price)
-
+        quantity = self._determine_order_quantity(trade, budget)
         if quantity <= 0:
             return None
 
-        # 2. Construct Legs
+        # Case A: New setup -> Generate entry bracket
+        if status == "CREATED":
+            return self._generate_created_orders(trade, quantity, dataframe_history)
+
+        # Case B: Active position -> Generate pure exit orders (TP + LOC threshold)
+        if status == "ACTIVE":
+            return self._generate_active_orders(trade, quantity, dataframe_history)
+
+        return None
+
+    def _determine_order_quantity(self, trade: TradeData, budget: float) -> int:
+        """Calculates order quantity based on database size or strategy budget."""
+        entry_price = self._extract_entry_price(trade)
+        if entry_price <= 0:
+            return 0
+
+        database_size = float(trade.get("initial_size") or 0.0)
+        if database_size > 0:
+            return int(database_size)
+
+        from ....config import settings
+
+        config_budget = settings.app.portfolio.get_budget("dip_buyer")
+        trade_budget = float(trade.get("budget") or budget or config_budget)
+        if trade_budget <= 0:
+            logger.warning(
+                "[%s] Sizing Fallback: No budget found. Check settings.yaml.",
+                trade.get("symbol"),
+            )
+            return 0
+        return int(trade_budget / entry_price)
+
+    def _calculate_threshold_loc(self, dataframe_history: pd.DataFrame) -> float | None:
+        """Calculates the dynamic LOC threshold based on the previous day's high."""
+        if len(dataframe_history) < 1:
+            return None
+        previous_candle = dataframe_history.iloc[-1]
+        previous_day_high = float(previous_candle["high"])
+        return round(previous_day_high + 0.01, 2)
+
+    def _generate_created_orders(
+        self, trade: TradeData, quantity: int, dataframe_history: pd.DataFrame
+    ) -> Order | None:
+        """Generates entry bracket orders for CREATED trades."""
+        symbol = trade.get("symbol", "UNKNOWN")
+        entry_price = self._extract_entry_price(trade)
+
         entry_leg = OrderLeg(
             action="BUY",
             type="LMT",
-            price=entry_price,
+            price=Decimal(str(entry_price)),
             quantity=quantity,
             time_in_force="DAY",
         )
 
         exits = []
-        target_price = float(trade.get("current_target") or 0.0)
-        if target_price > 0:
-            exits.append(
-                OrderLeg(
-                    action="SELL",
-                    type="LOC",
-                    price=target_price,
-                    quantity=quantity,
-                    time_in_force="DAY",
+        threshold_loc = self._calculate_threshold_loc(dataframe_history)
+        exit_price = threshold_loc if threshold_loc else trade.get("current_target")
+        if exit_price:
+            exit_value = float(exit_price)
+            if exit_value > 0:
+                exits.append(
+                    OrderLeg(
+                        action="SELL",
+                        type="LOC",
+                        price=Decimal(str(exit_value)),
+                        quantity=quantity,
+                        time_in_force="DAY",
+                    )
                 )
-            )
 
-        return Order(
-            id=f"{symbol}_{self.name}",
+        return self._create_order(
             symbol=symbol,
             quantity=quantity,
             mode="BRACKET",
             entry=entry_leg,
             exits=exits,
-            last_status="CREATED",
+            order_id=f"{symbol}_{self.name}",
+        )
+
+    def _generate_active_orders(
+        self, trade: TradeData, quantity: int, dataframe_history: pd.DataFrame
+    ) -> Order | None:
+        """Generates exit orders for ACTIVE trades (Take Profit and EOD LOC exit)."""
+        symbol = trade.get("symbol", "UNKNOWN")
+        exits = []
+
+        # 1. Take Profit Exit Order
+        target_price = float(trade.get("current_target") or 0.0)
+        if target_price > 0:
+            exits.append(
+                OrderLeg(
+                    action="SELL",
+                    type="LMT",
+                    price=Decimal(str(target_price)),
+                    quantity=quantity,
+                    time_in_force="DAY",
+                )
+            )
+
+        # 2. Limit On Close (LOC) Exit at daily updated threshold (Vortages-Hoch)
+        threshold_loc = self._calculate_threshold_loc(dataframe_history)
+        if threshold_loc:
+            threshold_value = float(threshold_loc)
+            if threshold_value > 0:
+                exits.append(
+                    OrderLeg(
+                        action="SELL",
+                        type="LOC",
+                        price=Decimal(str(threshold_value)),
+                        quantity=quantity,
+                        time_in_force="DAY",
+                    )
+                )
+
+        if not exits:
+            return None
+
+        return self._create_order(
+            symbol=symbol,
+            quantity=quantity,
+            mode="Exit",
+            entry=None,
+            exits=exits,
+            order_id=f"{symbol}_{self.name}_EXIT",
         )

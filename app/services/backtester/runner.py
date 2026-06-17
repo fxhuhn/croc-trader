@@ -3,6 +3,7 @@
 import argparse
 import logging
 import sys
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -32,6 +33,7 @@ from .backtest_results import (
     SimulationImpact,
 )
 from app.services.portfolio.simulation import CapacitySimulator
+from ...config import PortfolioConfig
 
 # Configure Logging to file, so console is clean for Rich
 logging.basicConfig(
@@ -772,23 +774,69 @@ def _run_extended_analytics(
     }
 
 
-def _load_portfolio_configuration() -> dict | None:
-    """Loads portfolio.yaml if available in the runner's directory."""
+def _load_portfolio_configuration() -> PortfolioConfig:
+    """Loads portfolio config: settings.yaml defaults, optionally overridden by portfolio.yaml."""
     import yaml
+    from ...config import settings, PortfolioConfig, PortfolioStrategyConfig
+
+    base_config = settings.app.portfolio
 
     config_path = Path(__file__).parent / "portfolio.yaml"
-
     if not config_path.exists():
-        return None
+        return base_config
 
     try:
         with open(config_path, "r") as f:
-            config = yaml.safe_load(f)
-            logger.info("Loaded custom portfolio configuration from %s", config_path)
-            return config
+            custom_data = yaml.safe_load(f) or {}
+            logger.info("Loaded custom portfolio overrides from %s", config_path)
+
+            strategies_list = custom_data.get("strategies", [])
+            if not isinstance(strategies_list, list):
+                return base_config
+
+            strat_configs = {}
+            for entry in strategies_list:
+                if isinstance(entry, dict):
+                    for strat_name, properties in entry.items():
+                        # Determine quantity (budget)
+                        budget_val = 0.0
+                        if isinstance(properties, list):
+                            for prop in properties:
+                                if isinstance(prop, dict) and "quantity" in prop:
+                                    budget_val = float(prop["quantity"])
+
+                        # Merge with default config
+                        default_strat = getattr(base_config, strat_name, None)
+                        default_budget = default_strat.budget if default_strat else 0.0
+                        default_risk = (
+                            default_strat.risk_amount if default_strat else 0.0
+                        )
+
+                        strat_configs[strat_name] = PortfolioStrategyConfig(
+                            budget=budget_val if budget_val > 0.0 else default_budget,
+                            risk_amount=default_risk,
+                        )
+
+            # Reconstruct with merges
+            def get_strat_config(
+                name: str, default_val: PortfolioStrategyConfig
+            ) -> PortfolioStrategyConfig:
+                return strat_configs.get(name, default_val)
+
+            return PortfolioConfig(
+                dip_buyer=get_strat_config("dip_buyer", base_config.dip_buyer),
+                turnover_timing=get_strat_config(
+                    "turnover_timing", base_config.turnover_timing
+                ),
+                two_percent=get_strat_config("two_percent", base_config.two_percent),
+                ndx_momentum=get_strat_config("ndx_momentum", base_config.ndx_momentum),
+                hold_target=get_strat_config("hold_target", base_config.hold_target),
+                split_target=get_strat_config("split_target", base_config.split_target),
+            )
+
     except Exception as e:
-        logger.error("Failed to load portfolio.yaml: %s", e)
-        return None
+        logger.error("Failed to load/merge portfolio.yaml: %s", e)
+        return base_config
 
 
 def _export_portfolio_configuration(
@@ -959,7 +1007,7 @@ def _display_capacity_simulation(
         "\n[bold cyan]--- Capacity Simulation (Dynamic Sizing) ---[/bold cyan]"
     )
 
-    simulator = CapacitySimulator(initial_capital=100000.0, n_simulations=100)
+    simulator = CapacitySimulator(initial_capital=100000.0, number_of_simulations=100)
 
     try:
         results_df = simulator.run(
@@ -1041,6 +1089,12 @@ def main() -> None:
 
     # Load custom sizing if available
     portfolio_config = _load_portfolio_configuration()
+
+    warnings.warn(
+        "The Backtester module is deprecated. TradeManager is now the sole source of truth for OrderTypes, Limits, and Sizing.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
     engine = BacktestEngine(
         start_date=args.start,

@@ -1,7 +1,9 @@
-import pandas as pd
-import numpy as np
 import logging
 from dataclasses import dataclass
+
+import numpy
+import pandas
+
 from .dynamic_sizing import CapacityMonitor, DynamicPositionSizer
 
 logger = logging.getLogger(__name__)
@@ -21,38 +23,46 @@ class CapacitySimulator:
     Designed to be integrated into the Backtest Runner.
     """
 
-    def __init__(self, initial_capital: float = 100000.0, n_simulations: int = 100):
+    def __init__(
+        self,
+        initial_capital: float = 100000.0,
+        number_of_simulations: int = 100,
+    ) -> None:
         self.initial_capital = initial_capital
-        self.n_simulations = n_simulations
+        self.number_of_simulations = number_of_simulations
 
     def run(
         self,
-        trades_df: pd.DataFrame,
+        trades_dataframe: pandas.DataFrame,
         base_kelly: float = 0.39,
         p95_concurrency: float = 10.0,
-    ) -> pd.DataFrame:
+    ) -> pandas.DataFrame:
         """
         Runs the simulation scenarios on the provided trades DataFrame.
         expected trades_df columns: entry_date, exit_date, strategy, return_pct
         """
-        if trades_df.empty:
+        if trades_dataframe.empty:
             logger.warning("No trades provided for capacity simulation.")
-            return pd.DataFrame()
+            return pandas.DataFrame()
 
         # Ensure datetime
-        if not np.issubdtype(trades_df["entry_date"].dtype, np.datetime64):
-            trades_df["entry_date"] = pd.to_datetime(trades_df["entry_date"])
-        if not np.issubdtype(trades_df["exit_date"].dtype, np.datetime64):
-            trades_df["exit_date"] = pd.to_datetime(trades_df["exit_date"])
+        if not numpy.issubdtype(trades_dataframe["entry_date"].dtype, numpy.datetime64):
+            trades_dataframe["entry_date"] = pandas.to_datetime(
+                trades_dataframe["entry_date"]
+            )
+        if not numpy.issubdtype(trades_dataframe["exit_date"].dtype, numpy.datetime64):
+            trades_dataframe["exit_date"] = pandas.to_datetime(
+                trades_dataframe["exit_date"]
+            )
 
         # Calculate return_pct if missing
-        if "return_pct" not in trades_df.columns:
+        if "return_pct" not in trades_dataframe.columns:
             # Handle possible zero entry price?
             # In backtest logic, entry should be > 0.
-            trades_df = trades_df.copy()  # Avoid SettingWithCopy
-            trades_df["return_pct"] = (
-                trades_df["exit_price"] - trades_df["entry_price"]
-            ) / trades_df["entry_price"]
+            trades_dataframe = trades_dataframe.copy()  # Avoid SettingWithCopy
+            trades_dataframe["return_pct"] = (
+                trades_dataframe["exit_price"] - trades_dataframe["entry_price"]
+            ) / trades_dataframe["entry_price"]
 
         # Calculate base unit size (normalized by expected concurrency)
         # This gives dynamic sizing "room" to fluctuate around the baseline.
@@ -75,41 +85,50 @@ class CapacitySimulator:
 
         results = []
         logger.info(
-            f"Starting Capacity Simulation ({self.n_simulations} runs, Base Unit: {base_unit_size:.2%})..."
+            "Starting Capacity Simulation (%d runs, Base Unit: %.2f%%)...",
+            self.number_of_simulations,
+            base_unit_size * 100,
         )
 
         for name, config in scenarios.items():
-            scenario_res = self._run_scenario(trades_df, name, config)
+            scenario_res = self._run_scenario(trades_dataframe, name, config)
             results.append(scenario_res)
 
-        return pd.DataFrame(results)
+        return pandas.DataFrame(results)
 
-    def _run_scenario(self, trades_df: pd.DataFrame, name: str, config: dict) -> dict:
+    def _run_scenario(
+        self,
+        trades_dataframe: pandas.DataFrame,
+        name: str,
+        config: dict[str, object],
+    ) -> dict[str, object]:
         """Runs a single scenario simulation."""
         scenario_returns = []
         scenario_drawdowns = []
         scenario_interest = []
         scenario_commissions = []
 
-        for i in range(self.n_simulations):
+        for simulation_index in range(self.number_of_simulations):
             # Bootstrap Resampling
-            sim_trades = trades_df.sample(frac=1.0, replace=True).sort_values(
+            sim_trades = trades_dataframe.sample(frac=1.0, replace=True).sort_values(
                 "entry_date"
             )
 
             equity = self.initial_capital
             peak_equity = self.initial_capital
-            max_dd = 0.0
+            max_drawdown = 0.0
             total_interest = 0.0
             total_commissions = 0.0
 
             monitor = CapacityMonitor()
             sizer = DynamicPositionSizer(
-                base_kelly=config["unit_size"],
-                target_percentile=config.get("percentile", 95),
+                base_kelly=float(config["unit_size"]),
+                target_percentile=int(config.get("percentile", 95)),
             )
 
-            active_trades = []  # List of {'exit_date': date, 'strategy': str, 'size_pct': float}
+            active_trades: list[
+                dict[str, object]
+            ] = []  # List of {'exit_date': date, 'strategy': str, 'size_pct': float}
 
             # Unique dates in simulation
             all_dates = sorted(sim_trades["entry_date"].unique())
@@ -118,7 +137,9 @@ class CapacitySimulator:
             for current_date in all_dates:
                 # 1. Clean up expired trades
                 active_trades = [
-                    t for t in active_trades if t["exit_date"] >= current_date
+                    trade_record
+                    for trade_record in active_trades
+                    if trade_record["exit_date"] >= current_date
                 ]
 
                 # 2. Get new trades for today
@@ -132,7 +153,9 @@ class CapacitySimulator:
                     if gap_days > 0 and active_trades:
                         # Current exposure is the sum of sizes of active trades
                         # (Allocated at their respective entry moments)
-                        current_exposure_pct = sum(t["size_pct"] for t in active_trades)
+                        current_exposure_pct = sum(
+                            trade_record["size_pct"] for trade_record in active_trades
+                        )
 
                         if current_exposure_pct > 1.0:
                             margin_amount = (current_exposure_pct - 1.0) * equity
@@ -143,24 +166,24 @@ class CapacitySimulator:
 
                 # 3. Update Monitor for sizer
                 active_map = {}
-                for t in active_trades:
-                    strat = t["strategy"]
-                    if strat not in active_map:
-                        active_map[strat] = []
-                    active_map[strat].append(t)
+                for trade_record in active_trades:
+                    strategy = trade_record["strategy"]
+                    if strategy not in active_map:
+                        active_map[strategy] = []
+                    active_map[strategy].append(trade_record)
                 monitor.update(current_date, active_map)
 
                 # 4. Process New Trades (Daily)
-                for _, trade in todays_trades.iterrows():
+                for index, trade in todays_trades.iterrows():
                     strategy = trade["strategy"]
 
                     if config["dynamic"]:
-                        strat_count = len(active_map.get(strategy, []))
+                        strategy_count = len(active_map.get(strategy, []))
                         position_size = sizer.calculate_position_size(
-                            equity, strategy, strat_count, monitor
+                            equity, strategy, strategy_count, monitor
                         )
                     else:
-                        position_size = equity * config["unit_size"]
+                        position_size = equity * float(config["unit_size"])
 
                     # 5% Hard Cap per single trade
                     position_size = min(position_size, equity * 0.05)
@@ -192,17 +215,23 @@ class CapacitySimulator:
 
                 if equity > peak_equity:
                     peak_equity = equity
-                dd = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0.0
-                max_dd = max(max_dd, dd)
+                drawdown = (
+                    (peak_equity - equity) / peak_equity if peak_equity > 0 else 0.0
+                )
+                max_drawdown = max(max_drawdown, drawdown)
 
                 last_sim_date = current_date
 
             # Final check: any remaining interest until the last exit?
             if active_trades and last_sim_date:
-                final_exit = max(t["exit_date"] for t in active_trades)
+                final_exit = max(
+                    trade_record["exit_date"] for trade_record in active_trades
+                )
                 remaining_days = (final_exit - last_sim_date).days
                 if remaining_days > 0:
-                    current_exposure_pct = sum(t["size_pct"] for t in active_trades)
+                    current_exposure_pct = sum(
+                        trade_record["size_pct"] for trade_record in active_trades
+                    )
                     if current_exposure_pct > 1.0:
                         margin_amount = (current_exposure_pct - 1.0) * equity
                         final_interest = margin_amount * (0.06 / 360.0) * remaining_days
@@ -212,14 +241,14 @@ class CapacitySimulator:
             scenario_returns.append(
                 (equity - self.initial_capital) / self.initial_capital
             )
-            scenario_drawdowns.append(max_dd)
+            scenario_drawdowns.append(max_drawdown)
             scenario_interest.append(total_interest)
             scenario_commissions.append(total_commissions)
 
         return {
             "Scenario": name,
-            "Median Return": np.median(scenario_returns),
-            "Max Drawdown (95th Worst)": np.percentile(scenario_drawdowns, 95),
-            "Avg Commission": np.mean(scenario_commissions),
-            "Avg Margin Interest": np.mean(scenario_interest),
+            "Median Return": numpy.median(scenario_returns),
+            "Max Drawdown (95th Worst)": numpy.percentile(scenario_drawdowns, 95),
+            "Avg Commission": numpy.mean(scenario_commissions),
+            "Avg Margin Interest": numpy.mean(scenario_interest),
         }

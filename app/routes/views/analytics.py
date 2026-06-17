@@ -133,6 +133,76 @@ def view_analytics_dashboard() -> str:
             else 0.0
         )
 
+        # Average ROI Calculation
+        average_roi = 0.0
+        average_roi_display_text = "0.00%"
+        if not strategy_dataframe.empty:
+            entry_prices = pd.to_numeric(
+                strategy_dataframe["entry_price"], errors="coerce"
+            ).fillna(0.0)
+            initial_sizes = pd.to_numeric(
+                strategy_dataframe["initial_size"], errors="coerce"
+            ).fillna(0.0)
+            invested_capital = entry_prices * initial_sizes
+
+            valid_roi_mask = invested_capital > 0.0
+            if valid_roi_mask.any():
+                roi_series = (
+                    strategy_dataframe.loc[valid_roi_mask, "realized_pnl"]
+                    / invested_capital[valid_roi_mask]
+                )
+                average_roi = float(roi_series.mean())
+                average_roi_display_text = f"{average_roi * 100.0:.2f}%"
+
+        # Frequency Model (EV/M) Calculations
+        active_months = 1.0
+        if (
+            not strategy_dataframe.empty
+            and "exit_date_dt" in strategy_dataframe.columns
+        ):
+            first_date = strategy_dataframe["exit_date_dt"].min()
+            last_date = strategy_dataframe["exit_date_dt"].max()
+            days_span = max(1.0, float((last_date - first_date).days))
+            active_months = max(1.0, days_span / 30.44)
+
+        trades_per_month = len(strategy_dataframe) / active_months
+        ev_per_trade_roi = average_roi
+        ev_per_month = trades_per_month * ev_per_trade_roi
+
+        # Max Open Positions Calculation
+        max_concurrent = 0
+        events = []
+        if (
+            not strategy_dataframe.empty
+            and "entry_date" in strategy_dataframe.columns
+            and "exit_date" in strategy_dataframe.columns
+        ):
+            entries = pd.to_datetime(
+                strategy_dataframe["entry_date"], errors="coerce"
+            ).dropna()
+            exits = pd.to_datetime(
+                strategy_dataframe["exit_date"], errors="coerce"
+            ).dropna()
+            for date in entries:
+                events.append((date, 1))
+            for date in exits:
+                events.append((date, -1))
+
+        for trade in strategy_active:
+            if trade.get("entry_date"):
+                try:
+                    events.append((pd.to_datetime(trade["entry_date"]), 1))
+                except Exception:
+                    pass
+
+        if events:
+            events.sort(key=lambda x: (x[0], x[1]))
+            current_open = 0
+            for _, change in events:
+                current_open += change
+                if current_open > max_concurrent:
+                    max_concurrent = current_open
+
         # Vectorized Risk Calculations
         average_risk_dollar = 0.0
         has_valid_risk = False
@@ -187,35 +257,41 @@ def view_analytics_dashboard() -> str:
             trades_per_year = len(strategy_dataframe) / years_span
             sharpe_annualization_factor = min(252.0, max(1.0, float(trades_per_year)))
 
-        # Combine realized P&L of closed trades with unrealized P&L of active trades
-        closed_profit_and_loss_list = (
-            strategy_dataframe["realized_pnl"].tolist()
-            if not strategy_dataframe.empty
-            else []
-        )
-        active_profit_and_loss_list = [
-            float(trade.get("unrealized_pnl") or 0.0) for trade in strategy_active
-        ]
-        total_performance_series = pd.Series(
-            closed_profit_and_loss_list + active_profit_and_loss_list
-        )
+        # Calculate ROI series for Kelly Criterion
+        closed_roi_list = []
+        if "roi_series" in locals():
+            closed_roi_list = roi_series.tolist()
 
-        # Calculate Kelly Criterion Allocation Metrics using total performance
+        active_roi_list = []
+        for trade in strategy_active:
+            upnl = float(trade.get("unrealized_pnl") or 0.0)
+            ep = float(trade.get("entry_price") or 0.0)
+            # Active trades might use 'quantity' or 'initial_size'
+            qty = float(trade.get("quantity") or trade.get("initial_size") or 0.0)
+            inv = ep * qty
+            if inv > 0.0:
+                active_roi_list.append(upnl / inv)
+            else:
+                active_roi_list.append(0.0)
+
+        total_roi_series = pd.Series(closed_roi_list + active_roi_list)
+
+        # Calculate Kelly Criterion Allocation Metrics using ROI
         strategy_win_rate = (
-            metrics.calculate_win_rate(total_performance_series)
-            if not total_performance_series.empty
+            metrics.calculate_win_rate(total_roi_series)
+            if not total_roi_series.empty
             else 0.0
         )
         strategy_risk_reward_ratio = (
-            metrics.calculate_risk_reward_ratio(total_performance_series)
-            if not total_performance_series.empty
+            metrics.calculate_risk_reward_ratio(total_roi_series)
+            if not total_roi_series.empty
             else 0.0
         )
         strategy_kelly_criterion = (
             metrics.calculate_kelly_criterion(
                 strategy_win_rate, strategy_risk_reward_ratio
             )
-            if not total_performance_series.empty
+            if not total_roi_series.empty
             else 0.0
         )
 
@@ -248,6 +324,8 @@ def view_analytics_dashboard() -> str:
                     else 0.0,
                     "expectancy": expectancy_display_text,
                     "ror": f"{rate_of_return_percent:.2f}%",
+                    "max_concurrent": max_concurrent,
+                    "avg_roi": average_roi_display_text,
                     "sharpe": metrics.calculate_sharpe_ratio(
                         strategy_dataframe["realized_pnl"],
                         initial_capital,
@@ -258,6 +336,9 @@ def view_analytics_dashboard() -> str:
                     "win_rate": strategy_win_rate,
                     "risk_reward_ratio": strategy_risk_reward_ratio,
                     "kelly_criterion": strategy_kelly_criterion,
+                    "trades_per_month": trades_per_month,
+                    "ev_per_trade_roi": ev_per_trade_roi,
+                    "ev_per_month": ev_per_month,
                 },
             }
         )
@@ -275,11 +356,26 @@ def view_analytics_dashboard() -> str:
     else:
         depot_multiplier = 1.0
 
+    # Calculate total EV/M for weighting
+    total_ev_per_month = sum(
+        max(0.0, float(strategy_item["metrics"]["ev_per_month"]))
+        for strategy_item in strategies_data
+    )
+
     # Apply scaling multiplier to compute professional Suggested Allocations
     for strategy_item in strategies_data:
         raw_kelly = float(strategy_item["metrics"]["kelly_criterion"])
         suggested_allocation = raw_kelly * depot_multiplier if raw_kelly > 0.0 else 0.0
         strategy_item["metrics"]["suggested_allocation"] = suggested_allocation
+
+        # EV/M Allocation
+        raw_ev = float(strategy_item["metrics"]["ev_per_month"])
+        if raw_ev > 0.0 and total_ev_per_month > 0.0:
+            ev_weight = raw_ev / total_ev_per_month
+        else:
+            ev_weight = 0.0
+        strategy_item["metrics"]["ev_allocation"] = ev_weight
+        strategy_item["metrics"]["ev_allocation_100k"] = ev_weight * 100000.0
 
     # Sort strategies by realized pnl desc
     strategies_data.sort(key=lambda x: x["pnl"], reverse=True)

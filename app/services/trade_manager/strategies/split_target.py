@@ -1,16 +1,30 @@
 import json
 import logging
+from dataclasses import dataclass
+from decimal import Decimal
 from typing import override, final
 
 import pandas as pd
 
+from ..types import TradeTransition
 from ....types import EntryReason, ExitReason, TradeData, TradeStatus
 from ....models import TradeParams, Order, OrderLeg
-from ....database.repositories.trade import TradeRepository
 from .abstract import BaseTradeStrategy
 from ....const import Strategies
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ExpirationCheckResult:
+    """Immutable result of signal expiration check.
+
+    Replaces the fragile tri-state return (TradeTransition | bool | None)
+    with an explicit, type-safe contract.
+    """
+
+    should_skip: bool = False
+    transition: TradeTransition | None = None
 
 
 @final
@@ -32,7 +46,6 @@ class SplitTargetStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
-        repository: TradeRepository | None = None,
     ) -> TradeParams:
         """
         Calculates current strategy parameters for display/logging.
@@ -40,12 +53,11 @@ class SplitTargetStrategy(BaseTradeStrategy):
         Args:
             trade: The trade data structure.
             dataframe_history: Historical price data (unused here).
-            repository: The trade repository (unused here).
 
         Returns:
             TradeParams: Container with stop_loss, targets, and phase info.
         """
-        context = self._get_context(dict(trade))
+        context = self._get_full_context(dict(trade))
         is_phase_2 = context.get("is_phase_2", False)
 
         take_profit_1 = float(context.get("take_profit_1") or context.get("tp1") or 0.0)
@@ -70,8 +82,8 @@ class SplitTargetStrategy(BaseTradeStrategy):
         trade: TradeData,
         candle: pd.Series,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        active_symbols: set[str] | None = None,
+    ) -> TradeTransition | None:
         """Checks for a breakout entry (Stop Buy) and validates the stop loss.
 
         Orchestrates the entry check by delegating to specialized helpers
@@ -81,10 +93,10 @@ class SplitTargetStrategy(BaseTradeStrategy):
             trade: The trade data.
             candle: The current price candle.
             dataframe_history: Historical price data.
-            repository: The trade repository.
+            active_symbols: Currently active symbols set.
 
         Returns:
-            str | None: Status message if filled/invalidated, else None.
+            TradeTransition | None: Status message if filled/invalidated, else None.
         """
         entry_price = float(trade.get("entry_price") or 0.0)
         stop_loss = float(trade.get("current_stop_loss") or 0.0)
@@ -94,17 +106,15 @@ class SplitTargetStrategy(BaseTradeStrategy):
 
         date_string = str(candle["date"])
 
-        # 1. Signal expiration check — returns False to skip, str message, or None
-        expiration_result = self._check_signal_expiration(
-            trade, candle, repository, date_string
-        )
-        if expiration_result is False:
-            return None  # Too early to act on this signal
-        if expiration_result is not None:
-            return expiration_result
+        # 1. Signal expiration check
+        expiration_result = self._check_signal_expiration(trade, candle, date_string)
+        if expiration_result.should_skip:
+            return None
+        if expiration_result.transition is not None:
+            return expiration_result.transition
 
         # 2. Detect fill and stop invalidation
-        context = self._get_context(trade)
+        context = self._get_full_context(trade)
         direction = str(context.get("direction", "long")).lower()
         filled, fill_price, reason = self._detect_entry_fill(
             candle, entry_price, direction
@@ -114,22 +124,19 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if not filled:
             if is_stop_hit:
                 low_price = float(candle["low"])
-                return self._invalidate_trade(
-                    trade, repository, low_price, stop_loss, date_string
-                )
+                return self._invalidate_trade(trade, low_price, stop_loss, date_string)
             return None
 
         # 3. Same-day exit checks (stop has priority over target)
         if is_stop_hit:
             return self._execute_immediate_loss(
-                trade, repository, fill_price, reason, stop_loss, date_string
+                trade, fill_price, reason, stop_loss, date_string
             )
 
         tp3_exit_price = self._check_same_day_tp3(candle, context, direction)
         if tp3_exit_price is not None:
             return self._execute_immediate_target(
                 trade,
-                repository,
                 fill_price,
                 reason,
                 tp3_exit_price,
@@ -138,36 +145,34 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 context,
             )
 
-        return self._execute_activation(
-            trade, repository, fill_price, reason, date_string
-        )
+        return self._execute_activation(trade, fill_price, reason, date_string)
 
     def _check_signal_expiration(
         self,
         trade: TradeData,
         candle: pd.Series,
-        repository: TradeRepository,
         date_string: str,
-    ) -> str | bool | None:
+    ) -> ExpirationCheckResult:
         """Checks if the signal has expired or is too early to act on.
 
         Returns:
-            str: Expiration status message (trade was expired).
-            False: Signal is too early — skip without action.
-            None: Signal is within the valid window — continue processing.
+            ExpirationCheckResult with should_skip=True if too early,
+            or transition set if the trade should be expired.
         """
         signal_date = self._get_signal_date(trade)
         if not signal_date:
-            return None
+            return ExpirationCheckResult()
 
         current_date_obj = pd.Timestamp(candle["date"])
         if current_date_obj.date() <= signal_date.date():
-            return False  # Too early — not yet actionable
+            return ExpirationCheckResult(should_skip=True)
 
         if (current_date_obj.date() - signal_date.date()).days > 5:
-            return self._expire_trade(trade, repository, date_string)
+            return ExpirationCheckResult(
+                transition=self._expire_trade(trade, date_string)
+            )
 
-        return None
+        return ExpirationCheckResult()
 
     def _detect_entry_fill(
         self,
@@ -265,8 +270,8 @@ class SplitTargetStrategy(BaseTradeStrategy):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        repository: TradeRepository,
-    ) -> str | None:
+        latest_leaders: set[str] | None = None,
+    ) -> TradeTransition | None:
         """
         Manages exits: SL, TP1 (Partial), TP3 (Final).
         Implements the 'Gap-Over' fix by checking TP3 before TP1.
@@ -274,10 +279,10 @@ class SplitTargetStrategy(BaseTradeStrategy):
         Args:
             trade: The active trade data.
             dataframe_history: Price history.
-            repository: The trade repository.
+            latest_leaders: Set of leader symbols.
 
         Returns:
-            str | None: Status message if closed/updated, else None.
+            TradeTransition | None: Computed transition if closed/updated, else None.
         """
         if dataframe_history is None or dataframe_history.empty:
             return None
@@ -289,15 +294,15 @@ class SplitTargetStrategy(BaseTradeStrategy):
             return None
 
         # 2. Extract Context & Market Data
-        context = self._get_context(trade)
+        context = self._get_full_context(trade)
 
         # 3. Stop Loss Logic (Priority)
-        stop_loss_message = self._check_stop_loss(trade, repository, candle)
+        stop_loss_message = self._check_stop_loss(trade, candle)
         if stop_loss_message:
             return stop_loss_message
 
         # 4. Target Logic (TP3 -> TP1)
-        return self._check_targets(trade, repository, candle, context)
+        return self._check_targets(trade, candle, context)
 
     def _is_trade_executable_today(self, trade: TradeData, candle: pd.Series) -> bool:
         """Checks if the trade can be executed on the current candle date."""
@@ -311,8 +316,8 @@ class SplitTargetStrategy(BaseTradeStrategy):
         return True
 
     def _check_stop_loss(
-        self, trade: TradeData, repository: TradeRepository, candle: pd.Series
-    ) -> str | None:
+        self, trade: TradeData, candle: pd.Series
+    ) -> TradeTransition | None:
         """Checks and executes Stop Loss logic."""
         stop_loss = float(trade.get("current_stop_loss") or 0.0)
         if stop_loss <= 0:
@@ -323,14 +328,14 @@ class SplitTargetStrategy(BaseTradeStrategy):
         open_price = float(candle["open"])
         date_string = str(candle["date"])
 
-        direction = str(self._get_context(trade).get("direction", "long")).lower()
+        direction = str(self._get_full_context(trade).get("direction", "long")).lower()
 
         if direction == "long" and low_price <= stop_loss:
             exit_price = stop_loss
             if open_price < stop_loss:
                 exit_price = open_price  # Gap down benefit
             return self._close_trade(
-                trade, repository, exit_price, ExitReason.STOP_LOSS, date_string
+                trade, exit_price, ExitReason.STOP_LOSS, date_string
             )
 
         if direction == "short" and high_price >= stop_loss:
@@ -338,7 +343,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
             if open_price > stop_loss:
                 exit_price = open_price  # Gap up downside
             return self._close_trade(
-                trade, repository, exit_price, ExitReason.STOP_LOSS, date_string
+                trade, exit_price, ExitReason.STOP_LOSS, date_string
             )
 
         return None
@@ -346,10 +351,9 @@ class SplitTargetStrategy(BaseTradeStrategy):
     def _check_targets(
         self,
         trade: TradeData,
-        repository: TradeRepository,
         candle: pd.Series,
         context: dict[str, object],
-    ) -> str | None:
+    ) -> TradeTransition | None:
         """Evaluates Take Profit levels (TP3 then TP1)."""
         high_price = float(candle["high"])
         low_price = float(candle["low"])
@@ -374,7 +378,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
 
         if is_tp3_hit:
             return self._close_trade(
-                trade, repository, exit_price, ExitReason.TARGET_HIT, date_string
+                trade, exit_price, ExitReason.TARGET_HIT, date_string
             )
 
         # Check Partial Target (TP1) if still in Phase 1
@@ -390,7 +394,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
 
         if is_tp1_hit:
             return self._execute_partial_take_profit(
-                trade, repository, candle, take_profit_1, context
+                trade, candle, take_profit_1, context
             )
 
         return None
@@ -398,11 +402,10 @@ class SplitTargetStrategy(BaseTradeStrategy):
     def _execute_partial_take_profit(
         self,
         trade: TradeData,
-        repository: TradeRepository,
         candle: pd.Series,
         exit_price_limit: float,
         context: dict[str, object],
-    ) -> str:
+    ) -> TradeTransition:
         """Executes the partial sell logic for TP1."""
         open_price = float(candle["open"])
         direction = str(context.get("direction", "long")).lower()
@@ -421,42 +424,47 @@ class SplitTargetStrategy(BaseTradeStrategy):
             # Too small to split? Close all at TP1
             date_string = str(candle["date"])
             return self._close_trade(
-                trade, repository, exit_price, ExitReason.TARGET_HIT, date_string
+                trade, exit_price, ExitReason.TARGET_HIT, date_string
             )
 
         entry_price = float(trade.get("entry_price") or 0.0)
 
-        if direction == "short":
-            profit_and_loss_chunk = (entry_price - exit_price) * quantity_to_sell
-        else:
-            profit_and_loss_chunk = (exit_price - entry_price) * quantity_to_sell
+        # Use Decimal for exact PnL calculation
+        dec_entry = Decimal(str(entry_price))
+        dec_exit = Decimal(str(exit_price))
+        dec_qty = Decimal(str(int(quantity_to_sell)))
 
-        existing_pnl = float(trade.get("realized_pnl") or 0.0)
-        new_total_pnl = existing_pnl + profit_and_loss_chunk
+        if direction == "short":
+            profit_and_loss_chunk = (dec_entry - dec_exit) * dec_qty
+        else:
+            profit_and_loss_chunk = (dec_exit - dec_entry) * dec_qty
+
+        existing_pnl = Decimal(str(trade.get("realized_pnl") or "0.0"))
+        new_total_pnl = float(existing_pnl + profit_and_loss_chunk)
 
         # Move SL to Entry (Break Even)
         new_stop_loss = entry_price
 
-        # Update Context
-        context["is_phase_2"] = True
+        # Update Context (copy to avoid mutating the input dict)
+        updated_context = {**context, "is_phase_2": True}
 
-        repository.update_trade(
-            trade["id"],
-            {
+        return TradeTransition(
+            updates={
                 "current_size": quantity_remaining,
                 "current_stop_loss": new_stop_loss,
                 "realized_pnl": new_total_pnl,
-                "signal_context": json.dumps(context, default=str, ensure_ascii=False),
+                "signal_context": json.dumps(
+                    updated_context, default=str, ensure_ascii=False
+                ),
             },
             reason=(
                 f"TP1 HIT @ {exit_price:.2f}. "
                 f"Sold {int(quantity_to_sell)}. SL -> {new_stop_loss:.2f}."
             ),
-        )
-
-        return (
-            f"TP1 HIT @ {exit_price:.2f}. "
-            f"Partial Sell {int(quantity_to_sell)}. SL -> BE."
+            message=(
+                f"TP1 HIT @ {exit_price:.2f}. "
+                f"Partial Sell {int(quantity_to_sell)}. SL -> BE."
+            ),
         )
 
     @override
@@ -465,7 +473,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
-        repository: TradeRepository,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
         """
         Generates a Multi-Leg Bracket Order.
@@ -474,7 +482,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
             trade: The trade data.
             dataframe_history: Price history.
             budget: Available budget.
-            repository: Trade repository.
+            created_symbols: Set of symbols with CREATED trades.
 
         Returns:
             Order | None: The generated order or None.
@@ -484,7 +492,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
         stop_loss = float(trade.get("current_stop_loss") or 0.0)
 
         # Get Context for TPs (handle both old and new names)
-        context = self._get_context(trade)
+        context = self._get_full_context(trade)
         take_profit_1 = float(context.get("take_profit_1") or context.get("tp1") or 0.0)
         take_profit_3 = float(context.get("take_profit_3") or context.get("tp3") or 0.0)
 
@@ -496,7 +504,14 @@ class SplitTargetStrategy(BaseTradeStrategy):
         if database_size > 0:
             quantity = int(database_size)
         else:
-            risk_amount = float(trade.get("risk_amount") or 100.0)
+            from ....config import settings
+
+            risk_amount = float(
+                self._get_context_value(trade, "risk_amount")
+                or trade.get("risk_amount")
+                or settings.app.portfolio.get_risk_amount("split_target")
+                or 100.0
+            )
             quantity = self._calculate_position_size(
                 entry_price, stop_loss, risk_amount
             )
@@ -512,7 +527,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
         entry_leg = OrderLeg(
             action=entry_action,
             type="STP",
-            price=entry_price,
+            price=Decimal(str(entry_price)),
             quantity=quantity,
             time_in_force="DAY",
         )
@@ -525,7 +540,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 OrderLeg(
                     action=exit_action,
                     type="STP",
-                    price=stop_loss,
+                    price=Decimal(str(stop_loss)),
                     quantity=quantity,
                     time_in_force="GTC",
                 )
@@ -542,7 +557,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 OrderLeg(
                     action=exit_action,
                     type="LMT",
-                    price=take_profit_1,
+                    price=Decimal(str(take_profit_1)),
                     quantity=quantity_half,
                     time_in_force="GTC",
                 )
@@ -554,7 +569,7 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 OrderLeg(
                     action=exit_action,
                     type="LMT",
-                    price=take_profit_3,
+                    price=Decimal(str(take_profit_3)),
                     quantity=quantity_remaining,
                     time_in_force="GTC",
                 )
@@ -570,39 +585,16 @@ class SplitTargetStrategy(BaseTradeStrategy):
             last_status="CREATED",
         )
 
-    # --- Private Helpers ---
-
-    def _get_context(self, trade: TradeData) -> dict[str, object]:
-        """
-        Safe helper to load signal context.
-
-        Args:
-            trade: The trade dictionary.
-
-        Returns:
-            dict[str, object]: The context dictionary or empty.
-        """
-        try:
-            return json.loads(trade.get("signal_context") or "{}")
-        except json.JSONDecodeError as parsing_error:
-            logger.warning(
-                "Failed to parse signal context for trade %s: %s",
-                trade.get("id"),
-                parsing_error,
-            )
-            return {}
-
     def _execute_immediate_target(
         self,
         trade: TradeData,
-        repository: TradeRepository,
         fill_price: float,
         reason: str,
         exit_price: float,
         stop_loss: float,
         date_string: str,
         context: dict[str, object],
-    ) -> str:
+    ) -> TradeTransition:
         """Handles Day 1 massive targets: entry and full target hit on same day.
 
         Delegates position sizing to the centralized _resolve_position_size
@@ -610,7 +602,6 @@ class SplitTargetStrategy(BaseTradeStrategy):
 
         Args:
             trade: The trade dictionary.
-            repository: The trade repository.
             fill_price: The entry fill price.
             reason: The entry reason.
             exit_price: The TP3 exit price.
@@ -619,12 +610,16 @@ class SplitTargetStrategy(BaseTradeStrategy):
             context: The parsed signal context.
 
         Returns:
-            str: Status message.
+            TradeTransition: Computed state updates.
         """
         size = self._resolve_position_size(trade, fill_price, stop_loss)
 
         if size <= 0:
-            return "ERROR: Zero Size"
+            return TradeTransition(
+                updates={},
+                reason="ERROR: Zero Size",
+                message="ERROR: Zero Size",
+            )
 
         direction = str(context.get("direction", "long")).lower()
         if direction == "short":
@@ -632,9 +627,8 @@ class SplitTargetStrategy(BaseTradeStrategy):
         else:
             profit_and_loss = (exit_price - fill_price) * size
 
-        repository.update_trade(
-            trade["id"],
-            {
+        return TradeTransition(
+            updates={
                 "status": TradeStatus.CLOSED,
                 "entry_date": date_string,
                 "entry_price": fill_price,
@@ -646,8 +640,8 @@ class SplitTargetStrategy(BaseTradeStrategy):
                 "realized_pnl": profit_and_loss,
             },
             reason=f"{reason} FILLED @ {fill_price:.2f} -> TARGET HIT @ {exit_price:.2f}",
-        )
-        return (
-            f"FILLED @ {fill_price:.2f} -> TARGET HIT @ {exit_price:.2f} "
-            f"(PnL: {profit_and_loss:.2f})"
+            message=(
+                f"FILLED @ {fill_price:.2f} -> TARGET HIT @ {exit_price:.2f} "
+                f"(PnL: {profit_and_loss:.2f})"
+            ),
         )
