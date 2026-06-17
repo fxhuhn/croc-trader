@@ -51,6 +51,8 @@ class TechnicalIndicatorConfig:
             "bear_rot",
             "bear_grau",
             "bear_gruen",
+            "bear_hellgrün",
+            "bull_hellgrün",
         ]
     )
 
