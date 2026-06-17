@@ -41,6 +41,16 @@ class TechnicalIndicatorConfig:
             "trend",
             "welle",
             "wolke",
+            "bull_1",
+            "bull_orange",
+            "bull_rot",
+            "bull_grau",
+            "bull_gruen",
+            "bear_1",
+            "bear_orange",
+            "bear_rot",
+            "bear_grau",
+            "bear_gruen",
         ]
     )
 
