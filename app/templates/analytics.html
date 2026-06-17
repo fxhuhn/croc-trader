@@ -199,10 +199,10 @@
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Avg W/L</span>
                                 <div class="flex items-baseline gap-1 font-bold">
-                                    <span class="text-emerald-500">+{{ "{:,.0f}$".format(strategy.metrics.avg_win)
+                                    <span class="text-emerald-500">+{{ "{:.2f}%".format(strategy.metrics.avg_win)
                                         }}</span>
                                     <span class="text-slate-300 mx-0.5">/</span>
-                                    <span class="text-rose-500">{{ "{:,.0f}$".format(strategy.metrics.avg_loss) }}</span>
+                                    <span class="text-rose-500">{{ "{:.2f}%".format(strategy.metrics.avg_loss) }}</span>
                                 </div>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">

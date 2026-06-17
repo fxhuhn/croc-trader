@@ -53,10 +53,10 @@ class BaseTradeStrategy(ABC):
 
     def _extract_entry_price(self, trade: TradeData) -> float:
         """Extracts and parses the entry limit price from the trade context.
-        
+
         Args:
             trade: The trade data from the database.
-            
+
         Returns:
             float: The parsed entry price or 0.0.
         """

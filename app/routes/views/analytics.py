@@ -1,7 +1,11 @@
 """Routes and views for performance analytics and allocation dashboard."""
 
+import logging
+
 import pandas as pd
 from flask import render_template
+
+logger = logging.getLogger(__name__)
 
 from ...const import Strategies, ExitReason
 from ...types import TradeStatus
@@ -136,6 +140,7 @@ def view_analytics_dashboard() -> str:
         # Average ROI Calculation
         average_roi = 0.0
         average_roi_display_text = "0.00%"
+        roi_series = pd.Series(dtype=float)
         if not strategy_dataframe.empty:
             entry_prices = pd.to_numeric(
                 strategy_dataframe["entry_price"], errors="coerce"
@@ -192,8 +197,8 @@ def view_analytics_dashboard() -> str:
             if trade.get("entry_date"):
                 try:
                     events.append((pd.to_datetime(trade["entry_date"]), 1))
-                except Exception:
-                    pass
+                except Exception as error:
+                    logger.warning("Invalid entry_date for trade %s: %s", trade.get("id"), error)
 
         if events:
             events.sort(key=lambda x: (x[0], x[1]))
@@ -311,11 +316,11 @@ def view_analytics_dashboard() -> str:
                     "avg_risk": average_risk_display_text,
                     "win_count": len(winning_trades),
                     "loss_count": len(losing_trades),
-                    "avg_win": float(winning_trades["realized_pnl"].mean())
-                    if not winning_trades.empty
+                    "avg_win": float(roi_series[roi_series > 0].mean()) * 100.0
+                    if not roi_series[roi_series > 0].empty
                     else 0.0,
-                    "avg_loss": float(losing_trades["realized_pnl"].mean())
-                    if not losing_trades.empty
+                    "avg_loss": float(roi_series[roi_series < 0].mean()) * 100.0
+                    if not roi_series[roi_series < 0].empty
                     else 0.0,
                     "profit_factor": metrics.calculate_profit_factor(
                         strategy_dataframe["realized_pnl"]
