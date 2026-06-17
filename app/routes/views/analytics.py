@@ -1,11 +1,8 @@
 """Routes and views for performance analytics and allocation dashboard."""
 
 import logging
-
 import pandas as pd
 from flask import render_template
-
-logger = logging.getLogger(__name__)
 
 from ...const import Strategies, ExitReason
 from ...types import TradeStatus
@@ -15,6 +12,8 @@ from .dependencies import (
     _get_trade_view_service,
     cache,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @views_bp.route("/analytics", methods=["GET"])
@@ -156,7 +155,11 @@ def view_analytics_dashboard() -> str:
                     strategy_dataframe.loc[valid_roi_mask, "realized_pnl"]
                     / invested_capital[valid_roi_mask]
                 )
-                average_roi = float(roi_series.mean())
+                total_pnl = strategy_dataframe.loc[valid_roi_mask, "realized_pnl"].sum()
+                total_invested = invested_capital[valid_roi_mask].sum()
+                average_roi = (
+                    float(total_pnl / total_invested) if total_invested > 0.0 else 0.0
+                )
                 average_roi_display_text = f"{average_roi * 100.0:.2f}%"
 
         # Frequency Model (EV/M) Calculations
@@ -198,7 +201,9 @@ def view_analytics_dashboard() -> str:
                 try:
                     events.append((pd.to_datetime(trade["entry_date"]), 1))
                 except Exception as error:
-                    logger.warning("Invalid entry_date for trade %s: %s", trade.get("id"), error)
+                    logger.warning(
+                        "Invalid entry_date for trade %s: %s", trade.get("id"), error
+                    )
 
         if events:
             events.sort(key=lambda x: (x[0], x[1]))
@@ -300,6 +305,42 @@ def view_analytics_dashboard() -> str:
             else 0.0
         )
 
+        # Calculate relative W/L based on total invested capital
+        winning_invested = (
+            (
+                pd.to_numeric(winning_trades["entry_price"], errors="coerce").fillna(
+                    0.0
+                )
+                * pd.to_numeric(winning_trades["initial_size"], errors="coerce").fillna(
+                    0.0
+                )
+            ).sum()
+            if not winning_trades.empty
+            else 0.0
+        )
+
+        losing_invested = (
+            (
+                pd.to_numeric(losing_trades["entry_price"], errors="coerce").fillna(0.0)
+                * pd.to_numeric(losing_trades["initial_size"], errors="coerce").fillna(
+                    0.0
+                )
+            ).sum()
+            if not losing_trades.empty
+            else 0.0
+        )
+
+        avg_win_roi = (
+            (winning_trades["realized_pnl"].sum() / winning_invested) * 100.0
+            if winning_invested > 0.0
+            else 0.0
+        )
+        avg_loss_roi = (
+            (losing_trades["realized_pnl"].sum() / losing_invested) * 100.0
+            if losing_invested > 0.0
+            else 0.0
+        )
+
         strategies_data.append(
             {
                 "id": name.lower().replace(" ", "-"),
@@ -316,12 +357,8 @@ def view_analytics_dashboard() -> str:
                     "avg_risk": average_risk_display_text,
                     "win_count": len(winning_trades),
                     "loss_count": len(losing_trades),
-                    "avg_win": float(roi_series[roi_series > 0].mean()) * 100.0
-                    if not roi_series[roi_series > 0].empty
-                    else 0.0,
-                    "avg_loss": float(roi_series[roi_series < 0].mean()) * 100.0
-                    if not roi_series[roi_series < 0].empty
-                    else 0.0,
+                    "avg_win": float(avg_win_roi),
+                    "avg_loss": float(avg_loss_roi),
                     "profit_factor": metrics.calculate_profit_factor(
                         strategy_dataframe["realized_pnl"]
                     )
