@@ -149,7 +149,7 @@ def view_trades_croc() -> str:
             }
 
         realized_profit_and_loss = float(trade["realized_pnl"] or 0.0)
-        service._update_stat(signal_stats[signal_name], realized_profit_and_loss)
+        service._update_statistics(signal_stats[signal_name], realized_profit_and_loss)
 
     # Add Avg PnL
     for value in signal_stats.values():
@@ -298,7 +298,9 @@ def view_trades_turnover() -> str:
 
         if variant_key:
             realized_profit_and_loss = float(trade["realized_pnl"] or 0.0)
-            service._update_stat(variant_stats[variant_key], realized_profit_and_loss)
+            service._update_statistics(
+                variant_stats[variant_key], realized_profit_and_loss
+            )
 
     # Calc Averages for Variants
     for item in variant_stats.values():
