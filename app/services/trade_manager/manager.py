@@ -32,7 +32,6 @@ _HARDCODED_HISTORY_FALLBACK_DATE = "2024-01-01"
 # Strategies that enforce a single position per symbol.
 # For these, a CREATED entry order is suppressed when an ACTIVE position
 # already exists for the same symbol.
-# DipBuyer is intentionally excluded — multiple positions per symbol are allowed.
 _SINGLE_POSITION_STRATEGIES: frozenset[Strategies] = frozenset(
     {
         Strategies.NDXMomentum,
@@ -42,6 +41,7 @@ _SINGLE_POSITION_STRATEGIES: frozenset[Strategies] = frozenset(
         Strategies.TwoPercent,
         Strategies.HoldTarget,
         Strategies.SplitTarget,
+        Strategies.DipBuyer,
     }
 )
 
@@ -426,6 +426,12 @@ class TradeManager:
                 continue
 
             symbol = str(active_trade.get("symbol", ""))
+
+            if resolved_strategy in _SINGLE_POSITION_STRATEGIES:
+                active_symbols_by_strategy.setdefault(resolved_strategy, set()).add(
+                    symbol
+                )
+
             try:
                 order = self._generate_order_for_trade(
                     active_trade, created_symbols=created_symbols
@@ -433,10 +439,6 @@ class TradeManager:
                 if order:
                     active_exit_orders.append((active_trade, order))
                     logger.info("Exit order generated for [%s].", symbol)
-                elif resolved_strategy in _SINGLE_POSITION_STRATEGIES:
-                    active_symbols_by_strategy.setdefault(resolved_strategy, set()).add(
-                        symbol
-                    )
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
                 raise RuntimeError(
                     f"Database error generating exit order for [{symbol}]."
@@ -447,10 +449,6 @@ class TradeManager:
                     symbol,
                     data_error,
                 )
-                if resolved_strategy in _SINGLE_POSITION_STRATEGIES:
-                    active_symbols_by_strategy.setdefault(resolved_strategy, set()).add(
-                        symbol
-                    )
 
         return active_exit_orders, active_symbols_by_strategy
 

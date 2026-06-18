@@ -73,6 +73,11 @@ class DipBuyerStrategy(BaseTradeStrategy):
         Returns:
             TradeTransition | None: Description of transition if triggered.
         """
+        if active_symbols and trade.get("symbol") in active_symbols:
+            return self._reject_setup(
+                trade, str(candle["date"]), "Symbol already active"
+            )
+
         limit_price = self._extract_entry_price(trade)
         if limit_price <= 0:
             return None
