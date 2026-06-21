@@ -52,6 +52,8 @@ def create_market_data(
         "open": pd.DataFrame(index=dates, columns=symbol_list),
         "volume": pd.DataFrame(index=dates, columns=symbol_list),
     }
+    for df in data.values():
+        df.columns.name = "symbol"
 
     for symbol in symbol_list:
         if trend == "UP":

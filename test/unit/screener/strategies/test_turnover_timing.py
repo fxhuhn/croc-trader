@@ -49,11 +49,14 @@ def sample_market_data() -> dict[str, pd.DataFrame]:
         df = pd.DataFrame(
             np.random.uniform(100, 200, size=(250, 5)), index=dates, columns=symbols
         )
+        df.columns.name = "symbol"
         data[column] = df
 
-    data["volume"] = pd.DataFrame(
+    volume_df = pd.DataFrame(
         np.random.uniform(1000000, 2000000, size=(250, 5)), index=dates, columns=symbols
     )
+    volume_df.columns.name = "symbol"
+    data["volume"] = volume_df
     return data
 
 
