@@ -322,10 +322,11 @@ class TurnoverTimingStrategy(BaseStrategy):
 
             # Vectorized object creation
             candidates.extend(
-                final_selection.reset_index()
+                final_selection.rename_axis("symbol")
+                .reset_index()
                 .apply(
                     lambda row: TurnoverCandidate(
-                        symbol=str(row["index"]),
+                        symbol=str(row["symbol"]),
                         close=float(row["close"]),
                         sma_price=float(row["sma_price"]),
                         sma_turnover=float(row["turnover_sma"]),
