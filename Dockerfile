@@ -15,6 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+COPY .env.demo .env
 
 # Ordnerstruktur anlegen
 RUN mkdir -p /app/data /app/logs

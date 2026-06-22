@@ -10,8 +10,9 @@ venv/
 .gitignore
 
 # Wichtig: Lokale Daten nicht ins Image kopieren, da sie via Volume gemountet werden
-data/orders/
+data/
 logs/
 Dockerfile
 docker-compose.yml
 README.md
+.env
