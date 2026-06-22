@@ -10,6 +10,27 @@ logger = logging.getLogger(__name__)
 
 
 class TradeRepository(BaseRepository):
+    VALID_COLUMNS = {
+        "symbol",
+        "strategy",
+        "status",
+        "initial_size",
+        "current_size",
+        "entry_price",
+        "entry_date",
+        "current_price",
+        "current_stop_loss",
+        "current_target",
+        "avg_exit_price",
+        "realized_pnl",
+        "exit_price",
+        "exit_date",
+        "exit_reason",
+        "signal_context",
+        "created_at",
+        "updated_at",
+    }
+
     def init_schema(self) -> None:
         """Erstellt das DB-Schema neu (Unified Table)."""
         with self.session.connect() as connection:
@@ -358,6 +379,10 @@ class TradeRepository(BaseRepository):
         # Enums in updates behandeln
         safe_updates = {}
         for key, value in updates.items():
+            if key not in self.VALID_COLUMNS:
+                logger.error("❌ SECURITY: Attempted update to invalid column: %s", key)
+                raise ValueError(f"Invalid column: {key}")
+
             # Enum conversion
             safe_value = value.value if isinstance(value, Enum) else value
 
