@@ -505,11 +505,18 @@ class BaseTradeStrategy(ABC):
                 message="ERROR: Zero Size",
             )
 
+        dec_fill = Decimal(str(fill_price))
+        dec_stop = Decimal(str(stop_loss))
+        dec_qty = Decimal(str(int(size)))
+
         direction = str(self._get_context_value(trade, "direction") or "long").lower()
         if direction == "short":
-            profit_and_loss = (fill_price - stop_loss) * size
+            pnl_chunk = (dec_fill - dec_stop) * dec_qty
         else:
-            profit_and_loss = (stop_loss - fill_price) * size
+            pnl_chunk = (dec_stop - dec_fill) * dec_qty
+
+        profit_and_loss = float(pnl_chunk)
+
 
         return TradeTransition(
             updates={
