@@ -1,5 +1,6 @@
 import logging.config
 from flask import Flask, send_from_directory
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import ConfigManager, settings
 from .extensions import cache
@@ -25,6 +26,12 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
         A fully configured Flask application instance.
     """
     app = Flask(__name__, static_url_path="", static_folder="static")
+    
+    # Enable ProxyFix to trust standard headers (X-Forwarded-For, etc.)
+    # Configured for 1 trusted upstream proxy (e.g. Synology Nginx proxy).
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=0, x_prefix=0
+    )
 
     # 1. Config & Cache
     debug_mode = config_object.app.webserver.debug

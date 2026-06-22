@@ -72,14 +72,9 @@ def require_ip_whitelist(func: Callable[P, R]) -> Callable[P, Response | R]:
             ), 500
 
         # Proxy-Aware IP Detection:
-        # 1. Use X-Forwarded-For if available (trusted proxy environment)
-        # 2. Fallback to remote_addr
-        x_forwarded_for = request.headers.getlist("X-Forwarded-For")
-        client_ip = (
-            x_forwarded_for[0].split(",")[0].strip()
-            if x_forwarded_for
-            else request.remote_addr
-        )
+        # Relies on ProxyFix middleware to securely populate remote_addr
+        client_ip = request.remote_addr or "0.0.0.0"
+
 
         if not _is_ip_whitelisted(client_ip, whitelist):
             if mode == "block":
