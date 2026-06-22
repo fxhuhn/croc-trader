@@ -117,30 +117,39 @@ class MarketDataUpdater:
         Fetches and saves a single batch. Returns count of saved records.
         """
         # Fetch Raw Data
-        df_batch, failures = self.provider.fetch_batch_raw(batch, start_date)
+        df_batch, raw_failures = self.provider.fetch_batch_raw(batch, start_date)
 
-        # Handle Failures
-        if failures and full_reload:
-            for f in failures:
-                self.repo.ignore_symbol(f, "No Data (Full Reload)")
-                logger.warning(f"Ignoring symbol {f} (No Data)")
+        failures = list(raw_failures)
 
         if df_batch.empty:
+            # Handle Failures
+            if failures and full_reload:
+                for f in failures:
+                    self.repo.ignore_symbol(f, "No Data (Full Reload)")
+                    logger.warning(f"Ignoring symbol {f} (No Data)")
             return 0
 
         # Transform & Collect
         bulk_data: list[MarketPrice] = []
 
         for symbol in batch:
+            if symbol in raw_failures:
+                continue
+
             # Extract single symbol DataFrame
             df_sym = self.provider.extract_symbol_data(df_batch, symbol)
 
             if df_sym.empty:
+                failures.append(symbol)
                 continue
 
             # Standardize column names and clean data
             df_sym.columns = df_sym.columns.str.lower()
             df_sym = df_sym.dropna(subset=["close"])
+
+            if df_sym.empty:
+                failures.append(symbol)
+                continue
 
             # Vectorized: reset index to make date a column
             df_sym = df_sym.reset_index().rename(columns={"index": "date"})
@@ -153,6 +162,12 @@ class MarketDataUpdater:
                 except ValueError as value_error:
                     logger.debug("Skipping row for %s: %s", symbol, value_error)
                     continue
+
+        # Handle Failures
+        if failures and full_reload:
+            for f in failures:
+                self.repo.ignore_symbol(f, "No Data (Full Reload)")
+                logger.warning(f"Ignoring symbol {f} (No Data)")
 
         # Persist
         if bulk_data:

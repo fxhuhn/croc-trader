@@ -74,6 +74,16 @@ class YahooDataProvider:
         if df.empty:
             return pd.DataFrame(), symbols
 
+        # Identify requested symbols that are missing from the returned columns
+        if isinstance(df.columns, pd.MultiIndex):
+            downloaded_symbols = set(df.columns.get_level_values(0).unique())
+        else:
+            downloaded_symbols = {symbols[0]}
+
+        for symbol in symbols:
+            if symbol not in downloaded_symbols:
+                failed.append(symbol)
+
         return df, failed
 
     def extract_symbol_data(self, df: pd.DataFrame, symbol: str) -> pd.DataFrame:

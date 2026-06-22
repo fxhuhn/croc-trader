@@ -59,6 +59,13 @@ class MarketRepository(BaseRepository):
         rows = self.fetch_all("SELECT symbol FROM ignored_symbols")
         return {row["symbol"] for row in rows}
 
+    def remove_ignored_symbol(self, symbol: str) -> None:
+        """Entfernt ein Symbol aus der Tabelle der ignorierten Symbole."""
+        self.execute(
+            "DELETE FROM ignored_symbols WHERE symbol = ?",
+            (symbol,),
+        )
+
     def get_all_known_symbols(self) -> list[str]:
         rows = self.fetch_all("SELECT DISTINCT symbol FROM market_prices")
         return [row["symbol"] for row in rows]

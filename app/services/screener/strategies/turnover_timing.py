@@ -114,29 +114,17 @@ class TurnoverTimingStrategy(BaseStrategy):
         data_frames = self.data_provider.get_universe_daily_data(
             target_universe, days=lookback
         )
-        if not data_frames:
+        if not data_frames or "close" not in data_frames or data_frames["close"].empty:
             return 0
 
         # Find last available trading day
         closes = data_frames["close"].ffill()
-        if closes.empty:
+        setup_date = self._resolve_target_date(closes, analysis_timestamp)
+        if setup_date is None:
             return 0
 
-        available_dates = closes.index[closes.index <= analysis_timestamp]
-        if available_dates.empty:
+        if not self._is_setup_day(setup_date):
             return 0
-        last_trading_day = available_dates[-1]
-
-        if last_trading_day != analysis_timestamp:
-            logger.warning(
-                "[%s] Analysis date %s requested, but latest data is %s.",
-                self.name,
-                analysis_timestamp.date(),
-                last_trading_day.date(),
-            )
-            return 0
-
-        setup_date = last_trading_day
 
         # Compute Indicators & Find Candidates
         candidates = self._identify_strategy_candidates(
@@ -152,6 +140,50 @@ class TurnoverTimingStrategy(BaseStrategy):
         self._report_signals_to_telegram(candidates, setup_date)
 
         return count
+
+    def _resolve_target_date(
+        self,
+        historical_closes: pd.DataFrame,
+        analysis_timestamp: pd.Timestamp,
+    ) -> pd.Timestamp | None:
+        """Resolves the correct analysis date based on data availability."""
+        if historical_closes.empty:
+            return None
+
+        if analysis_timestamp in historical_closes.index:
+            return analysis_timestamp
+
+        # 1. Post-Data Case (Data lag)
+        if analysis_timestamp > historical_closes.index[-1]:
+            logger.warning(
+                "[%s] Requested analysis timestamp %s but data ends "
+                "%s. Falling back to last available data.",
+                self.name,
+                analysis_timestamp.date(),
+                historical_closes.index[-1].date(),
+            )
+            return historical_closes.index[-1]
+
+        # 2. Gap Case (Holiday)
+        available_dates = historical_closes.index[
+            historical_closes.index < analysis_timestamp
+        ]
+        if available_dates.empty:
+            logger.error(
+                "[%s] No data found before %s",
+                self.name,
+                analysis_timestamp.date(),
+            )
+            return None
+
+        fallback_date = available_dates[-1]
+        logger.info(
+            "[%s] %s is holiday/missing. Using: %s",
+            self.name,
+            analysis_timestamp.date(),
+            fallback_date.date(),
+        )
+        return fallback_date
 
     def _get_analysis_timestamp(
         self, days: int, analysis_date: str | None
@@ -215,22 +247,22 @@ class TurnoverTimingStrategy(BaseStrategy):
         lows = data_frames["low"].ffill()
         volumes = data_frames["volume"].fillna(0)
 
-        # Slice inputs for calculation window
-        required_window = self.configuration.sma_window
-        start_location = max(0, closes.index.get_loc(setup_date) - required_window)
-        end_location = closes.index.get_loc(setup_date) + 1
-
-        closes_slice = closes.iloc[start_location:end_location]
-        highs_slice = highs.iloc[start_location:end_location]
-        lows_slice = lows.iloc[start_location:end_location]
-        volumes_slice = volumes.iloc[start_location:end_location]
-
-        # Calculate Indicators (Vectorized)
-        indicators_dict = self._calculate_indicators_slice(
-            closes_slice, highs_slice, lows_slice, volumes_slice
-        )
-
         try:
+            # Slice inputs for calculation window
+            required_window = self.configuration.sma_window
+            start_location = max(0, closes.index.get_loc(setup_date) - required_window)
+            end_location = closes.index.get_loc(setup_date) + 1
+
+            closes_slice = closes.iloc[start_location:end_location]
+            highs_slice = highs.iloc[start_location:end_location]
+            lows_slice = lows.iloc[start_location:end_location]
+            volumes_slice = volumes.iloc[start_location:end_location]
+
+            # Calculate Indicators (Vectorized)
+            indicators_dict = self._calculate_indicators_slice(
+                closes_slice, highs_slice, lows_slice, volumes_slice
+            )
+
             current_close = closes.loc[setup_date]
             current_sma_price = indicators_dict["sma_price"].loc[setup_date]
             current_sma_turnover = indicators_dict["sma_turnover"].loc[setup_date]
