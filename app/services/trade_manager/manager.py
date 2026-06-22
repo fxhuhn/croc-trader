@@ -90,6 +90,16 @@ class TradeManager:
         self._ibkr_account_id = ibkr_account_id or os.environ.get(
             "IBKR_ACCOUNT_ID", "YOUR_IBKR_ACCOUNT"
         )
+        if self._ibkr_account_id == "YOUR_IBKR_ACCOUNT":
+            logger.warning(
+                "IBKR_ACCOUNT_ID is not configured in the environment. "
+                "Using default placeholder: 'YOUR_IBKR_ACCOUNT'"
+            )
+        else:
+            logger.info(
+                "TradeManager initialized with IBKR Account: %s",
+                self._ibkr_account_id,
+            )
 
         self.stocks_session = DatabaseSession(str(stocks_db_path))
         self.market_repository = MarketRepository(self.stocks_session)
