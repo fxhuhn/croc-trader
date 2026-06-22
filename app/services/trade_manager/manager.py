@@ -96,10 +96,7 @@ class TradeManager:
                 "Using default placeholder: 'YOUR_IBKR_ACCOUNT'"
             )
         else:
-            logger.info(
-                "TradeManager initialized with IBKR Account: %s",
-                self._ibkr_account_id,
-            )
+            logger.info("TradeManager initialized: IBKR Account found.")
 
         self.stocks_session = DatabaseSession(str(stocks_db_path))
         self.market_repository = MarketRepository(self.stocks_session)

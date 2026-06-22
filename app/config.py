@@ -322,10 +322,20 @@ class ConfigManager:
         self.logging_root_path.mkdir(parents=True, exist_ok=True)
 
     def _load_env(self) -> EnvConfig:
+        app_env = os.getenv("APP_ENV", "development")
+        secret_key = os.getenv("FLASK_SECRET_KEY")
+        if not secret_key:
+            if app_env == "production":
+                raise RuntimeError(
+                    "❌ SECURITY: FLASK_SECRET_KEY is not set in a production environment!"
+                )
+            secret_key = "dev-fallback-key"
+
         return EnvConfig(
-            APP_ENV=os.getenv("APP_ENV", "development"),
-            SECRET_KEY=os.getenv("FLASK_SECRET_KEY", "dev-fallback-key"),
+            APP_ENV=app_env,
+            SECRET_KEY=secret_key,
         )
+
 
     def _apply_env_overrides(self) -> None:
         """Applies environment variable overrides to the loaded config.
