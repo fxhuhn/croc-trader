@@ -294,7 +294,10 @@ class DipBuyerStrategy(BaseTradeStrategy):
         )
 
         exits = []
-        threshold_loc = self._calculate_threshold_loc(dataframe_history)
+        context = self._get_full_context(trade)
+        threshold_loc = context.get("threshold_loc")
+        if threshold_loc is None:
+            threshold_loc = self._calculate_threshold_loc(dataframe_history)
         exit_price = threshold_loc if threshold_loc else trade.get("current_target")
         if exit_price:
             exit_value = float(exit_price)
@@ -339,7 +342,10 @@ class DipBuyerStrategy(BaseTradeStrategy):
             )
 
         # 2. Limit On Close (LOC) Exit at daily updated threshold (Vortages-Hoch)
-        threshold_loc = self._calculate_threshold_loc(dataframe_history)
+        context = self._get_full_context(trade)
+        threshold_loc = context.get("threshold_loc")
+        if threshold_loc is None:
+            threshold_loc = self._calculate_threshold_loc(dataframe_history)
         if threshold_loc:
             threshold_value = float(threshold_loc)
             if threshold_value > 0:

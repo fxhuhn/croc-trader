@@ -347,6 +347,36 @@ class TradeManager:
             )
 
             if transition:
+                status_val = transition.updates.get("status")
+                status_str = (
+                    status_val.value if hasattr(status_val, "value") else status_val
+                )
+                if status_str == "ACTIVE":
+                    daily_updates = strategy.get_daily_updates(trade, history_dataframe)
+                    if daily_updates:
+                        try:
+                            signal_context_raw = (
+                                transition.updates.get("signal_context")
+                                or trade.get("signal_context")
+                                or "{}"
+                            )
+                            context_dict = (
+                                json.loads(signal_context_raw)
+                                if isinstance(signal_context_raw, str)
+                                else signal_context_raw
+                            )
+                            if isinstance(context_dict, dict):
+                                context_dict.update(daily_updates)
+                                transition.updates["signal_context"] = json.dumps(
+                                    context_dict, ensure_ascii=False
+                                )
+                        except (json.JSONDecodeError, TypeError) as parse_error:
+                            logger.warning(
+                                "Failed to parse signal_context JSON for trade %s: %s",
+                                trade.get("id"),
+                                parse_error,
+                            )
+
                 self.trade_repository.update_trade(
                     trade["id"], transition.updates, reason=transition.reason
                 )

@@ -218,6 +218,51 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
         assert b"300.0" in response.data or b"300" in response.data
 
 
+def test_view_analytics_dashboard_calculates_correct_95_percentile_utilization(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that 95th percentile of active trade concurrency is calculated as whole number."""
+    # Arrange
+    mock_trades = [
+        {
+            "entry_date": "2026-01-10 10:00:00",
+            "exit_date": "2026-01-12 16:00:00",
+            "realized_pnl": 100.0,
+            "strategy": Strategies.CrocSetup,
+            "entry_price": 100.0,
+            "stop_loss": 95.0,
+            "initial_size": 100.0,
+        },
+        {
+            "entry_date": "2026-01-11 11:00:00",
+            "exit_date": "2026-01-13 15:00:00",
+            "realized_pnl": 100.0,
+            "strategy": Strategies.CrocSetup,
+            "entry_price": 100.0,
+            "stop_loss": 95.0,
+            "initial_size": 100.0,
+        },
+    ]
+
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service_instance = mock_trade_service.return_value
+        mock_service_instance.get_trades.side_effect = [mock_trades, []]
+        mock_service_instance.resolve_strategy.return_value = Strategies.CrocSetup
+
+        # Act
+        response = test_client.get("/analytics")
+
+        # Assert
+        assert response.status_code == 200
+        # Check that the merged "Open (100% / 95%)" layout exists in the rendered HTML
+        assert b"Open (100% / 95%)" in response.data
+        # With 2 concurrent trades active, the peak is 2, and the 95th percentile should also round to 2.
+        # Format should be '2 / 2'
+        assert b"2 / 2" in response.data
+
+
 def test_view_analytics_dashboard_handles_corrupted_data_gracefully(
     test_client: FlaskClient,
 ) -> None:

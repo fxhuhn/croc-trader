@@ -584,6 +584,8 @@ class DipBuyerStrategy(BaseStrategy):
 
         # Use centralized BaseStrategy index helper (DRY resolution)
         indices = self._get_indices_for_symbol(symbol)
+        preferred_indices = {"DOW", "SPX", "NDX"}
+        has_preferred_index = bool(set(indices) & preferred_indices)
 
         checks = self._run_analysis_checks(
             current_close=current_close,
@@ -595,7 +597,7 @@ class DipBuyerStrategy(BaseStrategy):
             atr_ratio_3day=atr_ratio_3day,
             volatility_ratio=volatility_ratio,
             ibs=ibs,
-            has_indices=bool(len(indices) > 0),
+            has_indices=has_preferred_index,
         )
 
         passed = all(checks.values())
@@ -610,6 +612,15 @@ class DipBuyerStrategy(BaseStrategy):
             volatility_ratio=volatility_ratio,
         )
 
+        error_message = None
+        if not has_preferred_index:
+            if indices:
+                error_message = f"Symbol is in index {indices} but not in preferred indices (DOW, SPX, NDX) for DipBuyer"
+            else:
+                error_message = (
+                    "Symbol is not in any index (DOW, SPX, NDX) for DipBuyer"
+                )
+
         return {
             "symbol": symbol,
             "indices": indices,
@@ -618,7 +629,7 @@ class DipBuyerStrategy(BaseStrategy):
             "checks": checks,
             "values": values_dict,
             "result": "PASS" if passed else "FAIL",
-            "error": None,
+            "error": error_message,
         }
 
     def _run_analysis_checks(

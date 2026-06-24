@@ -1201,3 +1201,79 @@ class TestBaseTradeStrategySizing:
             fallback_risk=0.0,
         )
         assert size == 0
+
+
+class TestTradeManagerEntryDailyUpdate:
+    """Validates that get_daily_updates is triggered and saved when trade is activated."""
+
+    def test_process_created_trade_saves_daily_updates(self, tmp_path: Path) -> None:
+        # Arrange
+        with (
+            patch("app.services.trade_manager.manager.DatabaseSession"),
+            patch(
+                "app.services.trade_manager.manager.TradeRepository"
+            ) as mock_trade_repo_class,
+            patch(
+                "app.services.trade_manager.manager.MarketRepository"
+            ) as mock_market_repo_class,
+        ):
+            mock_trade_repo = MagicMock()
+            mock_market_repo = MagicMock()
+            mock_trade_repo_class.return_value = mock_trade_repo
+            mock_market_repo_class.return_value = mock_market_repo
+
+            manager_instance = TradeManager(
+                db_path=tmp_path / "signals.db",
+                stocks_db_path=tmp_path / "stocks.db",
+            )
+            manager_instance.trade_repository = mock_trade_repo
+            manager_instance.market_repo = mock_market_repo
+
+            # Mock history: previous high is 100.0, current close is 95.0, low is 94.0
+            history_data = [
+                {
+                    "date": pd.Timestamp("2026-06-01"),
+                    "open": 98.0,
+                    "high": 100.0,
+                    "low": 97.0,
+                    "close": 99.0,
+                },
+                {
+                    "date": pd.Timestamp("2026-06-02"),
+                    "open": 99.0,
+                    "high": 101.0,
+                    "low": 94.0,
+                    "close": 95.0,
+                },
+            ]
+            mock_market_repo.get_symbol_history_raw.return_value = pd.DataFrame(
+                history_data
+            )
+
+            # Created trade definition (limit entry at 97.0)
+            trade_data = {
+                "id": 124,
+                "symbol": "CBOE",
+                "strategy": "dip_buyer",
+                "status": "CREATED",
+                "entry_price": 97.0,
+                "signal_context": json.dumps({"date": "2026-06-01"}),
+            }
+
+            # Act
+            manager_instance._process_created_trade(trade_data)
+
+            # Assert
+            # We expect the trade to be updated to ACTIVE and get the threshold_loc dynamic EOD update in signal_context
+            mock_trade_repo.update_trade.assert_called_once()
+            call_arguments = mock_trade_repo.update_trade.call_args[0]
+            assert call_arguments[0] == 124  # trade_id
+
+            updates = call_arguments[1]
+            assert updates["status"] == TradeStatus.ACTIVE
+            assert "signal_context" in updates
+
+            updated_context = json.loads(updates["signal_context"])
+            # threshold_loc should be 101.01 (high of 101.0 + 0.01)
+            assert updated_context["threshold_loc"] == 101.01
+            assert updated_context["date"] == "2026-06-01"
