@@ -1,6 +1,7 @@
 """Routes and views for performance analytics and allocation dashboard."""
 
 import logging
+import numpy as np
 import pandas as pd
 from flask import render_template
 
@@ -213,6 +214,45 @@ def view_analytics_dashboard() -> str:
                 if current_open > max_concurrent:
                     max_concurrent = current_open
 
+        # 95th Percentile Concurrent Trades Calculation
+        percentile_95 = 0
+        if events:
+            # Group events by normalized date
+            def normalize_timestamp(ts: pd.Timestamp) -> pd.Timestamp:
+                if ts.tzinfo is not None:
+                    return ts.tz_convert(None).normalize()
+                return ts.normalize()
+
+            events_by_day = {}
+            for date, change in events:
+                day = normalize_timestamp(date)
+                if day not in events_by_day:
+                    events_by_day[day] = []
+                events_by_day[day].append((date, change))
+
+            sorted_days = sorted(events_by_day.keys())
+            if sorted_days:
+                min_date = sorted_days[0]
+                max_date = sorted_days[-1]
+                daily_range = pd.date_range(start=min_date, end=max_date, freq="D")
+
+                daily_max = {}
+                current_open = 0
+                for day in daily_range:
+                    day_events = events_by_day.get(day, [])
+                    if day_events:
+                        day_events.sort(key=lambda x: (x[0], x[1]))
+                        max_on_day = current_open
+                        for _, change in day_events:
+                            current_open += change
+                            if current_open > max_on_day:
+                                max_on_day = current_open
+                        daily_max[day] = max_on_day
+                    else:
+                        daily_max[day] = current_open
+
+                percentile_95 = int(round(np.percentile(list(daily_max.values()), 95)))
+
         # Vectorized Risk Calculations
         average_risk_dollar = 0.0
         has_valid_risk = False
@@ -367,6 +407,7 @@ def view_analytics_dashboard() -> str:
                     "expectancy": expectancy_display_text,
                     "ror": f"{rate_of_return_percent:.2f}%",
                     "max_concurrent": max_concurrent,
+                    "percentile_95": percentile_95,
                     "avg_roi": average_roi_display_text,
                     "sharpe": metrics.calculate_sharpe_ratio(
                         strategy_dataframe["realized_pnl"],

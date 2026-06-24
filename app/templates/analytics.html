@@ -185,8 +185,8 @@
                                 <span class="font-bold text-slate-800">{{ strategy.metrics.ror }}</span>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100 md:border-none">
-                                <span class="text-slate-500 font-medium">Max Open</span>
-                                <span class="font-bold text-slate-800">{{ strategy.metrics.max_concurrent }}</span>
+                                <span class="text-slate-500 font-medium">Open (100% / 95%)</span>
+                                <span class="font-bold text-slate-800">{{ strategy.metrics.max_concurrent }} / {{ strategy.metrics.percentile_95 }}</span>
                             </div>
                         </div>
 
@@ -222,6 +222,48 @@
                 </div>
             </div>
             {% endfor %}
+            </div>
+            <div class="mt-4 pt-4 border-t border-slate-100 px-4 md:px-6 pb-6 text-xs text-slate-500 flex flex-col gap-4">
+                <div class="flex items-start gap-2">
+                    <i data-lucide="info" class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5"></i>
+                    <p class="font-semibold text-slate-700">Strategie-Kennzahlen & Definitionen</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 pt-2 border-t border-slate-50 pl-6">
+                    <div>
+                        <p class="font-semibold text-slate-700">Open (100% / 95%)</p>
+                        <p class="leading-relaxed text-[11px] text-slate-500">Die maximale Anzahl gleichzeitig offener Trades (100% Auslastung) im Vergleich zur 95% Auslastungsgrenze (95. Perzentil). Letztere zeigt die Auslastung, die an 95% aller Handelstage nicht überschritten wurde (ohne Verzerrung durch sequenzielle Intraday-Trades).</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-slate-700">Profit Factor</p>
+                        <p class="leading-relaxed text-[11px] text-slate-500">
+                            Das Verhältnis von Bruttogewinnen zu Bruttoverlusten. Ein Wert über 1.0 bedeutet Profitabilität. Die Klassifizierung lautet:
+                            <br>&bull; <b>&lt; 1.0</b>: Verlustbringend (Unprofitabel)
+                            <br>&bull; <b>1.0 - 1.5</b>: Moderat profitabel
+                            <br>&bull; <b>1.5 - 2.0</b>: Stark profitabel
+                            <br>&bull; <b>&gt; 2.0</b>: Exzellent profitabel
+                        </p>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-slate-700">RoR (Rate of Return)</p>
+                        <p class="leading-relaxed text-[11px] text-slate-500">Die Gesamtrendite der Strategie bezogen auf das Startkapital des Depots (100.000 $).</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-slate-700">Avg Risk</p>
+                        <p class="leading-relaxed text-[11px] text-slate-500">Das durchschnittliche Risiko pro Trade in % des Depotkapitals, berechnet aus dem Abstand zwischen Einstiegskurs und Stop-Loss multipliziert mit der Positionsgröße.</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-slate-700">Expectancy</p>
+                        <p class="leading-relaxed text-[11px] text-slate-500">Der Erwartungswert ausgedrückt in R-Multiples (Vielfaches des eingegangenen Risikos). Ein Wert von 1.5 R bedeutet, dass im Durchschnitt das 1,5-fache des gesetzten Risikos gewonnen wird.</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-slate-700">Sharpe-Ratio</p>
+                        <p class="leading-relaxed text-[11px] text-slate-500">Ein Maß für die risikoadjustierte Rendite. Sie bewertet das Verhältnis zwischen der erzielten Überrendite und der Volatilität der Ergebnisse (annualisiert).</p>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-slate-700">Avg ROI</p>
+                        <p class="leading-relaxed text-[11px] text-slate-500">Die durchschnittliche Rendite pro Trade (Return on Investment) bezogen auf das jeweils in den Trade konkret investierte Kapital.</p>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
