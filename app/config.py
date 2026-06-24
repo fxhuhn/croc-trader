@@ -336,7 +336,6 @@ class ConfigManager:
             SECRET_KEY=secret_key,
         )
 
-
     def _apply_env_overrides(self) -> None:
         """Applies environment variable overrides to the loaded config.
 

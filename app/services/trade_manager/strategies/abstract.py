@@ -517,7 +517,6 @@ class BaseTradeStrategy(ABC):
 
         profit_and_loss = float(pnl_chunk)
 
-
         return TradeTransition(
             updates={
                 "status": TradeStatus.CLOSED,

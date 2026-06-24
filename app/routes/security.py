@@ -75,7 +75,6 @@ def require_ip_whitelist(func: Callable[P, R]) -> Callable[P, Response | R]:
         # Relies on ProxyFix middleware to securely populate remote_addr
         client_ip = request.remote_addr or "0.0.0.0"
 
-
         if not _is_ip_whitelisted(client_ip, whitelist):
             if mode == "block":
                 logger.warning(

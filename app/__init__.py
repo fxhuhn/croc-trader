@@ -26,7 +26,7 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
         A fully configured Flask application instance.
     """
     app = Flask(__name__, static_url_path="", static_folder="static")
-    
+
     # Enable ProxyFix to trust standard headers (X-Forwarded-For, etc.)
     # Configured for 1 trusted upstream proxy (e.g. Synology Nginx proxy).
     app.wsgi_app = ProxyFix(
