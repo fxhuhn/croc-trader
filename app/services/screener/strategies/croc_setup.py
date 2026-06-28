@@ -224,15 +224,10 @@ class CrocSetupStrategy(BaseStrategy):
             )
             return []
 
-    def run(
-        self,
-        days: int = 0,
-        analysis_date: str | None = None,
-        specific_symbols: list[str] | None = None,
-    ) -> int:
-        if not analysis_date and days == 0:
-            analysis_date = self.signal_repository.get_latest_signal_date()
-
+    def _fetch_and_sort_candidates(
+        self, analysis_date: str | None, days: int
+    ) -> list[dict[str, object]]:
+        """Imperative Shell: Fetches signals and orchestrates candidate matching."""
         try:
             signals = self.signal_repository.get_signals_by_date(analysis_date, days)
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
@@ -244,20 +239,28 @@ class CrocSetupStrategy(BaseStrategy):
             logger.warning(
                 "[%s] Data anomaly during signal load: %s", self.name, data_error
             )
-            return 0
+            return []
 
         if not signals:
-            return 0
+            return []
 
-        # 1. Find all matching signal candidates
-        candidates = []
-        for row in signals:
-            candidate = self._find_candidate(dict(row))
-            if candidate:
-                candidates.append(candidate)
+        candidates = [
+            candidate
+            for row in signals
+            if (candidate := self._find_candidate(dict(row))) is not None
+        ]
+        return self._sort_candidates(candidates)
 
-        # 2. Sort all candidates by SQN / MaxDD Ratio (High to Low)
-        sorted_candidates = self._sort_candidates(candidates)
+    def run(
+        self,
+        days: int = 0,
+        analysis_date: str | None = None,
+        specific_symbols: list[str] | None = None,
+    ) -> int:
+        if not analysis_date and days == 0:
+            analysis_date = self.signal_repository.get_latest_signal_date()
+
+        sorted_candidates = self._fetch_and_sort_candidates(analysis_date, days)
 
         # 3. Limit to top 3 and create trades
         report_rows = []
@@ -302,33 +305,7 @@ class CrocSetupStrategy(BaseStrategy):
         if not analysis_date and days == 0:
             analysis_date = self.signal_repository.get_latest_signal_date()
 
-        try:
-            signals = self.signal_repository.get_signals_by_date(analysis_date, days)
-        except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
-            raise RuntimeError(
-                "[%s] Database unavailable during signal load: %s"
-                % (self.name, database_error)
-            ) from database_error
-        except (ValueError, KeyError) as data_error:
-            logger.warning(
-                "[%s] Data anomaly loading signals for get_all_recommendations: %s",
-                self.name,
-                data_error,
-            )
-            return []
-
-        if not signals:
-            return []
-
-        # 1. Find all matching signal candidates
-        candidates = []
-        for row in signals:
-            candidate = self._find_candidate(dict(row))
-            if candidate:
-                candidates.append(candidate)
-
-        # 2. Sort using the same SQN/MaxDD key used in run()
-        sorted_candidates = self._sort_candidates(candidates)
+        sorted_candidates = self._fetch_and_sort_candidates(analysis_date, days)
 
         results = []
         for candidate in sorted_candidates:
@@ -551,8 +528,7 @@ class CrocSetupStrategy(BaseStrategy):
             "date": row.get("date_str", row.get("timestamp")),
             "setup_score": float(match.get("SQN", match.get("Score", 0))),
             "match_rule": match,
-            "tp1": targets["tp1"],
-            "tp3": targets["tp3"],
+            "target_level": internal_data.get("target_level", 1),
             "indices": internal_data["indices"],
             "direction": internal_data.get("direction", "long"),
         }
@@ -594,23 +570,16 @@ class CrocSetupStrategy(BaseStrategy):
 
         exit_name = str(match.get("Exit", "unknown")).lower().strip()
 
+        import re
+
+        match_tp = re.search(r"tp(\d+)", exit_name)
+        tp_level = int(match_tp.group(1)) if match_tp else 1
+
         # Strict Strategy Mapping
-        strategy_enum: str
-        if "split" in exit_name:
-            strategy_enum = Strategies.SplitTarget
-        elif "hold" in exit_name or "tp3" in exit_name:
-            strategy_enum = Strategies.HoldTarget
-        else:
-            logger.error(
-                "[%s] Unknown exit strategy '%s' for %s. Skipping.",
-                self.name,
-                exit_name,
-                symbol,
-            )
-            return None
+        strategy_enum = Strategies.HoldTarget
 
         # Target Logic
-        targets = self._calc_targets(entry, prices.risk_range, exit_name, direction)
+        targets = self._calc_targets(entry, prices.risk_range, tp_level, direction)
 
         raw_signal = row.get("signal")
         displayed_signal = (
@@ -630,34 +599,21 @@ class CrocSetupStrategy(BaseStrategy):
             "_internal": {
                 "strategy_enum": strategy_enum,
                 "targets": targets,
+                "target_level": tp_level,
                 "indices": indices,
                 "direction": direction,
             },
         }
 
     def _calc_targets(
-        self, entry: float, risk: float, exit_name: str, direction: str = "long"
+        self, entry: float, risk: float, target_level: int, direction: str = "long"
     ) -> dict[str, float]:
-        target_prices = {"tp1": 0.0, "tp3": 0.0, "main": 0.0}
-
         risk_multiplier = 1 if direction == "long" else -1
+        target_price = round(entry + (risk * target_level * risk_multiplier), 2)
 
-        if "split" in exit_name:
-            target_prices["tp1"] = round(entry + (risk * risk_multiplier), 2)
-            target_prices["tp3"] = round(entry + (3 * risk * risk_multiplier), 2)
-            target_prices["main"] = target_prices["tp3"]
-        elif "tp3" in exit_name and "hold" in exit_name:
-            target_prices["tp3"] = round(entry + (3 * risk * risk_multiplier), 2)
-            target_prices["main"] = target_prices["tp3"]
-        elif "tp1" in exit_name and "hold" in exit_name:
-            target_prices["tp1"] = round(entry + (risk * risk_multiplier), 2)
-            target_prices["main"] = target_prices["tp1"]
-        else:
-            # Fallback
-            target_prices["tp1"] = round(entry + (risk * risk_multiplier), 2)
-            target_prices["main"] = target_prices["tp1"]
-
-        return target_prices
+        return {
+            "main": target_price,
+        }
 
     def _get_indices_string(self, symbol: str) -> str:
         indices = self._get_indices_for_symbol(symbol)

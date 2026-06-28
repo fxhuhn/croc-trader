@@ -139,22 +139,32 @@
                                         <span class="tabular-nums text-rose-600 md:text-rose-500/80 md:text-right whitespace-nowrap">{{
                                             "{:,.2f}".format(t.current_stop_loss|float) }}</span>
                                     </div>
+                                    {% if t.context.target_level %}
+                                    <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
+                                        <span class="text-slate-500 font-medium">Target (TP{{ t.context.target_level }})</span>
+                                        <span class="tabular-nums text-emerald-600">
+                                            {{ "{:,.2f}".format(t.current_target|float) if t.current_target else '-' }}
+                                        </span>
+                                    </div>
+                                    {% else %}
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
                                         <span class="text-slate-500 font-medium">Target 1</span>
                                         <span class="tabular-nums text-emerald-600">
-                                            {% if t.context.tp1 %}{{ "{:,.2f}".format(t.context.tp1|float) }}{% else
-                                            %}-{% endif %}
+                                            {% if t.context.tp1 %}{{ "{:,.2f}".format(t.context.tp1|float) }}{% else %}-{% endif %}
                                         </span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
                                         <span class="text-slate-500 font-medium">Target 2</span>
                                         <span class="tabular-nums text-emerald-600">
-                                            {% if t.context.tp3 %}{{ "{:,.2f}".format(t.context.tp3|float) }}{% else
-                                            %}-{% endif %}
+                                            {% if t.context.tp3 %}{{ "{:,.2f}".format(t.context.tp3|float) }}{% else %}-{% endif %}
                                         </span>
                                     </div>
+                                    {% endif %}
                                     <!-- Desktop Combined Target Column -->
                                     <div class="hidden md:flex flex-col items-end gap-0.5 text-[11px] text-emerald-600/80 font-medium text-right tabular-nums whitespace-nowrap">
+                                        {% if t.context.target_level %}
+                                        <div class="whitespace-nowrap">TP{{ t.context.target_level }}: {{ "{:,.2f}".format(t.current_target|float) if t.current_target else '-' }}</div>
+                                        {% else %}
                                         {% if t.context.tp1 %}
                                         <div class="whitespace-nowrap">TP1: {{ "{:,.2f}".format(t.context.tp1|float) }}</div>
                                         {% endif %}
@@ -163,6 +173,7 @@
                                         {% endif %}
                                         {% if not t.context.tp1 and not t.context.tp3 %}
                                         <div class="whitespace-nowrap">-</div>
+                                        {% endif %}
                                         {% endif %}
                                     </div>
                                     <!-- Desktop PnL Column -->

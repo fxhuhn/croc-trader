@@ -51,6 +51,14 @@
                         <span class="font-bold text-slate-800 font-mono">{% if rule.get('R_90d') %}{{ rule['R_90d'] }}
                             %{% else %}-{% endif %}</span>
                     </div>
+                    {% if row.context.target_level %}
+                    <div class="flex justify-between py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium">Target (TP{{ row.context.target_level }})</span>
+                        <span class="font-bold text-emerald-600 font-mono">
+                            {{ "%.2f"|format(row.current_target|float) if row.current_target else '-' }}
+                        </span>
+                    </div>
+                    {% else %}
                     <div class="flex justify-between py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium">Target 1</span>
                         <span class="font-bold text-emerald-600 font-mono">
@@ -61,10 +69,10 @@
                         <span class="text-slate-500 font-medium">Target 3</span>
                         <span class="font-bold text-emerald-600 font-mono">
                             {% if row.context.tp3 %}{{ "%.2f"|format(row.context.tp3|float) }}
-                            {% elif row.current_target %}{{ "%.2f"|format(row.current_target|float) }}{% else %}-{%
-                            endif %}
+                            {% elif row.current_target %}{{ "%.2f"|format(row.current_target|float) }}{% else %}-{% endif %}
                         </span>
                     </div>
+                    {% endif %}
                     <div class="flex justify-between py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium">Stop Loss</span>
                         <span class="font-bold text-rose-600 font-mono">{{ "%.2f"|format(row.current_stop_loss|float)

@@ -181,3 +181,33 @@ def test_generate_orders(strategy, mock_trade_repo):
     assert orders is not None
     assert orders.entry.type == "STP"
     assert orders.entry.price == 150.0
+
+
+def test_hold_target_no_breakeven(strategy, mock_trade_repo):
+    """Tests that HoldTarget Strategy does NOT move stop to breakeven."""
+    trade = {
+        "id": "H1",
+        "entry_price": 100.0,
+        "current_target": 130.0,
+        "current_stop_loss": 90.0,
+        "status": "ACTIVE",
+        "entry_date": "2026-02-18",
+    }
+    # High 125, hasn't hit target
+    candle = pd.Series(
+        {
+            "open": 105.0,
+            "high": 125.0,
+            "low": 104.0,
+            "close": 120.0,
+            "date": pd.Timestamp("2026-02-20"),
+        },
+        name=pd.Timestamp("2026-02-20"),
+    )
+
+    result = strategy.manage_active_trade(
+        trade, pd.DataFrame([candle]), mock_trade_repo
+    )
+
+    assert result is None  # Should return None, no breakeven trigger
+    mock_trade_repo.update_trade.assert_not_called()

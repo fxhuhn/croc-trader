@@ -182,8 +182,10 @@ def test_check_value_numeric_and_string(strategy: CrocSetupStrategy) -> None:
     assert strategy._check_value(None, "anything") is False
 
 
-def test_create_trade_invalid_exit(strategy: CrocSetupStrategy) -> None:
-    """Tests that trade creation fails for unknown exit strategies."""
+def test_create_trade_defaults_to_hold(
+    strategy: CrocSetupStrategy, mock_trade_repo: MagicMock
+) -> None:
+    """Tests that unknown exit strategies default to HoldTarget with TP1."""
     # Arrange
     prices = PriceData(high=100, low=90, close=95)
     match = {"Exit": "unknown", "Score": 1}
@@ -194,16 +196,21 @@ def test_create_trade_invalid_exit(strategy: CrocSetupStrategy) -> None:
         result = strategy._create_trade(row, prices, match)
 
     # Assert
-    assert result is None
+    assert result is not None
+    assert result["TP"] == 110.0  # Entry 100 + 1 * Risk 10 = 110
+    mock_trade_repo.create_trade.assert_called_once()
+    args, kwargs = mock_trade_repo.create_trade.call_args
+    assert kwargs["strategy"] == Strategies.HoldTarget
+    assert kwargs["context"]["target_level"] == 1
 
 
-def test_create_trade_split_logic(
+def test_create_trade_dynamic_parsing(
     strategy: CrocSetupStrategy, mock_trade_repo: MagicMock
 ) -> None:
-    """Tests correct calculation of targets for split exit strategy."""
+    """Tests correct calculation of targets for Hold (TP4) exit strategy."""
     # Arrange
     prices = PriceData(high=110, low=100, close=105)  # Risk = 10
-    match = {"Exit": "split", "Score": 8}
+    match = {"Exit": "Hold (TP4)", "Score": 8}
     row = {"symbol": "TSLA", "date_str": "2026-02-18"}
 
     with patch.object(strategy, "_get_indices_string", return_value="NDX"):
@@ -212,10 +219,11 @@ def test_create_trade_split_logic(
 
         # Assert
         assert result is not None
-        assert result["TP"] == 140.0  # Entry 110 + 3 * Risk 10 = 140
+        assert result["TP"] == 150.0  # Entry 110 + 4 * Risk 10 = 150
         mock_trade_repo.create_trade.assert_called_once()
         args, kwargs = mock_trade_repo.create_trade.call_args
-        assert kwargs["strategy"] == Strategies.SplitTarget
+        assert kwargs["strategy"] == Strategies.HoldTarget
+        assert kwargs["context"]["target_level"] == 4
 
 
 def test_create_trade_hold_logic(
