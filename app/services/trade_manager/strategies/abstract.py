@@ -3,6 +3,7 @@ import logging
 import uuid
 from abc import ABC, abstractmethod
 from decimal import Decimal
+from typing import final
 
 import pandas as pd
 
@@ -84,7 +85,7 @@ class BaseTradeStrategy(ABC):
         """
         raise NotImplementedError("Subclasses must implement check_entry")
 
-    @abstractmethod
+    @final
     def manage_active_trade(
         self,
         trade: TradeData,
@@ -93,6 +94,7 @@ class BaseTradeStrategy(ABC):
     ) -> TradeTransition | None:
         """
         Manages ACTIVE trades (Exit checks).
+        Template method that unpacks data and calls _do_manage_active_trade.
 
         Args:
             trade: The trade data from the database.
@@ -102,9 +104,31 @@ class BaseTradeStrategy(ABC):
         Returns:
             TradeTransition | None: The computed transition, or None.
         """
-        raise NotImplementedError("Subclasses must implement manage_active_trade")
+        if dataframe_history.empty:
+            return None
+
+        current_candle = dataframe_history.iloc[-1]
+        date_string = str(current_candle["date"])
+
+        return self._do_manage_active_trade(
+            trade, current_candle, date_string, dataframe_history, latest_leaders
+        )
 
     @abstractmethod
+    def _do_manage_active_trade(
+        self,
+        trade: TradeData,
+        current_candle: "pd.Series",
+        date_string: str,
+        dataframe_history: "pd.DataFrame",
+        latest_leaders: set[str] | None = None,
+    ) -> TradeTransition | None:
+        """
+        Strategy-specific exit logic.
+        """
+        pass
+
+    @final
     def generate_orders(
         self,
         trade: TradeData,
@@ -114,6 +138,7 @@ class BaseTradeStrategy(ABC):
     ) -> Order | None:
         """
         Generates orders for the next trading day.
+        Template method branching by trade status.
 
         Args:
             trade: The trade data from the database.
@@ -124,7 +149,39 @@ class BaseTradeStrategy(ABC):
         Returns:
             Order | None: The generated order object or None.
         """
-        raise NotImplementedError("Subclasses must implement generate_orders")
+        status = trade.get("status", "CREATED")
+        if hasattr(status, "value"):
+            status = status.value
+
+        if status == "CREATED":
+            return self._generate_entry_order(
+                trade, dataframe_history, budget, created_symbols
+            )
+        elif status == "ACTIVE":
+            return self._generate_exit_order(
+                trade, dataframe_history, budget, created_symbols
+            )
+        return None
+
+    @abstractmethod
+    def _generate_entry_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        created_symbols: set[str] | None = None,
+    ) -> Order | None:
+        pass
+
+    @abstractmethod
+    def _generate_exit_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        created_symbols: set[str] | None = None,
+    ) -> Order | None:
+        pass
 
     @abstractmethod
     def get_current_parameters(
@@ -660,3 +717,13 @@ class BaseTradeStrategy(ABC):
             reason=f"REJECTED: {reason}",
             message=f"REJECTED: {reason}",
         )
+
+    def _get_strategy_budget(self, trade: TradeData, override_budget: float = 0.0) -> float:
+        """
+        Centralized DRY helper to resolve budget for the strategy without duplicating settings imports.
+        """
+        from ....config import settings
+        strategy_key = getattr(self.name, "value", str(self.name))
+        config_budget = settings.app.portfolio.get_budget(strategy_key)
+        return float(trade.get("budget") or override_budget or config_budget)
+

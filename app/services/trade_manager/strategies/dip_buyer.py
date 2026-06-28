@@ -111,9 +111,11 @@ class DipBuyerStrategy(BaseTradeStrategy):
         return self._execute_activation(trade, fill_price, "LIMIT", date_string)
 
     @override
-    def manage_active_trade(
+    def _do_manage_active_trade(
         self,
         trade: TradeData,
+        current_candle: pd.Series,
+        date_string: str,
         dataframe_history: pd.DataFrame,
         latest_leaders: set[str] | None = None,
     ) -> TradeTransition | None:
@@ -121,23 +123,10 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
         Exits:
         1. LOC (Limit On Close) - If Close > Previous Day High.
-        2. Target (Take Profit) - Predefined target hit.
+        2. Target (Take Profit) - predefined target hit.
         3. Time Stop - Closed at end of day 8.
-
-        Args:
-            trade: Current active trade.
-            dataframe_history: Historical price sequence.
-            latest_leaders: Latest leaders symbols set.
-
-        Returns:
-            TradeTransition | None: Description of transition if triggered.
         """
-        if dataframe_history.empty:
-            return None
-
-        candle = dataframe_history.iloc[-1]
-        date_string = str(candle["date"])
-        current_date_obj = pd.Timestamp(candle["date"])
+        current_date_obj = pd.Timestamp(current_candle["date"])
 
         # 1. Day Check
         entry_date_str = trade.get("entry_date")
@@ -151,8 +140,8 @@ class DipBuyerStrategy(BaseTradeStrategy):
         # 2. Target Logic (Take Profit)
         # Rule: Target can NOT be hit on entry day.
         target_price = float(trade.get("current_target") or 0.0)
-        high_price = float(candle["high"])
-        open_price = float(candle["open"])
+        high_price = float(current_candle["high"])
+        open_price = float(current_candle["open"])
 
         if not is_entry_day and target_price > 0 and high_price >= target_price:
             exit_price = max(open_price, target_price)
@@ -165,7 +154,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
         if len(dataframe_history) >= 2:
             previous_candle = dataframe_history.iloc[-2]
             previous_day_high = float(previous_candle["high"])
-            close_price = float(candle["close"])
+            close_price = float(current_candle["close"])
 
             if close_price > previous_day_high:
                 return self._close_trade(trade, close_price, "LOC_HIT", date_string)
@@ -178,7 +167,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 dataframe_history[dataframe_history["date"] >= entry_date_str]
             )
             if trading_days_held >= self.TIME_STOP_DAYS:
-                close_price = float(candle["close"])
+                close_price = float(current_candle["close"])
                 return self._close_trade(
                     trade,
                     close_price,
@@ -210,44 +199,6 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
         return updates
 
-    @override
-    def generate_orders(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame,
-        budget: float,
-        created_symbols: set[str] | None = None,
-    ) -> Order | None:
-        """Generates Entry or Exit Orders based on current trade status.
-
-        Args:
-            trade: Current trade data.
-            dataframe_history: Historical price sequence.
-            budget: Strategy allocation budget.
-            created_symbols: Set of symbols with CREATED trades.
-
-        Returns:
-            Order | None: Order descriptor if valid.
-        """
-        status_raw = trade.get("status")
-        status = status_raw.value if hasattr(status_raw, "value") else status_raw
-        if not status:
-            status = "CREATED"
-
-        quantity = self._determine_order_quantity(trade, budget)
-        if quantity <= 0:
-            return None
-
-        # Case A: New setup -> Generate entry bracket
-        if status == "CREATED":
-            return self._generate_created_orders(trade, quantity, dataframe_history)
-
-        # Case B: Active position -> Generate pure exit orders (TP + LOC threshold)
-        if status == "ACTIVE":
-            return self._generate_active_orders(trade, quantity, dataframe_history)
-
-        return None
-
     def _determine_order_quantity(self, trade: TradeData, budget: float) -> int:
         """Calculates order quantity based on database size or strategy budget."""
         entry_price = self._extract_entry_price(trade)
@@ -258,10 +209,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
         if database_size > 0:
             return int(database_size)
 
-        from ....config import settings
-
-        config_budget = settings.app.portfolio.get_budget("dip_buyer")
-        trade_budget = float(trade.get("budget") or budget or config_budget)
+        trade_budget = self._get_strategy_budget(trade, budget)
         if trade_budget <= 0:
             logger.warning(
                 "[%s] Sizing Fallback: No budget found. Check settings.yaml.",
@@ -278,10 +226,18 @@ class DipBuyerStrategy(BaseTradeStrategy):
         previous_day_high = float(previous_candle["high"])
         return round(previous_day_high + 0.01, 2)
 
-    def _generate_created_orders(
-        self, trade: TradeData, quantity: int, dataframe_history: pd.DataFrame
+    @override
+    def _generate_entry_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
         """Generates entry bracket orders for CREATED trades."""
+        quantity = self._determine_order_quantity(trade, budget)
+        if quantity <= 0:
+            return None
         symbol = trade.get("symbol", "UNKNOWN")
         entry_price = self._extract_entry_price(trade)
 
@@ -321,10 +277,18 @@ class DipBuyerStrategy(BaseTradeStrategy):
             order_id=f"{symbol}_{self.name}",
         )
 
-    def _generate_active_orders(
-        self, trade: TradeData, quantity: int, dataframe_history: pd.DataFrame
+    @override
+    def _generate_exit_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        created_symbols: set[str] | None = None,
     ) -> Order | None:
         """Generates exit orders for ACTIVE trades (Take Profit and EOD LOC exit)."""
+        quantity = self._determine_order_quantity(trade, budget)
+        if quantity <= 0:
+            return None
         symbol = trade.get("symbol", "UNKNOWN")
         exits = []
 

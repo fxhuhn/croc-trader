@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from app.services.trade_manager.strategies.split_target import SplitTargetStrategy
+
 from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
 from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
 from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
@@ -34,7 +34,7 @@ from app.types import TradeStatus
 
 def _make_trade(
     symbol: str = "AAPL",
-    strategy: str = "SplitTarget",
+    strategy: str = "HoldTarget",
     entry_price: float = 150.0,
     stop_loss: float = 140.0,
     take_profit_1: float = 165.0,
@@ -92,132 +92,6 @@ def _make_candle(
 
 def _make_history(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows)
-
-
-# ---------------------------------------------------------------------------
-# SEC-03: NameError Bomb Fix — split_target.generate_orders
-# ---------------------------------------------------------------------------
-
-
-class TestSplitTargetNameErrorFix:
-    """Validates SEC-03: quantity_half must be defined before both exit blocks."""
-
-    def test_generate_orders_succeeds_when_tp1_is_zero_and_tp3_is_set(self) -> None:
-        """Verifies no NameError when TP1=0 and TP3>0 (the original crash scenario)."""
-        # Arrange
-        strategy = SplitTargetStrategy()
-        trade = _make_trade(take_profit_1=0.0, take_profit_3=180.0)
-        mock_repo = MagicMock()
-
-        # Act — must NOT raise NameError
-        order = strategy.generate_orders(trade, pd.DataFrame(), 2000.0, mock_repo)
-
-        # Assert — order is generated; TP3 exit exists, TP1 exit does not
-        assert order is not None
-        assert order.symbol == "AAPL"
-        exit_types = [leg.type for leg in order.exits]
-        assert "LMT" in exit_types  # TP3 exit present
-        # All LMT exits are for the full quantity (no half-split when TP1 = 0)
-        lmt_exits = [leg for leg in order.exits if leg.type == "LMT"]
-        assert all(leg.quantity == int(order.quantity) for leg in lmt_exits)
-
-    def test_generate_orders_produces_correct_split_when_both_targets_set(self) -> None:
-        """Verifies 50% TP1 / remaining TP3 split when both targets are non-zero."""
-        # Arrange
-        strategy = SplitTargetStrategy()
-        trade = _make_trade(
-            initial_size=10.0,
-            take_profit_1=165.0,
-            take_profit_3=180.0,
-            entry_price=150.0,
-            stop_loss=140.0,
-        )
-        mock_repo = MagicMock()
-
-        # Act
-        order = strategy.generate_orders(trade, pd.DataFrame(), 2000.0, mock_repo)
-
-        # Assert
-        assert order is not None
-        lmt_exits = [leg for leg in order.exits if leg.type == "LMT"]
-        assert len(lmt_exits) == 2
-        qty_half = lmt_exits[0].quantity
-        qty_remaining = lmt_exits[1].quantity
-        assert qty_half + qty_remaining == order.quantity
-
-    def test_generate_orders_produces_full_tp3_when_only_tp3_set(self) -> None:
-        """Verifies entire quantity goes to TP3 exit when TP1 is absent."""
-        # Arrange
-        strategy = SplitTargetStrategy()
-        trade = _make_trade(
-            initial_size=10.0,
-            take_profit_1=0.0,
-            take_profit_3=180.0,
-        )
-        mock_repo = MagicMock()
-
-        # Act
-        order = strategy.generate_orders(trade, pd.DataFrame(), 2000.0, mock_repo)
-
-        # Assert — single LMT exit covers the full quantity
-        assert order is not None
-        lmt_exits = [leg for leg in order.exits if leg.type == "LMT"]
-        assert len(lmt_exits) == 1
-        assert lmt_exits[0].quantity == order.quantity
-
-    def test_generate_orders_returns_none_when_entry_price_zero(self) -> None:
-        """Verifies guard against zero entry price."""
-        # Arrange
-        strategy = SplitTargetStrategy()
-        trade = _make_trade(entry_price=0.0)
-        mock_repo = MagicMock()
-
-        # Act & Assert
-        result = strategy.generate_orders(trade, pd.DataFrame(), 2000.0, mock_repo)
-        assert result is None
-
-    def test_execute_immediate_target_uses_trade_status_enum(self) -> None:
-        """Verifies Day-1 target hit uses TradeStatus.CLOSED enum, not string literal."""
-        # Arrange
-        strategy = SplitTargetStrategy()
-        trade = _make_trade(entry_price=150.0, stop_loss=140.0, status="CREATED")
-        mock_repo = MagicMock()
-
-        # Candle: gap-up entry above entry, same-day TP3 hit
-        candle = _make_candle(open_price=152.0, high=185.0, low=149.0)
-        history = _make_history(
-            [
-                {
-                    "date": "2026-01-09",
-                    "open": 148.0,
-                    "high": 152.0,
-                    "low": 147.0,
-                    "close": 150.0,
-                },
-                {
-                    "date": "2026-01-10",
-                    "open": 152.0,
-                    "high": 185.0,
-                    "low": 149.0,
-                    "close": 183.0,
-                },
-            ]
-        )
-
-        # Act
-        strategy.check_entry(trade, candle, history, mock_repo)
-
-        # Assert — the status written to DB must be the enum value, not a raw "CLOSED" string
-        call_args = mock_repo.update_trade.call_args
-        if call_args:
-            update_dict = (
-                call_args[0][1]
-                if len(call_args[0]) > 1
-                else call_args[1].get("updates", {})
-            )
-            status_value = update_dict.get("status")
-            if status_value is not None:
-                assert status_value == TradeStatus.CLOSED
 
 
 # ---------------------------------------------------------------------------
@@ -620,7 +494,7 @@ class TestAttachSparklinesDeterministicClock:
                 "unrealized_pnl": 50.0,
                 "sparkline": "",
                 "id": 1,
-                "strategy": "SplitTarget",
+                "strategy": "HoldTarget",
                 "status": "ACTIVE",
                 "entry_date": None,
                 "exit_date": None,

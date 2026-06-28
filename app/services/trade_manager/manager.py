@@ -20,7 +20,6 @@ from ...models import Order
 from .strategies.abstract import BaseTradeStrategy
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.hold_target import HoldTargetStrategy
-from .strategies.split_target import SplitTargetStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
 from .strategies.two_percent_strategy import TwoPercentStrategy
 from .strategies.ndx_momentum import NDXMomentumTradeStrategy
@@ -110,7 +109,7 @@ class TradeManager:
             Strategies.TurnOverTiming_10: TurnoverTimingStrategy(),
             Strategies.TurnOverTiming_05: TurnoverTimingStrategy(),
             Strategies.HoldTarget: HoldTargetStrategy(),
-            Strategies.SplitTarget: SplitTargetStrategy(),
+            Strategies.SplitTarget: HoldTargetStrategy(),  # Fallback for old trades
             Strategies.TwoPercent: TwoPercentStrategy(),
             Strategies.NDXMomentum: NDXMomentumTradeStrategy(),
         }

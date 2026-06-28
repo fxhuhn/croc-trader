@@ -12,7 +12,6 @@ from app.services.trade_manager.strategies.ndx_momentum import (
     NDXMomentumTradeStrategy,
     _RebalanceCache,
 )
-from app.services.trade_manager.strategies.split_target import SplitTargetStrategy
 from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
 from app.services.trade_manager.strategies.two_percent_strategy import (
     TwoPercentStrategy,
@@ -47,7 +46,6 @@ def wrap_strategy_methods():
         DipBuyerStrategy,
         HoldTargetStrategy,
         NDXMomentumTradeStrategy,
-        SplitTargetStrategy,
         TurnoverTimingStrategy,
         TwoPercentStrategy,
     ]

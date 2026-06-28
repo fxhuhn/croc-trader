@@ -186,32 +186,20 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         return leaders_symbols
 
     @override
-    def manage_active_trade(
+    def _do_manage_active_trade(
         self,
         trade: TradeData,
+        current_candle: pd.Series,
+        date_string: str,
         dataframe_history: pd.DataFrame,
         latest_leaders: set[str] | None = None,
     ) -> TradeTransition | None:
         """
         Manages an active position during the monthly rebalance cycle.
-
-        This method determines if a position should be maintained or closed
-        based on the latest leaders identified on the month-end screener.
-        Rebalancing only occurs on the transition to a new month.
-
-        Args:
-            trade: The active trade data.
-            dataframe_history: Historical price data.
-            latest_leaders: Latest leaders symbols set.
-
-        Returns:
-            TradeTransition | None: Computed transition if closed, otherwise None.
         """
         if not self._is_month_switch(dataframe_history):
             return None
 
-        current_candle = dataframe_history.iloc[-1]
-        date_string = str(current_candle["date"])
         symbol = trade.get("symbol")
 
         leaders_symbols = latest_leaders or set()
@@ -231,56 +219,47 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         return None
 
     @override
-    def generate_orders(
+    def _generate_exit_order(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
     ) -> Order | None:
-        """
-        Generates formal trading orders for a given trade.
-
-        Args:
-            trade: The trade data to generate orders for.
-            dataframe_history: Historical price data.
-            budget: Total allocated budget to use for sizing.
-            created_symbols: Set of symbols with currently pending (CREATED) trades.
-
-        Returns:
-            An Order object or None if generation failed.
-        """
         symbol = trade.get("symbol", "UNKNOWN")
-        status = trade.get("status")
 
-        # 1. Exit Order (ACTIVE) - triggered when a symbol is dropped from the leaders list
-        if status == "ACTIVE":
-            if not self._is_month_switch(dataframe_history):
-                return None
-
-            leaders_symbols = created_symbols or set()
-
-            if symbol not in leaders_symbols:
-                quantity = int(trade.get("current_size") or 0)
-                if quantity <= 0:
-                    return None
-
-                return self._create_exit_order(
-                    symbol=symbol,
-                    quantity=quantity,
-                    price=Decimal("0.0"),
-                    order_type="MKT",
-                    time_in_force="OPG",
-                    order_id=f"{symbol}_{self.name}_EXIT",
-                )
+        if not self._is_month_switch(dataframe_history):
             return None
 
-        # 2. Entry Order (CREATED)
-        # Determine specific budget for this position
-        from ....config import settings
+        leaders_symbols = created_symbols or set()
 
-        config_budget = settings.app.portfolio.get_budget("ndx_momentum")
-        trade_budget = float(trade.get("budget") or budget or config_budget)
+        if symbol not in leaders_symbols:
+            quantity = int(trade.get("current_size") or 0)
+            if quantity <= 0:
+                return None
+
+            return self._create_exit_order(
+                symbol=symbol,
+                quantity=quantity,
+                price=Decimal("0.0"),
+                order_type="MKT",
+                time_in_force="OPG",
+                order_id=f"{symbol}_{self.name}_EXIT",
+            )
+        return None
+
+    @override
+    def _generate_entry_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        created_symbols: set[str] | None = None,
+    ) -> Order | None:
+        symbol = trade.get("symbol", "UNKNOWN")
+
+        # Determine specific budget for this position
+        trade_budget = self._get_strategy_budget(trade, budget)
 
         # Calculate quantity based on the most recent closing price
         if dataframe_history.empty:

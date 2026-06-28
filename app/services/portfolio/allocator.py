@@ -117,7 +117,7 @@ class PortfolioAllocator:
 
             risk_per_share_decimal = abs(entry_price_decimal - stop_loss_decimal)
             strategy_key = strategy_enum.value
-            if strategy_key == "croc_setup":
+            if strategy_key in ("croc_setup", "split_target"):
                 strategy_key = "hold_target"
             risk_amount_decimal = Decimal(
                 str(self.portfolio_config.get_risk_amount(strategy_key))

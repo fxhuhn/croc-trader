@@ -91,75 +91,67 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         )
 
     @override
-    def generate_orders(
+    def _generate_entry_order(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
     ) -> Order | None:
-        """Generates Entry or Exit Orders based on current trade state.
+        entry_price = self._extract_entry_price(trade)
+        trade_budget = self._get_strategy_budget(trade, budget)
+        if entry_price <= 0 or trade_budget <= 0:
+            return None
 
-        Args:
-            trade: The current trade data.
-            dataframe_history: Historical market data.
-            budget: Total allocated budget for the trade.
-            created_symbols: Set of symbols with currently pending trades.
+        quantity = int(trade_budget / entry_price)
+        if quantity < 1:
+            return None
 
-        Returns:
-            Order | None: The generated order or None if no action is needed.
-        """
-        status = trade.get("status")
+        return self._create_entry_order(
+            trade["symbol"], quantity, Decimal(str(entry_price))
+        )
 
-        # 1. Entry Order (CREATED)
-        if status == "CREATED":
-            entry_price = self._extract_entry_price(trade)
-            if entry_price <= 0 or budget <= 0:
-                return None
+    @override
+    def _generate_exit_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        created_symbols: set[str] | None = None,
+    ) -> Order | None:
+        context = self._get_full_context(trade)
+        green_candle_count = context.get("green_candle_count", 0)
+        quantity = int(trade.get("current_size") or 0)
 
-            quantity = int(budget / entry_price)
-            if quantity < 1:
-                return None
+        if quantity <= 0:
+            return None
 
-            return self._create_entry_order(
-                trade["symbol"], quantity, Decimal(str(entry_price))
+        # a) Green Sequence Exit (TRIGGERED)
+        if green_candle_count >= 2:
+            return self._create_exit_order(
+                trade["symbol"],
+                quantity,
+                order_type="MKT",
+                time_in_force="OPG",
             )
 
-        # 2. Exit Order (ACTIVE)
-        if status == "ACTIVE":
-            context = self._get_full_context(trade)
-            green_candle_count = context.get("green_candle_count", 0)
-            quantity = int(trade.get("current_size") or 0)
+        # b) Friday Time Stop
+        if not dataframe_history.empty:
+            last_date = pd.Timestamp(dataframe_history.iloc[-1]["date"])
+            day_of_week = last_date.dayofweek
 
-            if quantity <= 0:
-                return None
-
-            # a) Green Sequence Exit (TRIGGERED)
-            if green_candle_count >= 2:
+            # Logic Clean-up:
+            # We want to exit on Friday.
+            # If we are generating orders based on THURSDAY data (day=3),
+            # we generate an exit for Friday.
+            # Note: Real execution will be Friday Close (MOC).
+            if day_of_week == self.THURSDAY_INDEX:  # Thursday
                 return self._create_exit_order(
                     trade["symbol"],
                     quantity,
-                    order_type="MKT",
-                    time_in_force="OPG",
+                    order_type="MOC",
+                    time_in_force="DAY",
                 )
-
-            # b) Friday Time Stop
-            if not dataframe_history.empty:
-                last_date = pd.Timestamp(dataframe_history.iloc[-1]["date"])
-                day_of_week = last_date.dayofweek
-
-                # Logic Clean-up:
-                # We want to exit on Friday.
-                # If we are generating orders based on THURSDAY data (day=3),
-                # we generate an exit for Friday.
-                # Note: Real execution will be Friday Close (MOC).
-                if day_of_week == self.THURSDAY_INDEX:  # Thursday
-                    return self._create_exit_order(
-                        trade["symbol"],
-                        quantity,
-                        order_type="MOC",
-                        time_in_force="DAY",
-                    )
 
         return None
 
@@ -256,27 +248,15 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         )
 
     @override
-    def manage_active_trade(
+    def _do_manage_active_trade(
         self,
         trade: TradeData,
+        current_candle: pd.Series,
+        date_string: str,
         dataframe_history: pd.DataFrame,
         latest_leaders: set[str] | None = None,
     ) -> TradeTransition | None:
-        """Manages Exits: Multi-Day Green sequence (Next Open) or Time Stop (EOD).
-
-        Args:
-            trade: The active trade data.
-            dataframe_history: Historical market data.
-            latest_leaders: Latest leaders symbols set.
-
-        Returns:
-            TradeTransition | None: Result transition or None if no exit occurred.
-        """
-        if dataframe_history.empty:
-            return None
-
-        current_candle = dataframe_history.iloc[-1]
-        date_string = str(current_candle["date"])
+        """Manages Exits: Multi-Day Green sequence (Next Open) or Time Stop (EOD)."""
 
         # 1. Signal-Specific Exit (State-Based Green Candles sequence)
         # Rule: If count >= 2, exit at current candle OPEN (Next Open Rule).

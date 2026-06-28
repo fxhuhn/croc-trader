@@ -123,29 +123,18 @@ class HoldTargetStrategy(BaseTradeStrategy):
         return None
 
     @override
-    def manage_active_trade(
+    def _do_manage_active_trade(
         self,
         trade: TradeData,
+        current_candle: pd.Series,
+        date_string: str,
         dataframe_history: pd.DataFrame,
         latest_leaders: set[str] | None = None,
     ) -> TradeTransition | None:
         """
         Manages exits for active trades: Stop Loss vs. Target.
-
-        Args:
-            trade: The active trade data.
-            dataframe_history: Price history (includes current candle).
-            latest_leaders: Latest leaders symbols set.
-
-        Returns:
-            TradeTransition | None: Computed transition if closed, otherwise None.
         """
-        if dataframe_history is None or dataframe_history.empty:
-            return None
-
-        candle = dataframe_history.iloc[-1]
-        current_date_obj = pd.Timestamp(candle["date"])
-        date_string = str(candle["date"])
+        current_date_obj = pd.Timestamp(current_candle["date"])
 
         # 1. Day-Trading Check (Allow same-day exit)
         entry_date_str = trade.get("entry_date")
@@ -160,9 +149,9 @@ class HoldTargetStrategy(BaseTradeStrategy):
         target = float(trade.get("current_target") or 0.0)
 
         # 3. Market Data
-        low_price = float(candle["low"])
-        high_price = float(candle["high"])
-        open_price = float(candle["open"])
+        low_price = float(current_candle["low"])
+        high_price = float(current_candle["high"])
+        open_price = float(current_candle["open"])
 
         # 4. Stop Loss Logic (Check first)
         if stop_loss > 0 and low_price <= stop_loss:
@@ -187,7 +176,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         return None
 
     @override
-    def generate_orders(
+    def _generate_entry_order(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
@@ -196,15 +185,6 @@ class HoldTargetStrategy(BaseTradeStrategy):
     ) -> Order | None:
         """
         Generates an Order object for IBKR export.
-
-        Args:
-            trade: The trade data.
-            dataframe_history: Price history.
-            budget: Total available budget.
-            created_symbols: Set of symbols with CREATED status.
-
-        Returns:
-            Order | None: The generated bracket order or None.
         """
         symbol = trade.get("symbol", "UNKNOWN")
         entry_price = float(trade.get("entry_price") or 0.0)
@@ -219,17 +199,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         if database_size > 0:
             quantity = int(database_size)
         else:
-            from ....config import settings
-
-            risk_amount = float(
-                self._get_context_value(trade, "risk_amount")
-                or trade.get("risk_amount")
-                or settings.app.portfolio.get_risk_amount("hold_target")
-                or 100.0
-            )
-            quantity = self._calculate_position_size(
-                entry_price, stop_loss, risk_amount
-            )
+            quantity = self._resolve_position_size(trade, entry_price, stop_loss)
 
         if quantity <= 0:
             logger.warning(
@@ -285,3 +255,13 @@ class HoldTargetStrategy(BaseTradeStrategy):
             exits=exits,
             last_status="CREATED",
         )
+
+    @override
+    def _generate_exit_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        budget: float,
+        created_symbols: set[str] | None = None,
+    ) -> Order | None:
+        return None
