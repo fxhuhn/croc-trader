@@ -220,7 +220,16 @@ class TradeManager:
             current_active_trades = self.trade_repository.get_by_status(
                 TradeStatus.ACTIVE
             )
-            active_symbols = {str(t["symbol"]) for t in current_active_trades}
+            # Group active trade symbols by their resolved strategy enum
+            active_symbols_by_strategy: dict[Strategies, set[str]] = {}
+            for active_trade in current_active_trades:
+                resolved_strategy = self._resolve_strategy_name(
+                    str(active_trade.get("strategy", ""))
+                )
+                if resolved_strategy:
+                    active_symbols_by_strategy.setdefault(resolved_strategy, set()).add(
+                        str(active_trade["symbol"])
+                    )
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
                 "Database unavailable during created trade load. Halting daily process."
@@ -228,7 +237,15 @@ class TradeManager:
 
         logger.info("Checking %d pending trades for entries.", len(created_trades))
         for trade in created_trades:
-            self._process_created_trade(trade, active_symbols=active_symbols)
+            resolved_strategy = self._resolve_strategy_name(
+                str(trade.get("strategy", ""))
+            )
+            strategy_active_symbols = (
+                active_symbols_by_strategy.get(resolved_strategy, set())
+                if resolved_strategy
+                else set()
+            )
+            self._process_created_trade(trade, active_symbols=strategy_active_symbols)
 
         logger.info("TradeManager: Daily process complete.")
 

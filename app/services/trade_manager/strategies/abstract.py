@@ -718,12 +718,14 @@ class BaseTradeStrategy(ABC):
             message=f"REJECTED: {reason}",
         )
 
-    def _get_strategy_budget(self, trade: TradeData, override_budget: float = 0.0) -> float:
+    def _get_strategy_budget(
+        self, trade: TradeData, override_budget: float = 0.0
+    ) -> float:
         """
         Centralized DRY helper to resolve budget for the strategy without duplicating settings imports.
         """
         from ....config import settings
+
         strategy_key = getattr(self.name, "value", str(self.name))
         config_budget = settings.app.portfolio.get_budget(strategy_key)
         return float(trade.get("budget") or override_budget or config_budget)
-

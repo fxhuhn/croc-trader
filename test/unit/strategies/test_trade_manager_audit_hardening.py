@@ -944,6 +944,125 @@ class TestTradeManagerExitingActiveTradeDoesNotBlockNewEntry:
 
 
 # ---------------------------------------------------------------------------
+# TradeManager: Strategy-Specific active symbols check
+# ---------------------------------------------------------------------------
+
+
+class TestTradeManagerStrategySpecificEntryCheck:
+    """Validates that duplicate checks during run_daily_process are strategy-specific."""
+
+    def test_run_daily_process_duplicate_check_is_strategy_specific(
+        self, tmp_path: Path
+    ) -> None:
+        """Verifies that an active position in one strategy does not block a setup in another strategy."""
+        with (
+            patch("app.services.trade_manager.manager.DatabaseSession"),
+            patch(
+                "app.services.trade_manager.manager.TradeRepository"
+            ) as mock_trade_repo_class,
+            patch(
+                "app.services.trade_manager.manager.MarketRepository"
+            ) as mock_market_repo_class,
+        ):
+            mock_trade_repo = MagicMock()
+            mock_market_repo = MagicMock()
+            mock_trade_repo_class.return_value = mock_trade_repo
+            mock_market_repo_class.return_value = mock_market_repo
+
+            manager = TradeManager(
+                db_path=tmp_path / "signals.db",
+                stocks_db_path=tmp_path / "stocks.db",
+            )
+
+            # Active trade 1: STX in ndx_momentum
+            active_trade_stx = {
+                "id": 101,
+                "symbol": "STX",
+                "strategy": "ndx_momentum",
+                "status": "ACTIVE",
+                "entry_price": 280.0,
+            }
+            # Active trade 2: GS in dip_buyer
+            active_trade_gs = {
+                "id": 102,
+                "symbol": "GS",
+                "strategy": "dip_buyer",
+                "status": "ACTIVE",
+                "entry_price": 1000.0,
+            }
+
+            # Created trade 1: STX in dip_buyer (different strategy -> should NOT be blocked)
+            created_trade_stx = {
+                "id": 201,
+                "symbol": "STX",
+                "strategy": "dip_buyer",
+                "status": "CREATED",
+                "entry_price": 270.0,
+                "signal_context": json.dumps({"date": "2026-06-01"}),
+            }
+            # Created trade 2: GS in dip_buyer (same strategy -> should BE blocked)
+            created_trade_gs = {
+                "id": 202,
+                "symbol": "GS",
+                "strategy": "dip_buyer",
+                "status": "CREATED",
+                "entry_price": 950.0,
+                "signal_context": json.dumps({"date": "2026-06-01"}),
+            }
+
+            # Setup repository calls
+            mock_trade_repo.get_by_status.side_effect = lambda status: {
+                TradeStatus.CREATED: [created_trade_stx, created_trade_gs],
+                TradeStatus.ACTIVE: [active_trade_stx, active_trade_gs],
+            }[status]
+
+            mock_trade_repo.get_all_by_strategy.return_value = [active_trade_stx]
+
+            # Mock history: make sure entry window is valid (Day 1)
+            history_data = [
+                {
+                    "date": pd.Timestamp("2026-06-01"),
+                    "open": 100.0,
+                    "high": 100.0,
+                    "low": 100.0,
+                    "close": 100.0,
+                },
+                {
+                    "date": pd.Timestamp("2026-06-02"),
+                    "open": 268.0,
+                    "high": 269.0,
+                    "low": 260.0,  # low is lower than entry_price (270.0) -> fill
+                    "close": 265.0,
+                },
+            ]
+            mock_market_repo.get_symbol_history_raw.return_value = pd.DataFrame(
+                history_data
+            )
+
+            # Act
+            manager.run_daily_process()
+
+            # Assert
+            # Let's inspect mock_trade_repo.update_trade calls
+            update_calls = mock_trade_repo.update_trade.call_args_list
+
+            # Find update call for GS (202)
+            gs_update_call = next(
+                (call for call in update_calls if call[0][0] == 202), None
+            )
+            assert gs_update_call is not None
+            assert gs_update_call[0][1]["status"] == TradeStatus.INVALID
+            assert "Symbol already active" in gs_update_call[1].get("reason", "")
+
+            # Find update call for STX (201)
+            stx_update_call = next(
+                (call for call in update_calls if call[0][0] == 201), None
+            )
+            assert stx_update_call is not None
+            assert stx_update_call[0][1]["status"] == TradeStatus.ACTIVE
+
+
+# ---------------------------------------------------------------------------
 # BaseTradeStrategy: _resolve_position_size sizing logic
 # ---------------------------------------------------------------------------
 
