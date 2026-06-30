@@ -1,10 +1,25 @@
 import csv
 import logging
 from pathlib import Path
+from ...config import settings
 from ...const import Strategies
 from ...models import Order
 
 logger = logging.getLogger(__name__)
+
+
+def _get_override_for_symbol(symbol: str) -> dict[str, str]:
+    """Retrieves order configuration overrides for a given symbol.
+
+    Args:
+        symbol: The original symbol to look up.
+
+    Returns:
+        dict[str, str]: The dictionary of overrides, or empty if none found.
+    """
+    overrides = getattr(settings.app, "order_overrides", {})
+    return overrides.get(symbol, {})
+
 
 # Strategies whose orders are written to the daily CSV export.
 # SplitTarget and HoldTarget are managed via the broker UI directly
@@ -69,8 +84,13 @@ def write_csv_orders_file(
     for trade, order, resolved_strategy in filtered_orders_data:
         strategy_display_name = get_strategy_display_name(resolved_strategy)
         trade_database_id = trade.get("id")
-        symbol = str(trade.get("symbol", ""))
-        trade_group_id = f"{trade_database_id}_{strategy_display_name}_{symbol}"
+
+        # Resolve override for symbol
+        override = _get_override_for_symbol(order.symbol)
+        resolved_symbol = override.get("target_symbol", order.symbol)
+        trade_group_id = (
+            f"{trade_database_id}_{strategy_display_name}_{resolved_symbol}"
+        )
 
         rows = map_order_to_csv_rows(
             trade, order, trade_group_id, strategy_display_name, ibkr_account_id
@@ -98,6 +118,7 @@ def write_csv_orders_file(
         "target_price",
         "tif",
         "strategy_name",
+        "currency",
     ]
 
     with open(csv_file_path, "w", newline="") as csv_file_handle:
@@ -117,6 +138,12 @@ def map_order_to_csv_rows(
     ibkr_account_id: str,
 ) -> list[dict[str, object]]:
     """Maps an order model and its legs to structured CSV row dictionaries."""
+    override = _get_override_for_symbol(order.symbol)
+    symbol = override.get("target_symbol", order.symbol)
+    sec_type = override.get("sec_type", "STK")
+    exchange = override.get("exchange", "SMART")
+    currency = override.get("currency", "")
+
     rows = []
     if order.entry:
         entry_leg = order.entry
@@ -124,9 +151,9 @@ def map_order_to_csv_rows(
             {
                 "trade_group_id": trade_group_id,
                 "bracket_role": "ENTRY",
-                "symbol": order.symbol,
-                "sec_type": "STK",
-                "exchange": "SMART",
+                "symbol": symbol,
+                "sec_type": sec_type,
+                "exchange": exchange,
                 "account_id": ibkr_account_id,
                 "action": entry_leg.action,
                 "quantity": (
@@ -138,6 +165,7 @@ def map_order_to_csv_rows(
                 "target_price": f"{entry_leg.price:.2f}",
                 "tif": entry_leg.time_in_force,
                 "strategy_name": strategy_display_name,
+                "currency": currency,
             }
         )
 
@@ -150,9 +178,9 @@ def map_order_to_csv_rows(
             {
                 "trade_group_id": trade_group_id,
                 "bracket_role": bracket_role,
-                "symbol": order.symbol,
-                "sec_type": "STK",
-                "exchange": "SMART",
+                "symbol": symbol,
+                "sec_type": sec_type,
+                "exchange": exchange,
                 "account_id": ibkr_account_id,
                 "action": exit_leg.action,
                 "quantity": (
@@ -164,6 +192,7 @@ def map_order_to_csv_rows(
                 "target_price": f"{exit_leg.price:.2f}",
                 "tif": exit_leg.time_in_force,
                 "strategy_name": strategy_display_name,
+                "currency": currency,
             }
         )
 

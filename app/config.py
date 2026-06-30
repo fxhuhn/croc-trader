@@ -3,7 +3,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import yaml
 from dotenv import load_dotenv
@@ -138,6 +138,15 @@ class PortfolioConfig:
         return config.risk_amount if config else 0.0
 
 
+class SymbolOverride(TypedDict, total=False):
+    """Optional contract definition overrides for a specific symbol in order generation."""
+
+    target_symbol: str
+    sec_type: str
+    exchange: str
+    currency: str
+
+
 # ---------------------------------------------------------
 # Part 2: Main Application Configuration
 # ---------------------------------------------------------
@@ -154,6 +163,7 @@ class AppConfig:
     security: SecurityConfig = field(default_factory=SecurityConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
+    order_overrides: dict[str, SymbolOverride] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppConfig":
@@ -268,6 +278,22 @@ class AppConfig:
         else:
             portfolio_config = PortfolioConfig()
 
+        order_overrides_data = data.get("order_overrides", {})
+        order_overrides: dict[str, SymbolOverride] = {}
+        if isinstance(order_overrides_data, dict):
+            for sym, override in order_overrides_data.items():
+                if isinstance(override, dict):
+                    override_typed: SymbolOverride = {}
+                    if "target_symbol" in override:
+                        override_typed["target_symbol"] = str(override["target_symbol"])
+                    if "sec_type" in override:
+                        override_typed["sec_type"] = str(override["sec_type"])
+                    if "exchange" in override:
+                        override_typed["exchange"] = str(override["exchange"])
+                    if "currency" in override:
+                        override_typed["currency"] = str(override["currency"])
+                    order_overrides[str(sym)] = override_typed
+
         return cls(
             database=db_config,
             webserver=web_config,
@@ -276,6 +302,7 @@ class AppConfig:
             security=security_config,
             telegram=telegram_config,
             portfolio=portfolio_config,
+            order_overrides=order_overrides,
         )
 
 

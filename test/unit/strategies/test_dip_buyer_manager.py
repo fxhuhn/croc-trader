@@ -243,4 +243,3 @@ def test_generate_orders_active_trade_time_stop(strategy, mock_trade_repo):
     assert orders.exits[1].action == "SELL"
     assert orders.exits[1].type == "MOC"
     assert orders.exits[1].price == 0.0
-
