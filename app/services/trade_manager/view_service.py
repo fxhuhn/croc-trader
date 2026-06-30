@@ -715,6 +715,66 @@ class TradeViewService:
 
         return statistics
 
+    def get_weekday_stats(
+        self, trades: list[TradeViewData]
+    ) -> dict[int, dict[str, object]]:
+        """Aggregates PnL statistics by entry weekday.
+
+        Args:
+            trades: List of TradeViewData dictionaries representing closed trades.
+
+        Returns:
+            dict[int, dict[str, object]]: Dictionary mapping weekday index (0-6)
+                to aggregated statistics (name, count, win, loss, pnl, average_pnl).
+        """
+        weekdays = {
+            0: "Monday",
+            1: "Tuesday",
+            2: "Wednesday",
+            3: "Thursday",
+            4: "Friday",
+            5: "Saturday",
+            6: "Sunday",
+        }
+
+        statistics = {
+            i: {
+                "name": weekdays[i],
+                "count": 0,
+                "win": 0,
+                "loss": 0,
+                "pnl": 0.0,
+                "average_pnl": 0.0,
+            }
+            for i in range(7)
+        }
+
+        for trade in trades:
+            pnl = trade.get("realized_pnl", 0.0)
+            entry_date_str = trade.get("entry_date")
+            if not entry_date_str:
+                continue
+
+            try:
+                # Use pandas.Timestamp to safely handle multiple formats
+                weekday_idx = pd.Timestamp(entry_date_str).weekday()
+                if weekday_idx in statistics:
+                    self._update_statistics(statistics[weekday_idx], pnl)
+            except Exception as e:
+                logger.warning(
+                    "Could not parse entry date '%s' for weekday analysis: %s",
+                    entry_date_str,
+                    e,
+                )
+
+        # Calculate average PnL for each weekday
+        for item in statistics.values():
+            item["average_pnl"] = (
+                item["pnl"] / item["count"] if item["count"] > 0 else 0.0
+            )
+
+        return statistics
+
     def _update_statistics(
         self, statistics_dict: dict[str, object], pnl: float
     ) -> None:

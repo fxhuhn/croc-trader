@@ -208,6 +208,7 @@ def view_trades_dip_buyer() -> str:
     closed_summary = service.get_closed_summary(closed)
 
     index_stats = service.get_index_stats(closed)
+    weekday_stats = service.get_weekday_stats(closed)
     history_groups = service.group_trades_history(closed)
 
     return render_template(
@@ -218,6 +219,7 @@ def view_trades_dip_buyer() -> str:
         summary=summary_metrics,
         closed_summary=closed_summary,
         index_stats=index_stats,
+        weekday_stats=weekday_stats,
     )
 
 

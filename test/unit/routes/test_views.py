@@ -146,6 +146,7 @@ def test_view_trades_strategy_specific_routes(
             "win_rate": 0.0,
         }
         mock_service_instance.get_index_stats.return_value = {}
+        mock_service_instance.get_weekday_stats.return_value = {}
         mock_service_instance.group_trades_by_symbol.return_value = {}
         mock_service_instance.group_trades_history.return_value = {}
 
