@@ -227,7 +227,7 @@ class BacktestEngine:
             strategy_name = trade["strategy"]
             manager = self._get_manager_for_strategy(strategy_name)
             if not manager:
-                logger.warning(f"No manager found for strategy: {strategy_name}")
+                logger.warning("No manager found for strategy: %s", strategy_name)
                 continue
 
             symbol = trade["symbol"]

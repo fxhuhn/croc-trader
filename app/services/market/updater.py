@@ -59,10 +59,12 @@ class MarketDataUpdater:
         # 1. Determine Symbols
         symbols = self._get_symbols_to_process(specific_symbols)
         if not symbols:
-            logger.warning("Keine Symbole zu verarbeiten.")
+            logger.warning("No symbols to process.")
             return
 
-        logger.info(f"Starte Update für {len(symbols)} Symbole (Full={full_reload})...")
+        logger.info(
+            "Starting update for %d symbols (Full=%s)...", len(symbols), full_reload
+        )
 
         # 2. Determine Date Range
         # Full Reload: Since 2022
@@ -88,10 +90,10 @@ class MarketDataUpdater:
                 time.sleep(0.5)
 
             except Exception as e:
-                logger.error(f"Critical Error in Batch {i}: {e}", exc_info=True)
+                logger.error("Critical Error in Batch %d: %s", i, e, exc_info=True)
 
         duration = datetime.now() - start_time
-        logger.info(f"Update fertig: {total_records} Records in {duration}.")
+        logger.info("Update finished: %d records in %s.", total_records, duration)
 
     def _get_symbols_to_process(self, specific: list[str] | None) -> list[str]:
         ignored = self.repo.get_ignored_symbols()
@@ -126,7 +128,7 @@ class MarketDataUpdater:
             if failures and full_reload:
                 for f in failures:
                     self.repo.ignore_symbol(f, "No Data (Full Reload)")
-                    logger.warning(f"Ignoring symbol {f} (No Data)")
+                    logger.warning("Ignoring symbol %s (No Data)", f)
             return 0
 
         # Transform & Collect
@@ -167,7 +169,7 @@ class MarketDataUpdater:
         if failures and full_reload:
             for f in failures:
                 self.repo.ignore_symbol(f, "No Data (Full Reload)")
-                logger.warning(f"Ignoring symbol {f} (No Data)")
+                logger.warning("Ignoring symbol %s (No Data)", f)
 
         # Persist
         if bulk_data:

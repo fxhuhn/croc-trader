@@ -22,7 +22,7 @@ class MarketQualityService:
         """
         Executes standard EOD gap checks and triggers repairs if needed.
         """
-        logger.info("Führe Gap-Check durch...")
+        logger.info("Performing gap check...")
 
         # 1. Check Recency (Data Gap at the end)
         # Symbols not updated in the last 3 days
@@ -41,9 +41,13 @@ class MarketQualityService:
 
             if repair_candidates:
                 logger.warning(
-                    f"Repair Check: {len(outdated)} outdated, {len(shallow)} shallow history."
+                    "Repair Check: %d outdated, %d shallow history.",
+                    len(outdated),
+                    len(shallow),
                 )
-                logger.warning(f"Starte Repair für {len(repair_candidates)} Symbole.")
+                logger.warning(
+                    "Starting repair for %d symbols.", len(repair_candidates)
+                )
 
                 # Trigger Update for these specific symbols (Full Reload necessary to fix history)
                 self.updater.run_update(
@@ -59,10 +63,15 @@ class MarketQualityService:
                     if persistent:
                         sym_list = ", ".join(sorted(persistent))
                         logger.info(
-                            f"ℹ️ {len(persistent)} Symbole bleiben unvollständig (< {thresh_history}) [IPO/Listing]: {sym_list}"
+                            "ℹ️ %d symbols remain incomplete (< %s) [IPO/Listing]: %s",
+                            len(persistent),
+                            thresh_history,
+                            sym_list,
                         )
             else:
-                logger.info("Gap Check: Alles aktuell und Historie ausreichend.")
+                logger.info(
+                    "Gap Check: Everything up to date and history is sufficient."
+                )
 
         except Exception as e:
-            logger.error(f"Gap Check Error: {e}", exc_info=True)
+            logger.error("Gap Check Error: %s", e, exc_info=True)

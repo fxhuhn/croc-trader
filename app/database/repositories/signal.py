@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 class SignalRepository(BaseRepository):
     def init_schema(self) -> None:
-        """Erstellt Tabellen für Signale (croc), Mappings und migriert Altdaten (ohne Löschen)."""
+        """Creates tables for signals (croc), mappings and migrates old data (without deleting)."""
         with self.session.connect() as connection:
-            # 1. Neue Haupt-Tabelle 'croc' erstellen
-            # WICHTIG: Wir fügen einen UNIQUE Constraint hinzu, damit wir Duplikate beim
-            # mehrfachen Ausführen der Migration verhindern.
+            # 1. Create new main table 'croc'
+            # IMPORTANT: Add UNIQUE constraint to prevent duplicate signals
+            # when running migrations multiple times.
             self.execute(
                 """
                 CREATE TABLE IF NOT EXISTS croc (
@@ -28,14 +28,14 @@ class SignalRepository(BaseRepository):
                     data TEXT, -- JSON Payload
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     
-                    -- Verhindert Duplikate: Diese Kombi darf es nur einmal geben
+                    -- Prevent duplicates: this combination must be unique
                     UNIQUE(symbol, timeframe, signal, timestamp)
                 )
             """,
                 connection=connection,
             )
 
-            # 3. Exchange Mapping Tabelle
+            # 3. Exchange mapping table
             self.execute(
                 """
                 CREATE TABLE IF NOT EXISTS exchange_mappings (
@@ -51,7 +51,7 @@ class SignalRepository(BaseRepository):
                 connection=connection,
             )
 
-            # 4. View aktualisieren (greift nun auf 'croc' zu)
+            # 4. Update view (now references 'croc')
             self.execute(
                 "DROP VIEW IF EXISTS view_signals_enriched", connection=connection
             )
@@ -74,7 +74,7 @@ class SignalRepository(BaseRepository):
             )
 
     def save_signal(self, data: dict[str, Any]) -> int:
-        """Speichert Raw Webhook Data in 'croc'."""
+        """Saves raw webhook data in 'croc'."""
         symbol = data.get("symbol") or data.get("ticker", "UNKNOWN")
         timeframe = data.get("timeframe")
         signal_name = data.get("signal") or data.get("strategy")
@@ -101,14 +101,14 @@ class SignalRepository(BaseRepository):
         return cursor.lastrowid
 
     def get_unprocessed_signals(self, limit: int = 100) -> list[sqlite3.Row]:
-        """Holt unverarbeitete Signale aus der croc-Tabelle."""
+        """Fetches unprocessed signals from the croc table."""
         # Note: 'processed' column is not in original schema, assuming it might be added
         # or we just get the latest signals. Given current schema, we'll just get latest.
         sql = "SELECT symbol, signal, timestamp, data FROM croc ORDER BY timestamp DESC LIMIT ?"
         return self.fetch_all(sql, (limit,))
 
     def get_unique_signal_attributes(self) -> dict[str, set[str]]:
-        """Holt alle historisch verfügbaren Werte für Signal und weitere Attribute aus der Datenbank."""
+        """Fetches all historically available signal values and other attributes from the DB."""
         sql = """
             SELECT 
                 signal,
@@ -171,7 +171,7 @@ class SignalRepository(BaseRepository):
     def get_by_timestamp(
         self, signal_name: str, timestamp: str
     ) -> list[dict[str, object]]:
-        """Holt Signale für einen bestimmten Zeitstempel und Strategie."""
+        """Fetches signals for a specific timestamp and strategy."""
         sql = "SELECT * FROM croc WHERE signal = ? AND timestamp = ?"
         rows = self.fetch_all(sql, (signal_name, timestamp))
 
@@ -202,17 +202,17 @@ class SignalRepository(BaseRepository):
     def get_signals_by_date(
         self, analysis_date: str = None, days_lookback: int = 0
     ) -> list[dict[str, object]]:
-        """Liest Signale aus dem View, gefiltert nach Datum."""
-        # Basis-Query auf den View
+        """Reads signals from the view, filtered by date."""
+        # Base query on the view
         sql = "SELECT * FROM view_signals_enriched WHERE 1=1"
         params = []
 
         if analysis_date:
-            # Exaktes Datum
+            # Exact date
             sql += " AND date(timestamp) = ?"
             params.append(analysis_date)
         elif days_lookback > 0:
-            # Zeitraum (Lookback)
+            # Time range (Lookback)
             import pandas
 
             start_date = (
@@ -238,14 +238,14 @@ class SignalRepository(BaseRepository):
         limit: int = 100,
         statuses: list[TradeStatus | str] | None = None,
     ) -> list[dict[str, object]]:
-        """Holt potenzielle Trades aus der 'trades' Tabelle.
+        """Fetches potential trades from the 'trades' table.
 
-        Parst automatisch das 'signal_context' JSON Feld.
+        Automatically parses the 'signal_context' JSON field.
 
         Args:
-            strategy_prefix: z.B. 'Croc' oder Strategies.DipBuyer oder eine Liste ['split_target', 'hold_target']
-            limit: Anzahl der Ergebnisse
-            statuses: Liste von Status-Enums/Strings (Standard: [TradeStatus.CREATED])
+            strategy_prefix: e.g. 'Croc' or Strategies.DipBuyer or a list ['split_target', 'hold_target']
+            limit: Number of results
+            statuses: List of status enums/strings (default: [TradeStatus.CREATED])
         """
         if statuses is None:
             statuses = [TradeStatus.CREATED]
@@ -276,7 +276,7 @@ class SignalRepository(BaseRepository):
         for row in rows:
             row_dict = dict(row)
 
-            # 1. Context (JSON) parsen
+            # 1. Parse context (JSON)
             context = {}
             signal_context_raw = row_dict.get("signal_context")
             if signal_context_raw:
@@ -291,15 +291,15 @@ class SignalRepository(BaseRepository):
 
             row_dict["context"] = context
 
-            # 2. Hilfsfelder für das Template
+            # 2. Helper fields for the template
             row_dict["setup_score"] = context.get("setup_score", 0)
             row_dict["market_phase"] = context.get("market_phase", "-")
 
-            # 3. Datum für Anzeige formatieren (KORRIGIERT)
-            # Prio 1: Wenn Entry schon passiert (sollte bei CREATED nicht sein, aber sicherheitshalber)
+            # 3. Format date for display (CORRECTED)
+            # Prio 1: If entry has already occurred (should not happen for CREATED, but just in case)
             display_ts = row_dict.get("entry_date")
 
-            # Prio 2: Signal-Datum aus dem Context (Das echte Datum!)
+            # Prio 2: Signal date from the context (the real date!)
             if not display_ts:
                 display_ts = context.get("date") or context.get("setup_date")
 
@@ -307,7 +307,7 @@ class SignalRepository(BaseRepository):
             if not display_ts:
                 display_ts = None
 
-            # String Cleaning (Trennzeichen entfernen bei ISO Format)
+            # String cleaning (remove separator from ISO format)
             row_dict["display_date"] = (
                 str(display_ts).split("T")[0].split(" ")[0] if display_ts else "-"
             )

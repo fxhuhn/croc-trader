@@ -15,9 +15,7 @@ class TelegramBot:
         self.enabled = enabled
 
         if not self.bot_token or not self.chat_id:
-            logger.warning(
-                "Telegram Bot nicht vollständig konfiguriert (Token/ChatID fehlt)."
-            )
+            logger.warning("Telegram bot not fully configured (token/chat_id missing).")
 
     def send(self, text: str, parse_mode: str = "Markdown") -> dict[str, Any] | None:
         logger.debug("old Telegram pattern.")
@@ -27,13 +25,13 @@ class TelegramBot:
     def send_message(
         self, text: str, parse_mode: str = "Markdown"
     ) -> dict[str, Any] | None:
-        """Sendet eine Textnachricht, falls der Bot aktiviert ist."""
+        """Sends a text message if the bot is enabled."""
         if not self.enabled:
             logger.debug("Telegram Send skipped (disabled).")
             return None
 
         if not self.bot_token or not self.chat_id:
-            logger.error("Telegram Bot nicht konfiguriert.")
+            logger.error("Telegram bot not configured.")
             return None
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
@@ -53,26 +51,26 @@ class TelegramBot:
             error_msg = str(e)
             if self.bot_token:
                 error_msg = error_msg.replace(self.bot_token, "********")
-            logger.error(f"Telegram Netzwerk-Fehler: {error_msg}")
+            logger.error("Telegram network error: %s", error_msg)
             return None
         except Exception as e:
             error_msg = str(e)
             if self.bot_token:
                 error_msg = error_msg.replace(self.bot_token, "********")
-            logger.error(f"Telegram Unbekannter Fehler: {error_msg}")
+            logger.error("Telegram unknown error: %s", error_msg)
             return None
 
     def send_dataframe(
         self, df: pd.DataFrame, title: str = ""
     ) -> dict[str, Any] | None:
-        """Formatiert ein DataFrame als Code-Block Tabelle."""
+        """Formats a DataFrame as a code-block table and sends it."""
         if not self.enabled:
             return None
 
         if df.empty:
-            return self.send_message(f"{title}\n_(Keine Daten)_")
+            return self.send_message(f"{title}\n_(No Data)_")
 
-        # Tabulate für schöne ASCII-Tabellen
+        # Tabulate for nice ASCII tables
         table_str = tabulate(df, tablefmt="simple", showindex=False, headers="keys")
 
         message = f"*{title}*\n```\n{table_str}\n```"

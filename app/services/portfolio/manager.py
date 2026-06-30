@@ -79,7 +79,9 @@ class PortfolioManager:
                     )
                     allocated_count += 1
                 else:
-                    logger.warning(f"[{symbol}] Allocation Failed: {allocation.reason}")
+                    logger.warning(
+                        "[%s] Allocation Failed: %s", symbol, allocation.reason
+                    )
                     # Optional: Mark as SKIPPED or leave as CREATED (0 size) to be ignored by OrderGen
 
             logger.info(

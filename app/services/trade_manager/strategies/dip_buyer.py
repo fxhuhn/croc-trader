@@ -285,7 +285,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
         budget: float,
         created_symbols: set[str] | None = None,
     ) -> Order | None:
-        """Generates exit orders for ACTIVE trades (Take Profit and EOD LOC exit)."""
+        """Generates exit orders for ACTIVE trades (Take Profit and EOD exit)."""
         quantity = self._determine_order_quantity(trade, budget)
         if quantity <= 0:
             return None
@@ -305,23 +305,43 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 )
             )
 
-        # 2. Limit On Close (LOC) Exit at daily updated threshold (Vortages-Hoch)
-        context = self._get_full_context(trade)
-        threshold_loc = context.get("threshold_loc")
-        if threshold_loc is None:
-            threshold_loc = self._calculate_threshold_loc(dataframe_history)
-        if threshold_loc:
-            threshold_value = float(threshold_loc)
-            if threshold_value > 0:
-                exits.append(
-                    OrderLeg(
-                        action="SELL",
-                        type="LOC",
-                        price=Decimal(str(threshold_value)),
-                        quantity=quantity,
-                        time_in_force="DAY",
-                    )
+        # 2. Limit On Close (LOC) or Market On Close (MOC) exit
+        entry_date_str = trade.get("entry_date")
+        is_time_stop = False
+        if entry_date_str:
+            trading_days_held = len(
+                dataframe_history[dataframe_history["date"] >= entry_date_str]
+            )
+            if trading_days_held >= self.TIME_STOP_DAYS - 1:
+                is_time_stop = True
+
+        if is_time_stop:
+            exits.append(
+                OrderLeg(
+                    action="SELL",
+                    type="MOC",
+                    price=Decimal("0.0"),
+                    quantity=quantity,
+                    time_in_force="DAY",
                 )
+            )
+        else:
+            context = self._get_full_context(trade)
+            threshold_loc = context.get("threshold_loc")
+            if threshold_loc is None:
+                threshold_loc = self._calculate_threshold_loc(dataframe_history)
+            if threshold_loc:
+                threshold_value = float(threshold_loc)
+                if threshold_value > 0:
+                    exits.append(
+                        OrderLeg(
+                            action="SELL",
+                            type="LOC",
+                            price=Decimal(str(threshold_value)),
+                            quantity=quantity,
+                            time_in_force="DAY",
+                        )
+                    )
 
         if not exits:
             return None

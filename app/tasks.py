@@ -11,23 +11,20 @@ logger = logging.getLogger(__name__)
 
 
 def run_daily_strategy_check(app):
-    """
-    Täglicher Strategie-Check (Screener).
-    Wird vom Scheduler aufgerufen.
-    """
+    """Daily strategy check (screener). Triggered by the scheduler."""
     with app.app_context():
-        logger.info("⏰ Scheduler: Starte täglichen Strategie-Check...")
+        logger.info("⏰ Scheduler: Starting daily strategy check...")
 
         screener = app.extensions.get("screener_engine")
 
         if screener:
             try:
-                # 1. Screener laufen lassen (Scannt nach Signalen)
+                # 1. Run screener (scans for signals)
                 screener.run_all(days=0)
             except Exception as e:
-                logger.error(f"Fehler im Screener Job: {e}")
+                logger.error("Screener job error: %s", e)
         else:
-            logger.error("Screener Engine nicht gefunden!")
+            logger.error("Screener Engine not found!")
 
 
 def _clear_and_prewarm_cache(app):
@@ -41,10 +38,10 @@ def _clear_and_prewarm_cache(app):
         return
 
     with app.app_context():
-        logger.info("🧹 Leere Cache für /trades Routen...")
+        logger.info("🧹 Clearing cache for /trades routes...")
         cache.clear()
 
-        logger.info("🔥 Starte Pre-warming der /trades Routen...")
+        logger.info("🔥 Starting pre-warming of /trades routes...")
         with app.test_client() as client:
             routes = [
                 "/analytics",
@@ -59,34 +56,34 @@ def _clear_and_prewarm_cache(app):
                 try:
                     response = client.get(route)
                     if response.status_code == 200:
-                        logger.info(f"  ✓ Pre-warmed: {route}")
+                        logger.info("  ✓ Pre-warmed: %s", route)
                     else:
                         logger.warning(
-                            f"  ✗ Pre-warm fehlgeschlagen für {route}: Status {response.status_code}"
+                            "  ✗ Pre-warm failed for %s: Status %s",
+                            route,
+                            response.status_code,
                         )
                 except Exception as e:
-                    logger.error(f"  ✗ Exception beim Pre-warm von {route}: {e}")
+                    logger.error("  ✗ Exception during pre-warm of %s: %s", route, e)
 
-        logger.info("✅ Cache Pre-warming abgeschlossen.")
+        logger.info("✅ Cache pre-warming completed.")
 
 
 def run_cache_prewarm(app):
+    """Triggered by the scheduler to pre-warm the cache for the day.
+
+    Should run after the TradeManager (which runs at 07:00).
     """
-    Wird vom Scheduler aufgerufen, um den Cache für den Tag zu pre-warmen.
-    Sollte nach dem TradeManager (der um 07:00 läuft) ausgeführt werden.
-    """
-    logger.info("⏰ Scheduler: Starte Cache Pre-warming...")
+    logger.info("⏰ Scheduler: Starting Cache Pre-warming...")
     try:
         _clear_and_prewarm_cache(app)
     except Exception as e:
-        logger.error(f"Fehler beim Cache Pre-warming: {e}")
+        logger.error("Cache pre-warming error: %s", e)
 
 
 def run_market_data_update(db_path: Path):
-    """
-    Lädt Marktdaten herunter (Täglich).
-    """
-    logger.info("⏰ Scheduler: Starte Marktdaten-Update...")
+    """Downloads market data (daily)."""
+    logger.info("⏰ Scheduler: Starting market data update...")
     try:
         # Session Factory for Stocks
         session_factory = DatabaseSession(str(db_path))
@@ -107,36 +104,34 @@ def run_market_data_update(db_path: Path):
         quality.perform_gap_check()
 
     except Exception as e:
-        logger.error(f"Fehler im Marktdaten-Update: {e}", exc_info=True)
+        logger.error("Market data update error: %s", e, exc_info=True)
 
 
 def run_db_maintenance(db_path: Path):
-    """
-    Datenbank-Pflege (Sonntags).
-    """
-    logger.info("⏰ Scheduler: Starte DB Maintenance...")
+    """Database maintenance (Sundays)."""
+    logger.info("⏰ Scheduler: Starting DB Maintenance...")
     try:
         session_factory = DatabaseSession(str(db_path))
-        # Nutze Repo oder direkte Session
+        # Use repository or direct database connection
         with session_factory.connect() as conn:
             conn.execute("VACUUM")
             conn.execute("ANALYZE")
 
-        logger.info("DB Maintenance fertig.")
+        logger.info("DB maintenance completed.")
     except Exception as e:
-        logger.error(f"Maintenance Error: {e}")
+        logger.error("Maintenance error: %s", e)
 
 
 def run_db_backup(db_path: Path):
+    """Creates a daily backup of the given database.
+
+    Retains only the last 5 backups.
+    Uses SQLite VACUUM INTO for safe hot-backups.
     """
-    Erstellt ein tägliches Backup der übergebenen Datenbank.
-    Behält nur die letzten 5 Backups.
-    Verwendet SQLite VACUUM INTO für sichere Hot-Backups.
-    """
-    logger.info(f"⏰ Scheduler: Starte DB Backup für {db_path.name}...")
+    logger.info("⏰ Scheduler: Starting DB backup for %s...", db_path.name)
 
     try:
-        # 1. Pfade definieren
+        # 1. Define paths
         backup_dir = db_path.parent / "backup"
         backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -144,16 +139,14 @@ def run_db_backup(db_path: Path):
         backup_filename = f"{db_path.name}.{timestamp}"
         backup_file = backup_dir / backup_filename
 
-        # 2. Backup erstellen (VACUUM INTO)
-        # Wir nutzen eine direkte Connection für VACUUM INTO
-        # Da VACUUM INTO ein SQL statement ist, brauchen wir eine Connection
+        # 2. Create backup (VACUUM INTO)
+        # Use direct connection for VACUUM INTO
+        # Since VACUUM INTO is a SQL statement, we need a connection
         session_factory = DatabaseSession(str(db_path))
 
         # Check if backup already exists to avoid error or overwrite
         if backup_file.exists():
-            logger.warning(
-                f"Backup {backup_filename} existiert bereits. Überschreibe..."
-            )
+            logger.warning("Backup %s already exists. Overwriting...", backup_filename)
             backup_file.unlink()
 
         with session_factory.connect() as conn:
@@ -163,13 +156,12 @@ def run_db_backup(db_path: Path):
             backup_path_string = str(backup_file.resolve())
             conn.execute(f"VACUUM INTO '{backup_path_string}'")
 
-        logger.info(f"Backup erfolgreich erstellt: {backup_file}")
+        logger.info("Backup successfully created: %s", backup_file)
 
-        # 3. Retention Policy: Nur die letzten 5 behalten
-        # Wir suchen alle Dateien die mit db_path.name beginnen
+        # 3. Retention policy: keep only the last 5
         all_backups = sorted(backup_dir.glob(f"{db_path.name}.*"))
 
-        # Wenn mehr als 5, die ältesten löschen
+        # If more than 5, delete the oldest
         keep_count = 5
         if len(all_backups) > keep_count:
             files_to_delete = all_backups[:-keep_count]
@@ -183,7 +175,7 @@ def run_db_backup(db_path: Path):
                     )
 
     except Exception as e:
-        logger.error(f"Fehler beim DB Backup: {e}", exc_info=True)
+        logger.error("DB backup error: %s", e, exc_info=True)
 
 
 def run_order_generation(app: Flask) -> None:
@@ -193,7 +185,7 @@ def run_order_generation(app: Flask) -> None:
         app: The Flask application instance.
     """
     with app.app_context():
-        logger.info("⏰ Scheduler: Starte tägliche Order-Generierung...")
+        logger.info("⏰ Scheduler: Starting daily order generation...")
         trade_manager = app.extensions.get("trade_manager")
         if trade_manager:
             try:
@@ -201,8 +193,8 @@ def run_order_generation(app: Flask) -> None:
                 if order_file_path:
                     logger.info("Order generation successful: %s", order_file_path)
                 else:
-                    logger.info("ℹ️ Keine Orders zu generieren.")
+                    logger.info("ℹ️ No orders to generate.")
             except Exception as e:
-                logger.error("Fehler bei der Order-Generierung: %s", e, exc_info=True)
+                logger.error("Error during order generation: %s", e, exc_info=True)
         else:
-            logger.error("TradeManager nicht gefunden!")
+            logger.error("TradeManager not found!")

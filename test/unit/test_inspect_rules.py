@@ -1,6 +1,6 @@
 import yaml
-from pathlib import Path
 from app.config import settings
+
 
 def test_inspect_rules():
     path = settings.get_path("ranking_yaml")
@@ -15,13 +15,17 @@ def test_inspect_rules():
             if isinstance(data, list):
                 print("Yaml list length:", len(data))
                 for idx, rule in enumerate(data):
-                    print(f"Rule {idx}: {rule.get('Signal')} - Exit: {rule.get('Exit')}")
+                    print(
+                        f"Rule {idx}: {rule.get('Signal')} - Exit: {rule.get('Exit')}"
+                    )
             elif isinstance(data, dict):
                 print("Yaml dict keys:", list(data.keys()))
                 rules = data.get("ranking_2026", [])
                 print("rules length:", len(rules))
                 for idx, rule in enumerate(rules):
-                    print(f"Rule {idx}: {rule.get('Signal')} - Exit: {rule.get('Exit')}")
+                    print(
+                        f"Rule {idx}: {rule.get('Signal')} - Exit: {rule.get('Exit')}"
+                    )
             else:
                 print("Yaml content length:", len(content))
     print("-------------------")

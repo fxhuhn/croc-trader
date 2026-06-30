@@ -149,7 +149,7 @@ class DipBuyerStrategy(BaseStrategy):
         )
 
         if not market_data or "close" not in market_data or market_data["close"].empty:
-            logger.warning(f"[{self.name}] No market data available for universe.")
+            logger.warning("[%s] No market data available for universe.", self.name)
             return 0
 
         # 4. Resolve Date
@@ -167,14 +167,16 @@ class DipBuyerStrategy(BaseStrategy):
         if not analysis_date:
             last_date = closes.index[-1]
             logger.info(
-                f"[{self.name}] Analysis Date not provided. Using last DB date: {last_date.date()}"
+                "[%s] Analysis Date not provided. Using last DB date: %s",
+                self.name,
+                last_date.date(),
             )
             return last_date
 
         try:
             target_date = pd.Timestamp(analysis_date)
         except ValueError:
-            logger.error(f"Invalid analysis date: {analysis_date}")
+            logger.error("Invalid analysis date: %s", analysis_date)
             return None
 
         if target_date in closes.index:
@@ -183,21 +185,26 @@ class DipBuyerStrategy(BaseStrategy):
         # 1. Post-Data Case (Data lag)
         if target_date > closes.index[-1]:
             logger.warning(
-                f"[{self.name}] Requested {target_date.date()} but data ends "
-                f"{closes.index[-1].date()}. Falling back to last available data."
+                "[%s] Requested %s but data ends %s. Falling back to last available data.",
+                self.name,
+                target_date.date(),
+                closes.index[-1].date(),
             )
             return closes.index[-1]
 
         # 2. Gap Case (Holiday)
         available_dates = closes.index[closes.index < target_date]
         if available_dates.empty:
-            logger.error(f"[{self.name}] No data found before {target_date.date()}")
+            logger.error("[%s] No data found before %s", self.name, target_date.date())
             return None
 
+        # Fallback date
         fallback_date = available_dates[-1]
         logger.info(
-            f"[{self.name}] {target_date.date()} is holiday/missing. "
-            f"Using: {fallback_date.date()}"
+            "[%s] %s is holiday/missing. Using: %s",
+            self.name,
+            target_date.date(),
+            fallback_date.date(),
         )
         return fallback_date
 
@@ -208,7 +215,7 @@ class DipBuyerStrategy(BaseStrategy):
         signals_dataframe = self._calculate_signals(market_data, target_date)
 
         if signals_dataframe.empty:
-            logger.debug(f"[{self.name}] No signals found for {target_date.date()}.")
+            logger.debug("[%s] No signals found for %s.", self.name, target_date.date())
             return 0
 
         # --- Symbol Filtering Integration ---
@@ -217,10 +224,10 @@ class DipBuyerStrategy(BaseStrategy):
 
         if len(candidates) != len(filtered_candidates):
             removed = set(candidates) - set(filtered_candidates)
-            logger.info(f"[{self.name}] Filtered out secondary symbols: {removed}")
+            logger.info("[%s] Filtered out secondary symbols: %s", self.name, removed)
             signals_dataframe = signals_dataframe.loc[filtered_candidates]
 
-        logger.debug(f"[{self.name}] Total signals: {len(signals_dataframe)}")
+        logger.debug("[%s] Total signals: %d", self.name, len(signals_dataframe))
         return self._process_signals(signals_dataframe, target_date)
 
     def _calculate_signals(
@@ -240,14 +247,16 @@ class DipBuyerStrategy(BaseStrategy):
         # Note: _resolve_target_date already ensured the date exists in the raw data or selected a fallback.
         if target_date not in closes.index:
             logger.warning(
-                f"[{self.name}] Target date {target_date.date()} dropped after cleaning (no valid data for universe)."
+                "[%s] Target date %s dropped after cleaning (no valid data for universe).",
+                self.name,
+                target_date.date(),
             )
             return pd.DataFrame()
 
         try:
             current_index_location = closes.index.get_loc(target_date)
         except KeyError:
-            logger.error(f"Date {target_date} not found in market data.")
+            logger.error("Date %s not found in market data.", target_date)
             return pd.DataFrame()
 
         # --- Data Slicing ---

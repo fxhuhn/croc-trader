@@ -76,13 +76,15 @@ def ingest_webhook() -> Response:
 
         if not payload:
             raw_data = request.get_data(as_text=True)
-            logger.warning(f"⚠️ Malformed Webhook Data: {raw_data}")
+            logger.warning("⚠️ Malformed Webhook Data: %s", raw_data)
             return jsonify({"status": "error", "message": "Invalid JSON"}), 400
 
         # Mandatory Field Validation
         symbol = payload.get("symbol") or payload.get("ticker")
         if not symbol:
-            logger.warning(f"⚠️ Webhook rejected: Missing 'symbol' in payload {payload}")
+            logger.warning(
+                "⚠️ Webhook rejected: Missing 'symbol' in payload %s", payload
+            )
             return jsonify(
                 {
                     "status": "error",
@@ -104,7 +106,7 @@ def ingest_webhook() -> Response:
         # but we use WebhookPayload for internal type safety.
         signal_id = repository.save_signal(dict(payload))
 
-        logger.info(f"✅ Webhook saved: {symbol} -> ID {signal_id}")
+        logger.info("✅ Webhook saved: %s -> ID %s", symbol, signal_id)
 
         return jsonify({"status": "success", "id": signal_id}), 201
 
@@ -143,7 +145,9 @@ def trigger_screener() -> Response:
             return jsonify({"error": "Screener Engine not initialized"}), 503
 
         logger.info(
-            f"API Trigger: Screener run (days={days_lookback}, strategy={target_strategy})"
+            "API Trigger: Screener run (days=%d, strategy=%s)",
+            days_lookback,
+            target_strategy,
         )
         statistics = screener_engine.run_all(
             days=days_lookback, strategy_filter=target_strategy
@@ -151,7 +155,7 @@ def trigger_screener() -> Response:
 
         return jsonify({"status": "success", "stats": statistics}), 200
     except Exception as error:
-        logger.exception(f"Error during screener run: {error}")
+        logger.exception("Error during screener run: %s", error)
         return jsonify({"error": str(error)}), 500
 
 
@@ -202,7 +206,7 @@ def analyze_dip_buyer() -> Response:
         return jsonify(analysis_result), 200
 
     except Exception as error:
-        logger.exception(f"Error analyzing symbol: {error}")
+        logger.exception("Error analyzing symbol: %s", error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -251,7 +255,7 @@ def analyze_turnover() -> Response:
         return jsonify(analysis_result), 200
 
     except Exception as error:
-        logger.exception(f"Error analyzing turnover symbol: {error}")
+        logger.exception("Error analyzing turnover symbol: %s", error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -300,7 +304,7 @@ def analyze_croc() -> Response:
         ), 200
 
     except Exception as error:
-        logger.exception(f"Error analyzing Croc setup: {error}")
+        logger.exception("Error analyzing Croc setup: %s", error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -353,7 +357,7 @@ def analyze_ndx_momentum() -> Response:
         ), 200
 
     except Exception as error:
-        logger.exception(f"Error analyzing NDX Momentum: {error}")
+        logger.exception("Error analyzing NDX Momentum: %s", error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -376,7 +380,7 @@ def trigger_orders() -> Response:
 
         return jsonify({"status": "success", "message": "No orders generated"}), 200
     except Exception as error:
-        logger.error(f"Order generation failed: {error}")
+        logger.error("Order generation failed: %s", error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -401,7 +405,7 @@ def trigger_trades_backfill() -> Response:
             }
         )
     except Exception as error:
-        logger.error(f"Trades backfill failed: {error}")
+        logger.error("Trades backfill failed: %s", error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -437,7 +441,7 @@ def sync_market_data() -> Response:
             quality_service = MarketQualityService(updater)
             quality_service.perform_gap_check()
         except (RuntimeError, ValueError) as sync_error:
-            logger.error(f"Market Sync Task Error: {sync_error}")
+            logger.error("Market Sync Task Error: %s", sync_error)
 
     Thread(target=_execute_sync_task, daemon=True).start()
     return jsonify({"status": "accepted", "message": "Sync started"}), 202
@@ -469,7 +473,7 @@ def reload_market_data() -> Response:
             updater = MarketDataUpdater(market_session, signals_session)
             updater.run_update(full_reload=True)
         except (RuntimeError, ValueError) as reload_error:
-            logger.error(f"Market Reload Task Error: {reload_error}")
+            logger.error("Market Reload Task Error: %s", reload_error)
 
     Thread(target=_execute_reload_task, daemon=True).start()
     return jsonify({"status": "queued", "message": "Full reload triggered"}), 200

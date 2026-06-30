@@ -32,7 +32,7 @@ class TradeRepository(BaseRepository):
     }
 
     def init_schema(self) -> None:
-        """Erstellt das DB-Schema neu (Unified Table)."""
+        """Recreates the DB schema (Unified Table)."""
         with self.session.connect() as connection:
             # self.execute("DROP TABLE IF EXISTS active_trades", connection=connection)
             # self.execute("DROP TABLE IF EXISTS trades_croc", connection=connection)
@@ -124,7 +124,7 @@ class TradeRepository(BaseRepository):
         return dict(row) if row else None
 
     def get_active_trades(self) -> list[dict[str, object]]:
-        """Legacy Helper: Holt CREATED und ACTIVE."""
+        """Legacy Helper: Fetches CREATED and ACTIVE."""
         rows = self.fetch_all(
             "SELECT * FROM trades WHERE status IN ('CREATED', 'ACTIVE')"
         )
@@ -133,9 +133,9 @@ class TradeRepository(BaseRepository):
     def get_by_status(
         self, status: str | Enum | list[str | Enum]
     ) -> list[dict[str, object]]:
-        """Holt Trades basierend auf Status. Akzeptiert Enums oder Strings."""
+        """Fetches trades based on status. Accepts enums or strings."""
         if isinstance(status, list):
-            # Enums in Strings wandeln
+            # Convert enums to strings
             statuses = [s.value if isinstance(s, Enum) else s for s in status]
             placeholders = ",".join("?" for _ in statuses)
             sql = f"SELECT * FROM trades WHERE status IN ({placeholders})"
@@ -154,7 +154,7 @@ class TradeRepository(BaseRepository):
         return [row["symbol"] for row in rows if row["symbol"]]
 
     def get_all_by_strategy(self, strategy: str | Enum) -> list[dict[str, object]]:
-        """Holt alle Trades für eine bestimmte Strategie."""
+        """Fetches all trades for a specific strategy."""
         strategy_value = strategy.value if isinstance(strategy, Enum) else strategy
         rows = self.fetch_all(
             "SELECT * FROM trades WHERE strategy = ?", (strategy_value,)
@@ -342,7 +342,7 @@ class TradeRepository(BaseRepository):
                         )
                         return trade_id
 
-                    # UPDATE existierenden Trade (Reset auf Startbedingungen)
+                    # UPDATE existing trade (reset to starting conditions)
                     self._reset_existing_trade(
                         connection,
                         trade_id,
@@ -372,7 +372,7 @@ class TradeRepository(BaseRepository):
         updates: dict[str, object],
         reason: str | None = None,
     ) -> None:
-        """Generisches Update."""
+        """Generic update."""
         if not updates:
             return
 
@@ -407,7 +407,7 @@ class TradeRepository(BaseRepository):
 
             for key, new_value in safe_updates.items():
                 old_value = trade.get(key)
-                # Vergleich als String um Typ-Probleme zu vermeiden
+                # Compare as string to avoid type issues
                 if str(old_value) != str(new_value):
                     set_clauses.append(f"{key} = ?")
                     values.append(new_value)
@@ -458,12 +458,12 @@ class TradeRepository(BaseRepository):
             connection=connection,
         )
 
-    # --- NEU: Die fehlende Methode für TurnoverTimingStrategy ---
+    # --- missing method for TurnoverTimingStrategy ---
     def exists(self, symbol: str, strategy: str, date: str) -> bool:
         """
-        Prüft, ob ein Trade existiert, indem im signal_context nach dem Datum gesucht wird.
+        Checks if a trade exists by looking up the date in signal_context.
         """
-        # Wir suchen das Datum sauber als JSON extract.
+        # Find the date cleanly as a JSON extract.
         wildcard_strat = f"{strategy}%"
 
         sql = """

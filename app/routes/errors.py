@@ -86,20 +86,22 @@ def page_not_found(e: Exception) -> tuple[Response | str, int]:
 
     path = request.path.lower()
 
-    # Check: Ist es ein Script-Kiddie-Scan?
+    # Check: is this a script-kiddie scan?
     is_blocked = (
         path.endswith(BLOCKED_EXTENSIONS) or "wp-admin" in path or "wp-login" in path
     )
 
     if not is_blocked:
-        # NUR loggen, wenn es KEIN geblockter Pfad ist
+        # Only log if it is NOT a blocked path
         # Security: Allow only safe characters in log
         safe_path = request.path.replace("\n", "").replace("\r", "")
         safe_method = request.method.replace("\n", "").replace("\r", "")
-        logger.warning(f"404 Not Found: {safe_method} {safe_path} - IP: {resolved_ip}")
+        logger.warning(
+            "404 Not Found: %s %s - IP: %s", safe_method, safe_path, resolved_ip
+        )
 
-    # Normale 404 Seite
-    # API Clients erhalten JSON
+    # Standard 404 page
+    # API clients receive JSON
     if request.path.startswith(API_PREFIXES) or request.is_json:
         return jsonify(
             {
@@ -128,7 +130,7 @@ def internal_server_error(e: Exception) -> tuple[Response | str, int]:
     Returns:
         tuple: (Response or HTML string, Status Code 500)
     """
-    logger.error(f"500 Internal Server Error: {e}", exc_info=True)
+    logger.error("500 Internal Server Error: %s", e, exc_info=True)
 
     if request.path.startswith(API_PREFIXES) or request.is_json:
         # Security: Do NOT return str(e) to client, as it may contain sensitive info

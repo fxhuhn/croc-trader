@@ -1057,7 +1057,7 @@ def _display_capacity_simulation(
         console.print(table)
 
     except Exception as e:
-        logger.error(f"Simulation Failed: {e}", exc_info=True)
+        logger.error("Simulation Failed: %s", e, exc_info=True)
         console.print(f"[bold red]Simulation Failed: {e}[/bold red]")
 
 

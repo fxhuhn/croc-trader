@@ -130,9 +130,7 @@ class PortfolioMetrics:
 
 @dataclass
 class CrocSignal:
-    """
-    Repräsentiert ein Handelssignal.
-    """
+    """Represents an incoming trading signal from the Croc system."""
 
     symbol: str
     signal: str
@@ -156,57 +154,54 @@ class CrocSignal:
     deluxe: str | None = None
     strategy_id: str | None = None
     reference: str | None = None
-    # Factory default sorgt für korrekten Zeitpunkt bei Instanziierung
+    # Factory default ensures correct timestamp at instantiation time
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __post_init__(self):
-        """Bereinigt Daten und setzt Defaults nach der Initialisierung."""
-        # String Bereinigung
+        """Sanitizes data and sets defaults after initialization."""
+        # String sanitization
         for key, value in self.__dict__.items():
             if isinstance(value, str):
                 setattr(self, key, value.strip())
 
-        # Fallback Logic
+        # Fallback logic
         if not self.exchange and self.full_symbol:
             self.exchange = self.full_symbol
 
         if self.exchange is None:
-            self.exchange = self.full_symbol or self.symbol  # Letzter Fallback
+            self.exchange = self.full_symbol or self.symbol  # Last resort fallback
 
         mapped_exchange = mapper.get_exchange(self.symbol)
 
         if mapped_exchange:
-            # Wir haben einen Treffer im JSON -> Überschreiben
+            # Match found in JSON -> override
             self.exchange = mapped_exchange
         elif self.exchange == "BATS" or self.exchange is None:
-            # Kein Treffer im JSON, aber BATS oder Leer -> Fallback Versuche
+            # No match in JSON, and BATS or empty -> set to unknown
             self.exchange = "UNKNOWN"
 
-        # Timestamp Parsing (falls String übergeben wurde)
+        # Timestamp parsing (handles string input)
         if isinstance(self.timestamp, str):
             try:
                 self.timestamp = datetime.fromisoformat(self.timestamp)
             except (ValueError, TypeError):
                 logger.warning(
-                    f"Konnte Timestamp '{self.timestamp}' nicht parsen, nutze 'now'."
+                    "Could not parse timestamp '%s', using 'now'.",
+                    self.timestamp,
                 )
                 self.timestamp = datetime.now(timezone.utc)
 
-        # Unique ID Generierung
+        # Unique ID generation
         if self.reference is None:
             ts_str = self.timestamp.strftime("%Y%m%d%H%M%S")
             self.reference = f"{self.symbol}_{ts_str}"
 
     def to_db_row(self) -> dict[str, Any]:
-        """Konvertiert das Objekt für die SQLite Speicherung."""
+        """Converts the object for SQLite storage."""
         d = asdict(self)
-        # SQLite braucht ISO Strings für Datetime
+        # SQLite requires ISO strings for datetime
         d["timestamp"] = self.timestamp.isoformat()
         return d
-
-
-# app/models.py
-# ... (deine existierenden Imports und CrocSignal) ...
 
 
 @dataclass
@@ -222,14 +217,14 @@ class SignalStat:
     win_rate: float
     loss_rate: float
 
-    # Optionale Felder (können leer sein laut CSV Beispiel)
+    # Optional fields (may be empty according to CSV examples)
     wolke: str | None = None
     welle: str | None = None
     trend: str | None = None
     setter: str | None = None
     exchange: str | None = None
 
-    # Metadaten
+    # Metadata
     updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def __post_init__(self):
@@ -248,7 +243,7 @@ class SignalStat:
             self.exchange = self.exchange if self.exchange else None
 
         except (ValueError, TypeError) as e:
-            logger.warning(f"import fehler bei {e}")
+            logger.warning("Import error for field: %s", e)
 
     def to_db_row(self) -> dict[str, Any]:
         d = asdict(self)

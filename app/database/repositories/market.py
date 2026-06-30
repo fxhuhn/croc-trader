@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class MarketRepository(BaseRepository):
     def init_schema(self) -> None:
-        """Erstellt die Tabelle für Marktdaten."""
+        """Creates the table for market data."""
         with self.session.connect() as connection:
             self.execute(
                 """
@@ -60,7 +60,7 @@ class MarketRepository(BaseRepository):
         return {row["symbol"] for row in rows}
 
     def remove_ignored_symbol(self, symbol: str) -> None:
-        """Entfernt ein Symbol aus der Tabelle der ignorierten Symbole."""
+        """Removes a symbol from the ignored symbols blacklist."""
         self.execute(
             "DELETE FROM ignored_symbols WHERE symbol = ?",
             (symbol,),
@@ -82,7 +82,7 @@ class MarketRepository(BaseRepository):
         return [row["symbol"] for row in rows]
 
     def get_symbols_with_missing_history(self, cutoff_date: str) -> list[str]:
-        """Findet Symbole, deren Historie erst NACH dem cutoff_date beginnt (zu wenig Daten)."""
+        """Finds symbols whose history starts AFTER the cutoff_date (insufficient data)."""
         sql = """
             SELECT symbol FROM market_prices
             WHERE symbol NOT IN (SELECT symbol FROM ignored_symbols)
@@ -106,16 +106,16 @@ class MarketRepository(BaseRepository):
         sql = "SELECT COUNT(*) FROM market_prices WHERE symbol = ? AND date >= ? AND date <= ? AND timeframe = '1D'"
         return self.fetch_value(sql, (symbol, start_date_string, end_date_string)) or 0
 
-    # --- HELPER für Validation ---
+    # --- Helper for Validation ---
     def get_ohlcv(self, symbol: str, date: str) -> dict[str, object] | None:
-        """Holt einen einzelnen OHLCV Datensatz."""
+        """Fetches a single OHLCV record."""
         sql = "SELECT * FROM market_prices WHERE symbol = ? AND date = ? AND timeframe = '1D'"
         row = self.fetch_one(sql, (symbol, date))
         return dict(row) if row else None
 
     # --- Data Access Logic (Bulk / Pandas) ---
     def get_data_for_lookback(self, start_date: str) -> pandas.DataFrame:
-        """Lädt alle Daten ab start_date für Pivotisierung."""
+        """Loads all data from start_date for pivot operations."""
         sql = """
             SELECT date, symbol, open, high, low, close, volume
             FROM market_prices
@@ -129,7 +129,7 @@ class MarketRepository(BaseRepository):
             return df
 
     def get_symbol_history_raw(self, symbol: str, start_date: str) -> pandas.DataFrame:
-        """Lädt Historie für ein Einzelsymbol (WICHTIG für TradeManager)."""
+        """Loads history for a single symbol (IMPORTANT for TradeManager)."""
         sql = """
             SELECT date, open, high, low, close, volume 
             FROM market_prices 
@@ -145,7 +145,7 @@ class MarketRepository(BaseRepository):
     def get_batch_history_raw(
         self, symbols: list[str], start_date: str, end_date: str
     ) -> pandas.DataFrame:
-        """Lädt Historie für mehrere Symbole."""
+        """Loads history for multiple symbols."""
         if not symbols:
             return pandas.DataFrame()
         placeholders = ",".join("?" for _ in symbols)

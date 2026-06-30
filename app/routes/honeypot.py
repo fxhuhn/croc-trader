@@ -70,7 +70,9 @@ def _process_honeypot_request(route_path: str) -> tuple[str, int]:
         return "Authentication failed or account locked.", 401
 
     # Log the GET scan and serve the bait
-    logger.info(f"🍯 HONEYPOT SCANNED [{route_path}] | IP: {client_ip} | Action: GET")
+    logger.info(
+        "🍯 HONEYPOT SCANNED [%s] | IP: %s | Action: GET", route_path, client_ip
+    )
     return _HONEYPOT_HTML_TEMPLATE, 200
 
 

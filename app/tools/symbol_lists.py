@@ -145,11 +145,11 @@ class ExchangeSymbol:
                 self._russell_1000 = russell_1000
 
             logger.debug(
-                f"✓ Symbol refresh complete: "
-                f"S&P 500={len(self._sp_500)}, "
-                f"NASDAQ-100={len(self._nasdaq_100)}, "
-                f"Dow 30={len(self._dow_30)}, "
-                f"Russell 1000={len(self._russell_1000)}"
+                "✓ Symbol refresh complete: S&P 500=%d, NASDAQ-100=%d, Dow 30=%d, Russell 1000=%d",
+                len(self._sp_500),
+                len(self._nasdaq_100),
+                len(self._dow_30),
+                len(self._russell_1000),
             )
 
             self._save_to_cache()
@@ -161,29 +161,29 @@ class ExchangeSymbol:
         self, url: str, search_columns: list[str], name: str
     ) -> list[str]:
         """
-        Lädt alle Tabellen einer Wikipedia-Seite und sucht die richtige heraus,
-        indem geprüft wird, ob eine der 'search_columns' existiert.
+        Fetches all tables from a Wikipedia page and identifies the correct one
+        by checking if one of the 'search_columns' is present in the table.
         """
         try:
-            logger.debug(f"Fetching {name} from {url}...")
+            logger.debug("Fetching %s from %s...", name, url)
 
-            # Alle Tabellen der Seite laden
+            # Load all tables on the page
             try:
                 tables = pd.read_html(
                     url, storage_options={"User-Agent": "Mozilla/5.0"}
                 )
             except Exception as e:
-                logger.error(f"Error reading HTML from {url}: {e}")
+                logger.error("Error reading HTML from %s: %s", url, e)
                 return []
 
             target_df = None
             found_col = None
 
-            # Durchsuche alle gefundenen Tabellen
+            # Search all discovered tables
             for i, df in enumerate(tables):
-                # Prüfe ob eine der gesuchten Spalten (z.B. "Symbol") existiert
+                # Check if one of the target columns (e.g. "Symbol") exists
                 for col_candidate in search_columns:
-                    # Case-insensitive Suche in den Spaltennamen
+                    # Case-insensitive check of column names
                     match = next(
                         (
                             c
@@ -195,7 +195,6 @@ class ExchangeSymbol:
                     if match:
                         target_df = df
                         found_col = match
-                        # logger.debug(f"Found '{col_candidate}' in table index {i} for {name}")
                         break
 
                 if target_df is not None:
@@ -203,30 +202,29 @@ class ExchangeSymbol:
 
             if target_df is None:
                 logger.warning(
-                    f"Could not find a table with columns {search_columns} for {name}. Found {len(tables)} tables."
+                    "Could not find a table with columns %s for %s. Found %d tables.",
+                    search_columns,
+                    name,
+                    len(tables),
                 )
                 return []
 
-            # Symbole extrahieren und bereinigen
+            # Extract and clean symbols
             symbols = target_df[found_col].astype(str).str.strip()
 
-            # Bereinigung: Punkte durch Striche ersetzen (BRK.B -> BRK-B), leere entfernen
+            # Clean symbols: replace dots with dashes (BRK.B -> BRK-B), filter empty/nan
             clean_symbols = [
                 s.replace(".", "-")
                 for s in symbols
                 if len(s) > 0 and s.lower() != "nan"
             ]
 
-            # Duplikate entfernen und sortieren
+            # Deduplicate and sort
             result = sorted(list(set(clean_symbols)))
-
-            # logger.info(
-            #     f"✓ Loaded {len(result)} {name} symbols (found in table with col '{found_col}')"
-            # )
             return result
 
         except Exception as e:
-            logger.error(f"Failed to load {name}: {e}")
+            logger.error("Failed to load %s: %s", name, e)
             return []
 
     @property
@@ -252,8 +250,8 @@ class ExchangeSymbol:
     @property
     def russell_1000_exclusive(self) -> list[str]:
         """
-        Russell 1000 OHNE die Titel aus S&P 500, Nasdaq 100 und Dow 30.
-        Dient dazu, 'kleinere' Large Caps zu finden, die nicht in den Top-Indizes sind.
+        Russell 1000 EXCLUDING constituents from S&P 500, Nasdaq 100, and Dow 30.
+        Helps identify 'smaller' large caps that are not in the premier indices.
         """
         all_others = set(self._sp_500) | set(self._nasdaq_100) | set(self._dow_30)
         rus_excl = set(self._russell_1000) - all_others

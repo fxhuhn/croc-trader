@@ -205,3 +205,42 @@ def test_generate_orders_active_trade(strategy, mock_trade_repo):
     assert orders.exits[1].action == "SELL"
     assert orders.exits[1].type == "LOC"
     assert orders.exits[1].price == 98.5
+
+
+def test_generate_orders_active_trade_time_stop(strategy, mock_trade_repo):
+    """Tests that a MOC exit order is generated instead of a LOC order on Day 8 (7 prior days in history)."""
+    trade = {
+        "symbol": "AAPL",
+        "entry_price": 100.0,
+        "entry_date": "2026-02-18",
+        "initial_size": 10,
+        "status": "ACTIVE",
+        "current_target": 105.0,
+        "signal_context": '{"threshold_loc": 98.5}',
+    }
+
+    # 7 days of history starting from the entry date (meaning today is Day 8)
+    dates = pd.to_datetime(["2026-02-" + str(i + 18) for i in range(7)])
+    dataframe_history = pd.DataFrame(
+        {
+            "date": dates,
+            "high": [98.49] * 7,
+        }
+    )
+
+    orders = strategy.generate_orders(trade, dataframe_history, 2000.0, mock_trade_repo)
+
+    assert orders is not None
+    assert orders.symbol == "AAPL"
+    assert orders.quantity == 10
+    assert orders.entry is None
+    assert len(orders.exits) == 2
+    # Exit 1: TP Sell LMT at 105
+    assert orders.exits[0].action == "SELL"
+    assert orders.exits[0].type == "LMT"
+    assert orders.exits[0].price == 105.0
+    # Exit 2: EOD Time Stop MOC at 0.0
+    assert orders.exits[1].action == "SELL"
+    assert orders.exits[1].type == "MOC"
+    assert orders.exits[1].price == 0.0
+

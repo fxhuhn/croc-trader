@@ -6,7 +6,7 @@ from .config import ConfigManager, settings
 from .extensions import cache
 from .mapping import mapper
 
-# WICHTIG: Wir importieren jetzt den Aggregator (main_bp) aus dem routes-Package
+# Import the aggregated routes blueprint from the routes package
 from .routes import main_bp
 
 # Services Setup
@@ -90,18 +90,18 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
     }
     logging.config.dictConfig(LOGGING_CONFIG)
 
-    # 3. Mapper laden
+    # 3. Load exchange mapper
     mapper.load()
 
     # 4. Services & Scheduler
     register_services(app, config_object)
     configure_scheduler(app, config_object)
 
-    # 5. Blueprints registrieren
-    # Hier wird nur noch der Haupt-Aggregator registriert
+    # 5. Register blueprints
+    # Only the main aggregator is registered here
     app.register_blueprint(main_bp)
 
-    # 6. Icons root routes
+    # 6. Static file root routes
     @app.route("/favicon.ico")
     def favicon():
         return send_from_directory(

@@ -9,13 +9,6 @@ import yaml
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-CONFIG_FILE = (
-    BASE_DIR / "data" / "settings.yaml"
-)  # Pfad explizit auf data/settings.yaml prüfen, falls gewünscht, oder Standard lassen.
-# HINWEIS: Im originalen Code war CONFIG_FILE = BASE_DIR / "settings.yaml".
-# Wenn Sie settings.yaml im root haben, lassen wir es so.
-# Wenn settings.yaml in data/ liegt, müsste man das anpassen.
-# Standard aus Ihrem Code war:
 CONFIG_FILE = BASE_DIR / "settings.yaml"
 
 # Logger Setup (No basicConfig side-effect)
@@ -25,7 +18,7 @@ load_dotenv()
 
 
 # ---------------------------------------------------------
-# DEFAULTS (Konstanten für Robustheit)
+# Defaults (Constants for robustness)
 # ---------------------------------------------------------
 
 DEFAULT_DB_FILES = {
@@ -35,7 +28,7 @@ DEFAULT_DB_FILES = {
     "strategy_yaml": "croc-strategie.yaml",
     "exchange_mapping": "symbol_exchange.json",
     "stats_import": "croc_statistik.csv",
-    "ranking_yaml": "ranking_2026.yaml",  # NEU
+    "ranking_yaml": "ranking_2026.yaml",
     "holidays_yaml": "holidays.yaml",
 }
 
@@ -43,7 +36,7 @@ DEFAULT_DB_FOLDERS = {"orders": "orders"}
 
 
 # ---------------------------------------------------------
-# Teil 1: Die Unter-Konfigurationen (Nested Classes)
+# Part 1: Nested Configuration Dataclasses
 # ---------------------------------------------------------
 
 
@@ -146,13 +139,13 @@ class PortfolioConfig:
 
 
 # ---------------------------------------------------------
-# Teil 2: Die Haupt-Applikations-Konfiguration
+# Part 2: Main Application Configuration
 # ---------------------------------------------------------
 
 
 @dataclass
 class AppConfig:
-    """Repräsentiert die gesamte config.yaml Struktur."""
+    """Top-level application configuration combining all subsections."""
 
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     webserver: WebserverConfig = field(default_factory=WebserverConfig)
@@ -164,21 +157,21 @@ class AppConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppConfig":
-        """Wandelt ein Dictionary (aus YAML) rekursiv in Dataclasses um.
+        """Recursively converts a dictionary (from YAML) into nested dataclasses.
 
-        Führt Smart-Merging durch, um fehlende Keys in alten Config-Files zu ergänzen.
+        Performs smart-merging to fill in missing keys from older config files.
         """
-        # 1. Datenbank Config mit Merge-Logik
+        # 1. Database config with merge logic
         db_data = data.get("database", {})
         if db_data:
-            # Files Merging: Defaults nehmen und mit geladenen Werten überschreiben
-            # So bleiben existierende Pfade erhalten, aber neue Keys (wie ranking_yaml) kommen dazu.
+            # Files merging: start from defaults, override with loaded values.
+            # Existing paths are preserved while new keys are added automatically.
             loaded_files = db_data.get("files", {})
             merged_files = DEFAULT_DB_FILES.copy()
             merged_files.update(loaded_files)
             db_data["files"] = merged_files
 
-            # Folders Merging
+            # Folders merging
             loaded_folders = db_data.get("folders", {})
             merged_folders = DEFAULT_DB_FOLDERS.copy()
             merged_folders.update(loaded_folders)
@@ -188,7 +181,7 @@ class AppConfig:
         else:
             db_config = DatabaseConfig()
 
-        # 2. Restliche Configs
+        # 2. Remaining configs
         web_data = data.get("webserver", {})
         web_config = WebserverConfig(**web_data) if web_data else WebserverConfig()
 
@@ -287,7 +280,7 @@ class AppConfig:
 
 
 # ---------------------------------------------------------
-# Teil 3: Environment Config (Secrets)
+# Part 3: Environment Config (Secrets)
 # ---------------------------------------------------------
 
 
@@ -298,13 +291,13 @@ class EnvConfig:
 
 
 # ---------------------------------------------------------
-# Teil 4: Der Manager
+# Part 4: Configuration Manager
 # ---------------------------------------------------------
 
 
 class ConfigManager:
     def __init__(self):
-        # Basis-Verzeichnis verfügbar machen
+        # Expose the base directory for path resolution
         self.BASE_DIR = BASE_DIR
 
         self.env = self._load_env()
@@ -312,12 +305,11 @@ class ConfigManager:
 
         self._apply_env_overrides()
 
-        # Berechneter Pfad für Datenbanken (Absoluter Pfad)
-        # HINWEIS: base_folder ist standardmäßig 'data'
+        # Computed absolute path for databases (base_folder defaults to 'data')
         self.db_root_path = BASE_DIR / self.app.database.base_folder
         self.db_root_path.mkdir(parents=True, exist_ok=True)
 
-        # Berechneter Pfad für Logging (Absoluter Pfad)
+        # Computed absolute path for log files
         self.logging_root_path = BASE_DIR / self.app.logging.base_folder
         self.logging_root_path.mkdir(parents=True, exist_ok=True)
 
@@ -359,9 +351,6 @@ class ConfigManager:
         self.app.telegram = overridden_telegram
 
     def _load_or_create_yaml(self) -> AppConfig:
-        # Prüfen ob settings.yaml in data/ liegt (Migrationsempfehlung) oder im Root
-        # Hier behalten wir die Logik bei: CONFIG_FILE zeigt auf Root/settings.yaml laut Zeile 17
-
         if not CONFIG_FILE.exists():
             logger.info("Creating default config: %s", CONFIG_FILE)
             default_config = AppConfig()
@@ -386,14 +375,13 @@ class ConfigManager:
         try:
             with open(CONFIG_FILE) as f:
                 data = yaml.safe_load(f) or {}
-                # Hier greift nun das Smart-Merging in from_dict
                 return AppConfig.from_dict(data)
         except Exception as e:
-            logger.error(f"Fehler beim Laden der Config: {e}")
+            logger.error("Failed to load config: %s", e)
             sys.exit(1)
 
     def get_path(self, key: str) -> Path:
-        """Universeller Abruf für konfigurierte Dateipfade mit Traversal-Schutz."""
+        """Retrieves a configured file path with path-traversal protection."""
         filename = self.app.database.files.get(key)
         if not filename:
             return self.db_root_path / f"MISSING_CONFIG_{key}"
@@ -402,27 +390,28 @@ class ConfigManager:
 
         # Security: Prevent Path Traversal
         if not str(target_path).startswith(str(self.db_root_path.resolve())):
-            logger.error(f"❌ SECURITY: Path Traversal Attempt blocked: {filename}")
+            logger.error("❌ SECURITY: Path Traversal Attempt blocked: %s", filename)
             raise ValueError(f"Insecure path detected: {filename}")
 
         return target_path
 
     def get_folder(self, key: str) -> Path:
-        """Abruf für Ordner mit Traversal-Schutz."""
+        """Retrieves a configured folder path with path-traversal protection."""
         foldername = self.app.database.folders.get(key, key)
         target_path = (self.db_root_path / foldername).resolve()
 
         # Security: Prevent Path Traversal
         if not str(target_path).startswith(str(self.db_root_path.resolve())):
             logger.error(
-                f"❌ SECURITY: Path Traversal Attempt blocked in folder: {foldername}"
+                "❌ SECURITY: Path Traversal Attempt blocked in folder: %s",
+                foldername,
             )
             raise ValueError(f"Insecure folder path detected: {foldername}")
 
         target_path.mkdir(parents=True, exist_ok=True)
         return target_path
 
-    # Helper Methoden
+    # Helper methods
     def get_db_path(self, db_key: str) -> str:
         return str(self.get_path(db_key))
 

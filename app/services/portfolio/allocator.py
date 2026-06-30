@@ -192,5 +192,5 @@ class PortfolioAllocator:
             )
 
         # 6. Default / Fallback
-        logger.warning(f"[{symbol}] Unhandled Strategy Enum: {strategy_enum}")
+        logger.warning("[%s] Unhandled Strategy Enum: %s", symbol, strategy_enum)
         return AllocationResult(0, 0.0, 0.0, "Unhandled Strategy")

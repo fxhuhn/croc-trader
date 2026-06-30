@@ -68,7 +68,7 @@ class YahooDataProvider:
                 ignore_tz=True,
             )
         except Exception as e:
-            logger.error(f"YFinance Download Error: {e}")
+            logger.error("YFinance Download Error: %s", e)
             return pd.DataFrame(), symbols
 
         if df.empty:

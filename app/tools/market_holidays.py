@@ -64,14 +64,15 @@ class MarketHolidayChecker:
             self._initialized = True
 
             logger.debug(
-                f"✓ MarketHolidayChecker initialized with {len(self._holidays)} holidays"
+                "✓ MarketHolidayChecker initialized with %d holidays",
+                len(self._holidays),
             )
 
     def _load_holidays(self) -> None:
         """Loads holidays from the YAML file into memory."""
         try:
             if not self.yaml_path.exists():
-                logger.error(f"Holidays file not found at: {self.yaml_path}")
+                logger.error("Holidays file not found at: %s", self.yaml_path)
                 # We do not raise here to allow the app to run (maybe without holiday checks),
                 # but in strict mode we might want to raise. For now, log error.
                 # Per user rules: Critical errors -> Raise. Missing config file IS critical if we rely on it.
@@ -100,7 +101,7 @@ class MarketHolidayChecker:
                     )
 
         except Exception as e:
-            logger.critical(f"Failed to load market holidays: {e}")
+            logger.critical("Failed to load market holidays: %s", e)
             raise
 
     def is_holiday(self, date_check: datetime.date | str) -> bool:
@@ -142,7 +143,7 @@ class MarketHolidayChecker:
             try:
                 return datetime.datetime.strptime(date_check, "%Y-%m-%d").date()
             except ValueError:
-                logger.error(f"Invalid date string format: {date_check}")
+                logger.error("Invalid date string format: %s", date_check)
                 raise ValueError(
                     f"Invalid date string provided: {date_check}. Expected YYYY-MM-DD."
                 )
