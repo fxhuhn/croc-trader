@@ -233,6 +233,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         """Generates entry bracket orders for CREATED trades."""
         quantity = self._determine_order_quantity(trade, budget)
@@ -284,6 +285,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         """Generates exit orders for ACTIVE trades (Take Profit and EOD exit)."""
         quantity = self._determine_order_quantity(trade, budget)

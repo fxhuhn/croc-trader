@@ -74,6 +74,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         entry_price = float(trade.get("entry_price") or 0.0)
         trade_budget = self._get_strategy_budget(trade, budget)
@@ -98,6 +99,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         quantity = int(trade.get("current_size") or 0)
         if quantity <= 0:

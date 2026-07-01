@@ -418,12 +418,19 @@ class TradeManager:
 
         created_symbols = {str(t["symbol"]) for t in created_trades}
 
+        date_string = reference_date or datetime.now().strftime("%Y-%m-%d")
+
         active_exit_orders, active_symbols_by_strategy = (
-            self._collect_exit_orders_for_active_trades(active_trades, created_symbols)
+            self._collect_exit_orders_for_active_trades(
+                active_trades, created_symbols, reference_date=date_string
+            )
         )
 
         entry_orders = self._collect_entry_orders_for_created_trades(
-            created_trades, created_symbols, active_symbols_by_strategy
+            created_trades,
+            created_symbols,
+            active_symbols_by_strategy,
+            reference_date=date_string,
         )
 
         orders_data = entry_orders + active_exit_orders
@@ -432,7 +439,6 @@ class TradeManager:
             logger.info("No orders to generate.")
             return None
 
-        date_string = reference_date or datetime.now().strftime("%Y-%m-%d")
         csv_file_path = write_csv_orders_file(
             orders_data,
             date_string,
@@ -449,18 +455,36 @@ class TradeManager:
         self,
         active_trades: list[dict[str, object]],
         created_symbols: set[str],
+        reference_date: str | None = None,
     ) -> tuple[list[tuple[dict[str, object], Order]], dict[Strategies, set[str]]]:
         """Processes active trades to generate exit orders and track blocked symbols.
 
         Args:
             active_trades: List of active trade records from the database.
             created_symbols: Set of symbols with currently pending trades.
+            reference_date: Target date for generating orders.
 
         Returns:
             Tuple of (exit_orders, blocked_symbols_by_strategy).
         """
         active_symbols_by_strategy: dict[Strategies, set[str]] = {}
         active_exit_orders: list[tuple[dict[str, object], Order]] = []
+
+        # Get latest leaders for NDXMomentum strategy to avoid exiting active leaders on month switch
+        ndx_leaders: set[str] = set()
+        try:
+            ndx_trades = self.trade_repository.get_all_by_strategy(
+                Strategies.NDXMomentum
+            )
+            if isinstance(ndx_trades, list):
+                ndx_leaders = NDXMomentumTradeStrategy.extract_latest_leaders(
+                    ndx_trades
+                )
+        except Exception as database_error:
+            logger.warning(
+                "Failed to load NDX leaders during exit collection: %s. Using empty set.",
+                database_error,
+            )
 
         for active_trade in active_trades:
             resolved_strategy = self._resolve_strategy_name(
@@ -477,8 +501,14 @@ class TradeManager:
                 )
 
             try:
+                trade_created_symbols = created_symbols
+                if resolved_strategy == Strategies.NDXMomentum:
+                    trade_created_symbols = ndx_leaders
+
                 order = self._generate_order_for_trade(
-                    active_trade, created_symbols=created_symbols
+                    active_trade,
+                    created_symbols=trade_created_symbols,
+                    reference_date=reference_date,
                 )
                 if order:
                     active_exit_orders.append((active_trade, order))
@@ -501,6 +531,7 @@ class TradeManager:
         created_trades: list[dict[str, object]],
         created_symbols: set[str],
         active_symbols_by_strategy: dict[Strategies, set[str]],
+        reference_date: str | None = None,
     ) -> list[tuple[dict[str, object], Order]]:
         """Processes created trades to generate entry orders.
 
@@ -510,6 +541,7 @@ class TradeManager:
             created_trades: List of created trade records from the database.
             created_symbols: Set of symbols with currently pending trades.
             active_symbols_by_strategy: Symbols blocked by active single-position trades.
+            reference_date: Target date for generating orders.
 
         Returns:
             List of (trade, order) tuples for entry orders.
@@ -534,7 +566,9 @@ class TradeManager:
 
             try:
                 order = self._generate_order_for_trade(
-                    trade, created_symbols=created_symbols
+                    trade,
+                    created_symbols=created_symbols,
+                    reference_date=reference_date,
                 )
                 if order:
                     orders_data.append((trade, order))
@@ -554,12 +588,14 @@ class TradeManager:
         self,
         trade: dict[str, object],
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         """Generates a single order object for a given trade proposal.
 
         Args:
             trade: The trade record dictionary from the database.
             created_symbols: Set of symbols with currently pending (CREATED) trades.
+            reference_date: Target date for generating orders.
 
         Returns:
             Order | None: The generated order or None if no handler is found.
@@ -594,6 +630,7 @@ class TradeManager:
             history_dataframe,
             budget,
             created_symbols=created_symbols,
+            reference_date=reference_date,
         )
 
     def _write_csv_orders_file(

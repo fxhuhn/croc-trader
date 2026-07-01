@@ -115,7 +115,7 @@ class TestTradeManagerFailClosed:
                 stocks_db_path=tmp_path / "stocks.db",
             )
             manager_instance.trade_repository = MagicMock()
-            manager_instance.market_repo = MagicMock()
+            manager_instance.market_repository = MagicMock()
             return manager_instance
 
     def test_run_daily_process_raises_on_active_trade_db_lock(
@@ -676,7 +676,7 @@ class TestTradeManagerDipBuyerDynamicLOCUpdate:
                 stocks_db_path=tmp_path / "stocks.db",
             )
             manager_instance.trade_repository = mock_trade_repository
-            manager_instance.market_repo = mock_market_repository
+            manager_instance.market_repository = mock_market_repository
 
             # Mock history: previous high is 100.0, current close is 95.0
             history_data = [
@@ -1220,7 +1220,7 @@ class TestTradeManagerEntryDailyUpdate:
                 stocks_db_path=tmp_path / "stocks.db",
             )
             manager_instance.trade_repository = mock_trade_repo
-            manager_instance.market_repo = mock_market_repo
+            manager_instance.market_repository = mock_market_repo
 
             # Mock history: previous high is 100.0, current close is 95.0, low is 94.0
             history_data = [

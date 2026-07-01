@@ -170,3 +170,59 @@ def test_generate_orders(strategy, mock_trade_repo):
     assert orders.quantity == 20
     assert orders.entry.type == "MKT"
     assert orders.entry.time_in_force == "OPG"
+
+
+def test_generate_orders_exit_on_month_switch(strategy):
+    """Tests that an exit order is generated on month switch if not in leaders."""
+    trade = {
+        "status": "ACTIVE",
+        "symbol": "AAPL",
+        "current_size": 50,
+        "strategy": "ndx_momentum",
+    }
+    # History ends in June
+    df = pd.DataFrame(
+        {"date": [pd.Timestamp("2026-06-29"), pd.Timestamp("2026-06-30")]}
+    )
+
+    # Reference date is in July
+    orders = strategy.generate_orders(
+        trade=trade,
+        dataframe_history=df,
+        budget=10000.0,
+        created_symbols={"MSFT", "GOOG"},  # AAPL is not in new leaders
+        reference_date="2026-07-01",
+    )
+
+    assert orders is not None
+    assert orders.symbol == "AAPL"
+    assert orders.quantity == 50
+    assert orders.mode == "Exit"
+    assert orders.exits[0].action == "SELL"
+    assert orders.exits[0].type == "MKT"
+    assert orders.exits[0].time_in_force == "OPG"
+
+
+def test_generate_orders_no_exit_same_month(strategy):
+    """Tests that no exit order is generated when reference_date is in the same month."""
+    trade = {
+        "status": "ACTIVE",
+        "symbol": "AAPL",
+        "current_size": 50,
+        "strategy": "ndx_momentum",
+    }
+    # History ends in June
+    df = pd.DataFrame(
+        {"date": [pd.Timestamp("2026-06-29"), pd.Timestamp("2026-06-30")]}
+    )
+
+    # Reference date is also in June
+    orders = strategy.generate_orders(
+        trade=trade,
+        dataframe_history=df,
+        budget=10000.0,
+        created_symbols={"MSFT", "GOOG"},
+        reference_date="2026-06-30",
+    )
+
+    assert orders is None

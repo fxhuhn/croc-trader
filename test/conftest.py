@@ -242,12 +242,15 @@ def wrap_strategy_methods():
                             "Mocking failed to retrieve created_symbols: %s", error
                         )
 
+                reference_date = kwargs.get("reference_date")
+
                 return orig(
                     self,
                     trade,
                     dataframe_history,
                     budget,
                     created_symbols=created_symbols,
+                    reference_date=reference_date,
                 )
 
             return wrapped

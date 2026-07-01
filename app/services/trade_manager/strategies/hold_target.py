@@ -182,6 +182,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         """
         Generates an Order object for IBKR export.
@@ -263,5 +264,6 @@ class HoldTargetStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         return None

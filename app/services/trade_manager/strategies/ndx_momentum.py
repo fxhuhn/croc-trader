@@ -151,6 +151,35 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             or current_date.year != previous_date.year
         )
 
+    def _is_month_switch_order(
+        self, dataframe_history: pd.DataFrame, reference_date: str | None
+    ) -> bool:
+        """Determines if there is a month switch between last historical date and target date.
+
+        Used in order generation to correctly identify a month switch before the new month's
+        first daily candle has been recorded in the database.
+        """
+        if dataframe_history.empty:
+            return False
+
+        last_candle_date_str = str(dataframe_history.iloc[-1]["date"])
+        try:
+            last_date = pd.Timestamp(last_candle_date_str)
+        except (ValueError, TypeError):
+            return False
+
+        if reference_date:
+            try:
+                ref_date = pd.Timestamp(reference_date)
+                return (
+                    ref_date.month != last_date.month or ref_date.year != last_date.year
+                )
+            except (ValueError, TypeError):
+                pass
+
+        # Fallback to the standard candle-to-candle comparison
+        return self._is_month_switch(dataframe_history)
+
     @staticmethod
     def extract_latest_leaders(
         all_strategy_trades: list[dict[str, object]],
@@ -225,10 +254,11 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         symbol = trade.get("symbol", "UNKNOWN")
 
-        if not self._is_month_switch(dataframe_history):
+        if not self._is_month_switch_order(dataframe_history, reference_date):
             return None
 
         leaders_symbols = created_symbols or set()
@@ -255,6 +285,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         symbol = trade.get("symbol", "UNKNOWN")
 

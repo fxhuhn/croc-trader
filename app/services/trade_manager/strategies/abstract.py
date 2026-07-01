@@ -135,6 +135,7 @@ class BaseTradeStrategy(ABC):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         """
         Generates orders for the next trading day.
@@ -145,6 +146,7 @@ class BaseTradeStrategy(ABC):
             dataframe_history: Historical price data.
             budget: Total available budget for the trade.
             created_symbols: Set of symbols with currently pending (CREATED) trades.
+            reference_date: The target date for which orders are being generated.
 
         Returns:
             Order | None: The generated order object or None.
@@ -155,11 +157,11 @@ class BaseTradeStrategy(ABC):
 
         if status == "CREATED":
             return self._generate_entry_order(
-                trade, dataframe_history, budget, created_symbols
+                trade, dataframe_history, budget, created_symbols, reference_date
             )
         elif status == "ACTIVE":
             return self._generate_exit_order(
-                trade, dataframe_history, budget, created_symbols
+                trade, dataframe_history, budget, created_symbols, reference_date
             )
         return None
 
@@ -170,6 +172,7 @@ class BaseTradeStrategy(ABC):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         pass
 
@@ -180,6 +183,7 @@ class BaseTradeStrategy(ABC):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         pass
 

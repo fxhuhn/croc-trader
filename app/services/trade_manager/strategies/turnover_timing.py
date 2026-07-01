@@ -97,6 +97,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         entry_price = self._extract_entry_price(trade)
         trade_budget = self._get_strategy_budget(trade, budget)
@@ -118,6 +119,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         budget: float,
         created_symbols: set[str] | None = None,
+        reference_date: str | None = None,
     ) -> Order | None:
         context = self._get_full_context(trade)
         green_candle_count = context.get("green_candle_count", 0)
