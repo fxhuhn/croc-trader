@@ -121,12 +121,14 @@ def view_trades_croc() -> str:
     closed_all = service.get_trades(strategies=croc_group, status=TradeStatus.CLOSED)
     closed = [trade for trade in closed_all if trade.get("exit_reason") != "EXPIRED"]
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
 
     summary_metrics = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
 
     index_stats = service.get_index_stats(closed)
     active_groups = service.group_trades_by_symbol(active)
+    history_groups = service.group_trades_history(closed)
 
     # Signal Aggregation (specific to Croc)
     signal_stats = {}
@@ -163,15 +165,11 @@ def view_trades_croc() -> str:
         )
     )
 
-    # Slicing only for history list display
-    closed_sliced = closed[:limit]
-    history_groups = service.group_trades_history(closed_sliced)
-
     return render_template(
         "trades_croc.html",
         active_trades=active,
         active_groups=active_groups,
-        closed_trades=closed_sliced,
+        closed_trades=closed,
         history_groups=history_groups,
         summary=summary_metrics,
         closed_summary=closed_summary,
@@ -204,21 +202,19 @@ def view_trades_dip_buyer() -> str:
         strategies=Strategies.DipBuyer, status=TradeStatus.CLOSED
     )
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
 
     summary_metrics = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
 
     index_stats = service.get_index_stats(closed)
     weekday_stats = service.get_weekday_stats(closed)
-
-    # Slicing only for history list display
-    closed_sliced = closed[:limit]
-    history_groups = service.group_trades_history(closed_sliced)
+    history_groups = service.group_trades_history(closed)
 
     return render_template(
         "trades_dip_buyer.html",
         active_trades=active,
-        closed_trades=closed_sliced,
+        closed_trades=closed,
         history_groups=history_groups,
         summary=summary_metrics,
         closed_summary=closed_summary,
@@ -262,6 +258,7 @@ def view_trades_turnover() -> str:
 
     # Sort Closed: Exit Date desc, then Symbol
     closed.sort(key=lambda x: (x["exit_date"] or "", x["symbol"]), reverse=True)
+    closed = closed[:limit]
 
     # Active Groups
     active_groups = service.group_trades_by_symbol(active)
@@ -311,16 +308,14 @@ def view_trades_turnover() -> str:
     for item in variant_stats.values():
         item["average_pnl"] = item["pnl"] / item["count"] if item["count"] > 0 else 0.0
 
-    # Slicing only for history list display
-    closed_sliced = closed[:limit]
-    history_groups = service.group_trades_history(closed_sliced)
+    history_groups = service.group_trades_history(closed)
 
     return render_template(
         "trades_turnover.html",
         summary=summary_metrics,
         active_trades=active_groups,
         history_groups=history_groups,
-        closed_trades=closed_sliced,
+        closed_trades=closed,
         closed_summary=closed_summary,
         performance_index=list(index_stats.values()),
         performance_variants=list(variant_stats.values()),
@@ -347,18 +342,16 @@ def view_trades_ndx_momentum() -> str:
         strategies=Strategies.NDXMomentum, status=TradeStatus.CLOSED
     )
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
 
     summary_metrics = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
-
-    # Slicing only for history list display
-    closed_sliced = closed[:limit]
-    history_groups = service.group_trades_history(closed_sliced)
+    history_groups = service.group_trades_history(closed)
 
     return render_template(
         "trades_ndx_momentum.html",
         active_trades=active,
-        closed_trades=closed_sliced,
+        closed_trades=closed,
         history_groups=history_groups,
         summary=summary_metrics,
         closed_summary=closed_summary,
@@ -385,21 +378,19 @@ def view_trades_twopercent() -> str:
         strategies=Strategies.TwoPercent, status=TradeStatus.CLOSED
     )
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
 
     summary_metrics = service.get_portfolio_summary(active)
     closed_summary = service.get_closed_summary(closed)
 
     active_groups = service.group_trades_by_symbol(active)
-
-    # Slicing only for history list display
-    closed_sliced = closed[:limit]
-    history_groups = service.group_trades_history(closed_sliced)
+    history_groups = service.group_trades_history(closed)
 
     return render_template(
         "trades_twopercent.html",
         active_trades=active,
         active_groups=active_groups,
-        closed_trades=closed_sliced,
+        closed_trades=closed,
         history_groups=history_groups,
         summary=summary_metrics,
         closed_summary=closed_summary,
