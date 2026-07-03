@@ -137,23 +137,12 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
                 time_in_force="OPG",
             )
 
-        # b) Friday Time Stop
-        if not dataframe_history.empty:
-            last_date = pd.Timestamp(dataframe_history.iloc[-1]["date"])
-            day_of_week = last_date.dayofweek
-
-            # Logic Clean-up:
-            # We want to exit on Friday.
-            # If we are generating orders based on THURSDAY data (day=3),
-            # we generate an exit for Friday.
-            # Note: Real execution will be Friday Close (MOC).
-            if day_of_week == self.THURSDAY_INDEX:  # Thursday
-                return self._create_exit_order(
-                    trade["symbol"],
-                    quantity,
-                    order_type="MOC",
-                    time_in_force="DAY",
-                )
+        # b) Friday Time Stop (holiday-adjusted)
+        time_stop_order = self._generate_time_stop_exit_order(
+            trade, dataframe_history, self._holiday_checker
+        )
+        if time_stop_order is not None:
+            return time_stop_order
 
         return None
 

@@ -52,6 +52,40 @@ class BaseTradeStrategy(ABC):
 
         return False
 
+    def _generate_time_stop_exit_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        holiday_checker: object,
+    ) -> Order | None:
+        """Generates a weekly time stop (MOC) exit order if the next trading day is the end of the week.
+
+        Args:
+            trade: The trade data from the database.
+            dataframe_history: Historical price data.
+            holiday_checker: An object with an `is_holiday(date)` method.
+
+        Returns:
+            Order | None: The exit order if the end of the week is reached, otherwise None.
+        """
+        quantity = int(trade.get("current_size") or 0)
+        if quantity <= 0 or dataframe_history.empty:
+            return None
+
+        last_date = pd.Timestamp(dataframe_history.iloc[-1]["date"])
+        next_day = last_date + pd.Timedelta(days=1)
+
+        if self._is_end_of_trading_week(next_day, holiday_checker):
+            return self._create_exit_order(
+                symbol=trade["symbol"],
+                quantity=quantity,
+                price=Decimal("0.0"),
+                order_type="MOC",
+                time_in_force="DAY",
+            )
+
+        return None
+
     def _extract_entry_price(self, trade: TradeData) -> float:
         """Extracts and parses the entry limit price from the trade context.
 

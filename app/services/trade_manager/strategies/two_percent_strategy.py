@@ -118,14 +118,11 @@ class TwoPercentStrategy(BaseTradeStrategy):
             next_day = last_date + pd.Timedelta(days=1)
 
             # Check for Friday Time Stop (MOC)
-            if self._is_end_of_trading_week(next_day, self.holiday_checker):
-                return self._create_exit_order(
-                    symbol=trade["symbol"],
-                    quantity=quantity,
-                    price=Decimal("0.0"),
-                    order_type="MOC",
-                    time_in_force="DAY",
-                )
+            time_stop_order = self._generate_time_stop_exit_order(
+                trade, dataframe_history, self.holiday_checker
+            )
+            if time_stop_order is not None:
+                return time_stop_order
 
             # Check if Take Profit target is active on next_day (Day + 1 or later)
             entry_date_str = trade.get("entry_date")
