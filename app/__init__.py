@@ -1,4 +1,5 @@
 import logging.config
+
 from flask import Flask, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 
@@ -10,7 +11,7 @@ from .mapping import mapper
 from .routes import main_bp
 
 # Services Setup
-from .services.setup import register_services, configure_scheduler
+from .services.setup import configure_scheduler, register_services
 
 
 def create_app(config_object: ConfigManager = settings) -> Flask:

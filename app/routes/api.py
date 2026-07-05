@@ -5,11 +5,11 @@ from typing import TypedDict
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
+from ..const import Strategies
 from ..database.repositories.signal import SignalRepository
 from ..database.session import DatabaseSession
-from ..services.market.updater import MarketDataUpdater
 from ..services.market.quality import MarketQualityService
-from ..const import Strategies
+from ..services.market.updater import MarketDataUpdater
 
 # Import from the separate security.py
 from .security import require_ip_whitelist

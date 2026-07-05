@@ -1,11 +1,10 @@
 import json
 import logging
 import sqlite3
-
 from typing import Any
 
-from .base import BaseRepository
 from ...const import Strategies, TradeStatus
+from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
 

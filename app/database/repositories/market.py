@@ -1,5 +1,7 @@
 import logging
+
 import pandas
+
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)

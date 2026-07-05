@@ -2,8 +2,8 @@ from flask import Blueprint
 
 from .api import api_blueprint
 from .errors import errors_bp
-from .views import views_bp
 from .honeypot import honeypot_bp
+from .views import views_bp
 
 # Main Blueprint registered by the Flask application
 main_bp = Blueprint("main_aggregator", __name__)

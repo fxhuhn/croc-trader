@@ -3,7 +3,7 @@ import time
 from collections import defaultdict
 from threading import Lock
 
-from flask import Blueprint, jsonify, render_template, request, Response
+from flask import Blueprint, Response, jsonify, render_template, request
 
 logger = logging.getLogger(__name__)
 errors_bp = Blueprint("errors", __name__)
