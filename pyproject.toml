@@ -1,0 +1,59 @@
+# pyproject.toml
+# Konfiguration für Ruff Linter & Formatter
+
+[tool.ruff]
+# Zielversion von Python
+target-version = "py312"
+
+# Maximale Zeilenlänge
+line-length = 88
+
+# Ein- und Ausschlusskriterien
+exclude = [
+    ".git",
+    ".venv",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "build",
+    "dist"
+]
+
+[tool.ruff.lint]
+# Aktivierte Regelsätze:
+# E/W: pycodestyle
+# F: Pyflakes
+# I: isort (Import-Sortierung)
+# N: pep8-naming
+# UP: pyupgrade (Upgrade auf moderne Python-Syntax)
+# B: flake8-bugbear (Fehlererkennung)
+# A: flake8-builtins
+# C4: flake8-comprehensions
+# PL: Pylint (Code-Qualität und Warnungen)
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PL"]
+
+# Ignorierte Regeln
+# E501: Zeilenlänge (durch Formatter oder für lange SQL-Queries/Kommentare toleriert)
+# N802/N803: camelCase für API-Callback-Methoden/Argumente (z.B. sessionStatus)
+# PLR2004: Magische Zahlen im Vergleich (toleriert für HTTP-Statuscodes und Test-Assertions)
+# PLR0911: Zu viele return-Statements (erlaubt für komplexe Validierungsfunktionen)
+# PLR0912/PLR0913/PLR0915: Komplexitätsprüfungen (Argumente, Verzweigungen und Anweisungen)
+# PLC0415: Lokale Imports (erlaubt zur Vermeidung zirkulärer Abhängigkeiten)
+# E402: Module level import not at top of file (zur Vermeidung von Import-Fehlern in Skripten)
+ignore = [
+    "E501", "N802", "N803",
+    "PLR2004", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLC0415",
+    "E402"
+]
+
+[tool.ruff.lint.isort]
+# Festlegen der Sektionen für die Import-Sortierung
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+# Standard-Formatierungseinstellungen
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
