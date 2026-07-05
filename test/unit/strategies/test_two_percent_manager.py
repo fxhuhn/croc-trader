@@ -1,12 +1,13 @@
 # filename: test_two_percent_manager.py
-import pytest
 from unittest.mock import MagicMock, patch
-import pandas as pd
 
+import pandas as pd
+import pytest
+
+from app.database.repositories.trade import TradeRepository
 from app.services.trade_manager.strategies.two_percent_strategy import (
     TwoPercentStrategy,
 )
-from app.database.repositories.trade import TradeRepository
 from app.types import TradeStatus
 
 
