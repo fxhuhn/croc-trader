@@ -1,11 +1,12 @@
 # filename: test_analytics_math.py
-import pytest
 import pandas as pd
+import pytest
+
 from app.services.backtester.analytics import (
-    safe_divide,
-    safe_percentile,
     MonteCarloSimulator,
     TradeQualityAnalyzer,
+    safe_divide,
+    safe_percentile,
 )
 
 

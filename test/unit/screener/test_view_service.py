@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import MagicMock
-from app.services.screener.view_service import ScreenerViewService
+
+import pytest
+
 from app.const import Strategies
+from app.services.screener.view_service import ScreenerViewService
 
 
 @pytest.fixture

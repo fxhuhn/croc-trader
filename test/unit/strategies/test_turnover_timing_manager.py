@@ -1,11 +1,12 @@
 # filename: test_turnover_timing_manager.py
-import pytest
-from unittest.mock import MagicMock, patch
-import pandas as pd
 import json
+from unittest.mock import MagicMock, patch
 
-from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
+import pandas as pd
+import pytest
+
 from app.database.repositories.trade import TradeRepository
+from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
 from app.types import TradeStatus
 
 

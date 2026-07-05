@@ -1,6 +1,7 @@
 # filename: test_api.py
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture

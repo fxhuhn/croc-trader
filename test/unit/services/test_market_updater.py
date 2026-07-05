@@ -1,10 +1,11 @@
 from unittest.mock import MagicMock, patch
+
 import pandas as pd
 
-from app.services.market.provider import YahooDataProvider
-from app.services.market.updater import MarketDataUpdater
 from app.database.repositories.market import MarketRepository
 from app.database.session import DatabaseSession
+from app.services.market.provider import YahooDataProvider
+from app.services.market.updater import MarketDataUpdater
 
 
 def test_yahoo_data_provider_fetch_batch_raw_finds_failures() -> None:

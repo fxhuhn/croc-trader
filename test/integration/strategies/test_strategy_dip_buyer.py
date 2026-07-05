@@ -1,10 +1,12 @@
 # filename: test_strategy_dip_buyer.py
-import pytest
-import pandas as pd
 from unittest.mock import MagicMock
-from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
+
+import pandas as pd
+import pytest
+
 from app.database.repositories.trade import TradeRepository
-from app.types import TradeStatus, ExitReason
+from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
+from app.types import ExitReason, TradeStatus
 
 # --- FIXTURES ---
 

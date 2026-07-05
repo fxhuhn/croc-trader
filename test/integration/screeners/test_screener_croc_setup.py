@@ -1,13 +1,14 @@
-import pytest
 import json
-from unittest.mock import MagicMock, patch
 from typing import Any
+from unittest.mock import MagicMock, patch
 
-from app.services.screener.strategies.croc_setup import CrocSetupStrategy, PriceData
-from app.database.repositories.trade import TradeRepository
-from app.database.repositories.signal import SignalRepository
-from app.database.repositories.market_data_provider import MarketDataProvider
+import pytest
+
 from app.const import Strategies
+from app.database.repositories.market_data_provider import MarketDataProvider
+from app.database.repositories.signal import SignalRepository
+from app.database.repositories.trade import TradeRepository
+from app.services.screener.strategies.croc_setup import CrocSetupStrategy, PriceData
 
 # --- FIXTURES ---
 

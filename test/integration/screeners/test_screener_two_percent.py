@@ -1,10 +1,11 @@
-import pytest
-import pandas as pd
 from unittest.mock import MagicMock
 
-from app.services.screener.strategies.two_percent_strategy import TwoPercentStrategy
-from app.database.repositories.trade import TradeRepository
+import pandas as pd
+import pytest
+
 from app.database.repositories.market_data_provider import MarketDataProvider
+from app.database.repositories.trade import TradeRepository
+from app.services.screener.strategies.two_percent_strategy import TwoPercentStrategy
 
 # --- FIXTURES ---
 

@@ -1,7 +1,9 @@
 # filename: test_engine.py
-import pytest
 from unittest.mock import MagicMock
-from app.services.screener.engine import ScreenerEngine, ScreenerConfiguration
+
+import pytest
+
+from app.services.screener.engine import ScreenerConfiguration, ScreenerEngine
 from app.services.screener.protocols import StrategyProtocol
 
 

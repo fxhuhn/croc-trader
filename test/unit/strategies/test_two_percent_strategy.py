@@ -1,17 +1,18 @@
 # filename: test_two_percent_strategy.py
-import pytest
 from unittest.mock import MagicMock, patch
-import pandas as pd
 
+import pandas as pd
+import pytest
+
+from app.database.repositories.market_data_provider import MarketDataProvider
+from app.database.repositories.trade import TradeRepository
 from app.services.screener.strategies.two_percent_strategy import (
     TwoPercentStrategy as ScreenerStrategy,
 )
 from app.services.trade_manager.strategies.two_percent_strategy import (
     TwoPercentStrategy as ManagerStrategy,
 )
-from app.database.repositories.trade import TradeRepository
-from app.database.repositories.market_data_provider import MarketDataProvider
-from app.types import TradeStatus, ExitReason
+from app.types import ExitReason, TradeStatus
 
 # --- FIXTURES ---
 

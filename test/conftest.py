@@ -4,7 +4,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 
 from unittest.mock import MagicMock
-from app.services.trade_manager.types import TradeTransition
 
 from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
 from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
@@ -16,6 +15,7 @@ from app.services.trade_manager.strategies.turnover_timing import TurnoverTiming
 from app.services.trade_manager.strategies.two_percent_strategy import (
     TwoPercentStrategy,
 )
+from app.services.trade_manager.types import TradeTransition
 
 
 class CompatibleTransitionString(str):

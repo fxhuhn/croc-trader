@@ -1,15 +1,16 @@
 # filename: test_croc_setup.py
 import json
-import pytest
-from unittest.mock import MagicMock, patch, mock_open
 from pathlib import Path
+from unittest.mock import MagicMock, mock_open, patch
 
-from app.services.screener.strategies.croc_setup import CrocSetupStrategy, PriceData
-from app.database.repositories.trade import TradeRepository
+import pytest
+
+from app.const import Strategies
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.signal import SignalRepository
+from app.database.repositories.trade import TradeRepository
+from app.services.screener.strategies.croc_setup import CrocSetupStrategy, PriceData
 from app.services.telegram import TelegramBot
-from app.const import Strategies
 
 
 @pytest.fixture

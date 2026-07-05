@@ -1,9 +1,11 @@
 # filename: test_ui_quantity_mapping.py
-import pytest
 from unittest.mock import MagicMock
-from app.services.trade_manager.view_service import TradeViewService
-from app.database.repositories.trade import TradeRepository
+
+import pytest
+
 from app.database.repositories.market import MarketRepository
+from app.database.repositories.trade import TradeRepository
+from app.services.trade_manager.view_service import TradeViewService
 
 
 @pytest.fixture

@@ -1,11 +1,12 @@
-import pytest
 from unittest.mock import MagicMock, patch
-import pandas as pd
-import numpy as np
 
-from app.services.screener.strategies.ndx_momentum import NDXMomentumScreener
-from app.database.repositories.trade import TradeRepository
+import numpy as np
+import pandas as pd
+import pytest
+
 from app.database.repositories.market_data_provider import MarketDataProvider
+from app.database.repositories.trade import TradeRepository
+from app.services.screener.strategies.ndx_momentum import NDXMomentumScreener
 
 
 @pytest.fixture

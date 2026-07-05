@@ -1,12 +1,13 @@
 # filename: test_strategy_hold_target.py
-import pytest
-from unittest.mock import MagicMock
-import pandas as pd
 import json
+from unittest.mock import MagicMock
 
-from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
-from app.types import TradeStatus, ExitReason
+import pandas as pd
+import pytest
+
 from app.database.repositories.trade import TradeRepository
+from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
+from app.types import ExitReason, TradeStatus
 
 # --- FIXTURES ---
 

@@ -1,7 +1,9 @@
-import pytest
 import logging
 from unittest.mock import patch
+
+import pytest
 from flask import Flask
+
 from app.routes.errors import errors_bp
 
 

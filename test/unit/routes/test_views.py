@@ -6,8 +6,9 @@ paths, gracefully manage empty datasets, and strictly validate calculation
 metrics without touching the actual database or disk.
 """
 
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
+
 import pytest
 from flask import Flask
 from flask.testing import FlaskClient

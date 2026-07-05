@@ -1,9 +1,9 @@
 import json
 from unittest.mock import MagicMock
 
-from app.services.backtester.engine import BacktestEngine
-from app.database.repositories.trade import TradeRepository
 from app.database.repositories.market_data_provider import MarketDataProvider
+from app.database.repositories.trade import TradeRepository
+from app.services.backtester.engine import BacktestEngine
 from app.types import TradeStatus
 
 

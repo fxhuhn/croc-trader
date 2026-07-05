@@ -1,9 +1,11 @@
 # filename: test_analytics_robustness.py
 import sqlite3
-import pytest
+from pathlib import Path
+
 import duckdb
 import numpy as np
-from pathlib import Path
+import pytest
+
 from app.services.backtester.analytics import BacktestAnalytics, BacktestMetrics
 
 # --- FIXTURES ---

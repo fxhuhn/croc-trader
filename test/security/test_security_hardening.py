@@ -1,14 +1,15 @@
 # filename: test_security_hardening.py
-import pytest
 import logging
 from unittest.mock import MagicMock, patch
+
 import pandas as pd
+import pytest
 import requests
 
-from app.database.repositories.trade import TradeRepository
-from app.services.telegram import TelegramBot
 from app.config import ConfigManager
+from app.database.repositories.trade import TradeRepository
 from app.database.session import DatabaseSession
+from app.services.telegram import TelegramBot
 
 # --- 1. SQL INJECTION FUZZING ---
 

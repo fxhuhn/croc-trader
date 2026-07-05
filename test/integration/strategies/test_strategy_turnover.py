@@ -1,11 +1,12 @@
 # filename: test_strategy_turnover.py
-import pytest
-import pandas as pd
 from unittest.mock import MagicMock, patch
 
-from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
+import pandas as pd
+import pytest
+
 from app.database.repositories.trade import TradeRepository
-from app.types import TradeStatus, ExitReason
+from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
+from app.types import ExitReason, TradeStatus
 
 # --- CONSTANTS ---
 dummy_id = "trade-001"

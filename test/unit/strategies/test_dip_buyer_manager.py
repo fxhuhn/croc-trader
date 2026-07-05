@@ -1,11 +1,12 @@
 # filename: test_dip_buyer_manager.py
-import pytest
 from unittest.mock import MagicMock, patch
-import pandas as pd
 
-from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
+import pandas as pd
+import pytest
+
 from app.database.repositories.trade import TradeRepository
-from app.types import TradeStatus, ExitReason
+from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
+from app.types import ExitReason, TradeStatus
 
 
 @pytest.fixture

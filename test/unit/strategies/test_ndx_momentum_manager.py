@@ -1,10 +1,11 @@
 # filename: test_ndx_momentum_manager.py
-import pytest
 from unittest.mock import MagicMock
-import pandas as pd
 
-from app.services.trade_manager.strategies.ndx_momentum import NDXMomentumTradeStrategy
+import pandas as pd
+import pytest
+
 from app.database.repositories.trade import TradeRepository
+from app.services.trade_manager.strategies.ndx_momentum import NDXMomentumTradeStrategy
 from app.types import TradeStatus
 
 

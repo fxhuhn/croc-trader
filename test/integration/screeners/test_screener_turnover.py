@@ -1,12 +1,13 @@
 # filename: test_screener_turnover.py
-import pytest
-import pandas as pd
-import numpy as np
 from unittest.mock import MagicMock, patch
 
-from app.services.screener.strategies.turnover_timing import TurnoverTimingStrategy
-from app.database.repositories.trade import TradeRepository
+import numpy as np
+import pandas as pd
+import pytest
+
 from app.database.repositories.market_data_provider import MarketDataProvider
+from app.database.repositories.trade import TradeRepository
+from app.services.screener.strategies.turnover_timing import TurnoverTimingStrategy
 
 # --- FIXTURES ---
 

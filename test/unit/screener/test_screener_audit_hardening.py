@@ -9,7 +9,7 @@ specific violation ID from the audit report.
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import MagicMock, patch, mock_open
+from unittest.mock import MagicMock, mock_open, patch
 
 import pandas as pd
 import pytest
@@ -30,7 +30,6 @@ from app.services.screener.strategies.turnover_timing import (
     TurnoverTimingStrategy,
 )
 from app.services.screener.view_service import ScreenerViewService
-
 
 # ---------------------------------------------------------------------------
 # Shared Fixtures

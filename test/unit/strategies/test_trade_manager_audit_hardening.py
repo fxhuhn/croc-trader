@@ -15,17 +15,15 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-
-from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
+from app.services.trade_manager.manager import TradeManager, _resolve_history_start_date
 from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
-from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
+from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
 from app.services.trade_manager.strategies.ndx_momentum import (
     NDXMomentumTradeStrategy,
     _RebalanceCache,
 )
-from app.services.trade_manager.manager import TradeManager, _resolve_history_start_date
+from app.services.trade_manager.strategies.turnover_timing import TurnoverTimingStrategy
 from app.types import TradeStatus
-
 
 # ---------------------------------------------------------------------------
 # Helpers

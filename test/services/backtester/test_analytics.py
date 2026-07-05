@@ -1,8 +1,10 @@
-import pytest
-import pandas as pd
 from unittest.mock import patch
-from app.services.backtester.analytics import MetricsCalculator, BacktestAnalytics
+
+import pandas as pd
+import pytest
+
 from app.models import BacktestMetrics
+from app.services.backtester.analytics import BacktestAnalytics, MetricsCalculator
 
 
 @pytest.fixture

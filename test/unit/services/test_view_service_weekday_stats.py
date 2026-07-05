@@ -1,6 +1,8 @@
 # filename: test_view_service_weekday_stats.py
 from unittest.mock import MagicMock
+
 import pytest
+
 from app.database.repositories.market import MarketRepository
 from app.database.repositories.trade import TradeRepository
 from app.services.trade_manager.view_service import TradeViewService

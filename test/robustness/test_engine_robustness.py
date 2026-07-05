@@ -1,9 +1,11 @@
 # filename: test_engine_robustness.py
-import pytest
-import sqlite3
 import logging
+import sqlite3
 from unittest.mock import MagicMock
+
 import pandas as pd
+import pytest
+
 from app.services.backtester.engine import BacktestEngine
 
 # --- FIXTURES ---
