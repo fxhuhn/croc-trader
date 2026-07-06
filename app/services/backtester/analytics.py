@@ -138,8 +138,8 @@ class BacktestDataLoader:
                         symbol, realized_pnl, entry_price, exit_price, initial_size,
                         entry_date, exit_date, strategy, id, exit_reason,
                         COALESCE(current_stop_loss, 0.0) as initial_stop
-                    FROM backtest.trades 
-                    WHERE status = 'CLOSED' 
+                    FROM backtest.trades
+                    WHERE status = 'CLOSED'
                       AND exit_reason NOT IN ('EXPIRED', 'INVALIDATED')
                     ORDER BY symbol, strategy, CAST(entry_date AS DATE), CAST(exit_date AS DATE), id DESC
                 )
@@ -169,7 +169,7 @@ class BacktestDataLoader:
             end_date = trades_df["exit_date"].max()
 
             market_days_query = """
-                SELECT COUNT(*) FROM market.market_prices 
+                SELECT COUNT(*) FROM market.market_prices
                 WHERE symbol='SPY' AND CAST(date AS TIMESTAMP) >= CAST(? AS TIMESTAMP) AND CAST(date AS TIMESTAMP) <= CAST(? AS TIMESTAMP)
             """
             total_market_days = connection.execute(
@@ -179,10 +179,10 @@ class BacktestDataLoader:
             strat_unique = trades_df["strategy"].unique()
 
             active_days_query = """
-                SELECT COUNT(DISTINCT m.date) 
+                SELECT COUNT(DISTINCT m.date)
                 FROM (
                     SELECT unnest(generate_series(CAST(entry_date AS DATE), CAST(exit_date AS DATE), INTERVAL 1 DAY)) as d
-                    FROM backtest.trades 
+                    FROM backtest.trades
                     WHERE status='CLOSED'
                 ) t
                 JOIN market.market_prices m ON t.d = CAST(m.date AS DATE)
@@ -200,7 +200,7 @@ class BacktestDataLoader:
                 active_days = connection.execute(active_days_query).fetchone()[0]
 
             bench_query = """
-                SELECT 
+                SELECT
                     (SELECT close FROM market.market_prices WHERE symbol='SPY' AND CAST(date AS TIMESTAMP) <= CAST(? AS TIMESTAMP) ORDER BY date DESC LIMIT 1) /
                     (SELECT open FROM market.market_prices WHERE symbol='SPY' AND CAST(date AS TIMESTAMP) >= CAST(? AS TIMESTAMP) ORDER BY date ASC LIMIT 1) - 1
             """
@@ -231,12 +231,12 @@ class BacktestDataLoader:
                     ORDER BY symbol, strategy, CAST(entry_date AS DATE), CAST(exit_date AS DATE), id DESC
                 ),
                 trade_extremes AS (
-                    SELECT 
+                    SELECT
                         t.symbol, t.entry_price, t.entry_date, t.exit_date,
                         MIN(m.low) as min_during, MAX(m.high) as max_during
                     FROM unique_trades t
                     JOIN market.market_prices m ON t.symbol = m.symbol
-                    WHERE CAST(m.date AS DATE) >= CAST(t.entry_date AS DATE) 
+                    WHERE CAST(m.date AS DATE) >= CAST(t.entry_date AS DATE)
                       AND CAST(m.date AS DATE) <= CAST(t.exit_date AS DATE)
                     GROUP BY t.symbol, t.entry_price, t.entry_date, t.exit_date, t.id
                 )
@@ -329,28 +329,28 @@ class BacktestDataLoader:
         try:
             query = """
                 WITH trade_market_days AS (
-                    SELECT 
+                    SELECT
                         t.id,
                         COUNT(m.date) as market_day_count
                     FROM backtest.trades t
-                    JOIN market.market_prices m ON CAST(m.date AS DATE) >= CAST(t.entry_date AS DATE) 
+                    JOIN market.market_prices m ON CAST(m.date AS DATE) >= CAST(t.entry_date AS DATE)
                                                AND CAST(m.date AS DATE) <= CAST(t.exit_date AS DATE)
                     WHERE t.status = 'CLOSED' AND m.symbol = 'SPY'
                     GROUP BY t.id
                 ),
                 daily_trade_returns AS (
-                    SELECT 
+                    SELECT
                         m.date,
                         t.strategy,
                         t.realized_pnl / NULLIF(tm.market_day_count, 0) as daily_pnl,
                         1 as active_trade
                     FROM backtest.trades t
                     JOIN trade_market_days tm ON t.id = tm.id
-                    JOIN market.market_prices m ON CAST(m.date AS DATE) >= CAST(t.entry_date AS DATE) 
+                    JOIN market.market_prices m ON CAST(m.date AS DATE) >= CAST(t.entry_date AS DATE)
                                                AND CAST(m.date AS DATE) <= CAST(t.exit_date AS DATE)
                     WHERE m.symbol = 'SPY' AND t.status = 'CLOSED'
                 )
-                SELECT 
+                SELECT
                     date,
                     strategy,
                     SUM(daily_pnl) / self.INITIAL_CAPITAL as daily_impact,
@@ -389,8 +389,8 @@ class BacktestDataLoader:
         connection = self._get_connection()
         try:
             query = """
-                SELECT date, close 
-                FROM market.market_prices 
+                SELECT date, close
+                FROM market.market_prices
                 WHERE symbol = ? AND CAST(date AS TIMESTAMP) >= CAST(? AS TIMESTAMP) AND CAST(date AS TIMESTAMP) <= CAST(? AS TIMESTAMP)
                 ORDER BY date ASC
             """
@@ -1090,7 +1090,7 @@ class BacktestAnalytics:
         if len(start_indices) > len(end_indices):
             end_indices = np.append(end_indices, len(matrix) - 1)
 
-        for start_idx, end_idx in zip(start_indices, end_indices):
+        for start_idx, end_idx in zip(start_indices, end_indices, strict=False):
             event_slice = saved_profit_series[start_idx : end_idx + 1]
             events.append(
                 {

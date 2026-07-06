@@ -310,8 +310,7 @@ class NDXMomentumScreener(BaseStrategy):
 
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
-                "[%s] Database unavailable during date resolution: %s"
-                % (self.name, database_error)
+                f"[{self.name}] Database unavailable during date resolution: {database_error}"
             ) from database_error
         except (ValueError, KeyError, TypeError) as resolution_error:
             logger.error("[%s] Date resolution error: %s", self.name, resolution_error)
@@ -442,8 +441,7 @@ class NDXMomentumScreener(BaseStrategy):
                 created_count += 1
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
                 raise RuntimeError(
-                    "[%s] Database unavailable saving trade for %s: %s"
-                    % (self.name, symbol, database_error)
+                    f"[{self.name}] Database unavailable saving trade for {symbol}: {database_error}"
                 ) from database_error
             except (ValueError, KeyError, TypeError) as data_error:
                 logger.warning(

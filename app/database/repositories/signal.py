@@ -19,14 +19,14 @@ class SignalRepository(BaseRepository):
             self.execute(
                 """
                 CREATE TABLE IF NOT EXISTS croc (
-                    symbol TEXT NOT NULL, 
-                    timeframe TEXT, 
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT,
                     signal TEXT,
-                    timestamp TEXT, 
+                    timestamp TEXT,
                     exchange TEXT,
                     data TEXT, -- JSON Payload
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    
+
                     -- Prevent duplicates: this combination must be unique
                     UNIQUE(symbol, timeframe, signal, timestamp)
                 )
@@ -58,13 +58,13 @@ class SignalRepository(BaseRepository):
             self.execute(
                 """
                 CREATE VIEW view_signals_enriched AS
-                SELECT 
+                SELECT
                     s.rowid as id,
                     s.symbol, s.timeframe, s.signal, s.timestamp, s.data,
-                    CASE 
-                        WHEN s.exchange IS NULL OR s.exchange = '' OR s.exchange = 'BATS' 
+                    CASE
+                        WHEN s.exchange IS NULL OR s.exchange = '' OR s.exchange = 'BATS'
                         THEN COALESCE(m.exchange, 'UNKNOWN')
-                        ELSE s.exchange 
+                        ELSE s.exchange
                     END as exchange
                 FROM croc s
                 LEFT JOIN exchange_mappings m ON s.symbol = m.symbol
@@ -109,7 +109,7 @@ class SignalRepository(BaseRepository):
     def get_unique_signal_attributes(self) -> dict[str, set[str]]:
         """Fetches all historically available signal values and other attributes from the DB."""
         sql = """
-            SELECT 
+            SELECT
                 signal,
                 data,
                 json_extract(data, '$.status') as status,
@@ -118,7 +118,7 @@ class SignalRepository(BaseRepository):
                 json_extract(data, '$.trend') as trend,
                 json_extract(data, '$.setter') as setter,
                 json_extract(data, '$.welle') as welle
-            FROM croc 
+            FROM croc
             WHERE data IS NOT NULL OR signal IS NOT NULL
         """
         rows = self.fetch_all(sql)
@@ -136,7 +136,7 @@ class SignalRepository(BaseRepository):
         for row in rows:
             for yaml_key, db_key in zip(
                 ["Signal", "Status", "Kerze", "Wolke", "Trend", "Setter", "Welle"],
-                ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"],
+                ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"], strict=False,
             ):
                 value = row[db_key]
                 if value is not None:
@@ -263,10 +263,10 @@ class SignalRepository(BaseRepository):
             params = tuple(status_list) + (f"{strategy_prefix}%", limit)
 
         sql = f"""
-            SELECT * FROM trades 
+            SELECT * FROM trades
             WHERE status IN ({status_placeholders})
             AND {strategy_filter}
-            ORDER BY created_at DESC 
+            ORDER BY created_at DESC
             LIMIT ?
         """
         rows = self.fetch_all(sql, params)

@@ -33,7 +33,7 @@ def _is_ip_whitelisted(client_ip: str, whitelist: list[str] | tuple[str, ...]) -
             continue
 
         matches = True
-        for p_seg, c_seg in zip(pattern_segments, client_segments):
+        for p_seg, c_seg in zip(pattern_segments, client_segments, strict=False):
             if p_seg.lower() in ("x", "*"):
                 continue
             if p_seg != c_seg:
@@ -46,7 +46,9 @@ def _is_ip_whitelisted(client_ip: str, whitelist: list[str] | tuple[str, ...]) -
     return False
 
 
-def require_ip_whitelist(func: Callable[P, R]) -> Callable[P, Response | R]:
+def require_ip_whitelist[**P, R: Response | object](
+    func: Callable[P, R],
+) -> Callable[P, Response | R]:
     """
     Decorator to restrict access to whitelisted IP addresses.
 
@@ -73,7 +75,7 @@ def require_ip_whitelist(func: Callable[P, R]) -> Callable[P, Response | R]:
 
         # Proxy-Aware IP Detection:
         # Relies on ProxyFix middleware to securely populate remote_addr
-        client_ip = request.remote_addr or "0.0.0.0"
+        client_ip = request.remote_addr or "0.0.0.0"  # nosec B104
 
         if not _is_ip_whitelisted(client_ip, whitelist):
             if mode == "block":

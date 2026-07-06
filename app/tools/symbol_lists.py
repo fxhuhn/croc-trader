@@ -180,7 +180,7 @@ class ExchangeSymbol:
             found_col = None
 
             # Search all discovered tables
-            for i, df in enumerate(tables):
+            for _i, df in enumerate(tables):
                 # Check if one of the target columns (e.g. "Symbol") exists
                 for col_candidate in search_columns:
                     # Case-insensitive check of column names
@@ -220,7 +220,7 @@ class ExchangeSymbol:
             ]
 
             # Deduplicate and sort
-            result = sorted(list(set(clean_symbols)))
+            result = sorted(set(clean_symbols))
             return result
 
         except Exception as e:
@@ -255,7 +255,7 @@ class ExchangeSymbol:
         """
         all_others = set(self._sp_500) | set(self._nasdaq_100) | set(self._dow_30)
         rus_excl = set(self._russell_1000) - all_others
-        return sorted(list(rus_excl))
+        return sorted(rus_excl)
 
     @property
     def all(self) -> list[str]:
@@ -266,7 +266,7 @@ class ExchangeSymbol:
             + self._russell_1000
             + self._special_symbols
         )
-        return sorted(list(combined))
+        return sorted(combined)
 
 
 if __name__ == "__main__":

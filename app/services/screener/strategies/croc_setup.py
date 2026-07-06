@@ -181,8 +181,7 @@ class CrocSetupStrategy(BaseStrategy):
             return []
         if self.config_path.stat().st_size > self._MAX_CONFIG_FILE_SIZE_BYTES:
             raise RuntimeError(
-                "Ranking config exceeds safe size limit — possible YAML anchor bomb: %s"
-                % self.config_path
+                f"Ranking config exceeds safe size limit — possible YAML anchor bomb: {self.config_path}"
             )
         try:
             with open(self.config_path, encoding="utf-8") as config_file:
@@ -233,8 +232,7 @@ class CrocSetupStrategy(BaseStrategy):
             signals = self.signal_repository.get_signals_by_date(analysis_date, days)
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
-                "[%s] Database unavailable during signal load: %s"
-                % (self.name, database_error)
+                f"[{self.name}] Database unavailable during signal load: {database_error}"
             ) from database_error
         except (ValueError, KeyError) as data_error:
             logger.warning(

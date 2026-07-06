@@ -122,7 +122,7 @@ def _generate_minimal_gauge(
     )
 
     fig.update_layout(
-        margin=dict(l=25, r=25, t=25, b=25),
+        margin={"l": 25, "r": 25, "t": 25, "b": 25},
         paper_bgcolor="rgba(0,0,0,0)",
         height=150,
         font={"family": "Inter, sans-serif"},
@@ -184,7 +184,7 @@ def generate_backtest_charts(
                 y=benchmark_df["equity"].tolist(),
                 mode="lines",
                 name="SPY (Buy & Hold)",
-                line=dict(color="#94a3b8", width=2, dash="dot"),  # Slate-400, Dotted
+                line={"color": "#94a3b8", "width": 2, "dash": "dot"},  # Slate-400, Dotted
                 hovertemplate="<b>SPY</b>: $%{y:,.0f}<extra></extra>",
             )
         )
@@ -195,7 +195,7 @@ def generate_backtest_charts(
             y=equity.tolist(),
             mode="lines",
             name="Strategy Equity",
-            line=dict(color=COLOR_BLUE, width=3, shape="spline", smoothing=1.3),
+            line={"color": COLOR_BLUE, "width": 3, "shape": "spline", "smoothing": 1.3},
             fill="tozeroy",
             # Gradient: User wants 15% opacity.
             fillcolor="rgba(59, 130, 246, 0.15)",
@@ -204,25 +204,25 @@ def generate_backtest_charts(
     )
 
     fig_eq.update_layout(
-        margin=dict(l=60, r=60, t=40, b=40),
+        margin={"l": 60, "r": 60, "t": 40, "b": 40},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=280,
         autosize=True,
-        font=dict(family="Inter, sans-serif", color="#94a3b8"),
-        xaxis=dict(showgrid=False, zeroline=False),
+        font={"family": "Inter, sans-serif", "color": "#94a3b8"},
+        xaxis={"showgrid": False, "zeroline": False},
         # Horizontal Grid: #f1f5f9, 1px width
-        yaxis=dict(
-            showgrid=True,
-            gridcolor="#f1f5f9",
-            zeroline=False,
-            gridwidth=1,
-            tickprefix="$",
-            tickformat=",.0f",
-        ),
+        yaxis={
+            "showgrid": True,
+            "gridcolor": "#f1f5f9",
+            "zeroline": False,
+            "gridwidth": 1,
+            "tickprefix": "$",
+            "tickformat": ",.0f",
+        },
         hovermode="x unified",
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "center", "x": 0.5},
     )
 
     # --- 2. Drawdown (Underwater Chart) ---
@@ -234,7 +234,7 @@ def generate_backtest_charts(
             y=drawdown.tolist(),
             mode="lines",
             name="Drawdown",
-            line=dict(color=COLOR_RED, width=1),
+            line={"color": COLOR_RED, "width": 1},
             fill="tozeroy",
             fillcolor="rgba(239, 68, 68, 0.2)",  # Visible Red Fill
             hovertemplate="<b>Drawdown</b>: %{y:.2f}%<extra></extra>",
@@ -242,21 +242,21 @@ def generate_backtest_charts(
     )
 
     fig_dd.update_layout(
-        margin=dict(l=10, r=10, t=10, b=10),
+        margin={"l": 10, "r": 10, "t": 10, "b": 10},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=280,
-        font=dict(family="Inter, sans-serif", color="#94a3b8"),
-        xaxis=dict(showgrid=False, zeroline=False),
+        font={"family": "Inter, sans-serif", "color": "#94a3b8"},
+        xaxis={"showgrid": False, "zeroline": False},
         # Y-Axis: 0 at top (max), negative below
-        yaxis=dict(
-            title="Drawdown %",
-            showgrid=True,
-            gridcolor="rgba(241, 245, 249, 0.5)",
-            zeroline=True,
-            zerolinecolor="#cbd5e1",
-            gridwidth=1,
-        ),
+        yaxis={
+            "title": "Drawdown %",
+            "showgrid": True,
+            "gridcolor": "rgba(241, 245, 249, 0.5)",
+            "zeroline": True,
+            "zerolinecolor": "#cbd5e1",
+            "gridwidth": 1,
+        },
         hovermode="x unified",
         showlegend=False,
     )
@@ -360,7 +360,7 @@ def generate_regime_overlay_chart(daily_df: pd.DataFrame) -> str:
             name="VIX Index",
             fill="tozeroy",
             mode="lines",
-            line=dict(width=0),
+            line={"width": 0},
             fillcolor="rgba(148, 163, 184, 0.2)",  # Slate-400, low opacity
             yaxis="y2",
             hovertemplate="<b>VIX</b>: %{y:.2f}<extra></extra>",
@@ -373,7 +373,7 @@ def generate_regime_overlay_chart(daily_df: pd.DataFrame) -> str:
             x=dataframe["date"].tolist(),
             y=dataframe["equity"].tolist(),
             name="Equity",
-            line=dict(color=COLOR_BLUE, width=2.5),
+            line={"color": COLOR_BLUE, "width": 2.5},
             yaxis="y1",
             hovertemplate="<b>Equity</b>: $%{y:,.0f}<extra></extra>",
         )
@@ -389,36 +389,36 @@ def generate_regime_overlay_chart(daily_df: pd.DataFrame) -> str:
                 * len(safety_days),  # Place markers at top
                 mode="markers",
                 name="Safety Active",
-                marker=dict(symbol="triangle-down", size=8, color=COLOR_RED),
+                marker={"symbol": "triangle-down", "size": 8, "color": COLOR_RED},
                 yaxis="y1",
                 hoverinfo="skip",
             )
         )
 
     fig.update_layout(
-        margin=dict(l=60, r=60, t=40, b=40),
+        margin={"l": 60, "r": 60, "t": 40, "b": 40},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=320,
-        font=dict(family="Inter, sans-serif", color="#94a3b8"),
-        xaxis=dict(showgrid=False),
-        yaxis=dict(
-            title="Equity ($)",
-            showgrid=True,
-            gridcolor="#f1f5f9",
-            tickprefix="$",
-            tickformat=",.0f",
-        ),
-        yaxis2=dict(
-            title="VIX",
-            overlaying="y",
-            side="right",
-            showgrid=False,
-            range=[0, 85],  # FIXED RANGE [0, 85] per User Request/Best Practice
-            fixedrange=True,
-        ),
+        font={"family": "Inter, sans-serif", "color": "#94a3b8"},
+        xaxis={"showgrid": False},
+        yaxis={
+            "title": "Equity ($)",
+            "showgrid": True,
+            "gridcolor": "#f1f5f9",
+            "tickprefix": "$",
+            "tickformat": ",.0f",
+        },
+        yaxis2={
+            "title": "VIX",
+            "overlaying": "y",
+            "side": "right",
+            "showgrid": False,
+            "range": [0, 85],  # FIXED RANGE [0, 85] per User Request/Best Practice
+            "fixedrange": True,
+        },
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "center", "x": 0.5},
         autosize=True,
     )
 
@@ -448,7 +448,7 @@ def generate_price_of_safety_chart(
                 x=spy_dataframe["date"].tolist(),
                 y=spy_dataframe["equity"].tolist(),
                 name="SPY",
-                line=dict(color="#94a3b8"),
+                line={"color": "#94a3b8"},
             )
         )
     if not qqq_dataframe.empty:
@@ -457,7 +457,7 @@ def generate_price_of_safety_chart(
                 x=qqq_dataframe["date"].tolist(),
                 y=qqq_dataframe["equity"].tolist(),
                 name="QQQ",
-                line=dict(color="#a855f7"),
+                line={"color": "#a855f7"},
             )
         )
 
@@ -469,7 +469,7 @@ def generate_price_of_safety_chart(
                 x=unconstrained_dataframe[x_col].tolist(),
                 y=unconstrained_dataframe["equity"].tolist(),
                 name="Unconstrained (Leveraged Kelly)",
-                line=dict(color=COLOR_AMBER, dash="dot"),
+                line={"color": COLOR_AMBER, "dash": "dot"},
             )
         )
 
@@ -480,7 +480,7 @@ def generate_price_of_safety_chart(
                 x=constrained_dataframe[x_col].tolist(),
                 y=constrained_dataframe["equity"].tolist(),
                 name="Constrained (Reality / Budget Cap)",
-                line=dict(color=COLOR_BLUE),
+                line={"color": COLOR_BLUE},
             )
         )
 
@@ -491,19 +491,19 @@ def generate_price_of_safety_chart(
                 x=safety_dataframe[x_col].tolist(),
                 y=safety_dataframe["equity"].tolist(),
                 name="With Safety Switch",
-                line=dict(color=COLOR_GREEN, width=3),
+                line={"color": COLOR_GREEN, "width": 3},
             )
         )
 
     fig.update_layout(
         height=320,
-        margin=dict(l=60, r=60, t=40, b=40),
+        margin={"l": 60, "r": 60, "t": 40, "b": 40},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        yaxis=dict(
-            title="Equity ($)", tickprefix="$", tickformat=",.0f", gridcolor="#f1f5f9"
-        ),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5),
+        yaxis={
+            "title": "Equity ($)", "tickprefix": "$", "tickformat": ",.0f", "gridcolor": "#f1f5f9"
+        },
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "center", "x": 0.5},
         template="plotly_white",
         autosize=True,
     )
@@ -573,7 +573,7 @@ def generate_exposure_heatmap(daily_df: pd.DataFrame, pressure_pct: float = 0.0)
                 y=new_cumulative,
                 name=strat_name,
                 mode="lines",
-                line=dict(width=0),  # Remove lines for cleaner area look
+                line={"width": 0},  # Remove lines for cleaner area look
                 fill="tonexty" if len(fig.data) > 0 else "tozeroy",
                 fillcolor=color,  # Solid color
                 hovertemplate=f"<b>{strat_name}</b><br>Stacked: %{{y:.1f}}%<extra></extra>",
@@ -596,7 +596,7 @@ def generate_exposure_heatmap(daily_df: pd.DataFrame, pressure_pct: float = 0.0)
                 y=denied_top,
                 name="Total Denied (Excess Demand)",
                 mode="lines",
-                line=dict(width=0),
+                line={"width": 0},
                 fill="tonexty",
                 fillcolor="#475569",  # Solid Slate-600 (distinct from background)
                 hovertemplate="<b>Total Denied</b><br>Stacked: %{y:.1f}%<extra></extra>",
@@ -610,33 +610,33 @@ def generate_exposure_heatmap(daily_df: pd.DataFrame, pressure_pct: float = 0.0)
             y=[100] * n,
             name="Budget Cap (100%)",
             mode="lines",
-            line=dict(color=COLOR_RED, width=2, dash="dash"),
+            line={"color": COLOR_RED, "width": 2, "dash": "dash"},
             hoverinfo="skip",
             showlegend=False,
         )
     )
 
     fig.update_layout(
-        margin=dict(l=10, r=10, t=10, b=10),
+        margin={"l": 10, "r": 10, "t": 10, "b": 10},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=320,
-        font=dict(family="Inter, sans-serif", color="#94a3b8"),
-        yaxis=dict(
-            title="Utilization %", range=[0, 150], showgrid=True, gridcolor="#f1f5f9"
-        ),
+        font={"family": "Inter, sans-serif", "color": "#94a3b8"},
+        yaxis={
+            "title": "Utilization %", "range": [0, 150], "showgrid": True, "gridcolor": "#f1f5f9"
+        },
         showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="top",
-            y=-0.2,
-            xanchor="center",
-            x=0.5,
-            itemwidth=40,  # Increased for better spacing
-            itemsizing="constant",
-            traceorder="normal",  # Maintain entry order (Actuals then Denied)
-            font=dict(size=11),
-        ),
+        legend={
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.2,
+            "xanchor": "center",
+            "x": 0.5,
+            "itemwidth": 40,  # Increased for better spacing
+            "itemsizing": "constant",
+            "traceorder": "normal",  # Maintain entry order (Actuals then Denied)
+            "font": {"size": 11},
+        },
         width=None,
     )
     fig.update_layout(autosize=True)
@@ -703,26 +703,26 @@ def generate_risk_reward_scatter(daily_df: pd.DataFrame) -> str:
             boxpoints="all",
             jitter=0.5,
             pointpos=-1.8,  # Points to the left
-            marker=dict(color=COLOR_BLUE, size=4),
-            line=dict(color=COLOR_BLUE),
+            marker={"color": COLOR_BLUE, "size": 4},
+            line={"color": COLOR_BLUE},
         )
     )
 
     fig.update_layout(
-        margin=dict(l=60, r=60, t=40, b=40),  # Standardized margins
+        margin={"l": 60, "r": 60, "t": 40, "b": 40},  # Standardized margins
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=300,
-        font=dict(family="Inter, sans-serif", color="#94a3b8"),
+        font={"family": "Inter, sans-serif", "color": "#94a3b8"},
         showlegend=False,
-        yaxis=dict(
-            title="Return %",
-            showgrid=True,
-            gridcolor="rgba(241, 245, 249, 0.5)",  # Subtle grid
-            zeroline=True,
-            zerolinecolor="#000000",  # Solid Black as requested
-            zerolinewidth=2,
-        ),
+        yaxis={
+            "title": "Return %",
+            "showgrid": True,
+            "gridcolor": "rgba(241, 245, 249, 0.5)",  # Subtle grid
+            "zeroline": True,
+            "zerolinecolor": "#000000",  # Solid Black as requested
+            "zerolinewidth": 2,
+        },
         autosize=True,
     )
     return fig.to_html(

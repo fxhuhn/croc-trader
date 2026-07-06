@@ -278,8 +278,8 @@ class ResultsPersistence:
             cursor.execute("DROP VIEW IF EXISTS view_trades_ranking")
             cursor.execute("""
                 CREATE VIEW view_trades_ranking AS
-                SELECT 
-                    id, symbol, strategy, entry_date, exit_date, 
+                SELECT
+                    id, symbol, strategy, entry_date, exit_date,
                     entry_price, exit_price, realized_pnl, exit_reason
                 FROM trades
                 WHERE status = 'CLOSED'
@@ -362,12 +362,12 @@ class ResultsPersistence:
             cursor.execute(
                 """
                 INSERT INTO backtest_runs (
-                    start_date, end_date, total_trades, win_rate, 
+                    start_date, end_date, total_trades, win_rate,
                     profit_factor, net_profit, expectancy, maximum_drawdown,
                     sharpe_ratio, sqn, kelly_safe, strategy_return, benchmark_return,
                     risk_of_ruin, average_win, average_loss, average_mae, average_mfe,
-                    kelly_mean, kelly_std, market_exposure_pct, 
-                    risk_adjusted_benchmark, exposure_efficiency, 
+                    kelly_mean, kelly_std, market_exposure_pct,
+                    risk_adjusted_benchmark, exposure_efficiency,
                     return_over_max_drawdown, diversification_score
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
@@ -408,8 +408,8 @@ class ResultsPersistence:
                 cursor.executemany(
                     """
                     INSERT INTO strategy_metrics (
-                        run_id, strategy_name, total_trades, win_rate, 
-                        profit_factor, net_profit, maximum_drawdown, sqn, 
+                        run_id, strategy_name, total_trades, win_rate,
+                        profit_factor, net_profit, maximum_drawdown, sqn,
                         kelly_safe, risk_of_ruin, average_win, average_loss,
                         market_exposure_pct
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -439,10 +439,10 @@ class ResultsPersistence:
                 cursor.execute(
                     """
                     INSERT INTO portfolio_simulations (
-                        run_id, combined_mean_kelly, safe_kelly_25, 
+                        run_id, combined_mean_kelly, safe_kelly_25,
                         suggested_multiplier, leveraged_max_drawdown, max_total_exposure,
-                        correlation_fail_rate, max_concurrent_trades, 
-                        uncapped_multiplier, uncapped_max_total_exposure, 
+                        correlation_fail_rate, max_concurrent_trades,
+                        uncapped_multiplier, uncapped_max_total_exposure,
                         uncapped_leveraged_max_drawdown
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -466,7 +466,7 @@ class ResultsPersistence:
                 cursor.executemany(
                     """
                     INSERT INTO walk_forward_windows (
-                        run_id, window_label, is_kelly, oos_kelly, oos_pf, 
+                        run_id, window_label, is_kelly, oos_kelly, oos_pf,
                         avg_vix, uptrend_pct, degradation, recommendation
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -491,7 +491,7 @@ class ResultsPersistence:
                 cursor.execute(
                     """
                     INSERT INTO stress_tests (
-                        run_id, avg_max_drawdown, worst_max_drawdown, 
+                        run_id, avg_max_drawdown, worst_max_drawdown,
                         failure_rate, avg_final_equity
                     ) VALUES (?, ?, ?, ?, ?)
                 """,
@@ -569,7 +569,7 @@ class ResultsPersistence:
                 cursor.execute(
                     """
                     INSERT INTO safety_switch_impact (
-                        run_id, final_equity, theoretical_equity, saved_loss, 
+                        run_id, final_equity, theoretical_equity, saved_loss,
                         opportunity_cost, net_efficiency
                     ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
@@ -588,7 +588,7 @@ class ResultsPersistence:
                     cursor.executemany(
                         """
                         INSERT INTO safety_switch_events (
-                            run_id, start_date, end_date, trigger_reason, 
+                            run_id, start_date, end_date, trigger_reason,
                             duration_days, saved_profit
                         ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
@@ -610,7 +610,7 @@ class ResultsPersistence:
                 cursor.executemany(
                     """
                     INSERT INTO portfolio_funnel (
-                        run_id, strategy_name, kelly, raw_share, status, 
+                        run_id, strategy_name, kelly, raw_share, status,
                         reason, final_allocation
                     ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,

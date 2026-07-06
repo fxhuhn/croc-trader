@@ -108,7 +108,7 @@ class CapacitySimulator:
         scenario_interest = []
         scenario_commissions = []
 
-        for simulation_index in range(self.number_of_simulations):
+        for _simulation_index in range(self.number_of_simulations):
             # Bootstrap Resampling
             sim_trades = trades_dataframe.sample(frac=1.0, replace=True).sort_values(
                 "entry_date"
@@ -174,7 +174,7 @@ class CapacitySimulator:
                 monitor.update(current_date, active_map)
 
                 # 4. Process New Trades (Daily)
-                for index, trade in todays_trades.iterrows():
+                for _index, trade in todays_trades.iterrows():
                     strategy = trade["strategy"]
 
                     if config["dynamic"]:

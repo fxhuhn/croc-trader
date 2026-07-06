@@ -134,7 +134,7 @@ class MarketDataProvider:
                         SELECT date, symbol, open, high, low, close, volume
                         FROM market_prices
                         WHERE symbol IN ({placeholders})
-                          AND date >= ? 
+                          AND date >= ?
                           AND timeframe = '1D'
                         ORDER BY date ASC
                     """
@@ -234,7 +234,7 @@ class MarketDataProvider:
             ).strftime("%Y-%m-%d")
 
             placeholders = ",".join("?" for _ in symbols)
-            sql = f"""SELECT symbol, date, open, high, low, close, volume FROM market_prices 
+            sql = f"""SELECT symbol, date, open, high, low, close, volume FROM market_prices
                       WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ? AND timeframe='1D' ORDER BY date ASC"""
 
             df = pandas.read_sql(
@@ -254,9 +254,9 @@ class MarketDataProvider:
         """Retrieves a list of all available trading days in the range (fallback for missing SPY)."""
         with self.session.connect() as connection:
             query = """
-                SELECT DISTINCT date 
-                FROM market_prices 
-                WHERE date >= ? AND date <= ? AND timeframe='1D' 
+                SELECT DISTINCT date
+                FROM market_prices
+                WHERE date >= ? AND date <= ? AND timeframe='1D'
                 ORDER BY date ASC
             """
             rows = connection.execute(query, (start_date, end_date)).fetchall()

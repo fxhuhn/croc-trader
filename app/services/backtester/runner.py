@@ -762,7 +762,7 @@ def _run_extended_analytics(
     try:
         div = DiversificationAnalyzer()
         if not trades_dataframe.empty:
-            strat_map = {k: v for k, v in trades_dataframe.groupby("strategy")}
+            strat_map = dict(trades_dataframe.groupby("strategy"))
             corr = div.calculate_strategy_correlations(strat_map)
             div_score = div.calculate_diversification_score(corr)
     except Exception as e:

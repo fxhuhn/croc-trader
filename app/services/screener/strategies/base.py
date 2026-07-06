@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar, final
+from typing import TypeVar, final
 
 import pandas as pd
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-class BaseStrategy(ABC, Generic[T]):
+class BaseStrategy[T](ABC):
     name: str = "Base"
 
     def __init__(

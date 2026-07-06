@@ -447,8 +447,7 @@ class DipBuyerStrategy(BaseStrategy):
                 )
             except Exception as database_error:
                 raise RuntimeError(
-                    "[%s] Database unavailable saving trade for %s: %s"
-                    % (self.name, symbol, database_error)
+                    f"[{self.name}] Database unavailable saving trade for {symbol}: {database_error}"
                 ) from database_error
 
         # Reporting

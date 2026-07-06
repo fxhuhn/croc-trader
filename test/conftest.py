@@ -32,7 +32,7 @@ class CompatibleTransitionString(str):
 
     def __eq__(self, other):
         if isinstance(other, str):
-            if other == self.reason or other == self.message:
+            if other in (self.reason, self.message):
                 return True
             return other in self.reason or other in self.message
         return super().__eq__(other)

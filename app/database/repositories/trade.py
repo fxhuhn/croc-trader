@@ -47,32 +47,32 @@ class TradeRepository(BaseRepository):
                     symbol TEXT NOT NULL,
                     strategy TEXT NOT NULL,
                     status TEXT DEFAULT 'CREATED',
-                    
+
                     -- Size Management
                     initial_size REAL DEFAULT 0,
                     current_size REAL DEFAULT 0,
-                    
+
                     -- Preise & Limits
                     entry_price REAL,
                     entry_date TIMESTAMP,
                     current_price REAL,
                     current_stop_loss REAL,
                     current_target REAL,
-                    
+
                     -- Performance
                     avg_exit_price REAL,
                     realized_pnl REAL DEFAULT 0,
-                    
+
                     -- Exit Details
                     exit_price REAL,
                     exit_date TIMESTAMP,
                     exit_reason TEXT,
-                    
+
                     -- Meta Infos
-                    
+
                     -- Context (JSON)
                     signal_context TEXT,
-                    
+
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -206,9 +206,9 @@ class TradeRepository(BaseRepository):
     ) -> tuple[int, str] | None:
         """Fetches existing trade ID and status based on context date."""
         check_sql = """
-            SELECT id, status FROM trades 
-            WHERE symbol = ? 
-            AND strategy = ? 
+            SELECT id, status FROM trades
+            WHERE symbol = ?
+            AND strategy = ?
             AND json_extract(signal_context, '$.date') = ?
         """
         row = connection.execute(check_sql, (symbol, strategy, signal_date)).fetchone()
@@ -227,7 +227,7 @@ class TradeRepository(BaseRepository):
     ) -> None:
         """Resets a non-active trade candidate's fields."""
         update_sql = """
-            UPDATE trades SET 
+            UPDATE trades SET
                 status = 'CREATED',
                 initial_size = ?, current_size = ?,
                 entry_price = ?, current_stop_loss = ?, current_target = ?,
@@ -467,9 +467,9 @@ class TradeRepository(BaseRepository):
         wildcard_strat = f"{strategy}%"
 
         sql = """
-            SELECT 1 FROM trades 
-            WHERE symbol = ? 
-            AND strategy LIKE ? 
+            SELECT 1 FROM trades
+            WHERE symbol = ?
+            AND strategy LIKE ?
             AND (json_extract(signal_context, '$.date') = ? OR json_extract(signal_context, '$.setup_date') = ?)
             LIMIT 1
         """

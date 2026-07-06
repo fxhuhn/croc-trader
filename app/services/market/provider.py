@@ -17,7 +17,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def require_lock(func: Callable[P, R]) -> Callable[P, R | None]:
+def require_lock[**P, R](func: Callable[P, R]) -> Callable[P, R | None]:
     """Decorator that acquires a global lock before executing the function.
 
     If the lock is already held, the function call is skipped and None is returned.

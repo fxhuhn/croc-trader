@@ -45,8 +45,8 @@ class DatabaseConfig:
     """Manages paths to databases and data files."""
 
     base_folder: str = "data"
-    files: dict[str, str] = field(default_factory=lambda: DEFAULT_DB_FILES.copy())
-    folders: dict[str, str] = field(default_factory=lambda: DEFAULT_DB_FOLDERS.copy())
+    files: dict[str, str] = field(default_factory=DEFAULT_DB_FILES.copy)
+    folders: dict[str, str] = field(default_factory=DEFAULT_DB_FOLDERS.copy)
 
 
 @dataclass(frozen=True)
@@ -348,7 +348,7 @@ class ConfigManager:
                 raise RuntimeError(
                     "❌ SECURITY: FLASK_SECRET_KEY is not set in a production environment!"
                 )
-            secret_key = "dev-fallback-key"
+            secret_key = "dev-fallback-key"  # nosec B105
 
         return EnvConfig(
             APP_ENV=app_env,

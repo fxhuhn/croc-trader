@@ -133,9 +133,9 @@ class MarketRepository(BaseRepository):
     def get_symbol_history_raw(self, symbol: str, start_date: str) -> pandas.DataFrame:
         """Loads history for a single symbol (IMPORTANT for TradeManager)."""
         sql = """
-            SELECT date, open, high, low, close, volume 
-            FROM market_prices 
-            WHERE symbol = ? AND date >= ? AND timeframe='1D' 
+            SELECT date, open, high, low, close, volume
+            FROM market_prices
+            WHERE symbol = ? AND date >= ? AND timeframe='1D'
             ORDER BY date ASC
         """
         with self.session.connect() as connection:
@@ -152,10 +152,10 @@ class MarketRepository(BaseRepository):
             return pandas.DataFrame()
         placeholders = ",".join("?" for _ in symbols)
         sql = f"""
-            SELECT symbol, date, open, high, low, close, volume 
-            FROM market_prices 
-            WHERE symbol IN ({placeholders}) 
-            AND date >= ? AND date <= ? AND timeframe='1D' 
+            SELECT symbol, date, open, high, low, close, volume
+            FROM market_prices
+            WHERE symbol IN ({placeholders})
+            AND date >= ? AND date <= ? AND timeframe='1D'
             ORDER BY date ASC
         """
         params = symbols + [start_date, end_date]

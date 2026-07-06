@@ -425,7 +425,7 @@ class TradeViewService:
                 x=dates,
                 y=prices,
                 mode="lines",
-                line=dict(color=color, width=2, shape="spline", smoothing=1.3),
+                line={"color": color, "width": 2, "shape": "spline", "smoothing": 1.3},
                 fill="tozeroy",
                 fillcolor=fill_color,
                 hoverinfo="skip",
@@ -433,11 +433,11 @@ class TradeViewService:
         )
 
         figure.update_layout(
-            margin=dict(l=0, r=0, t=0, b=0),
+            margin={"l": 0, "r": 0, "t": 0, "b": 0},
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            xaxis=dict(visible=False),
-            yaxis=dict(visible=False),
+            xaxis={"visible": False},
+            yaxis={"visible": False},
             showlegend=False,
             height=50,
             width=120,
@@ -458,14 +458,14 @@ class TradeViewService:
                     hole=0.8,
                     textinfo="none",
                     hoverinfo="label+percent+value",
-                    marker=dict(colors=colors),
+                    marker={"colors": colors},
                     sort=False,
                 )
             ]
         )
 
         figure.update_layout(
-            margin=dict(l=0, r=0, t=10, b=10),
+            margin={"l": 0, "r": 0, "t": 10, "b": 10},
             paper_bgcolor="rgba(0,0,0,0)",
             showlegend=False,
             height=200,
@@ -600,7 +600,7 @@ class TradeViewService:
                     group["total_pnl"] / group["total_invested"]
                 ) * 100
 
-        return sorted(list(grouped.values()), key=lambda x: x["symbol"])
+        return sorted(grouped.values(), key=lambda x: x["symbol"])
 
     def group_trades_history(
         self, trades: list[TradeViewData]
@@ -636,7 +636,7 @@ class TradeViewService:
 
         # Return sorted list
         return sorted(
-            list(grouped.values()), key=lambda x: str(x["max_exit"]), reverse=True
+            grouped.values(), key=lambda x: str(x["max_exit"]), reverse=True
         )
 
     def get_index_stats(
