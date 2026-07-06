@@ -2,8 +2,8 @@ import logging
 from typing import TypedDict
 
 from ...database.repositories.market_data_provider import MarketDataProvider
-from ...database.repositories.trade import TradeRepository
 from ...database.repositories.signal import SignalRepository
+from ...database.repositories.trade import TradeRepository
 from ...services.telegram import TelegramBot
 from .protocols import StrategyProtocol
 

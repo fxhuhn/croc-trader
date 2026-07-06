@@ -1,15 +1,16 @@
 """Routes and views for strategy setups screeners."""
 
 from typing import TypedDict
+
 from flask import render_template, request
 
 from ...const import Strategies
 from .blueprint import views_bp
 from .dependencies import (
-    _get_screener_view_service,
-    _get_signal_repository,
     ScreenerViewService,
     SignalRepository,
+    _get_screener_view_service,
+    _get_signal_repository,
 )
 
 

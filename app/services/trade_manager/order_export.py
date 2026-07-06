@@ -1,6 +1,7 @@
 import csv
 import logging
 from pathlib import Path
+
 from ...config import settings
 from ...const import Strategies
 from ...models import Order

@@ -2,7 +2,7 @@
 
 from flask import render_template, request
 
-from ...const import Strategies, ExitReason
+from ...const import ExitReason, Strategies
 from ...types import TradeStatus
 from .blueprint import views_bp
 from .dependencies import (

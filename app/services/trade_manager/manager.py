@@ -6,23 +6,21 @@ import sqlite3
 from datetime import datetime
 from pathlib import Path
 
-
 from ...config import settings
-from ...const import Strategies, STRATEGY_ALIASES
-from ...types import TradeStatus
-from ...database.repositories.trade import TradeRepository
+from ...const import STRATEGY_ALIASES, Strategies
 from ...database.repositories.market import MarketRepository
+from ...database.repositories.trade import TradeRepository
 from ...database.session import DatabaseSession
-from ...services.telegram import TelegramBot
 from ...models import Order
-
+from ...services.telegram import TelegramBot
+from ...types import TradeStatus
+from .order_export import write_csv_orders_file
 from .strategies.abstract import BaseTradeStrategy
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.hold_target import HoldTargetStrategy
+from .strategies.ndx_momentum import NDXMomentumTradeStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
 from .strategies.two_percent_strategy import TwoPercentStrategy
-from .strategies.ndx_momentum import NDXMomentumTradeStrategy
-from .order_export import write_csv_orders_file
 
 logger = logging.getLogger(__name__)
 

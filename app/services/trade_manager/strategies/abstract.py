@@ -7,9 +7,9 @@ from typing import final
 
 import pandas as pd
 
+from ....models import Order, OrderLeg, TradeParams
+from ....types import ExitReason, TradeData, TradeStatus
 from ..types import TradeTransition
-from ....types import TradeData, TradeStatus, ExitReason
-from ....models import Order, TradeParams, OrderLeg
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,5 @@
-import plotly.graph_objects as go
 import pandas as pd
-from typing import List, Optional
+import plotly.graph_objects as go
 
 # --- Palette ---
 # Constants
@@ -21,7 +20,7 @@ def _generate_minimal_gauge(
     maximum_value: float,
     bar_color: str,
     suffix: str = "",
-    thresholds: Optional[List[float]] = None,
+    thresholds: list[float] | None = None,
 ) -> str:
     """
     Advanced Gauge v4:
@@ -130,7 +129,7 @@ def generate_backtest_charts(
     dates: pd.Series,
     equity: pd.Series,
     drawdown: pd.Series,
-    benchmark_df: Optional[pd.DataFrame] = None,
+    benchmark_df: pd.DataFrame | None = None,
     id_prefix: str = "base",
 ) -> tuple[str, str]:
     """

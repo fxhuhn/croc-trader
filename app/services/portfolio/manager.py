@@ -1,6 +1,7 @@
 import json
 import logging
 import sqlite3
+
 from ...config import PortfolioConfig
 from ...database.repositories.trade import TradeRepository
 from ...types import TradeStatus

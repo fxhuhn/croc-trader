@@ -1,13 +1,14 @@
 import datetime
 import logging
-import pandas as pd
-from typing import override, TypedDict
+from typing import TypedDict, override
 
-from ....database.repositories.trade import TradeRepository
+import pandas as pd
+
+from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
+from ....database.repositories.trade import TradeRepository
 from ...telegram import TelegramBot
 from .base import BaseStrategy
-from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 

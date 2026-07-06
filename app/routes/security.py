@@ -3,7 +3,7 @@ from collections.abc import Callable
 from functools import wraps
 from typing import ParamSpec, TypeVar
 
-from flask import current_app, jsonify, request, Response
+from flask import Response, current_app, jsonify, request
 
 logger = logging.getLogger(__name__)
 

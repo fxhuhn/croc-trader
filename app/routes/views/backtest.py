@@ -1,17 +1,17 @@
 """Routes and views for backtest visualization and charting dashboard."""
 
-from flask import render_template, request
 import pandas as pd
+from flask import render_template, request
 
 from .blueprint import views_bp
 from .dependencies import (
-    _get_database_path,
-    _get_backtest_database_path,
-    _prepare_backtest_metrics,
-    _prepare_strategy_metrics,
-    ResultsPersistence,
     BacktestAnalytics,
     BacktestMetrics,
+    ResultsPersistence,
+    _get_backtest_database_path,
+    _get_database_path,
+    _prepare_backtest_metrics,
+    _prepare_strategy_metrics,
 )
 
 
@@ -139,13 +139,13 @@ def _generate_dashboard_charts(
     """
     from ...services.backtester.charts import (
         generate_backtest_charts,
-        generate_profit_factor_gauge,
-        generate_win_rate_gauge,
-        generate_sqn_gauge,
-        generate_regime_overlay_chart,
-        generate_price_of_safety_chart,
         generate_exposure_heatmap,
+        generate_price_of_safety_chart,
+        generate_profit_factor_gauge,
+        generate_regime_overlay_chart,
         generate_risk_reward_scatter,
+        generate_sqn_gauge,
+        generate_win_rate_gauge,
     )
 
     # 1. Benchmarks

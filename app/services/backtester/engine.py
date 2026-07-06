@@ -1,35 +1,31 @@
 import logging
 import warnings
-import pandas as pd
 
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
+import pandas as pd
 from rich.console import Console
 from rich.live import Live
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
-from ...database.repositories.trade import TradeRepository
+from ...config import PortfolioConfig
+from ...const import STRATEGY_ALIASES, Strategies
 from ...database.repositories.market_data_provider import MarketDataProvider
-from ...const import Strategies, STRATEGY_ALIASES
+from ...database.repositories.trade import TradeRepository
+from ...services.portfolio.manager import PortfolioManager
 
 # Strategies
 from ...services.screener.strategies.dip_buyer import DipBuyerStrategy
+from ...services.screener.strategies.turnover_timing import TurnoverTimingStrategy
+from ...services.screener.strategies.two_percent_strategy import TwoPercentStrategy
 from ...services.trade_manager.strategies.dip_buyer import (
     DipBuyerStrategy as TradeManagerDipBuyer,
 )
-
-from ...services.screener.strategies.turnover_timing import TurnoverTimingStrategy
 from ...services.trade_manager.strategies.turnover_timing import (
     TurnoverTimingStrategy as TradeManagerTurnover,
 )
-
-from ...services.screener.strategies.two_percent_strategy import TwoPercentStrategy
 from ...services.trade_manager.strategies.two_percent_strategy import (
     TwoPercentStrategy as TradeManagerTwoPercent,
 )
-
 from ...types import TradeStatus
-
-from ...config import PortfolioConfig
-from ...services.portfolio.manager import PortfolioManager
 
 logger = logging.getLogger(__name__)
 

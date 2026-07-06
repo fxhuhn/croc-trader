@@ -5,11 +5,11 @@ from typing import TypedDict, final, override
 
 import pandas as pd
 
-from ..types import TradeTransition
+from ....const import Strategies
 from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
 from ....types import ExitReason, TradeData
-from ....const import Strategies
+from ..types import TradeTransition
 from .abstract import BaseTradeStrategy
 
 logger = logging.getLogger(__name__)

@@ -1,16 +1,17 @@
 import logging
 import sqlite3
-import pandas as pd
-from datetime import datetime
 from dataclasses import dataclass
-from typing import override, TypedDict
+from datetime import datetime
+from typing import TypedDict, override
 
+import pandas as pd
+
+from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
-from ....tools.symbol_lists import ExchangeSymbol
 from ....tools.market_holidays import MarketHolidayChecker
-from ....const import Strategies
+from ....tools.symbol_lists import ExchangeSymbol
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)

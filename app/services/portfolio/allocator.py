@@ -1,10 +1,10 @@
-from dataclasses import dataclass
-from decimal import Decimal
 import json
 import logging
+from dataclasses import dataclass
+from decimal import Decimal
 
 from ...config import PortfolioConfig
-from ...const import Strategies, STRATEGY_ALIASES
+from ...const import STRATEGY_ALIASES, Strategies
 
 logger = logging.getLogger(__name__)
 

@@ -1,42 +1,44 @@
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
-import yaml
+
 import pytz
+import yaml
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from ..database.session import DatabaseSession
-from ..database.repositories.trade import TradeRepository
 from ..database.repositories.signal import SignalRepository
+from ..database.repositories.trade import TradeRepository
+from ..database.session import DatabaseSession
 
 if TYPE_CHECKING:
     from flask import Flask
+
     from ..config import ConfigManager
 
 from ..database.repositories.market_data_provider import MarketDataProvider
-from ..services.trade_manager import TradeManager
 from ..services.screener import ScreenerEngine
 from ..services.telegram import TelegramBot
+from ..services.trade_manager import TradeManager
+
+# Tasks importieren
+from ..tasks import (
+    run_cache_prewarm,
+    run_daily_strategy_check,
+    run_db_backup,
+    run_db_maintenance,
+    run_market_data_update,
+    run_order_generation,
+)
 from ..tools.market_holidays import MarketHolidayChecker
 from .ranking_verification import verify_ranking_system
 
 # Strategies
 from .screener.strategies.croc_setup import CrocSetupStrategy
 from .screener.strategies.dip_buyer import DipBuyerStrategy
+from .screener.strategies.ndx_momentum import NDXMomentumScreener
 from .screener.strategies.turnover_timing import TurnoverTimingStrategy
 from .screener.strategies.two_percent_strategy import TwoPercentStrategy
-from .screener.strategies.ndx_momentum import NDXMomentumScreener
-
-# Tasks importieren
-from ..tasks import (
-    run_daily_strategy_check,
-    run_market_data_update,
-    run_db_maintenance,
-    run_db_backup,
-    run_cache_prewarm,
-    run_order_generation,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +64,8 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
     app.extensions["holiday_checker"] = holiday_checker
 
     # 1.6 Symbol Filter (Background Init)
-    from ..tools.symbol_filter import SymbolFilter
     from ..tools.symbol_exchange import SymbolExchange
+    from ..tools.symbol_filter import SymbolFilter
 
     # Initialize singletons to start background thread/cache loading
     symbol_filter = SymbolFilter()

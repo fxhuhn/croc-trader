@@ -1,12 +1,13 @@
 import logging
 from decimal import Decimal
-from typing import override, final
+from typing import final, override
+
 import pandas as pd
 
-from ..types import TradeTransition
-from ....types import ExitReason, TradeData
 from ....const import Strategies
-from ....models import TradeParams, Order, OrderLeg
+from ....models import Order, OrderLeg, TradeParams
+from ....types import ExitReason, TradeData
+from ..types import TradeTransition
 from .abstract import BaseTradeStrategy
 
 logger = logging.getLogger(__name__)

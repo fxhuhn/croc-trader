@@ -1,15 +1,16 @@
-import duckdb
-import pandas as pd
-import numpy as np
 import logging
 import warnings
 from dataclasses import dataclass
 from typing import Any
 
-from ...models import BacktestMetrics, PortfolioMetrics, SQNClassification
-from ...tools.indicators import calculate_sma, calculate_rsi
-from ...tools import metrics
+import duckdb
+import numpy as np
+import pandas as pd
+
 from ...const import Strategies
+from ...models import BacktestMetrics, PortfolioMetrics, SQNClassification
+from ...tools import metrics
+from ...tools.indicators import calculate_rsi, calculate_sma
 
 logger = logging.getLogger(__name__)
 

@@ -1,18 +1,18 @@
 import logging
 from dataclasses import dataclass, field
-from typing import override, TypedDict
+from typing import TypedDict, override
 
 import pandas as pd
 
+from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
-from ....tools.symbol_lists import ExchangeSymbol
-from ....tools.market_holidays import MarketHolidayChecker
 from ....tools import indicators
+from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_filter import SymbolFilter
+from ....tools.symbol_lists import ExchangeSymbol
 from ...telegram import TelegramBot
 from .base import BaseStrategy
-from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 

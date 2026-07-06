@@ -1,14 +1,15 @@
 import logging
-import pandas as pd
 from decimal import Decimal
-from typing import override, final
+from typing import final, override
 
-from ..types import TradeTransition
-from ....types import ExitReason, TradeData
+import pandas as pd
+
+from ....const import Strategies
 from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
+from ....types import ExitReason, TradeData
+from ..types import TradeTransition
 from .abstract import BaseTradeStrategy
-from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 

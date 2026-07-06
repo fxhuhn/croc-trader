@@ -1,19 +1,20 @@
 """Shared dependencies, repositories, and charting helpers for views."""
 
 from pathlib import Path
-from flask import current_app
+
 import plotly.graph_objects as go
+from flask import current_app
 
 from ...database.repositories.signal import SignalRepository
 from ...database.session import DatabaseSession
-from ...models import BacktestMetrics
-from ...services.screener.view_service import ScreenerViewService
-from ...services.trade_manager.view_service import TradeViewService
 
 # Re-expose classes used by views sub-modules for clean importing
 from ...extensions import cache  # noqa
-from ...services.backtester.backtest_results import ResultsPersistence  # noqa
+from ...models import BacktestMetrics
 from ...services.backtester.analytics import BacktestAnalytics  # noqa
+from ...services.backtester.backtest_results import ResultsPersistence  # noqa
+from ...services.screener.view_service import ScreenerViewService
+from ...services.trade_manager.view_service import TradeViewService
 
 
 def _get_database_path(name: str = "signals") -> Path:
@@ -54,8 +55,8 @@ def _get_trade_view_service() -> TradeViewService:
     Returns:
         TradeViewService: Instantiated trade view service.
     """
-    from ...database.repositories.trade import TradeRepository
     from ...database.repositories.market import MarketRepository
+    from ...database.repositories.trade import TradeRepository
 
     signals_session = DatabaseSession(str(_get_database_path("signals")))
     stocks_session = DatabaseSession(str(_get_database_path("stocks")))

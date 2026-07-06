@@ -1,11 +1,13 @@
 import logging
 from datetime import datetime
 from pathlib import Path
+
 from flask import Flask
-from .services.market.updater import MarketDataUpdater
-from .services.market.quality import MarketQualityService
+
 from .database.session import DatabaseSession
 from .extensions import cache
+from .services.market.quality import MarketQualityService
+from .services.market.updater import MarketDataUpdater
 
 logger = logging.getLogger(__name__)
 

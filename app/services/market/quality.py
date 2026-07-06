@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime, timedelta
 
-
 from app.services.market.updater import MarketDataUpdater
 
 logger = logging.getLogger(__name__)
