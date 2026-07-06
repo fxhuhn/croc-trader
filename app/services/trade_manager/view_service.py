@@ -635,9 +635,7 @@ class TradeViewService:
             grouped[key]["max_exit"] = max(grouped[key]["max_exit"], current_exit)
 
         # Return sorted list
-        return sorted(
-            grouped.values(), key=lambda x: str(x["max_exit"]), reverse=True
-        )
+        return sorted(grouped.values(), key=lambda x: str(x["max_exit"]), reverse=True)
 
     def get_index_stats(
         self, trades: list[TradeViewData]

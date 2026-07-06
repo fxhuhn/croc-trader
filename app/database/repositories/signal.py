@@ -136,7 +136,8 @@ class SignalRepository(BaseRepository):
         for row in rows:
             for yaml_key, db_key in zip(
                 ["Signal", "Status", "Kerze", "Wolke", "Trend", "Setter", "Welle"],
-                ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"], strict=False,
+                ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"],
+                strict=False,
             ):
                 value = row[db_key]
                 if value is not None:
