@@ -6,34 +6,41 @@ import sys
 import warnings
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
-
+import pandas as pd
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from app.services.portfolio.simulation import CapacitySimulator
+
+from ...config import PortfolioConfig
 from ...database.repositories.market_data_provider import MarketDataProvider
 from ...database.repositories.trade import TradeRepository
 from ...database.session import DatabaseSession
 from .analytics import (
     BacktestAnalytics,
     BacktestMetrics,
-    PortfolioMetrics,
-    NoiseTester,
-    WalkForwardAnalyzer,
-    PerformancePeriods,
-    TradeQualityAnalyzer,
     DiversificationAnalyzer,
+    NoiseTester,
+    PerformancePeriods,
+    PortfolioMetrics,
+    TradeQualityAnalyzer,
+    WalkForwardAnalyzer,
 )
-from .engine import BacktestEngine
 from .backtest_results import (
     ResultsPersistence,
     SafetyEvent,
     SimulationImpact,
 )
-from app.services.portfolio.simulation import CapacitySimulator
-from ...config import PortfolioConfig
+from .engine import BacktestEngine
+
+warnings.warn(
+    "The app.services.backtester.runner module is deprecated. Use TradeManager instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 
 # Configure Logging to file, so console is clean for Rich
 logging.basicConfig(
@@ -777,7 +784,8 @@ def _run_extended_analytics(
 def _load_portfolio_configuration() -> PortfolioConfig:
     """Loads portfolio config: settings.yaml defaults, optionally overridden by portfolio.yaml."""
     import yaml
-    from ...config import settings, PortfolioConfig, PortfolioStrategyConfig
+
+    from ...config import PortfolioConfig, PortfolioStrategyConfig, settings
 
     base_config = settings.app.portfolio
 
@@ -786,7 +794,7 @@ def _load_portfolio_configuration() -> PortfolioConfig:
         return base_config
 
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             custom_data = yaml.safe_load(f) or {}
             logger.info("Loaded custom portfolio overrides from %s", config_path)
 
@@ -882,8 +890,7 @@ def _export_portfolio_configuration(
             if portfolio_metrics
             else 1
         )
-        if max_trades < 1:
-            max_trades = 1
+        max_trades = max(max_trades, 1)
 
         # 95th Percentile Max Trades
         max_trades_p95 = (
@@ -891,8 +898,7 @@ def _export_portfolio_configuration(
             if portfolio_metrics
             else 1.0
         )
-        if max_trades_p95 < 1.0:
-            max_trades_p95 = 1.0
+        max_trades_p95 = max(max_trades_p95, 1.0)
 
         # Budget per position
         qty_static = quota_static / max_trades

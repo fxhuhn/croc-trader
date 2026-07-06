@@ -77,5 +77,5 @@ class BaseStrategy(ABC, Generic[T]):
         if not self.telegram_bot or data.empty:
             return
 
-        full_title = "\U0001f50e {} ({})".format(title, date)
+        full_title = f"\U0001f50e {title} ({date})"
         self.telegram_bot.send_dataframe(data, title=full_title)

@@ -1,10 +1,17 @@
 import logging
 import sqlite3
+import warnings
 from typing import Any, TypedDict
 
 import pandas as pd
 
 from ...models import BacktestMetrics, PortfolioMetrics
+
+warnings.warn(
+    "The app.services.backtester.backtest_results module is deprecated. Use TradeManager instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +44,11 @@ class FunnelData(TypedDict):
 
 
 class ResultsPersistence:
-    """Handles persistence of backtest results into the existing backtest.db."""
+    """Handles persistence of backtest results into the existing backtest.db.
+
+    .. deprecated:: 2.0
+       This class is deprecated. Use TradeManager instead for active trades and position tracking.
+    """
 
     def __init__(self, db_path: str) -> None:
         """Initializes the persistence layer.
@@ -45,6 +56,11 @@ class ResultsPersistence:
         Args:
             db_path: Path to the existing backtest.db file.
         """
+        warnings.warn(
+            "ResultsPersistence is deprecated. Use TradeManager components instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.db_path = db_path
         self._init_schema()
 

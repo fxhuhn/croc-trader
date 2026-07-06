@@ -1,21 +1,22 @@
 import json
 import logging
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Final
+from typing import Any, Final
 
 import pandas as pd
 import yaml
 
 from ....config import settings
+from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.signal import SignalRepository
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
 from ....tools.symbol_lists import ExchangeSymbol
 from .base import BaseStrategy
-from ....const import Strategies
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ class CrocSetupStrategy(BaseStrategy):
                     all_keys.add(key)
                 rule_signal = str(rule.get("Signal", ""))
                 base_rule_signal = (
-                    rule_signal.split(" (")[0].strip()
+                    rule_signal.split(" (", maxsplit=1)[0].strip()
                     if " (" in rule_signal
                     else rule_signal.strip()
                 )
@@ -418,7 +419,7 @@ class CrocSetupStrategy(BaseStrategy):
         rule_signal = str(rule.get("Signal", ""))
         # Extract base signal name if it contains a parenthetical suffix like (NEU)
         base_rule_signal = (
-            rule_signal.split(" (")[0].strip()
+            rule_signal.split(" (", maxsplit=1)[0].strip()
             if " (" in rule_signal
             else rule_signal.strip()
         )
@@ -427,7 +428,7 @@ class CrocSetupStrategy(BaseStrategy):
             signal_name
             and (
                 base_rule_signal == signal_name
-                or base_rule_signal == signal_name.split(" (")[0].strip()
+                or base_rule_signal == signal_name.split(" (", maxsplit=1)[0].strip()
             )
         )
 

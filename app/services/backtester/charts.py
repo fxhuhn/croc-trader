@@ -1,5 +1,13 @@
+import warnings
+
 import pandas as pd
 import plotly.graph_objects as go
+
+warnings.warn(
+    "The app.services.backtester.charts module is deprecated. Use TradeManager instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 # --- Palette ---
 # Constants

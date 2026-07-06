@@ -1,8 +1,8 @@
 import logging
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .mapping import mapper
 
@@ -43,9 +43,7 @@ class Order:
     entry: OrderLeg | None = None
     exits: list[OrderLeg] = field(default_factory=list)
     last_status: str = "PendingSubmit"
-    last_update: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    last_update: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 @dataclass(frozen=True)
@@ -155,7 +153,7 @@ class CrocSignal:
     strategy_id: str | None = None
     reference: str | None = None
     # Factory default ensures correct timestamp at instantiation time
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self):
         """Sanitizes data and sets defaults after initialization."""
@@ -189,7 +187,7 @@ class CrocSignal:
                     "Could not parse timestamp '%s', using 'now'.",
                     self.timestamp,
                 )
-                self.timestamp = datetime.now(timezone.utc)
+                self.timestamp = datetime.now(UTC)
 
         # Unique ID generation
         if self.reference is None:
@@ -225,7 +223,7 @@ class SignalStat:
     exchange: str | None = None
 
     # Metadata
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self):
         try:

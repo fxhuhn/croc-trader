@@ -53,7 +53,8 @@
                         <div class="p-4 md:p-0 flex justify-between items-start md:contents cursor-pointer md:cursor-auto"
                             onclick="toggleTradeCard(this)">
                             <div class="flex flex-col gap-1 md:contents flex-1 min-w-0">
-                                <div class="hidden md:block text-slate-500 tabular-nums whitespace-nowrap">{{ t.display_entry }} ({{ t.days_held }}d)</div>
+                                <div class="hidden md:block text-slate-500 tabular-nums whitespace-nowrap">{{
+                                    t.display_entry }} ({{ t.days_held }}d)</div>
                                 <div class="flex items-center gap-2 md:gap-0">
                                     <span
                                         class="text-lg md:text-base font-black text-slate-900 leading-none md:font-bold md:text-slate-700 whitespace-nowrap">
@@ -108,7 +109,8 @@
                                 <div class="flex flex-col md:contents">
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
                                         <span class="text-slate-500 font-medium">Date</span>
-                                        <span class="text-slate-700 font-bold text-xs">{{ t.display_entry }} ({{ t.days_held }}d)</span>
+                                        <span class="text-slate-700 font-bold text-xs">{{ t.display_entry }} ({{
+                                            t.days_held }}d)</span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
                                         <span class="text-slate-500 font-medium">Index</span>
@@ -118,7 +120,9 @@
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
                                         <span class="text-slate-500 font-medium">Direction</span>
                                         {% set direction = t.context.get('direction', 'long') | lower %}
-                                        <span class="font-bold {% if direction == 'short' %}text-rose-600{% else %}text-emerald-600{% endif %} uppercase">{{ direction }}</span>
+                                        <span
+                                            class="font-bold {% if direction == 'short' %}text-rose-600{% else %}text-emerald-600{% endif %} uppercase">{{
+                                            direction }}</span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Quantity</span>
@@ -131,17 +135,20 @@
                                 <div class="flex flex-col md:contents">
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Entry</span>
-                                        <span class="tabular-nums text-slate-800 md:text-slate-500 md:text-right whitespace-nowrap">{{
+                                        <span
+                                            class="tabular-nums text-slate-800 md:text-slate-500 md:text-right whitespace-nowrap">{{
                                             "{:,.2f}".format(t.entry_price|float) }}</span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:contents">
                                         <span class="text-slate-500 font-medium md:hidden">Stop</span>
-                                        <span class="tabular-nums text-rose-600 md:text-rose-500/80 md:text-right whitespace-nowrap">{{
+                                        <span
+                                            class="tabular-nums text-rose-600 md:text-rose-500/80 md:text-right whitespace-nowrap">{{
                                             "{:,.2f}".format(t.current_stop_loss|float) }}</span>
                                     </div>
                                     {% if t.context.target_level %}
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
-                                        <span class="text-slate-500 font-medium">Target (TP{{ t.context.target_level }})</span>
+                                        <span class="text-slate-500 font-medium">Target (TP{{ t.context.target_level
+                                            }})</span>
                                         <span class="tabular-nums text-emerald-600">
                                             {{ "{:,.2f}".format(t.current_target|float) if t.current_target else '-' }}
                                         </span>
@@ -150,26 +157,33 @@
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
                                         <span class="text-slate-500 font-medium">Target 1</span>
                                         <span class="tabular-nums text-emerald-600">
-                                            {% if t.context.tp1 %}{{ "{:,.2f}".format(t.context.tp1|float) }}{% else %}-{% endif %}
+                                            {% if t.context.tp1 %}{{ "{:,.2f}".format(t.context.tp1|float) }}{% else
+                                            %}-{% endif %}
                                         </span>
                                     </div>
                                     <div class="flex justify-between py-1.5 border-b border-slate-100 md:hidden">
                                         <span class="text-slate-500 font-medium">Target 2</span>
                                         <span class="tabular-nums text-emerald-600">
-                                            {% if t.context.tp3 %}{{ "{:,.2f}".format(t.context.tp3|float) }}{% else %}-{% endif %}
+                                            {% if t.context.tp3 %}{{ "{:,.2f}".format(t.context.tp3|float) }}{% else
+                                            %}-{% endif %}
                                         </span>
                                     </div>
                                     {% endif %}
                                     <!-- Desktop Combined Target Column -->
-                                    <div class="hidden md:flex flex-col items-end gap-0.5 text-[11px] text-emerald-600/80 font-medium text-right tabular-nums whitespace-nowrap">
+                                    <div
+                                        class="hidden md:flex flex-col items-end gap-0.5 text-[11px] text-emerald-600/80 font-medium text-right tabular-nums whitespace-nowrap">
                                         {% if t.context.target_level %}
-                                        <div class="whitespace-nowrap">TP{{ t.context.target_level }}: {{ "{:,.2f}".format(t.current_target|float) if t.current_target else '-' }}</div>
+                                        <div class="whitespace-nowrap">TP{{ t.context.target_level }}: {{
+                                            "{:,.2f}".format(t.current_target|float) if t.current_target else '-' }}
+                                        </div>
                                         {% else %}
                                         {% if t.context.tp1 %}
-                                        <div class="whitespace-nowrap">TP1: {{ "{:,.2f}".format(t.context.tp1|float) }}</div>
+                                        <div class="whitespace-nowrap">TP1: {{ "{:,.2f}".format(t.context.tp1|float) }}
+                                        </div>
                                         {% endif %}
                                         {% if t.context.tp3 %}
-                                        <div class="whitespace-nowrap">TP2: {{ "{:,.2f}".format(t.context.tp3|float) }}</div>
+                                        <div class="whitespace-nowrap">TP2: {{ "{:,.2f}".format(t.context.tp3|float) }}
+                                        </div>
                                         {% endif %}
                                         {% if not t.context.tp1 and not t.context.tp3 %}
                                         <div class="whitespace-nowrap">-</div>
@@ -178,7 +192,8 @@
                                     </div>
                                     <!-- Desktop PnL Column -->
                                     <div class="hidden md:flex flex-col items-end text-right whitespace-nowrap">
-                                        <div class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
+                                        <div
+                                            class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
                                             {{ "{:+,.2f}".format(t.unrealized_pnl) }}
                                         </div>
                                         <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
@@ -190,7 +205,8 @@
                                 <div class="col-span-2 mt-4 md:hidden">
                                     <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}" target="_blank"
                                         class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white border border-slate-200 shadow-sm text-slate-700 text-xs font-semibold transition-transform active:scale-[0.98] active:bg-slate-50">
-                                        <i data-lucide="chart-candlestick" class="w-4 h-4 text-slate-400"></i> View on TradingView
+                                        <i data-lucide="chart-candlestick" class="w-4 h-4 text-slate-400"></i> View on
+                                        TradingView
                                     </a>
                                 </div>
                             </div>
@@ -216,7 +232,8 @@
                 <!-- Desktop View -->
                 <div class="hidden md:block">
                     <!-- Desktop Header -->
-                    <div class="grid grid-cols-4 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+                    <div
+                        class="grid grid-cols-4 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
                         <div>Index</div>
                         <div class="text-center">W — L</div>
                         <div class="text-right">Avg</div>
@@ -226,7 +243,8 @@
                     <div class="divide-y divide-slate-100">
                         {% for row in index_stats.values() %}
                         {% if row.win > 0 or row.loss > 0 %}
-                        <div class="grid grid-cols-4 gap-4 px-4 py-3 items-center text-sm hover:bg-slate-50/50 transition-colors">
+                        <div
+                            class="grid grid-cols-4 gap-4 px-4 py-3 items-center text-sm hover:bg-slate-50/50 transition-colors">
                             <div class="font-medium text-slate-700">
                                 <span>{{ row.name }}</span>
                             </div>
@@ -240,19 +258,23 @@
                             <div class="text-right font-medium text-slate-600 tabular-nums">
                                 {{ "{:+,.0f}".format(row.average_pnl) }}
                             </div>
-                            <div class="text-right font-bold {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }} tabular-nums">
+                            <div
+                                class="text-right font-bold {{ 'text-emerald-500' if row.pnl >= 0 else 'text-rose-500 md:text-rose-500/90' }} tabular-nums">
                                 {{ "{:+.0f}".format(row.pnl) }}
                             </div>
                         </div>
                         {% endif %}
                         {% endfor %}
-                        
+
                         <!-- Footer -->
-                        <div class="grid grid-cols-4 gap-4 px-4 py-3 md:py-4 bg-slate-50 border-t border-slate-200 font-semibold items-center text-sm">
+                        <div
+                            class="grid grid-cols-4 gap-4 px-4 py-3 md:py-4 bg-slate-50 border-t border-slate-200 font-semibold items-center text-sm">
                             <div class="text-slate-900">Total (Unique)</div>
                             <div class="text-center text-slate-500">{{ closed_summary.count }} Trades</div>
-                            <div class="text-right text-slate-600 tabular-nums">{{ "{:+,.0f}".format(closed_summary.average_pnl) }}</div>
-                            <div class="text-right text-slate-700 md:text-slate-900 {{ 'md:text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'md:text-rose-500/90' }} tabular-nums">
+                            <div class="text-right text-slate-600 tabular-nums">{{
+                                "{:+,.0f}".format(closed_summary.average_pnl) }}</div>
+                            <div
+                                class="text-right text-slate-700 md:text-slate-900 {{ 'md:text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'md:text-rose-500/90' }} tabular-nums">
                                 {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
                             </div>
                         </div>
@@ -310,7 +332,8 @@
                 <!-- Desktop View -->
                 <div class="hidden md:block">
                     <!-- Desktop Header -->
-                    <div class="grid grid-cols-4 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+                    <div
+                        class="grid grid-cols-4 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
                         <div>Signal</div>
                         <div class="text-center">W — L</div>
                         <div class="text-right">Avg</div>
@@ -319,7 +342,8 @@
                     <!-- Body Rows -->
                     <div class="divide-y divide-slate-100">
                         {% for sig_name, stats in signal_stats.items() %}
-                        <div class="grid grid-cols-4 gap-4 px-4 py-3 items-center text-sm hover:bg-slate-50/50 transition-colors">
+                        <div
+                            class="grid grid-cols-4 gap-4 px-4 py-3 items-center text-sm hover:bg-slate-50/50 transition-colors">
                             <div class="font-medium text-slate-600">
                                 <span>{{ sig_name }}</span>
                             </div>
@@ -333,7 +357,8 @@
                             <div class="text-right font-medium text-slate-600 tabular-nums">
                                 {{ "{:+,.0f}".format(stats.average_pnl) }}
                             </div>
-                            <div class="text-right font-bold {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                            <div
+                                class="text-right font-bold {{ 'text-emerald-500' if stats.pnl >= 0 else 'text-rose-500' }} tabular-nums">
                                 {{ "{:+.0f}".format(stats.pnl) }}
                             </div>
                         </div>
@@ -406,8 +431,10 @@
                             <!-- Symbol & Entry Date -->
                             <div class="flex flex-col md:contents min-w-0 flex-1">
                                 <div class="flex items-center gap-2 md:contents min-w-0">
-                                    <div class="hidden md:block text-slate-500 tabular-nums whitespace-nowrap">{{ t.display_entry }} ({{ t.days_held }}d)</div>
-                                    <div class="font-bold text-slate-700 truncate max-w-[120px] sm:max-w-[200px] whitespace-nowrap">
+                                    <div class="hidden md:block text-slate-500 tabular-nums whitespace-nowrap">{{
+                                        t.display_entry }} ({{ t.days_held }}d)</div>
+                                    <div
+                                        class="font-bold text-slate-700 truncate max-w-[120px] sm:max-w-[200px] whitespace-nowrap">
                                         <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
                                             target="_blank"
                                             class="hover:text-indigo-500 transition-colors flex items-center gap-1 whitespace-nowrap">
@@ -467,8 +494,10 @@
                                 </div>
 
                                 <div class="hidden md:block whitespace-nowrap">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
-                                        {{ (t.context.original_signal or t.context.match_rule.Signal or t.strategy).replace('Croc_', '') }}
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                                        {{ (t.context.original_signal or t.context.match_rule.Signal or
+                                        t.strategy).replace('Croc_', '') }}
                                     </span>
                                 </div>
                             </div>
@@ -482,15 +511,19 @@
                                     <span class="text-slate-600 font-normal ml-1">x{{ t.initial_size|int }}</span>
                                 </div>
 
-                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{ t.initial_size|int }}</div>
-                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{ "{:,.2f}".format(t.entry_price|float) }}</div>
-                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{ "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}</div>
+                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{
+                                    t.initial_size|int }}</div>
+                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{
+                                    "{:,.2f}".format(t.entry_price|float) }}</div>
+                                <div class="hidden md:block text-right tabular-nums text-slate-500 whitespace-nowrap">{{
+                                    "{:,.2f}".format(t.exit_price|float) if t.exit_price else '-' }}</div>
                             </div>
                         </div>
 
                         <!-- PnL (Desktop) -->
                         <div class="hidden md:flex flex-col items-end text-right whitespace-nowrap">
-                            <div class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
+                            <div
+                                class="font-bold {{ 'text-emerald-500' if t.realized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
                                 {{ "{:+,.2f}".format(t.realized_pnl) }}
                             </div>
                             <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">

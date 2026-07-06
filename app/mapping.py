@@ -12,7 +12,7 @@ class ExchangeMapper:
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(ExchangeMapper, cls).__new__(cls)
+            cls._instance = super().__new__(cls)
         return cls._instance
 
     def load(self):

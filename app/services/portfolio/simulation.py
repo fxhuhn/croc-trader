@@ -213,8 +213,7 @@ class CapacitySimulator:
                         active_map[strategy] = []
                     active_map[strategy].append({"dummy": True})
 
-                if equity > peak_equity:
-                    peak_equity = equity
+                peak_equity = max(peak_equity, equity)
                 drawdown = (
                     (peak_equity - equity) / peak_equity if peak_equity > 0 else 0.0
                 )

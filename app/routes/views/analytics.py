@@ -1,13 +1,14 @@
 """Routes and views for performance analytics and allocation dashboard."""
 
 import logging
+
 import numpy as np
 import pandas as pd
 from flask import render_template
 
-from ...const import Strategies, ExitReason
-from ...types import TradeStatus
+from ...const import ExitReason, Strategies
 from ...tools import metrics
+from ...types import TradeStatus
 from .blueprint import views_bp
 from .dependencies import (
     _get_trade_view_service,
@@ -211,8 +212,7 @@ def view_analytics_dashboard() -> str:
             current_open = 0
             for _, change in events:
                 current_open += change
-                if current_open > max_concurrent:
-                    max_concurrent = current_open
+                max_concurrent = max(max_concurrent, current_open)
 
         # 95th Percentile Concurrent Trades Calculation
         percentile_95 = 0
@@ -245,8 +245,7 @@ def view_analytics_dashboard() -> str:
                         max_on_day = current_open
                         for _, change in day_events:
                             current_open += change
-                            if current_open > max_on_day:
-                                max_on_day = current_open
+                            max_on_day = max(max_on_day, current_open)
                         daily_max[day] = max_on_day
                     else:
                         daily_max[day] = current_open

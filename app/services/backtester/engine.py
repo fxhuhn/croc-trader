@@ -27,11 +27,20 @@ from ...services.trade_manager.strategies.two_percent_strategy import (
 )
 from ...types import TradeStatus
 
+warnings.warn(
+    "The app.services.backtester.engine module is deprecated. Use TradeManager instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 logger = logging.getLogger(__name__)
 
 
 class BacktestEngine:
     """Orchestrates the backtesting simulation.
+
+    .. deprecated:: 2.0
+       This class is deprecated. Use TradeManager instead for active trades and position tracking.
 
     Moves 'Virtual Time' forward day by day.
     """

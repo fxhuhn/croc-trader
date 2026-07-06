@@ -80,7 +80,7 @@ class MarketHolidayChecker:
                     f"Critical: Holidays configuration file missing at {self.yaml_path}"
                 )
 
-            with open(self.yaml_path, "r", encoding="utf-8") as f:
+            with open(self.yaml_path, encoding="utf-8") as f:
                 data: HolidayConfig = yaml.safe_load(f)
 
             if not data or "holidays" not in data:

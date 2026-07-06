@@ -1,6 +1,6 @@
+import json
 import logging
 import threading
-import json
 from pathlib import Path
 
 import pandas as pd
@@ -67,7 +67,7 @@ class ExchangeSymbol:
             return
 
         try:
-            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(CACHE_FILE, encoding="utf-8") as f:
                 data = json.load(f)
 
             self._sp_500 = data.get("sp_500", [])

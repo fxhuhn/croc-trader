@@ -6,14 +6,14 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from ...const import (
-    Strategies,
     STRATEGY_ALIASES,
-    TradeStatus,
-    TargetColumn,
     IndexAliases,
+    Strategies,
+    TargetColumn,
+    TradeStatus,
 )
-from ...database.repositories.trade import TradeRepository
 from ...database.repositories.market import MarketRepository
+from ...database.repositories.trade import TradeRepository
 
 # Import TradeData from types to avoid duplication definition (if possible), or keep TradeViewData as extended
 # The user asked to avoid duplication with app/types.py.
@@ -632,8 +632,7 @@ class TradeViewService:
 
             # Update max exit for sorting
             current_exit = trade["exit_date"] or ""
-            if current_exit > grouped[key]["max_exit"]:
-                grouped[key]["max_exit"] = current_exit
+            grouped[key]["max_exit"] = max(grouped[key]["max_exit"], current_exit)
 
         # Return sorted list
         return sorted(
