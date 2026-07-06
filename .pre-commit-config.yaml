@@ -1,0 +1,38 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.3.0
+    hooks:
+      - id: ruff
+        name: Ruff Linter (Auto-Fix Imports)
+        args: [--fix, --select=I,F401]
+      - id: ruff-format
+        name: Ruff Formatter
+
+  - repo: https://github.com/jendrikseipp/vulture
+    rev: v2.14
+    hooks:
+      - id: vulture
+        args: ["--exclude", ".venv,test"]
+
+  - repo: https://github.com/pypa/pip-audit
+    rev: v2.7.3
+    hooks:
+      - id: pip-audit
+        args: ["-r", "requirements.txt"]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.0
+    hooks:
+      - id: bandit
+        args: ["-x", ".venv,test"]
+
+  - repo: local
+    hooks:
+      - id: architecture-sync-check
+        name: Architecture Sync Check
+        entry: python3 .agent/skills/architecture-sync/scripts/check_sync.py
+        language: system
+        pass_filenames: false
+
