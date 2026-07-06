@@ -20,3 +20,5 @@ data/orders
 
 #Konfiguration
 settings.yaml
+
+.agent/skills/strategy-screener/playbook/*
