@@ -142,11 +142,11 @@ class MarketHolidayChecker:
         if isinstance(date_check, str):
             try:
                 return datetime.datetime.strptime(date_check, "%Y-%m-%d").date()
-            except ValueError:
+            except ValueError as err:
                 logger.error("Invalid date string format: %s", date_check)
                 raise ValueError(
                     f"Invalid date string provided: {date_check}. Expected YYYY-MM-DD."
-                )
+                ) from err
         raise TypeError(f"Unsupported date type: {type(date_check)}")
 
 

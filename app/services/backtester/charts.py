@@ -184,7 +184,11 @@ def generate_backtest_charts(
                 y=benchmark_df["equity"].tolist(),
                 mode="lines",
                 name="SPY (Buy & Hold)",
-                line={"color": "#94a3b8", "width": 2, "dash": "dot"},  # Slate-400, Dotted
+                line={
+                    "color": "#94a3b8",
+                    "width": 2,
+                    "dash": "dot",
+                },  # Slate-400, Dotted
                 hovertemplate="<b>SPY</b>: $%{y:,.0f}<extra></extra>",
             )
         )
@@ -222,7 +226,13 @@ def generate_backtest_charts(
         },
         hovermode="x unified",
         showlegend=True,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "center", "x": 0.5},
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "center",
+            "x": 0.5,
+        },
     )
 
     # --- 2. Drawdown (Underwater Chart) ---
@@ -418,7 +428,13 @@ def generate_regime_overlay_chart(daily_df: pd.DataFrame) -> str:
             "fixedrange": True,
         },
         showlegend=True,
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "center", "x": 0.5},
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "center",
+            "x": 0.5,
+        },
         autosize=True,
     )
 
@@ -433,12 +449,16 @@ def generate_price_of_safety_chart(
     unconstrained_dataframe: pd.DataFrame,
     constrained_dataframe: pd.DataFrame,
     safety_dataframe: pd.DataFrame,
-    spy_dataframe: pd.DataFrame = pd.DataFrame(),
-    qqq_dataframe: pd.DataFrame = pd.DataFrame(),
+    spy_dataframe: pd.DataFrame | None = None,
+    qqq_dataframe: pd.DataFrame | None = None,
 ) -> str:
     """
     Compares Equity Curves: Unconstrained vs Constrained vs Safety Switch vs Benchmarks.
     """
+    if spy_dataframe is None:
+        spy_dataframe = pd.DataFrame()
+    if qqq_dataframe is None:
+        qqq_dataframe = pd.DataFrame()
     fig = go.Figure()
 
     # 1. Benchmarks
@@ -501,9 +521,18 @@ def generate_price_of_safety_chart(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         yaxis={
-            "title": "Equity ($)", "tickprefix": "$", "tickformat": ",.0f", "gridcolor": "#f1f5f9"
+            "title": "Equity ($)",
+            "tickprefix": "$",
+            "tickformat": ",.0f",
+            "gridcolor": "#f1f5f9",
         },
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "center", "x": 0.5},
+        legend={
+            "orientation": "h",
+            "yanchor": "bottom",
+            "y": 1.02,
+            "xanchor": "center",
+            "x": 0.5,
+        },
         template="plotly_white",
         autosize=True,
     )
@@ -623,7 +652,10 @@ def generate_exposure_heatmap(daily_df: pd.DataFrame, pressure_pct: float = 0.0)
         height=320,
         font={"family": "Inter, sans-serif", "color": "#94a3b8"},
         yaxis={
-            "title": "Utilization %", "range": [0, 150], "showgrid": True, "gridcolor": "#f1f5f9"
+            "title": "Utilization %",
+            "range": [0, 150],
+            "showgrid": True,
+            "gridcolor": "#f1f5f9",
         },
         showlegend=True,
         legend={

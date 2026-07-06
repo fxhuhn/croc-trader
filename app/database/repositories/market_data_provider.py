@@ -1,5 +1,4 @@
 import logging
-from functools import lru_cache
 
 import pandas
 
@@ -22,6 +21,7 @@ class MarketDataProvider:
         self.session = session
         self._in_memory_cache: MarketDataDict | None = None
         self._cache_lookback = 0
+        self._all_daily_data_cache: dict[int, MarketDataDict] = {}
 
     def preload_all_data(self, days: int = 1000) -> None:
         """
@@ -51,17 +51,19 @@ class MarketDataProvider:
         except Exception as error:
             logger.error("[MarketData] Preload Failed: %s", error)
 
-    @lru_cache(maxsize=4)
     def get_all_daily_data(self, days: int) -> MarketDataDict | None:
         """
         Loads OHLCV data for all symbols and pivots them.
-        The result is cached (LRU).
+        The result is cached on the instance.
 
         :param days: Number of days for lookback (e.g. 400).
         """
         # Check explicit memory cache first
         if self._in_memory_cache and days <= self._cache_lookback:
             return self._in_memory_cache
+
+        if days in self._all_daily_data_cache:
+            return self._all_daily_data_cache[days]
 
         start_date = (pandas.Timestamp.now() - pandas.Timedelta(days=days)).strftime(
             "%Y-%m-%d"
@@ -89,7 +91,13 @@ class MarketDataProvider:
             logger.warning("[MarketData] No data found.")
             return None
 
-        return self._pivot_data(df)
+        result = self._pivot_data(df)
+        if len(self._all_daily_data_cache) >= 4:
+            # Evict first element
+            first_key = next(iter(self._all_daily_data_cache))
+            self._all_daily_data_cache.pop(first_key)
+        self._all_daily_data_cache[days] = result
+        return result
 
     def get_universe_daily_data(
         self, symbols: list[str], days: int

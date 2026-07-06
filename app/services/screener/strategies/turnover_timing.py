@@ -352,12 +352,11 @@ class TurnoverTimingStrategy(BaseStrategy):
                 "close > sma_price and atr > 0"
             ).head(4)
 
-            # Vectorized object creation
             candidates.extend(
                 final_selection.rename_axis("symbol")
                 .reset_index()
                 .apply(
-                    lambda row: TurnoverCandidate(
+                    lambda row, index_name=index_name: TurnoverCandidate(
                         symbol=str(row["symbol"]),
                         close=float(row["close"]),
                         sma_price=float(row["sma_price"]),

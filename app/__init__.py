@@ -51,7 +51,7 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
     log_file_path = config_object.get_log_path()
     log_level = config_object.app.logging.level.upper()
 
-    LOGGING_CONFIG = {
+    logging_config = {
         "version": 1,
         "disable_existing_loggers": False,
         "formatters": {
@@ -89,7 +89,7 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
             "yfinance": {"level": "ERROR"},
         },
     }
-    logging.config.dictConfig(LOGGING_CONFIG)
+    logging.config.dictConfig(logging_config)
 
     # 3. Load exchange mapper
     mapper.load()

@@ -19,7 +19,9 @@ from app.services.trade_manager.types import TradeTransition
 
 
 class CompatibleTransitionString(str):
-    def __new__(cls, val, transition):
+    def __new__(
+        cls, val: str, transition: TradeTransition
+    ) -> "CompatibleTransitionString":
         obj = str.__new__(cls, val)
         obj.transition = transition
         obj.updates = transition.updates
@@ -27,18 +29,23 @@ class CompatibleTransitionString(str):
         obj.message = transition.message
         return obj
 
-    def __contains__(self, item):
+    def __contains__(self, item: object) -> bool:
+        if not isinstance(item, str):
+            return False
         return item in self.reason or item in self.message
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, str):
             if other in (self.reason, self.message):
                 return True
             return other in self.reason or other in self.message
         return super().__eq__(other)
 
-    def __ne__(self, other):
+    def __ne__(self, other: object) -> bool:
         return not self.__eq__(other)
+
+    def __hash__(self) -> int:
+        return super().__hash__()
 
 
 def wrap_strategy_methods():
