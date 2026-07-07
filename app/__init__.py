@@ -47,6 +47,26 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
 
     cache.init_app(app)
 
+    # Register local timezone conversion filter
+    @app.template_filter("to_local_tz")
+    def to_local_tz(utc_str: str | None) -> str:
+        """Converts UTC date/time string from database to local Europe/Berlin timezone."""
+        if not utc_str:
+            return "-"
+        try:
+            import datetime
+
+            import pytz
+
+            clean_str = str(utc_str).replace("T", " ").split(".")[0]
+            dt = datetime.datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
+            dt_utc = pytz.utc.localize(dt)
+            berlin_tz = pytz.timezone("Europe/Berlin")
+            dt_local = dt_utc.astimezone(berlin_tz)
+            return dt_local.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return str(utc_str)
+
     # 2. Logging Setup
     log_file_path = config_object.get_log_path()
     log_level = config_object.app.logging.level.upper()

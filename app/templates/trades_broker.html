@@ -128,7 +128,7 @@
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for order in active_orders %}
-                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors" data-strategy="{{ order.strategy_filter }}" onclick="toggleRow('acc-sub-{{ order.order_id }}')">
+                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ order.strategy_filter }}" data-group-id="{{ order.trade_group_id }}" onclick="toggleRow('acc-sub-{{ order.order_id }}')">
                             <div class="grid grid-cols-5 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ order.order_id }}</span>
@@ -149,7 +149,7 @@
                             <div id="acc-sub-{{ order.order_id }}" class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
                                 <div class="pt-3 text-xs text-slate-500">
                                     <div class="font-semibold text-slate-700 mb-1">TWS Order Details:</div>
-                                    <p class="leading-relaxed">Permanent-ID (TWS): {{ order.perm_id or 'Keine' }}. Parent ID: {{ order.parent_id or 'Keine' }}. Trade-Group: {{ order.trade_group_id }}. Konto: {{ order.account_id }}. TIF: {{ order.tif }}. Übermittelt am: {{ order.transmitted_at or '-' }}</p>
+                                    <p class="leading-relaxed">Permanent-ID (TWS): {{ order.perm_id or 'Keine' }}. Parent ID: {{ order.parent_id or 'Keine' }}. Trade-Group: {{ order.trade_group_id }}. Konto: {{ order.account_id }}. TIF: {{ order.tif }}. Übermittelt am: {{ order.transmitted_at | to_local_tz if order.transmitted_at else '-' }}</p>
                                 </div>
                             </div>
                         </div>
@@ -157,10 +157,9 @@
                     </div>
                 </div>
 
-                <!-- Mobile View -->
                 <div class="md:hidden flex flex-col gap-3">
                     {% for order in active_orders %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col" data-strategy="{{ order.strategy_filter }}">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ order.strategy_filter }}" data-group-id="{{ order.trade_group_id }}">
                         <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group" onclick="toggleRow('mob-sub-{{ order.order_id }}')">
                             <div class="p-4 flex justify-between items-center">
                                 <div class="flex items-center gap-3">
@@ -202,7 +201,7 @@
                                     </div>
                                 </div>
                                 <p class="mt-3 text-[11px] text-slate-500 leading-relaxed border-t border-slate-100 pt-2">
-                                    TWS ID: {{ order.order_id }} | Group: {{ order.trade_group_id }} | Übermittelt: {{ order.transmitted_at or '-' }}
+                                    TWS ID: {{ order.order_id }} | Group: {{ order.trade_group_id }} | Übermittelt: {{ order.transmitted_at | to_local_tz if order.transmitted_at else '-' }}
                                 </p>
                             </div>
                         </div>
@@ -329,7 +328,7 @@
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for trade in active_trades %}
-                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors" data-strategy="{{ trade.strategy_filter }}" onclick="toggleRow('acc-act-{{ loop.index }}')">
+                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ trade.strategy_filter }}" data-group-id="{{ trade.trade_group_id }}" onclick="toggleRow('acc-act-{{ loop.index }}')">
                             <div class="grid grid-cols-8 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ trade.id }}</span>
@@ -355,6 +354,10 @@
                             </div>
                             <div id="acc-act-{{ loop.index }}" class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
                                 <div class="pt-3 text-xs text-slate-500">
+                                    <div class="mb-2 flex justify-between items-center bg-slate-100/60 rounded px-2.5 py-1 border border-slate-200">
+                                        <span class="text-slate-600 font-medium">Trade Group ID:</span>
+                                        <span class="font-mono text-slate-800 font-bold">{{ trade.trade_group_id }}</span>
+                                    </div>
                                     <div class="font-semibold text-slate-700 mb-1 flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5 text-indigo-500"></i> Linked TWS Orders</div>
                                     {% for order in trade.tws_orders %}
                                     <div class="space-y-0.5 mb-1.5 font-mono">
@@ -374,7 +377,7 @@
                 <!-- Mobile View -->
                 <div class="md:hidden flex flex-col gap-3">
                     {% for trade in active_trades %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col" data-strategy="{{ trade.strategy_filter }}">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ trade.strategy_filter }}" data-group-id="{{ trade.trade_group_id }}">
                         <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group" onclick="toggleRow('mob-act-{{ loop.index }}')">
                             <div class="p-4 flex justify-between items-center">
                                 <div class="flex items-center gap-3">
@@ -443,7 +446,7 @@
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for settlement in settlements %}
-                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors" data-strategy="{{ settlement.strategy_filter }}" onclick="toggleRow('acc-settle-{{ loop.index }}')">
+                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ settlement.strategy_filter }}" data-group-id="{{ settlement.trade_group_id }}" onclick="toggleRow('acc-settle-{{ loop.index }}')">
                             <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ settlement.local_trade_id }}</span>
@@ -474,7 +477,7 @@
                                         {% endfor %}
                                     </div>
                                     <div class="flex flex-col justify-end text-right">
-                                        <p class="text-[11px] text-slate-400">Abrechnung am: {{ settlement.settled_at }}</p>
+                                        <p class="text-[11px] text-slate-400">Abrechnung am: {{ settlement.settled_at | to_local_tz if settlement.settled_at else '-' }}</p>
                                         <p class="text-[11px] text-slate-400">Handelskonto: {{ settlement.account_id }}</p>
                                     </div>
                                 </div>
@@ -487,7 +490,7 @@
                 <!-- Mobile View -->
                 <div class="md:hidden flex flex-col gap-3" id="settlements-mobile-list">
                     {% for settlement in settlements %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col" data-strategy="{{ settlement.strategy_filter }}">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ settlement.strategy_filter }}" data-group-id="{{ settlement.trade_group_id }}">
                         <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group" onclick="toggleRow('mob-settle-{{ loop.index }}')">
                             <div class="p-4 flex justify-between items-center">
                                 <div class="flex items-center gap-3">
@@ -512,7 +515,7 @@
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Date</span>
                                             <span class="text-slate-700 font-bold">
-                                                {% if settlement.entry_date %}{{ settlement.entry_date }} ({{ settlement.days_held }}d){% else %}{{ settlement.settled_at[:10] }}{% endif %}
+                                                {% if settlement.entry_date %}{{ settlement.entry_date }} ({{ settlement.days_held }}d){% else %}{{ (settlement.settled_at | to_local_tz)[:10] if settlement.settled_at else '-' }}{% endif %}
                                             </span>
                                         </div>
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
@@ -858,5 +861,31 @@
             if (chevron) chevron.style.transform = 'rotate(0deg)';
         }
     }
+
+    // Group Highlights on Hover
+    document.addEventListener('DOMContentLoaded', () => {
+        const linkables = document.querySelectorAll('.group-linkable');
+        
+        linkables.forEach(item => {
+            const groupId = item.getAttribute('data-group-id');
+            if (!groupId || groupId === '-' || groupId === 'None') return;
+
+            item.addEventListener('mouseenter', () => {
+                const matches = document.querySelectorAll(`.group-linkable[data-group-id="${groupId}"]`);
+                matches.forEach(m => {
+                    m.classList.add('bg-indigo-50/20', 'border-l-indigo-500', 'shadow-sm');
+                    m.classList.remove('border-l-transparent');
+                });
+            });
+
+            item.addEventListener('mouseleave', () => {
+                const matches = document.querySelectorAll(`.group-linkable[data-group-id="${groupId}"]`);
+                matches.forEach(m => {
+                    m.classList.remove('bg-indigo-50/20', 'border-l-indigo-500', 'shadow-sm');
+                    m.classList.add('border-l-transparent');
+                });
+            });
+        });
+    });
 </script>
 {% endblock %}

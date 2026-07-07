@@ -195,6 +195,7 @@ class BrokerRepository(BaseRepository):
                     "tws_orders": tws_orders,
                     "unrealized_pnl": 0.0,
                     "pnl_percentage": 0.0,
+                    "trade_group_id": trade_group_id,
                 }
             )
 
