@@ -382,30 +382,9 @@ class TradeViewService:
         entry_date = trade.get("entry_date")
         exit_date = trade.get("exit_date")
 
-        # Query TWS details
+        # Query TWS details (not used by strategy trade pages)
         tws_status = None
         tws_orders = []
-        if self.broker_repository is not None:
-            local_trade_id = trade.get("id")
-            if local_trade_id is not None:
-                try:
-                    tws_orders = self.broker_repository.get_orders_by_local_trade_id(
-                        int(local_trade_id)
-                    )
-                    if tws_orders:
-                        statuses = [o.get("status") for o in tws_orders]
-                        if "Error" in statuses:
-                            tws_status = "Error"
-                        elif "Submitted" in statuses:
-                            tws_status = "Submitted"
-                        elif "PreSubmitted" in statuses:
-                            tws_status = "PreSubmitted"
-                        elif "Filled" in statuses:
-                            tws_status = "Filled"
-                except Exception as e:
-                    logger.warning(
-                        "Could not fetch TWS orders for trade %s: %s", local_trade_id, e
-                    )
 
         return {
             "id": trade.get("id", ""),

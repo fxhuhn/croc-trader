@@ -4,9 +4,12 @@ Provides a context-managed connection factory ensuring consistent
 PRAGMA configuration, row_factory setup, and transaction handling.
 """
 
+import logging
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
+
+logger = logging.getLogger(__name__)
 
 # Pre-built PRAGMA statements from class constants to avoid f-strings in SQL
 _PRAGMA_BUSY_TIMEOUT = "PRAGMA busy_timeout = 30000;"
@@ -31,8 +34,15 @@ class DatabaseSession:
 
         # WAL Mode & Timeout & Performance optimizations
         connection.execute(_PRAGMA_BUSY_TIMEOUT)
-        connection.execute(_PRAGMA_JOURNAL_MODE)
-        connection.execute(_PRAGMA_SYNCHRONOUS)
+        try:
+            connection.execute(_PRAGMA_JOURNAL_MODE)
+            connection.execute(_PRAGMA_SYNCHRONOUS)
+        except sqlite3.OperationalError as e:
+            logger.warning(
+                "Could not configure WAL mode for %s (possibly read-only): %s",
+                self.db_path,
+                e,
+            )
 
         connection.row_factory = sqlite3.Row
         try:
