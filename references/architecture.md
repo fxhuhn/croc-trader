@@ -1,423 +1,217 @@
-# Croc-Trader System Architecture
+# Croc-Trader Low-Level Reference Specification
 
-This document describes the design, directory structure, data flows, and strict implementation invariants of the Croc-Trader system.
-
----
-
-## 1. System Overview & Component Responsibilities
-
-Croc-Trader is a python-based End-of-Day (EOD) portfolio management and trading analysis platform built with a Flask web application, an SQLite database layer, and a scheduled background processing loop via APScheduler.
-
-```
-                  ┌──────────────────────────────┐
-                  │       Flask Web Server       │
-                  │  (app/routes/ & app/views/)  │
-                  └──────────────┬───────────────┘
-                                 │ HTTP / JSON API
-                                 ▼
-                     ┌───────────────────────┐
-                     │   Scheduler (Jobs)    │
-                     │  (app/services/setup) │
-                     └───────────┬───────────┘
-                                 │
-     ┌───────────────────────────┼───────────────────────────┐
-     ▼                           ▼                           ▼
-┌──────────────┐          ┌──────────────┐            ┌──────────────┐
-│   Screener   │          │Trade Manager │            │  Backtester  │
-│ (app/services│          │ (app/services│            │ (DEPRECATED) │
-│  /screener/) │          │/trade_manager│            │/backtester/  │
-└──────┬───────┘          └──────┬───────┘            └──────┬───────┘
-       │ Writes                  │ Writes                    │ Reads/Writes
-       ▼ Signals                 ▼ Positions/Orders          ▼
-┌────────────────────────────────────────────────────────────────────┐
-│                         Database Layer                             │
-│       SQLite: stocks.db (market data) / signals.db (ledger)        │
-│                (app/database/repositories/)                        │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-### Component Details
-- **Web Frontend & API Engine** ([app/routes/](app/routes/)): Exposes view dashboards ([app/routes/views/](app/routes/views/)) for analytics, trades, screeners, and backtester runs. Uses vanilla JavaScript on the frontend with a Tailwind CSS design system rendered by Jinja2 templates.
-- **Scheduled Orchestration** ([app/services/setup.py](app/services/setup.py)): Schedules background tasks using APScheduler, coordinating market data synchronization, daily stock screening, position management, database backups, and cache pre-warming.
-- **Screener Engine** ([app/services/screener/](app/services/screener/)): Selects candidate equities daily. Dispatches to specific strategies ([app/services/screener/strategies/](app/services/screener/strategies/)), runs indicator formulas, and records daily trade signals to `signals.db`.
-- **Trade Manager** ([app/services/trade_manager/](app/services/trade_manager/)): Evaluates active positions, handles entry/exit execution rules, applies portfolio-level risk limits, and exports bracket order instructions as CSV.
-- **Database Repositories** ([app/database/repositories/](app/database/repositories/)): Isolates DB access behind a repository interface:
-  - [app/database/repositories/market_data_provider.py](app/database/repositories/market_data_provider.py): Interface for reading price history and computing indicators.
-  - [app/database/repositories/trade.py](app/database/repositories/trade.py): Ledger mapping of orders, portfolio targets, and execution history.
-  - [app/database/repositories/signal.py](app/database/repositories/signal.py): Registry of generated screening signals.
-- **Backtesting System** ([app/services/backtester/](app/services/backtester/)) **[DEPRECATED / UNMAINTAINED]**: Simulates custom strategies on historical market databases. Active trade tracking and metrics execution has been moved to the Trade Manager and general analytics.
+Detailed technical specifications including exact database schemas, CSV interface layouts, execution lifecycle state machines, and error matrices.
 
 ---
 
-## 2. Dataflow Boundaries & API Integrations
+## 1. SQL Database Schemas
 
-### Market Data Synchronization
-1. **Trigger**: APScheduler runs the updater daily.
-2. **Fetch**: [app/services/market/updater.py](app/services/market/updater.py) calls `yfinance` to fetch stock splits, dividends, and closing prices.
-3. **Persist**: Writes to `data/stocks.db` via standard parameterized SQL.
+All tables are maintained in SQLite databases utilizing standard data types.
 
-### Screener & Signal Generation
-1. **Trigger**: Scheduler triggers `screener_engine` daily before market hours.
-2. **Compute**: [app/services/screener/engine.py](app/services/screener/engine.py) reads stock prices from `stocks.db`, calculates ATR, SMA, and RSI using pure functions in [app/tools/indicators.py](app/tools/indicators.py).
-3. **Record**: Evaluates candidate tickers against configured rules (e.g. `DipBuyer`, `TurnoverTiming`, `CrocSetup`) and writes active buy/sell alerts to the `signals.db` database.
+### 1.1 `signals.db` Schema
 
-### Portfolio Rebalancing & Order Export
-1. **Trigger**: Scheduler triggers the Trade Manager daily.
-2. **Process**: [app/services/trade_manager/manager.py](app/services/trade_manager/manager.py) analyzes active positions in the database, filters newly generated signals, and runs position-sizing algorithms.
-3. **Export**: Orders are generated and written to `signals.db`. If a strategy is CSV-supported (defined in [app/services/trade_manager/order_export.py](app/services/trade_manager/order_export.py)), a bracket-formatted order row is written to `data/orders/orders_YYYY_MM_DD.csv`.
+#### Table `trades`
+Stores active and historical trade positions generated by the system.
 
-### Order CSV Interface Contract
-
-This contract defines the schema, rules, and lifecycle for exchanging order instructions between the core trading engine and executing brokers or custom execution agents.
-
-#### 1. File Location & File Lifecycle
-- **Generation**: The trading engine writes daily order instructions to [data/orders/](data/orders/) in the format `orders_YYYY_MM_DD.csv`.
-- **Reference Example**: A schema definition template is available in [data/orders/orders.csv.example](data/orders/orders.csv.example).
-- **Consumption Flagging**: External consumers (such as custom execution bots) read the file. Once successfully executed or submitted, the consumer should move the file to a `data/orders/processed/` archive directory or append a `.processed` suffix to the file name to prevent double-execution.
-
-#### 2. Technical Formatting Rules
-- **Encoding**: UTF-8.
-- **Delimiter**: Comma (`,`).
-- **Newline character**: LF (`\n`).
-- **Decimal Rounding**: All prices must be rounded to exactly 2 to 4 decimal places depending on asset requirements (using standard banking rounding via `decimal.Decimal` to avoid float precision drift).
-
-#### 3. Column-by-Column Data Dictionary
-
-| Column | Data Type | Format / Allowed Values | Description |
+| Column Name | Data Type | Validation Rules | Description |
 | :--- | :--- | :--- | :--- |
-| `trade_group_id` | String | Alphanumeric identifier (e.g., `123_DipBuyer_SPY`) | Groups the entry and exit bracket order legs belonging to a single trade. |
-| `bracket_role` | Enum | `ENTRY`, `TP`, `SL`, `EXIT` | The role of the order leg. `TP` = Take Profit, `SL` = Stop Loss. |
-| `symbol` | String | Uppercase alphanumeric (e.g., `AAPL`, `SPY`) | The exchange symbol identifier of the equity or asset. |
-| `sec_type` | String | `STK` | Security type (e.g., Stock). |
-| `exchange` | String | Destination exchange (e.g., `SMART`) | The execution routing destination. |
-| `account_id` | String | IBKR Account ID (e.g., `DU123456`) | The broker account ID to execute the order under. |
-| `action` | Enum | `BUY`, `SELL` | The transaction direction. |
-| `quantity` | Integer | Positive integer `> 0` | The number of shares/units to trade. |
-| `order_type` | Enum | `LMT`, `MKT`, `STP` | Order type (Limit, Market, or Stop). |
-| `target_price` | Decimal | Numeric string with 2 decimal places (e.g., `185.50`) | The target price for the order leg. |
-| `tif` | Enum | `GTD`, `GTC`, `DAY` | Time-In-Force instructions. |
-| `strategy_name` | String | Strategy display name (e.g., `DipBuyer`) | The name of the generating trading strategy. |
-| `currency` | String | Currency code (e.g., `USD`, `EUR`) | The asset trading currency override. |
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique local identifier for the trade record. |
+| `symbol` | TEXT | NOT NULL | Uppercase ticker symbol (e.g. `AAPL`). |
+| `strategy` | TEXT | NOT NULL | Canonical strategy identifier matching the system Enum. |
+| `status` | TEXT | DEFAULT `'CREATED'` | State: `'CREATED'`, `'ACTIVE'`, `'CLOSED'`. |
+| `initial_size` | REAL | DEFAULT 0 | The initial size allocated to the trade setup. |
+| `current_size` | REAL | DEFAULT 0 | The current open size of the trade position. |
+| `entry_price` | REAL | Nullable | Average execution price upon entry. |
+| `entry_date` | TIMESTAMP | Nullable | ISO 8601 string of the entry date/time. |
+| `current_price` | REAL | Nullable | Last observed price from market data. |
+| `current_stop_loss` | REAL | Nullable | Current active stop loss price boundary. |
+| `current_target` | REAL | Nullable | Current active target profit price boundary. |
+| `avg_exit_price` | REAL | Nullable | Average execution price upon exit. |
+| `realized_pnl` | REAL | DEFAULT 0 | Realized profit or loss in base currency. |
+| `exit_price` | REAL | Nullable | Exit execution price. |
+| `exit_date` | TIMESTAMP | Nullable | ISO 8601 string of the exit date/time. |
+| `exit_reason` | TEXT | Nullable | Reason for exit (e.g., `'STOP_LOSS'`, `'TARGET'`). |
+| `signal_context` | TEXT | Nullable (JSON text) | Metadata payload containing indicators and setup conditions. |
+| `created_at` | TIMESTAMP | DEFAULT `CURRENT_TIMESTAMP` | Internal timestamp of record insertion. |
+| `updated_at` | TIMESTAMP | DEFAULT `CURRENT_TIMESTAMP` | Internal timestamp of last record update. |
+
+#### Table `trade_logs`
+Audit log storing state change details for trades.
+
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique log entry identifier. |
+| `trade_id` | INTEGER | FOREIGN KEY (`trades(id)`) | Association to the parent trade record. |
+| `event_type` | TEXT | NOT NULL | Type of modification (e.g. `'SIZE_CHANGE'`). |
+| `old_value` | TEXT | Nullable | Value before modification. |
+| `new_value` | TEXT | Nullable | Value after modification. |
+| `reason` | TEXT | Nullable | Text explanation for the changes. |
+| `timestamp` | TIMESTAMP | DEFAULT `CURRENT_TIMESTAMP` | Recording timestamp. |
+
+#### Table `croc`
+Registry of incoming signal webhook payloads.
+
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `symbol` | TEXT | NOT NULL | Ticker symbol. |
+| `timeframe` | TEXT | Nullable | Timeframe of signal generation. |
+| `signal` | TEXT | Nullable | Signal name alert identifier. |
+| `timestamp` | TEXT | Nullable | ISO time format of signal timestamp. |
+| `exchange` | TEXT | Nullable | Target routing exchange. |
+| `data` | TEXT | Nullable (JSON text) | Raw JSON payload containing technical setup details. |
+| `created_at` | TIMESTAMP | DEFAULT `CURRENT_TIMESTAMP` | Internal registration timestamp. |
+
+#### Table `exchange_mappings`
+Registry of symbol-to-exchange configurations.
+
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `symbol` | TEXT | PRIMARY KEY | Stock symbol. |
+| `exchange` | TEXT | NOT NULL | Associated trading exchange. |
+
+### 1.2 `trading.db` Schema
+
+#### Table `orders`
+Manages broker order intentions.
+
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `order_id` | INTEGER | PRIMARY KEY | Unique ID (negative values denote pre-transmission state). |
+| `perm_id` | INTEGER | UNIQUE INDEX (Partial index if not null) | Permanent execution ID reported by TWS API. |
+| `parent_id` | INTEGER | FK `orders(order_id) ON UPDATE CASCADE` | Link to bracket parent entry order. |
+| `trade_group_id` | TEXT | NOT NULL | Unique group tag (e.g. `123_DipBuyer_SPY`). |
+| `account_id` | TEXT | NOT NULL | Account identifier tag. |
+| `bracket_role` | TEXT | CHECK: `'ENTRY'`, `'SL'`, `'TP'`, `'EXIT'` | Role of order within bracket. |
+| `symbol` | TEXT | NOT NULL | Uppercase ticker identifier. |
+| `sec_type` | TEXT | CHECK: `'STK'` | Security class. Only Stocks allowed. |
+| `exchange` | TEXT | CHECK: `'SMART'` | Route destination. Only SMART allowed. |
+| `action` | TEXT | CHECK: `'BUY'`, `'SELL'` | Order action direction. |
+| `quantity` | INTEGER | NOT NULL | Unit amount to execute. |
+| `order_type` | TEXT | NOT NULL | IBKR Order type (e.g. `'LMT'`, `'STP'`). |
+| `target_price` | REAL | Nullable | Target limit or stop trigger price. |
+| `tif` | TEXT | DEFAULT `'GTC'` | Time-In-Force constraint. |
+| `strategy_name` | TEXT | Nullable | Originating strategy designation. |
+| `status` | TEXT | CHECK: `'Created'`, `'Submitted'`, ... | Execution state matching lifecycles. |
+| `retry_count` | INTEGER | DEFAULT 0 | Transmission attempt retry counter. |
+| `transmitted_at` | TIMESTAMP | Nullable | Timestamp of API transmission. |
+
+#### Table `executions`
+Maintains individual transaction fill slices.
+
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `exec_id` | TEXT | PRIMARY KEY | Unique execution identifier from IBKR. |
+| `order_id` | INTEGER | FK `orders(order_id) ON UPDATE CASCADE` | Association to parent order. |
+| `price` | REAL | NOT NULL | Actual executed fill price. |
+| `qty` | REAL | NOT NULL | Executed unit size. |
+| `commission` | REAL | Nullable | Execution transaction fee in USD. |
+| `currency` | TEXT | Nullable | Currency of trade (e.g. `'USD'`). |
+| `executed_at` | TIMESTAMP | Nullable | Executed timestamp in TWS timezone. |
+
+#### Table `trades_settlement`
+Aggregated profit & loss outcomes for completely closed trade groups.
+
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `account_id` | TEXT | PRIMARY KEY (Composite Part 1) | Execution account. |
+| `trade_group_id` | TEXT | PRIMARY KEY (Composite Part 2) | Associated trade group. |
+| `avg_entry_price` | REAL | NOT NULL | Volumetric Average Entry Price (VWAP). |
+| `avg_exit_price` | REAL | NOT NULL | Volumetric Average Exit Price (VWAP). |
+| `price_diff_slippage` | REAL | NOT NULL | Price slippage from target entry. |
+| `total_commissions` | REAL | NOT NULL | Aggregated fee values. |
+| `net_pnl` | REAL | NOT NULL | Net profit/loss including fees. |
+| `settled_at` | TIMESTAMP | DEFAULT `CURRENT_TIMESTAMP` | Aggregation processing timestamp. |
+
+### 1.3 `stocks.db` Schema
+
+#### Table `market_prices`
+Registry of daily price history quotes downloaded from yfinance.
+
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `symbol` | TEXT | NOT NULL | Stock symbol key. |
+| `date` | TEXT | NOT NULL | Quote date (format YYYY-MM-DD). |
+| `open` | REAL | NOT NULL | Opening quote price. |
+| `high` | REAL | NOT NULL | Highest intraday quote price. |
+| `low` | REAL | NOT NULL | Lowest intraday quote price. |
+| `close` | REAL | NOT NULL | Closing quote price. |
+| `volume` | INTEGER | NOT NULL | Share transaction volume. |
+| `dividends` | REAL | DEFAULT 0 | Paid cash dividend amount. |
+| `stock_splits` | REAL | DEFAULT 0 | Stock splitting coefficient ratio. |
+
+#### Table `ignored_symbols`
+List of blacklisted symbols skipped by downloads and screeners.
+
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `symbol` | TEXT | PRIMARY KEY | Stock symbol to ignore. |
 
 ---
 
-## 3. Strict Implementation Invariants
+## 2. Order CSV Interface Contract
 
-Every module added to this repository must respect these hard constraints:
+### 2.1 Technical Constraints
+- **File Format**: Standard CSV conforming to RFC 4180.
+- **Delimiter**: `,` (Comma).
+- **Encoding**: UTF-8.
+- **Line Ending**: `\n` (LF).
+- **Price Format**: String decimals, rounded to 4 decimal places maximum.
+- **Time Format**: ISO 8601 formatting with explicit UTC offset (e.g. `2026-07-07T13:00:00+02:00`).
 
-### 1. The Quality Pyramid
-- **Correctness First**: Never compromise logic or accuracy for speed or brevity.
-- **Readability**: Intention-revealing naming. No abbreviations (except `df`, `db`, `avg`, `qty`, `pnl`). Max cognitive complexity is 15, and max cyclomatic complexity is 10.
-- **Maintainability**: Fully strict Python 3.12+ type hints. Google-style docstrings are mandatory for all public classes and functions.
-- **Changeability**: Modules must be orthogonal and loosely coupled.
+### 2.2 Column Specifications
 
-### 2. Functional Core vs. Imperative Shell
-- **Functional Core**: All mathematical calculations (such as indicators, rebalancing calculations, and sizing allocations) must be pure, deterministic functions with **zero side effects** (no I/O, database access, logging, or datetime calls).
-- **Imperative Shell**: Handles DB access, file export, network calls, and logs warnings/errors. It validates all inputs before forwarding them to the Functional Core.
-
-### 3. Financial Precision & Security
-- **No Float Ledgers**: Float data types are strictly prohibited for financial accounting or currency values. Use integers (cents) or `decimal.Decimal` objects to prevent precision loss.
-- **SQL Safety**: All query commands must be parameterized. Raw SQL concatenation or f-string parameterization is strictly forbidden to prevent SQL injection.
-- **Fail-Closed Operations**: If database connection or external services fail, the system must abort execution immediately (`sys.exit(1)`) instead of falling back to unsafe default states.
-
----
-
-## 4. System Ports & Custom Agent Interfaces
-
-External automated agents interact with Croc-Trader through these designated integration boundaries (ports):
-
-### IBKR Integration Interface (`ibkr-agent`)
-- **API Wrapper**: Interacts using the `ib_async` library (see [tools/ibkr_check.py](tools/ibkr_check.py)).
-- **Connection Port**: Connects via socket ports (`7496` for live TWS, `7497` for paper trading).
-- **Data Contracts**:
-  - Writes system state snapshots to [data/positions.json](data/positions.json) and [data/orders.json](data/orders.json).
-  - Merges completed trade details with [data/orders_history.json](data/orders_history.json).
-  - Can read generated orders from `data/orders/` CSV logs and submit them directly via `ib_async` trades.
-
-### REST API Gateway (`api-service-agent`)
-- **Routing**: Interacts with the Flask JSON API endpoints defined in [app/routes/api.py](app/routes/api.py).
-- **Functionality**:
-  - Exposes trade logs and live position summaries.
-  - Allows agents to post override instructions or manual rebalance requests.
-  - Ensures whitelisting and rate-limiting constraints defined in `settings.yaml` are strictly enforced.
+| Column Name | Data Type | Validation Rules | Description |
+| :--- | :--- | :--- | :--- |
+| `trade_group_id` | String | Alphanumeric; format: `[ID]_[Strategy]_[Symbol]` | Identifies bracket sets of entries and exits. |
+| `bracket_role` | String | Must be `'ENTRY'`, `'TP'`, `'SL'`, or `'EXIT'` | Purpose of order leg. |
+| `symbol` | String | Uppercase alphanumeric | Equity ticker symbol. |
+| `sec_type` | String | Must be `'STK'` | Security asset class. |
+| `exchange` | String | Must be `'SMART'` | Route routing target. |
+| `account_id` | String | Alpha-numeric account code | Client trading account. |
+| `action` | String | Must be `'BUY'` or `'SELL'` | Direction of transaction. |
+| `quantity` | Integer | Positive integer `> 0` | Share volume execution target. |
+| `order_type` | String | Must be `'LMT'`, `'STP'`, or `'MKT'` | Order category type. |
+| `target_price` | Decimal | String decimal representation with 2 decimal places | Trigger limit or target price. |
+| `tif` | String | Must be `'DAY'`, `'GTC'`, or `'GTD'` | Time-In-Force instruction. |
+| `strategy_name` | String | Matches canonical system Enums | Strategy origin name. |
+| `currency` | String | Default `'USD'` | Asset denomination currency. |
 
 ---
 
-## 5. Appendix: Public API Index
+## 3. State Machines & Execution Lifecycles
 
-The following index documents all public classes and functions in the repository codebase to fulfill architecture synchronization requirements:
+### 3.1 Order Lifecycle States
+Orders progress through explicit states:
 
-- AllocationResult
-- AppConfig
-- BacktestMetrics
-- BaseRepository
-- BaseStrategy
-- BaseTradeStrategy
-- CapacityMonitor
-- CapacitySimulator
-- ConfigManager
-- CrocContext
-- CrocSetupStrategy
-- CrocSignal
-- DatabaseConfig
-- DatabaseSession
-- DipBuyerConfig
-- DipBuyerMarketState
-- DipBuyerStrategy
-- DynamicPositionSizer
-- EntryReason
-- EnvConfig
-- ExchangeMapper
-- ExchangeSymbol
-- ExitReason
-- HoldTargetStrategy
-- HolidayConfig
-- IndexAliases
-- LoggingConfig
-- MarketDataProvider
-- MarketDataUpdater
-- MarketHolidayChecker
-- MarketPrice
-- MarketQualityService
-- MarketRepository
-- MetricsOverview
-- MissingRouteRateLimiter
-- NDXAnalysisResult
-- NDXMomentumConfiguration
-- NDXMomentumScreener
-- NDXMomentumTradeStrategy
-- OrderLeg
-- Order
-- OverflowProtection
-- PortfolioAllocator
-- PortfolioConfig
-- PortfolioManager
-- PortfolioMetrics
-- PortfolioStrategyConfig
-- PriceData
-- RankingVerificationResult
-- SQNClassification
-- ScreenerConfiguration
-- ScreenerEngine
-- ScreenerViewService
-- SecurityConfig
-- SignalRepository
-- SignalStat
-- SimulationResult
-- Strategies
-- StrategyOverview
-- StrategyProtocol
-- SymbolAnalysisResult
-- SymbolExchange
-- SymbolFilter
-- SymbolOverride
-- TargetColumn
-- TechnicalIndicatorConfig
-- TelegramBot
-- TelegramConfig
-- TradeData
-- TradeEventType
-- TradeManager
-- TradeParams
-- TradeRepository
-- TradeStatus
-- TradeTransition
-- TradeViewData
-- TradeViewService
-- TurnoverCandidate
-- TurnoverConfiguration
-- TurnoverContext
-- TurnoverSignalContext
-- TurnoverTimingStrategy
-- TwoPercentStrategy
-- TwoPercentStrategyContext
-- WebhookPayload
-- WebhookWorkerConfig
-- WebserverConfig
-- YahooDataProvider
-- YahooRow
-- allocate
-- analyze_croc
-- analyze_dip_buyer
-- analyze_ndx_momentum
-- analyze_single_symbol
-- analyze_turnover
-- apple_touch_icon
-- apple_touch_icon_precomposed
-- apply_limits
-- attach_sparklines
-- calculate_analysis
-- calculate_atr
-- calculate_ema
-- calculate_expectancy
-- calculate_ibs
-- calculate_kelly_criterion
-- calculate_max_drawdown
-- calculate_multiplier
-- calculate_position_size
-- calculate_profit_factor
-- calculate_risk_reward_ratio
-- calculate_roc
-- calculate_rsi
-- calculate_sharpe_ratio
-- calculate_sma
-- calculate_sqn
-- calculate_true_range
-- calculate_ulcer_index
-- calculate_volume_sma
-- calculate_win_rate
-- check_entry
-- check_ranking_attributes
-- clear_cache
-- clear_trades
-- configure_scheduler
-- create_app
-- create_trade
-- dataclass_to_dict
-- dow_30
-- execute
-- exists
-- extract_latest_leaders
-- extract_symbol_data
-- favicon
-- fetch_all
-- fetch_batch_raw
-- fetch_one
-- fetch_value
-- filter_symbols
-- from_dict
-- from_row
-- from_yahoo
-- generate_daily_orders
-- generate_donut_chart
-- generate_orders
-- generate_sparkline
-- get_active_trades
-- get_all_by_strategy
-- get_all_daily_data
-- get_all_known_symbols
-- get_all_recommendations
-- get_all_traded_symbols
-- get_available_dates
-- get_batch_history
-- get_batch_history_raw
-- get_budget
-- get_by_status
-- get_by_timestamp
-- get_candidates
-- get_closed_summary
-- get_current_parameters
-- get_current_utilization
-- get_daily_updates
-- get_data_for_lookback
-- get_db_path
-- get_exchange
-- get_float
-- get_folder
-- get_handler
-- get_holiday_name
-- get_ignored_symbols
-- get_index_stats
-- get_int
-- get_latest_date
-- get_latest_price
-- get_latest_signal_date
-- get_log_path
-- get_ohlcv
-- get_outdated_symbols
-- get_path
-- get_percentile
-- get_portfolio_summary
-- get_risk_amount
-- get_signal_by_id
-- get_signals_by_date
-- get_strat_config
-- get_strategy
-- get_strategy_display_name
-- get_strategy_path
-- get_symbol_history
-- get_symbol_history_raw
-- get_symbols_with_missing_history
-- get_trade
-- get_trade_candidates
-- get_trades
-- get_trading_days_count
-- get_turnover_candidates
-- get_unique_signal_attributes
-- get_universe_daily_data
-- get_unprocessed_signals
-- get_weekday_stats
-- group_trades_by_symbol
-- group_trades_history
-- harmonize_indices
-- health_check
-- ignore_symbol
-- ingest_webhook
-- init_schema
-- internal_server_error
-- is_holiday
-- is_strategy_match
-- load
-- manage_active_trade
-- map_order_to_csv_rows
-- nasdaq_100
-- normalize_timestamp
-- page_not_found
-- perform_gap_check
-- preload_all_data
-- prepare_trade_view
-- process_daily_signals
-- register_services
-- register_strategy
-- reload_market_data
-- remove_ignored_symbol
-- require_ip_whitelist
-- require_lock
-- resolve_strategy
-- risk_range
-- robots_txt
-- root_check
-- route_honeypot_admin
-- route_honeypot_login
-- run_all
-- run_cache_prewarm
-- run_daily_process
-- run_daily_strategy_check
-- run_db_backup
-- run_db_maintenance
-- run_market_data_update
-- run_order_generation
-- run_update
-- russell_1000
-- russell_1000_exclusive
-- save_bulk_prices
-- save_signal
-- send
-- send_dataframe
-- send_message
-- should_block
-- sp_500
-- special_symbols
-- sync_market_data
-- to_db_row
-- trigger_orders
-- trigger_screener
-- trigger_trades_backfill
-- update_trade
-- verify_ranking_system
-- view_analytics_dashboard
-- view_backtest_dashboard
-- view_screener_croc
-- view_screener_dip_buyer
-- view_screener_ndx_momentum
-- view_screener_overview
-- view_screener_turnover
-- view_screener_twopercent
-- view_trades_croc
-- view_trades_dip_buyer
-- view_trades_ndx_momentum
-- view_trades_overview
-- view_trades_turnover
-- view_trades_twopercent
-- wrapper
-- write_csv_orders_file
+```
+                  ┌───────────────┐
+                  │   Created     ├───────────────┐
+                  └──────┬────────┘               │
+                         │ Transmission           │ Max Retries
+                         ▼                        ▼
+                  ┌───────────────┐        ┌───────────────┐
+                  │  Submitted    │        │    Error      │
+                  └──────┬────────┘        └───────────────┘
+                         │                 ▲
+             ┌───────────┼───────────┐     │ Broker Error
+             ▼           ▼           ▼     │
+      ┌────────────┐┌──────────┐┌──────────┼─┐
+      │PreSubmitted││  Filled  ││Cancelled │
+      └────────────┘└──────────┘└──────────┘
+```
+
+- **Created**: Initial state after import or generation.
+- **Submitted**: Pushed to the TWS API.
+- **PreSubmitted**: Received by broker; stop or take-profit legs pending trigger of entry fill.
+- **Filled**: Executed.
+- **Cancelled**: Storniert.
+- **Error**: API rejection, socket disconnect, or execution failure.
+
+### 3.2 Error Resolution Matrix
+
+| Error Code / Event | System State | Action / Recovery |
+| :--- | :--- | :--- |
+| Database Corruption | Startup | Terminate immediately (`sys.exit(1)`), trigger alert. |
+| IBKR API Disconnect | Active Execution | Flag orders as `'Error'`, transition to safe state, queue retry. |
+| Missing Commission | Filled Order | Record fill immediately, defer settlement calculations. |
+| SQL Database Lock | Transaction | Backoff for random intervals, retry up to 5 times before failing. |

@@ -24,6 +24,32 @@ This skill forces a "Specification First" approach. It prohibits code generation
 
 ---
 
+## 2-Layer Abstraction Rule for Architecture Documentation
+
+When generating or updating architectural specifications in the workspace, you MUST strictly enforce this partitioning:
+
+### Layer 1: Root `architecture.md` (High-Level Blueprinting)
+Must ONLY contain high-level system concepts:
+- **System Context Mermaid Diagrams**: Showing component blocks and interactions.
+- **Dataflow Topologies**: High-level paths of data (synchronization, screening, order export).
+- **Global Invariants**: Core rules of the system (e.g. Python 3.12, Decimal financial precision, SQLite WAL mode, stateless execution layers, Functional Core/Imperative Shell).
+
+### Layer 2: `references/architecture.md` (Low-Level Technical Specs)
+Must ONLY contain concrete engineering specifications:
+- **Exact SQL Schemas**: Raw SQLite table definitions with explicit column types, constraints, and index descriptions.
+- **Field-by-Field CSV Layout contracts**: Explicit file schema tables with data types, formatting rules (e.g. ISO 8601 time string formatting with zone offset), and validation rules.
+- **Execution Lifecycle State Machines**: Detailed transitions (e.g. Order Status states, Trade lifecycle states).
+- **Error Matrices**: Concrete handling codes and failure-recovery behaviors.
+
+### Markdown Table Requirements
+Any variable, field, or column specification table generated in either layer must use markdown with the following columns:
+1. `Variable Name` (or `Column Name`)
+2. `Data Type`
+3. `Validation Rules` (nullable constraints, limits, ranges, formats)
+4. `Description`
+
+---
+
 ## Core Operational Stages
 
 ### Stage 1: The Analyst (Requirements & Edge Cases)
