@@ -179,8 +179,9 @@ class MarketDataProvider:
 
     def clear_cache(self) -> None:
         """Clears the internal LRU cache (e.g. after a database update)."""
-        self.get_all_daily_data.cache_clear()
+        self._all_daily_data_cache.clear()
         self._in_memory_cache = None
+        self._cache_lookback = 0
         logger.info("[MarketData] Cache cleared.")
 
     def get_symbol_history(self, symbol: str, days: int = 400) -> pandas.DataFrame:
