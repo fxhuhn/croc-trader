@@ -120,7 +120,7 @@
                         <!-- 3. Signal -->
                         <div class="whitespace-nowrap">
                             <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
-                                {{ (trade.context.original_signal or trade.context.match_rule.Signal or trade.strategy).replace('Croc_', '') }}
+                                {{ (trade.context.get('original_signal') or (trade.context.get('match_rule') or {}).get('Signal') or trade.strategy).replace('Croc_', '') }}
                             </span>
                         </div>
 
