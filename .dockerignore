@@ -16,3 +16,7 @@ Dockerfile
 docker-compose.yml
 README.md
 .env
+volture_whitelist.py
+/tws
+/references
+architecture.md
