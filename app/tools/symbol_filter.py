@@ -140,6 +140,17 @@ class SymbolFilter:
         Returns:
             A dictionary mapping winner symbols to lists of excluded (loser) tickers.
         """
+        # Fail-fast test: Check connection to fc.yahoo.com before sequential loops
+        try:
+            _ = yf.Ticker("SPY").info
+        except Exception as error:
+            logger.warning(
+                "Yahoo Finance metadata service (fc.yahoo.com) is unreachable. "
+                "Skipping symbol preference analysis: %s",
+                error,
+            )
+            return {}
+
         raw_metadata_list: list[dict] = []
         processed_count: int = 0
 
