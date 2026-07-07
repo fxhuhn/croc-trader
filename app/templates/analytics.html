@@ -14,7 +14,7 @@
 {% from "macros/cards.html" import render_kpi_card %}
 
 <!-- Top-Navigation -->
-{{ render_header("Strategy", "analytics", show_switcher=False) }}
+{{ render_header("Strategy", "analytics", show_switcher=True, active_tab='analytics') }}
 
 {% set strategy_colors = {'Croc Setup': 'bg-emerald-500', 'Dip Buyer': 'bg-indigo-500', 'Turnover': 'bg-amber-500', 'Two Percent': 'bg-purple-500', 'NDX Momentum': 'bg-rose-500'} %}
 {% set strategy_hex_colors = {'Croc Setup': '#10b981', 'Dip Buyer': '#6366f1', 'Turnover': '#f59e0b', 'Two Percent': '#a855f7', 'NDX Momentum': '#f43f5e'} %}

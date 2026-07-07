@@ -7,10 +7,17 @@
         {% if show_switcher %}
         <!-- Mobile Navigation Pill -->
         <div class="flex md:hidden items-center bg-slate-200/60 p-1 rounded-lg">
+            {% if active_tab in ['analytics', 'broker'] %}
+            <a href="/analytics"
+                class="{{ 'bg-white shadow-sm text-slate-900' if active_tab == 'analytics' else 'text-slate-500 active:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all">Analytics</a>
+            <a href="/broker"
+                class="{{ 'bg-white shadow-sm text-slate-900' if active_tab == 'broker' else 'text-slate-500 active:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-colors">Broker</a>
+            {% else %}
             <a href="/trades/{{ strategy_slug }}"
                 class="{{ 'bg-white shadow-sm text-slate-900' if active_tab == 'trades' else 'text-slate-500 active:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all">Trades</a>
             <a href="/screener/{{ strategy_slug }}"
                 class="{{ 'bg-white shadow-sm text-slate-900' if active_tab == 'screener' else 'text-slate-500 active:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-colors">Screener</a>
+            {% endif %}
         </div>
         {% endif %}
 
@@ -18,10 +25,17 @@
         <div class="hidden md:flex items-center flex-1 justify-between ml-10">
             <div class="space-x-1">
                 {% if show_switcher %}
+                {% if active_tab in ['analytics', 'broker'] %}
+                <a href="/analytics"
+                    class="{{ 'bg-blue-50 text-blue-600' if active_tab == 'analytics' else 'text-slate-500 hover:text-slate-900' }} px-3 py-2 rounded-lg text-sm font-medium transition-colors">Analytics</a>
+                <a href="/broker"
+                    class="{{ 'bg-blue-50 text-blue-600' if active_tab == 'broker' else 'text-slate-500 hover:text-slate-900' }} px-3 py-2 rounded-md text-sm font-medium transition-colors">Broker</a>
+                {% else %}
                 <a href="/trades/{{ strategy_slug }}"
                     class="{{ 'bg-blue-50 text-blue-600' if active_tab == 'trades' else 'text-slate-500 hover:text-slate-900' }} px-3 py-2 rounded-lg text-sm font-medium transition-colors">Trades</a>
                 <a href="/screener/{{ strategy_slug }}"
                     class="{{ 'bg-blue-50 text-blue-600' if active_tab == 'screener' else 'text-slate-500 hover:text-slate-900' }} px-3 py-2 rounded-md text-sm font-medium transition-colors">Screener</a>
+                {% endif %}
                 {% endif %}
             </div>
             <a href="/trades"
