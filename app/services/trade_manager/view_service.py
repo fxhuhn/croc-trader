@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import date
+from typing import Any
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -12,6 +13,7 @@ from ...const import (
     TargetColumn,
     TradeStatus,
 )
+from ...database.repositories.broker import BrokerRepository
 from ...database.repositories.market import MarketRepository
 from ...database.repositories.trade import TradeRepository
 
@@ -55,15 +57,18 @@ class TradeViewService:
         self,
         trade_repository: TradeRepository,
         market_repository: MarketRepository,
+        broker_repository: BrokerRepository | None = None,
     ) -> None:
         """Initializes the view service with repositories.
 
         Args:
             trade_repository: The repository for trade database access.
             market_repository: The repository for market history database access.
+            broker_repository: The repository for TWS broker database access.
         """
         self.trade_repository = trade_repository
         self.market_repository = market_repository
+        self.broker_repository = broker_repository
 
     def resolve_strategy(self, trade: dict[str, object]) -> str:
         """Resolves a trade's strategy string to its Enum value.
@@ -376,6 +381,32 @@ class TradeViewService:
         """Assembles and returns a TradeViewData dictionary."""
         entry_date = trade.get("entry_date")
         exit_date = trade.get("exit_date")
+
+        # Query TWS details
+        tws_status = None
+        tws_orders = []
+        if self.broker_repository is not None:
+            local_trade_id = trade.get("id")
+            if local_trade_id is not None:
+                try:
+                    tws_orders = self.broker_repository.get_orders_by_local_trade_id(
+                        int(local_trade_id)
+                    )
+                    if tws_orders:
+                        statuses = [o.get("status") for o in tws_orders]
+                        if "Error" in statuses:
+                            tws_status = "Error"
+                        elif "Submitted" in statuses:
+                            tws_status = "Submitted"
+                        elif "PreSubmitted" in statuses:
+                            tws_status = "PreSubmitted"
+                        elif "Filled" in statuses:
+                            tws_status = "Filled"
+                except Exception as e:
+                    logger.warning(
+                        "Could not fetch TWS orders for trade %s: %s", local_trade_id, e
+                    )
+
         return {
             "id": trade.get("id", ""),
             "symbol": trade.get("symbol", ""),
@@ -408,6 +439,8 @@ class TradeViewService:
             "sparkline": "",
             "max_days": None,
             "context": context_dict,
+            "tws_status": tws_status,
+            "tws_orders": tws_orders,
         }
 
     def generate_sparkline(
@@ -787,3 +820,344 @@ class TradeViewService:
             statistics_dict["win"] += 1
         else:
             statistics_dict["loss"] += 1
+
+    def get_broker_summary(self) -> dict[str, dict[str, Any]]:
+        """Calculates performance metrics from trades_settlement grouped by strategy.
+
+        Returns:
+            dict[str, dict[str, Any]]: Metrics map for 'all' and individual strategies.
+        """
+        if self.broker_repository is None:
+            return {}
+        settlements = self.broker_repository.get_settlements()
+
+        strategies = ["all", "DipBuyer", "TurnoverTiming", "TwoPercent", "NDXMomentum"]
+        metrics = {
+            strat: {
+                "pnl": 0.0,
+                "pnlText": "0.00",
+                "winrate": "0.0%",
+                "slippage": "0.00",
+                "fees": 0.0,
+                "win_count": 0,
+                "total_count": 0,
+                "slippage_sum": 0.0,
+            }
+            for strat in strategies
+        }
+
+        for settlement in settlements:
+            trade_group_identifier = settlement.get("trade_group_id") or ""
+            parts = trade_group_identifier.split("_")
+            raw_strat = parts[1] if len(parts) > 1 else ""
+
+            mapped_keys = ["all"]
+            raw_strat_lower = raw_strat.lower()
+            if "dip" in raw_strat_lower:
+                mapped_keys.append("DipBuyer")
+            elif "turnover" in raw_strat_lower:
+                mapped_keys.append("TurnoverTiming")
+            elif "twopercent" in raw_strat_lower:
+                mapped_keys.append("TwoPercent")
+            elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
+                mapped_keys.append("NDXMomentum")
+
+            net_pnl = float(settlement.get("net_pnl") or 0.0)
+            slippage = float(settlement.get("price_diff_slippage") or 0.0)
+            commission = float(settlement.get("total_commissions") or 0.0)
+
+            for key in mapped_keys:
+                metrics[key]["pnl"] += net_pnl
+                metrics[key]["fees"] += commission
+                metrics[key]["total_count"] += 1
+                metrics[key]["slippage_sum"] += slippage
+                if net_pnl > 0:
+                    metrics[key]["win_count"] += 1
+
+        for strat in strategies:
+            strat_metrics = metrics[strat]
+            total_count = strat_metrics["total_count"]
+
+            pnl_val = strat_metrics["pnl"]
+            if pnl_val > 0:
+                strat_metrics["pnlText"] = f"+{pnl_val:,.2f}"
+            else:
+                strat_metrics["pnlText"] = f"{pnl_val:,.2f}"
+
+            if total_count > 0:
+                winrate_val = (strat_metrics["win_count"] / total_count) * 100
+                strat_metrics["winrate"] = f"{winrate_val:.1f}%"
+
+                avg_slippage = strat_metrics["slippage_sum"] / total_count
+                if avg_slippage > 0:
+                    strat_metrics["slippage"] = f"+{avg_slippage:.3f}"
+                else:
+                    strat_metrics["slippage"] = f"{avg_slippage:.3f}"
+            else:
+                strat_metrics["winrate"] = "0.0%"
+                strat_metrics["slippage"] = "0.00"
+
+        return metrics
+
+    def get_broker_settlements(self) -> list[dict[str, Any]]:
+        """Retrieves closed trade settlements with execution details attached.
+
+        Returns:
+            list[dict[str, Any]]: List of settlements with attached execution lists.
+        """
+        if self.broker_repository is None:
+            return []
+        settlements = self.broker_repository.get_settlements()
+        for settlement in settlements:
+            trade_group_identifier = settlement.get("trade_group_id") or ""
+            executions = self.broker_repository.get_executions_for_trade_group(
+                trade_group_identifier
+            )
+            settlement["executions"] = executions
+
+            parts = trade_group_identifier.split("_")
+            settlement["local_trade_id"] = parts[0] if parts else ""
+            settlement["symbol"] = parts[-1] if len(parts) > 1 else ""
+            settlement["strategy_name"] = (
+                "_".join(parts[1:-1])
+                if len(parts) > 2
+                else (parts[1] if len(parts) > 1 else "")
+            )
+
+            # Calculate days_held, quantity and entry_date from executions
+            entry_date_str = ""
+            days_held = 0
+            if executions:
+                timestamps = []
+                for e in executions:
+                    if e.get("executed_at"):
+                        ts = pd.Timestamp(e["executed_at"])
+                        if ts.tzinfo is not None:
+                            ts = ts.tz_convert(None).tz_localize(None)
+                        timestamps.append(ts)
+                executed_dates = sorted(timestamps)
+                if executed_dates:
+                    entry_date_str = str(executed_dates[0].date())
+                    delta = executed_dates[-1].date() - executed_dates[0].date()
+                    days_held = max(0, delta.days)
+
+            settlement["entry_date"] = entry_date_str
+            settlement["days_held"] = days_held
+            settlement["quantity"] = sum(
+                e["qty"] for e in executions if e.get("action") == "BUY"
+            )
+
+            # Map raw strategy name for the template's data-strategy attribute
+            raw_strat_lower = settlement["strategy_name"].lower()
+            if "dip" in raw_strat_lower:
+                settlement["strategy_filter"] = "DipBuyer"
+            elif "turnover" in raw_strat_lower:
+                settlement["strategy_filter"] = "TurnoverTiming"
+            elif "twopercent" in raw_strat_lower:
+                settlement["strategy_filter"] = "TwoPercent"
+            elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
+                settlement["strategy_filter"] = "NDXMomentum"
+            else:
+                settlement["strategy_filter"] = settlement["strategy_name"]
+
+        return settlements
+
+    def get_reconciliation_discrepancies(self) -> list[dict[str, Any]]:
+        """Compares local signals.db trades with TWS executions in trading.db.
+
+        Ignores manual strategies 'SplitTarget' and 'HoldTarget'.
+
+        Returns:
+            list[dict[str, Any]]: List of discrepancy records.
+        """
+        if self.broker_repository is None:
+            return []
+        # Fetch active and closed trades from local database
+        local_active = self.trade_repository.get_by_status("ACTIVE")
+        local_closed = self.trade_repository.get_by_status("CLOSED")
+
+        # Combine and filter out manual strategies
+        combined_local_trades = local_active + local_closed
+        local_trades = [
+            trade
+            for trade in combined_local_trades
+            if self.resolve_strategy(trade)
+            not in [
+                Strategies.HoldTarget,
+                Strategies.SplitTarget,
+            ]
+        ]
+
+        # Fetch TWS broker net position sizes
+        broker_positions = self.broker_repository.get_net_positions_by_symbol()
+
+        discrepancies = []
+        checked_symbols = set()
+
+        # Check local trades first
+        for trade in local_trades:
+            symbol = str(trade.get("symbol") or "")
+            if symbol in checked_symbols:
+                continue
+            checked_symbols.add(symbol)
+
+            # Get local status and position size
+            symbol_trades = [t for t in local_trades if t.get("symbol") == symbol]
+            active_trades = [t for t in symbol_trades if t.get("status") == "ACTIVE"]
+
+            local_status = "CLOSED"
+            local_position = 0.0
+            if active_trades:
+                local_status = "ACTIVE"
+                local_position = float(
+                    active_trades[0].get("current_size")
+                    or active_trades[0].get("initial_size")
+                    or 0.0
+                )
+
+            # Get TWS position size
+            tws_position = float(broker_positions.get(symbol, 0.0))
+
+            # Resolve strategy for local trade
+            trade_obj = symbol_trades[0] if symbol_trades else trade
+            raw_strat = self.resolve_strategy(trade_obj)
+            raw_strat_lower = str(raw_strat).lower()
+            if "dip" in raw_strat_lower:
+                strategy = "DipBuyer"
+            elif "turnover" in raw_strat_lower:
+                strategy = "TurnoverTiming"
+            elif "twopercent" in raw_strat_lower:
+                strategy = "TwoPercent"
+            elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
+                strategy = "NDXMomentum"
+            else:
+                strategy = raw_strat
+
+            # Mismatch detection
+            if local_status == "ACTIVE" and tws_position == 0.0:
+                discrepancies.append(
+                    {
+                        "symbol": symbol,
+                        "local_status": local_status,
+                        "broker_status": "Keine Position",
+                        "discrepancy_type": "MISSING_EXECUTION",
+                        "quantity_difference": local_position,
+                        "recommended_action": "Trade in Croc-Trader stornieren / bereinigen",
+                        "strategy": strategy,
+                    }
+                )
+            elif local_status == "CLOSED" and tws_position > 0.0:
+                discrepancies.append(
+                    {
+                        "symbol": symbol,
+                        "local_status": local_status,
+                        "broker_status": f"Offene Position ({int(tws_position)})",
+                        "discrepancy_type": "GHOST_POSITION",
+                        "quantity_difference": tws_position,
+                        "recommended_action": "Position direkt in TWS schließen",
+                        "strategy": strategy,
+                    }
+                )
+
+        # Check TWS symbols that had no local trade checked
+        for symbol, tws_position in broker_positions.items():
+            if symbol in checked_symbols:
+                continue
+            if tws_position > 0.0:
+                raw_strat = "Unknown"
+                if self.broker_repository:
+                    query = """
+                        SELECT o.strategy_name
+                        FROM executions e
+                        JOIN orders o ON e.order_id = o.order_id
+                        WHERE o.symbol = ? AND o.strategy_name NOT IN ('SplitTarget', 'HoldTarget')
+                        ORDER BY e.executed_at DESC LIMIT 1
+                    """
+                    rows = self.broker_repository.fetch_all(query, (symbol,))
+                    if rows:
+                        raw_strat = rows[0]["strategy_name"]
+
+                raw_strat_lower = str(raw_strat).lower()
+                if "dip" in raw_strat_lower:
+                    strategy = "DipBuyer"
+                elif "turnover" in raw_strat_lower:
+                    strategy = "TurnoverTiming"
+                elif "twopercent" in raw_strat_lower:
+                    strategy = "TwoPercent"
+                elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
+                    strategy = "NDXMomentum"
+                else:
+                    strategy = raw_strat
+
+                discrepancies.append(
+                    {
+                        "symbol": symbol,
+                        "local_status": "CLOSED",
+                        "broker_status": f"Offene Position ({int(tws_position)})",
+                        "discrepancy_type": "GHOST_POSITION",
+                        "quantity_difference": tws_position,
+                        "recommended_action": "Position direkt in TWS schließen",
+                        "strategy": strategy,
+                    }
+                )
+
+        return discrepancies
+
+    def get_broker_active_trades(self) -> list[dict[str, Any]]:
+        """Loads active trades/positions directly from TWS trading.db executions.
+
+        Returns:
+            list[dict[str, Any]]: Active positions list.
+        """
+        if self.broker_repository is None:
+            return []
+
+        positions = self.broker_repository.get_active_positions()
+
+        for pos in positions:
+            symbol = pos["symbol"]
+            current_price = pos["current_price"]
+
+            # Fetch current price from market database if available
+            if self.market_repository is not None:
+                latest_price = self.market_repository.get_latest_price(symbol)
+                if latest_price:
+                    current_price = latest_price
+                    pos["current_price"] = current_price
+
+            # Recalculate unrealized PnL: (current - entry) * size
+            entry_price = pos["entry_price"]
+            size = pos["current_size"]
+            unrealized_pnl = (current_price - entry_price) * size
+            pnl_percentage = (
+                ((current_price - entry_price) / entry_price * 100)
+                if entry_price > 0
+                else 0.0
+            )
+
+            pos["unrealized_pnl"] = unrealized_pnl
+            pos["pnl_percentage"] = pnl_percentage
+
+            # Calculate days held
+            entry_date_str = pos["entry_date"]
+            if entry_date_str and entry_date_str != "-":
+                try:
+                    delta = date.today() - pd.Timestamp(entry_date_str).date()
+                    pos["days_held"] = max(0, delta.days)
+                except Exception:
+                    pos["days_held"] = 0
+
+            # Map raw strategy name for the template's strategy_filter attribute
+            raw_strat_lower = pos["strategy"].lower()
+            if "dip" in raw_strat_lower:
+                pos["strategy_filter"] = "DipBuyer"
+            elif "turnover" in raw_strat_lower:
+                pos["strategy_filter"] = "TurnoverTiming"
+            elif "twopercent" in raw_strat_lower:
+                pos["strategy_filter"] = "TwoPercent"
+            elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
+                pos["strategy_filter"] = "NDXMomentum"
+            else:
+                pos["strategy_filter"] = pos["strategy"]
+
+        return positions

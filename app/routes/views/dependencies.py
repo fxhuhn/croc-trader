@@ -55,15 +55,18 @@ def _get_trade_view_service() -> TradeViewService:
     Returns:
         TradeViewService: Instantiated trade view service.
     """
+    from ...database.repositories.broker import BrokerRepository
     from ...database.repositories.market import MarketRepository
     from ...database.repositories.trade import TradeRepository
 
     signals_session = DatabaseSession(str(_get_database_path("signals")))
     stocks_session = DatabaseSession(str(_get_database_path("stocks")))
+    trading_session = DatabaseSession(str(_get_database_path("trading")))
 
     return TradeViewService(
         trade_repository=TradeRepository(signals_session),
         market_repository=MarketRepository(stocks_session),
+        broker_repository=BrokerRepository(trading_session),
     )
 
 

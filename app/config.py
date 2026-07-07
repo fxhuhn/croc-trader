@@ -30,6 +30,7 @@ DEFAULT_DB_FILES = {
     "stats_import": "croc_statistik.csv",
     "ranking_yaml": "ranking_2026.yaml",
     "holidays_yaml": "holidays.yaml",
+    "trading": "../tws/data/trading.db",
 }
 
 DEFAULT_DB_FOLDERS = {"orders": "orders"}
@@ -415,8 +416,11 @@ class ConfigManager:
 
         target_path = (self.db_root_path / filename).resolve()
 
-        # Security: Prevent Path Traversal
-        if not str(target_path).startswith(str(self.db_root_path.resolve())):
+        # Security: Prevent Path Traversal (allow base data folder or workspace root)
+        if not (
+            str(target_path).startswith(str(self.db_root_path.resolve()))
+            or str(target_path).startswith(str(BASE_DIR.resolve()))
+        ):
             logger.error("❌ SECURITY: Path Traversal Attempt blocked: %s", filename)
             raise ValueError(f"Insecure path detected: {filename}")
 
@@ -427,8 +431,11 @@ class ConfigManager:
         foldername = self.app.database.folders.get(key, key)
         target_path = (self.db_root_path / foldername).resolve()
 
-        # Security: Prevent Path Traversal
-        if not str(target_path).startswith(str(self.db_root_path.resolve())):
+        # Security: Prevent Path Traversal (allow base data folder or workspace root)
+        if not (
+            str(target_path).startswith(str(self.db_root_path.resolve()))
+            or str(target_path).startswith(str(BASE_DIR.resolve()))
+        ):
             logger.error(
                 "❌ SECURITY: Path Traversal Attempt blocked in folder: %s",
                 foldername,

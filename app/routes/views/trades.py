@@ -396,3 +396,60 @@ def view_trades_twopercent() -> str:
         closed_summary=closed_summary,
         index_stats={},
     )
+
+
+@views_bp.route("/broker", methods=["GET"])
+def view_broker_dashboard() -> str:
+    """Displays the Trader Workstation (TWS) broker execution and reconciliation dashboard.
+
+    This route is not cached to ensure that real-time sync errors and execution
+    data are immediately visible to the trader.
+
+    Returns:
+        str: Rendered HTML broker dashboard template.
+    """
+    service = _get_trade_view_service()
+
+    # 1. Fetch TWS KPIs and metrics grouped by strategy
+    metrics_map = service.get_broker_summary()
+
+    # 2. Fetch Active orders (Submitted / PreSubmitted) and Error orders
+    active_orders = service.broker_repository.get_orders_by_status("Submitted")
+    presubmitted_orders = service.broker_repository.get_orders_by_status("PreSubmitted")
+    all_active_orders = active_orders + presubmitted_orders
+    all_active_orders.sort(key=lambda x: x.get("transmitted_at") or "", reverse=True)
+
+    error_orders = service.broker_repository.get_orders_by_status("Error")
+
+    # Map raw strategy name to strategy filters on the orders
+    for order in all_active_orders + error_orders:
+        strategy_name_lower = str(order.get("strategy_name") or "").lower()
+        if "dipbuyer" in strategy_name_lower:
+            order["strategy_filter"] = "DipBuyer"
+        elif "turnover" in strategy_name_lower:
+            order["strategy_filter"] = "TurnoverTiming"
+        elif "twopercent" in strategy_name_lower:
+            order["strategy_filter"] = "TwoPercent"
+        elif "ndx" in strategy_name_lower or "momentum" in strategy_name_lower:
+            order["strategy_filter"] = "NDXMomentum"
+        else:
+            order["strategy_filter"] = order.get("strategy_name") or "Unknown"
+
+    # 3. Fetch Closed settlements with attached executions
+    settlements = service.get_broker_settlements()
+
+    # 4. Fetch Reconciliation discrepancies
+    discrepancies = service.get_reconciliation_discrepancies()
+
+    # 5. Fetch Active trades directly from TWS trading database
+    active_trades = service.get_broker_active_trades()
+
+    return render_template(
+        "trades_broker.html",
+        metrics=metrics_map,
+        active_orders=all_active_orders,
+        error_orders=error_orders,
+        settlements=settlements,
+        discrepancies=discrepancies,
+        active_trades=active_trades,
+    )
