@@ -5,8 +5,8 @@ repos:
     rev: v0.3.0
     hooks:
       - id: ruff
-        name: Ruff Linter (Auto-Fix Imports)
-        args: [--fix, --select=I,F401]
+        name: Ruff Linter (Auto-Fix)
+        args: [--fix]
       - id: ruff-format
         name: Ruff Formatter
 

@@ -140,6 +140,13 @@ External automated agents interact with Croc-Trader through these designated int
   - Exposes trade logs and live position summaries.
   - Allows agents to post override instructions or manual rebalance requests.
   - Ensures whitelisting and rate-limiting constraints defined in `settings.yaml` are strictly enforced.
+- **Primary Endpoints**:
+  - `POST /screener/run`: Manually triggers a scan of active strategies (e.g. `CrocSetup`, `DipBuyer`, `TurnoverTiming`, etc.) over lookback periods.
+  - `POST /orders/generate`: Triggers the daily order generation process and updates the orders CSV files (saved in `data/orders/`).
+  - `POST /webhook`: Ingests incoming third-party signal alerts to automate execution setups.
+  - `POST /trades/backfill`: Manually runs daily order and position reconciliation processes.
+  - `POST /market/sync`: Orchestrates background yfinance market data downloader jobs.
+  - `POST /market/reload`: Performs a full history rebuild of pricing databases.
 
 ---
 
@@ -153,6 +160,7 @@ The following index documents all public classes and functions in the repository
 - BaseRepository
 - BaseStrategy
 - BaseTradeStrategy
+- BrokerRepository
 - CapacityMonitor
 - CapacitySimulator
 - ConfigManager
@@ -292,15 +300,20 @@ The following index documents all public classes and functions in the repository
 - generate_donut_chart
 - generate_orders
 - generate_sparkline
+- get_active_positions
 - get_active_trades
 - get_all_by_strategy
 - get_all_daily_data
+- get_all_orders
 - get_all_known_symbols
 - get_all_recommendations
 - get_all_traded_symbols
 - get_available_dates
 - get_batch_history
 - get_batch_history_raw
+- get_broker_active_trades
+- get_broker_settlements
+- get_broker_summary
 - get_budget
 - get_by_status
 - get_by_timestamp
@@ -312,6 +325,8 @@ The following index documents all public classes and functions in the repository
 - get_data_for_lookback
 - get_db_path
 - get_exchange
+- get_executions_for_order
+- get_executions_for_trade_group
 - get_float
 - get_folder
 - get_handler
@@ -323,12 +338,17 @@ The following index documents all public classes and functions in the repository
 - get_latest_price
 - get_latest_signal_date
 - get_log_path
+- get_net_positions_by_symbol
 - get_ohlcv
+- get_orders_by_local_trade_id
+- get_orders_by_status
 - get_outdated_symbols
 - get_path
 - get_percentile
 - get_portfolio_summary
+- get_reconciliation_discrepancies
 - get_risk_amount
+- get_settlements
 - get_signal_by_id
 - get_signals_by_date
 - get_strat_config
@@ -407,6 +427,7 @@ The following index documents all public classes and functions in the repository
 - verify_ranking_system
 - view_analytics_dashboard
 - view_backtest_dashboard
+- view_broker_dashboard
 - view_screener_croc
 - view_screener_dip_buyer
 - view_screener_ndx_momentum
