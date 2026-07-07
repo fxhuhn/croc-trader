@@ -45,12 +45,15 @@ class BaseRepository:
         connection: sqlite3.Connection | None = None,
     ) -> sqlite3.Row | None:
         """Fetches a single row from the database."""
+        try:
+            if connection:
+                return connection.execute(sql, params).fetchone()
 
-        if connection:
-            return connection.execute(sql, params).fetchone()
-
-        with self.session.connect() as new_connection:
-            return new_connection.execute(sql, params).fetchone()
+            with self.session.connect() as new_connection:
+                return new_connection.execute(sql, params).fetchone()
+        except sqlite3.OperationalError as e:
+            logger.error("Database fetch_one failed for query %s: %s", sql, e)
+            return None
 
     def fetch_all(
         self,
@@ -59,12 +62,15 @@ class BaseRepository:
         connection: sqlite3.Connection | None = None,
     ) -> list[sqlite3.Row]:
         """Fetches all matching rows from the database."""
+        try:
+            if connection:
+                return connection.execute(sql, params).fetchall()
 
-        if connection:
-            return connection.execute(sql, params).fetchall()
-
-        with self.session.connect() as new_connection:
-            return new_connection.execute(sql, params).fetchall()
+            with self.session.connect() as new_connection:
+                return new_connection.execute(sql, params).fetchall()
+        except sqlite3.OperationalError as e:
+            logger.error("Database fetch_all failed for query %s: %s", sql, e)
+            return []
 
     def fetch_value(
         self,
