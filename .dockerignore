@@ -1,22 +1,42 @@
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+# Python Caches & Build-Dateien
+__pycache__/
+*.py[cod]
+*.so
 .Python
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtuelle Umgebungen
+.venv/
 env/
 venv/
-.venv/
-.git/
-.gitignore
 
-# Wichtig: Lokale Daten nicht ins Image kopieren, da sie via Volume gemountet werden
-data/
-logs/
+# Versionsverwaltung & Tool-Konfigurationen
+.git/
+.github/
+.gitignore
+.pre-commit-config.yaml
+.bandit
+
+# Lokale Konfigurationen & Secrets (mit .gitignore abgeglichen)
+.env
+settings.yaml
+brain/
+
+# Entwicklung & Tests (nicht im Prod-Image benötigt)
+test/
+vulture_whitelist.py
+README.md
+architecture.md
+
+# Docker-Dateien selbst
 Dockerfile
 docker-compose.yml
-README.md
-.env
-volture_whitelist.py
-/tws
-/references
-architecture.md
+
+# Lokale Anwendungsdaten (werden via Volume gemountet)
+data/
+logs/
+tws/
+references/

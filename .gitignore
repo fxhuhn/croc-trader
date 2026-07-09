@@ -2,23 +2,43 @@
 __pycache__/
 *.py[cod]
 *.so
-.venv
+.venv/
 env/
 venv/
 alt_*.py
 
-# Environment Variables
+# SQLite
+*.db-wal
+*.db-shm
+
+# Caches & Testabdeckung
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Umgebungsvariablen & Geheimnisse
 .env
 
-# Application Data & Logs
+# Anwendungsdaten & Logs
 logs/
-data/orders
-.coverage
+data/orders/
+*.db
+!.gitkeep
 
-#Mac Files
+# IDEs & Betriebssysteme
 .DS_Store
+.vscode/
+.idea/
 
-#Konfiguration
+# Konfiguration
 settings.yaml
+signal.sh
 
+# Agenten & Skills
+brain/
 .agent/skills/strategy-screener/playbook/*
+
+# Nur temporäre Skripte ignorieren (wichtige Skripte bleiben in Git)
+scripts/one_off/
+scripts/temp_*.py
