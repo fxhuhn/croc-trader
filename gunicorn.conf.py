@@ -6,7 +6,7 @@ import logging.config
 
 
 class HealthCheckFilter(logging.Filter):
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         return "GET /health" not in record.getMessage()
 
 
@@ -46,7 +46,7 @@ LOGGING_CONFIG = {
 logconfig_dict = LOGGING_CONFIG
 
 
-def on_starting(server):
+def on_starting(server: object) -> None:
     """
     Attach filters to loggers.
     """
