@@ -331,6 +331,3 @@ _.extract_symbol_name
 _.process_file
 _.tif
 _.get_orders_by_local_trade_id
-
-
-
