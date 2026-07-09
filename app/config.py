@@ -386,7 +386,7 @@ class ConfigManager:
             def dataclass_to_dict(obj):
                 if hasattr(obj, "__dataclass_fields__"):
                     return {k: dataclass_to_dict(v) for k, v in obj.__dict__.items()}
-                if isinstance(obj, (list, tuple)):
+                if isinstance(obj, list | tuple):
                     return [dataclass_to_dict(v) for v in obj]
                 if isinstance(obj, dict):
                     return {k: dataclass_to_dict(v) for k, v in obj.items()}
