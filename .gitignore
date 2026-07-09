@@ -22,7 +22,7 @@ htmlcov/
 
 # Anwendungsdaten & Logs
 logs/
-data/orders/
+data/
 *.db
 !.gitkeep
 
