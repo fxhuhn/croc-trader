@@ -16,9 +16,8 @@
     <!-- Navigation Switcher for Tabs -->
     <div class="flex items-center justify-between mb-6">
         <div>
-            <h1 class="text-xl md:text-2xl font-black text-slate-900 leading-tight">Broker Executions</h1>
-            <p class="text-slate-500 text-xs mt-0.5">Echtzeit-Ausführungen und Kontrollzentrum für Interactive Brokers
-                (TWS).</p>
+            <h1 class="text-xl md:text-2xl font-black text-slate-900 leading-tight">Executions</h1>
+            <p class="text-slate-500 text-xs mt-0.5">Echtzeit-Ausführungen (TWS).</p>
         </div>
 
         <div class="flex items-center bg-slate-200/60 p-1 rounded-lg">
@@ -146,9 +145,7 @@
             <div id="card-submitted" class="{% if active_orders|length == 0 %}hidden{% endif %}">
                 <h2
                     class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                    <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> Active
-                    <span class="text-xs font-medium text-slate-400" id="badge-submitted-count">{{ active_orders|length
-                        }} Aktiv</span>
+                    <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> Orders
                 </h2>
                 <!-- Desktop View -->
                 <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
@@ -158,7 +155,7 @@
                         <div>Strategy</div>
                         <div>Status</div>
                         <div class="text-right">Quantity / Direction</div>
-                        <div class="text-right">Exit Target</div>
+                        <div class="text-right">Exit / Target</div>
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for order in active_orders %}
@@ -170,7 +167,7 @@
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ order.order_id }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ order.symbol }}</span>
                                 </div>
-                                <div class="text-slate-500 font-medium font-mono">{{ order.strategy_name }}</div>
+                                <div class="text-slate-500 font-medium">{{ order.strategy_name }}</div>
                                 <div>
                                     <span
                                         class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if order.status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% else %}bg-blue-50 text-blue-700 border border-blue-100{% endif %}">
@@ -362,7 +359,7 @@
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ order.order_id }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ order.symbol }}</span>
                                 </div>
-                                <div class="text-slate-500 font-medium font-mono">{{ order.strategy_name }}</div>
+                                <div class="text-slate-500 font-medium">{{ order.strategy_name }}</div>
                                 <div class="flex flex-col gap-0.5 items-start">
                                     <span
                                         class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-100/50">
@@ -467,27 +464,26 @@
                 <!-- Desktop View -->
                 <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                     <div
-                        class="grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+                        class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
                         <div>ID & Symbol</div>
                         <div>Strategy</div>
-                        <div>Entry Date (Days)</div>
+                        <div>Entry (Days)</div>
                         <div class="text-right">Quantity</div>
                         <div class="text-right">Entry Price</div>
-                        <div class="text-right">Current Price</div>
-                        <div>TWS Status</div>
-                        <div class="text-right">PnL (Unrealized)</div>
+                        <div class="text-right">Last Price</div>
+                        <div class="text-right">Open PnL</div>
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for trade in active_trades %}
                         <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 group-linkable"
                             data-strategy="{{ trade.strategy_filter }}" data-group-id="{{ trade.trade_group_id }}"
                             onclick="toggleRow('acc-act-{{ loop.index }}')">
-                            <div class="grid grid-cols-8 gap-4 px-4 py-3.5 items-center text-sm">
+                            <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ trade.id }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ trade.symbol }}</span>
                                 </div>
-                                <div class="text-slate-500 font-medium font-mono">{{ trade.strategy }}</div>
+                                <div class="text-slate-500 font-medium">{{ trade.strategy }}</div>
                                 <div class="text-slate-500 font-medium">{{ trade.entry_date }} ({{ trade.days_held }}d)
                                 </div>
                                 <div class="text-right tabular-nums text-slate-600">{{ trade.current_size|int }}</div>
@@ -495,16 +491,6 @@
                                     "{:,.2f}".format(trade.entry_price) }}</div>
                                 <div class="text-right tabular-nums text-slate-600">{{
                                     "{:,.2f}".format(trade.current_price) }}</div>
-                                <div>
-                                    {% if trade.tws_status %}
-                                    <span
-                                        class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if trade.tws_status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif trade.tws_status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% elif trade.tws_status == 'Filled' %}bg-indigo-50 text-indigo-700 border border-indigo-100{% else %}bg-rose-50 text-rose-600 border border-rose-100/50{% endif %}">
-                                        {{ trade.tws_status }}
-                                    </span>
-                                    {% else %}
-                                    <span class="text-slate-400 font-medium">-</span>
-                                    {% endif %}
-                                </div>
                                 <div
                                     class="text-right font-bold tabular-nums {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
                                     {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{
