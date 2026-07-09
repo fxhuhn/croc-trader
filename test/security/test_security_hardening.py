@@ -56,7 +56,9 @@ def test_traderepository_sql_injection_on_symbol():
             found_insert = True
             break
 
-    assert found_insert, f"INSERT INTO trades call not found. Calls were: {mock_conn.execute.call_args_list}"
+    assert found_insert, (
+        f"INSERT INTO trades call not found. Calls were: {mock_conn.execute.call_args_list}"
+    )
 
 
 def test_traderepository_sql_injection_on_strategy():
