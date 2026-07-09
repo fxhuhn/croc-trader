@@ -14,7 +14,6 @@ repos:
     rev: v2.14
     hooks:
       - id: vulture
-        args: ["--exclude", ".venv,test"]
 
   - repo: https://github.com/pypa/pip-audit
     rev: v2.7.3
