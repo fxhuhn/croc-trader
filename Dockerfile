@@ -11,24 +11,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
+# User Setup und Ordnerstruktur vorab anlegen
+RUN adduser --disabled-password --gecos "" appuser && \
+    mkdir -p /app/data /app/logs && \
+    chown -R appuser:appuser /app
+
+# Python-Abhängigkeiten installieren
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
-COPY .env.demo .env
+# Anwendungsdateien direkt mit den richtigen Rechten kopieren
+COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser .env.example .env
 
-# Ordnerstruktur anlegen
-RUN mkdir -p /app/data /app/logs
-
-# User Setup
-RUN adduser --disabled-password --gecos "" appuser && \
-    chown -R appuser:appuser /app
+# Zu nicht-privilegiertem User wechseln
 USER appuser
 
 EXPOSE 8000
 
+# Korrekter Healthcheck auf Port 8000 und der /health Route
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5000/ || exit 1
+  CMD curl -f http://localhost:8000/health || exit 1
 
 # Standard-Fallback, falls man ohne docker-compose startet.
 # Wird durch 'command' in docker-compose.yml überschrieben.
