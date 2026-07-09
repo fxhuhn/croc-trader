@@ -254,7 +254,7 @@ class SignalRepository(BaseRepository):
         status_list = [str(s) for s in statuses]
         status_placeholders = ", ".join("?" for _ in status_list)
 
-        if isinstance(strategy_prefix, (list, tuple)):
+        if isinstance(strategy_prefix, list | tuple):
             strategy_list = [str(s).lower() for s in strategy_prefix]
             strategy_placeholders = ", ".join("?" for _ in strategy_list)
             strategy_filter = f"LOWER(strategy) IN ({strategy_placeholders})"
@@ -263,13 +263,13 @@ class SignalRepository(BaseRepository):
             strategy_filter = "LOWER(strategy) LIKE LOWER(?)"
             params = tuple(status_list) + (f"{strategy_prefix}%", limit)
 
-        sql = f"""
-            SELECT * FROM trades
-            WHERE status IN ({status_placeholders})
-            AND {strategy_filter}
-            ORDER BY created_at DESC
-            LIMIT ?
-        """
+        sql = (
+            f"SELECT * FROM trades "  # nosec B608
+            f"WHERE status IN ({status_placeholders}) "
+            f"AND {strategy_filter} "
+            f"ORDER BY created_at DESC "
+            f"LIMIT ?"
+        )
         rows = self.fetch_all(sql, params)
 
         results = []

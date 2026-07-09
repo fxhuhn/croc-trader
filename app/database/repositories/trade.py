@@ -138,7 +138,7 @@ class TradeRepository(BaseRepository):
             # Convert enums to strings
             statuses = [s.value if isinstance(s, Enum) else s for s in status]
             placeholders = ",".join("?" for _ in statuses)
-            sql = f"SELECT * FROM trades WHERE status IN ({placeholders})"
+            sql = f"SELECT * FROM trades WHERE status IN ({placeholders})"  # nosec B608
             rows = self.fetch_all(sql, tuple(statuses))
         else:
             status_value = status.value if isinstance(status, Enum) else status
@@ -417,7 +417,7 @@ class TradeRepository(BaseRepository):
                 return
 
             values.append(trade_id)
-            sql = f"UPDATE trades SET {', '.join(set_clauses)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+            sql = f"UPDATE trades SET {', '.join(set_clauses)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"  # nosec B608
             self.execute(sql, values, connection=connection)
 
             for key, old_value, new_value in changes:

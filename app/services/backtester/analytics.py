@@ -60,7 +60,7 @@ def safe_divide(
     Returns:
         The result of the division or the default value.
     """
-    if isinstance(denominator, (pd.Series, np.ndarray)):
+    if isinstance(denominator, pd.Series | np.ndarray):
         return np.where(np.abs(denominator) > EPSILON, numerator / denominator, default)
 
     return numerator / denominator if abs(denominator) > EPSILON else default

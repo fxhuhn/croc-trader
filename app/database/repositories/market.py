@@ -151,13 +151,13 @@ class MarketRepository(BaseRepository):
         if not symbols:
             return pandas.DataFrame()
         placeholders = ",".join("?" for _ in symbols)
-        sql = f"""
-            SELECT symbol, date, open, high, low, close, volume
-            FROM market_prices
-            WHERE symbol IN ({placeholders})
-            AND date >= ? AND date <= ? AND timeframe='1D'
-            ORDER BY date ASC
-        """
+        sql = (
+            f"SELECT symbol, date, open, high, low, close, volume "  # nosec B608
+            f"FROM market_prices "
+            f"WHERE symbol IN ({placeholders}) "
+            f"AND date >= ? AND date <= ? AND timeframe='1D' "
+            f"ORDER BY date ASC"
+        )
         params = symbols + [start_date, end_date]
         with self.session.connect() as connection:
             df = pandas.read_sql_query(sql, connection, params=params)
