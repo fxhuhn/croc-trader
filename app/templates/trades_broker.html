@@ -12,44 +12,53 @@
 
 <!-- MAIN CONTENT -->
 <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8">
-    
+
     <!-- Navigation Switcher for Tabs -->
     <div class="flex items-center justify-between mb-6">
         <div>
             <h1 class="text-xl md:text-2xl font-black text-slate-900 leading-tight">Broker Executions</h1>
-            <p class="text-slate-500 text-xs mt-0.5">Echtzeit-Ausführungen und Kontrollzentrum für Interactive Brokers (TWS).</p>
+            <p class="text-slate-500 text-xs mt-0.5">Echtzeit-Ausführungen und Kontrollzentrum für Interactive Brokers
+                (TWS).</p>
         </div>
-        
+
         <div class="flex items-center bg-slate-200/60 p-1 rounded-lg">
-            <button onclick="switchTab('dashboard')" id="tab-dashboard" class="bg-white shadow-sm text-slate-900 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5">
+            <button onclick="switchTab('dashboard')" id="tab-dashboard"
+                class="bg-white shadow-sm text-slate-900 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5">
                 <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i> Execution
             </button>
-            <button onclick="switchTab('reconciliation')" id="tab-reconciliation" class="text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5">
+            <button onclick="switchTab('reconciliation')" id="tab-reconciliation"
+                class="text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5">
                 <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-500"></i> Reconciliation
-                <span class="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-[11px] font-black" id="badge-discrepancies-count">{{ discrepancies|length }}</span>
+                <span class="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-[11px] font-black"
+                    id="badge-discrepancies-count">{{ discrepancies|length }}</span>
             </button>
         </div>
     </div>
 
     <!-- SECTION 1: EXECUTION DASHBOARD -->
     <div id="section-dashboard" class="space-y-6 md:space-y-8">
-        
+
         <!-- Strategy Filter -->
         <div class="flex justify-center md:justify-end">
             <div class="flex items-center bg-slate-200/60 p-1 rounded-lg overflow-x-auto snap-x pb-1 w-auto">
-                <button onclick="filterStrategy('all')" id="btn-strat-all" class="bg-white shadow-sm text-slate-900 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                <button onclick="filterStrategy('all')" id="btn-strat-all"
+                    class="bg-white shadow-sm text-slate-900 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
                     All
                 </button>
-                <button onclick="filterStrategy('DipBuyer')" id="btn-strat-DipBuyer" class="text-slate-500 hover:text-slate-700 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                <button onclick="filterStrategy('DipBuyer')" id="btn-strat-DipBuyer"
+                    class="text-slate-500 hover:text-slate-700 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
                     Dip Buyer
                 </button>
-                <button onclick="filterStrategy('TurnoverTiming')" id="btn-strat-TurnoverTiming" class="text-slate-500 hover:text-slate-700 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                <button onclick="filterStrategy('TurnoverTiming')" id="btn-strat-TurnoverTiming"
+                    class="text-slate-500 hover:text-slate-700 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
                     Turnover
                 </button>
-                <button onclick="filterStrategy('TwoPercent')" id="btn-strat-TwoPercent" class="text-slate-500 hover:text-slate-700 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                <button onclick="filterStrategy('TwoPercent')" id="btn-strat-TwoPercent"
+                    class="text-slate-500 hover:text-slate-700 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
                     Two Percent
                 </button>
-                <button onclick="filterStrategy('NDXMomentum')" id="btn-strat-NDXMomentum" class="text-slate-500 hover:text-slate-700 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                <button onclick="filterStrategy('NDXMomentum')" id="btn-strat-NDXMomentum"
+                    class="text-slate-500 hover:text-slate-700 px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
                     NDX Momentum
                 </button>
             </div>
@@ -60,51 +69,73 @@
             <section class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6" id="kpi-grid">
                 <!-- Net PnL -->
                 {% set pnl_all = metrics.all.pnl %}
-                <article id="kpi-pnl-card" class="col-span-2 md:col-span-1 {% if pnl_all >= 0 %}bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30{% else %}bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30{% endif %} md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200">
-                    <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
-                        <i data-lucide="{% if pnl_all >= 0 %}trending-up{% else %}trending-down{% endif %}" class="w-6 h-6" id="kpi-pnl-icon-desktop"></i>
+                <article id="kpi-pnl-card"
+                    class="col-span-2 md:col-span-1 {% if pnl_all >= 0 %}bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30{% else %}bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30{% endif %} md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200">
+                    <div
+                        class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
+                        <i data-lucide="{% if pnl_all >= 0 %}trending-up{% else %}trending-down{% endif %}"
+                            class="w-6 h-6" id="kpi-pnl-icon-desktop"></i>
                     </div>
                     <div class="flex flex-col">
-                        <div class="text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last {% if pnl_all >= 0 %}md:!text-emerald-500{% else %}md:!text-rose-500{% endif %} tabular-nums" id="kpi-pnl">
+                        <div class="text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last {% if pnl_all >= 0 %}md:!text-emerald-500{% else %}md:!text-rose-500{% endif %} tabular-nums"
+                            id="kpi-pnl">
                             {{ metrics.all.pnlText }}
                         </div>
-                        <div class="text-emerald-50/80 md:text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">Net PnL (TWS)</div>
+                        <div
+                            class="text-emerald-50/80 md:text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">
+                            Net PnL (TWS)</div>
                     </div>
                     <!-- Mobile icons -->
-                    <i data-lucide="trending-up" class="w-8 h-8 text-emerald-100 md:hidden {% if pnl_all < 0 %}hidden{% endif %}" id="kpi-pnl-icon-up-mobile"></i>
-                    <i data-lucide="trending-down" class="w-8 h-8 text-rose-200 md:hidden {% if pnl_all >= 0 %}hidden{% endif %}" id="kpi-pnl-icon-down-mobile"></i>
+                    <i data-lucide="trending-up"
+                        class="w-8 h-8 text-emerald-100 md:hidden {% if pnl_all < 0 %}hidden{% endif %}"
+                        id="kpi-pnl-icon-up-mobile"></i>
+                    <i data-lucide="trending-down"
+                        class="w-8 h-8 text-rose-200 md:hidden {% if pnl_all >= 0 %}hidden{% endif %}"
+                        id="kpi-pnl-icon-down-mobile"></i>
                 </article>
-                
+
                 <!-- Win Rate -->
-                <article class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4">
-                    <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
+                <article
+                    class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4">
+                    <div
+                        class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
                         <i data-lucide="percent" class="w-6 h-6"></i>
                     </div>
                     <div class="flex flex-col items-center md:items-start text-center md:text-left">
-                        <p class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last" id="kpi-winrate">{{ metrics.all.winrate }}</p>
-                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">Win Rate</p>
+                        <p class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last"
+                            id="kpi-winrate">{{ metrics.all.winrate }}</p>
+                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">Win Rate
+                        </p>
                     </div>
                 </article>
 
                 <!-- Slippage -->
-                <article class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4">
-                    <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
+                <article
+                    class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4">
+                    <div
+                        class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
                         <i data-lucide="git-compare" class="w-6 h-6"></i>
                     </div>
                     <div class="flex flex-col items-center md:items-start text-center md:text-left">
-                        <p class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums" id="kpi-slippage">{{ metrics.all.slippage }}</p>
-                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">Slippage</p>
+                        <p class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums"
+                            id="kpi-slippage">{{ metrics.all.slippage }}</p>
+                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">Slippage
+                        </p>
                     </div>
                 </article>
 
                 <!-- Broker Fees -->
-                <article class="col-span-2 md:col-span-1 bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200">
-                    <div class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
+                <article
+                    class="col-span-2 md:col-span-1 bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200">
+                    <div
+                        class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
                         <i data-lucide="receipt" class="w-6 h-6"></i>
                     </div>
                     <div class="flex flex-col">
-                        <p class="text-3xl md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums" id="kpi-fees">{{ "{:,.2f}".format(metrics.all.fees) }}</p>
-                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">Commissions</p>
+                        <p class="text-3xl md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums"
+                            id="kpi-fees">{{ "{:,.2f}".format(metrics.all.fees) }}</p>
+                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">
+                            Commissions</p>
                     </div>
                     <!-- Mobile icon -->
                     <i data-lucide="receipt" class="w-8 h-8 text-slate-300 md:hidden"></i>
@@ -113,13 +144,16 @@
 
             <!-- CARD 1: ACTIVE / SUBMITTED ORDERS -->
             <div id="card-submitted" class="{% if active_orders|length == 0 %}hidden{% endif %}">
-                <h2 class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                <h2
+                    class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
                     <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> Active
-                    <span class="text-xs font-medium text-slate-400" id="badge-submitted-count">{{ active_orders|length }} Aktiv</span>
+                    <span class="text-xs font-medium text-slate-400" id="badge-submitted-count">{{ active_orders|length
+                        }} Aktiv</span>
                 </h2>
                 <!-- Desktop View -->
                 <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="grid grid-cols-5 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+                    <div
+                        class="grid grid-cols-5 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
                         <div>ID & Symbol</div>
                         <div>Strategy</div>
                         <div>Status</div>
@@ -128,7 +162,9 @@
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for order in active_orders %}
-                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ order.strategy_filter }}" data-group-id="{{ order.trade_group_id }}" onclick="toggleRow('acc-sub-{{ order.order_id }}')">
+                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 group-linkable"
+                            data-strategy="{{ order.strategy_filter }}" data-group-id="{{ order.trade_group_id }}"
+                            onclick="toggleRow('acc-sub-{{ order.order_id }}')">
                             <div class="grid grid-cols-5 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ order.order_id }}</span>
@@ -136,20 +172,30 @@
                                 </div>
                                 <div class="text-slate-500 font-medium font-mono">{{ order.strategy_name }}</div>
                                 <div>
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if order.status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% else %}bg-blue-50 text-blue-700 border border-blue-100{% endif %}">
+                                    <span
+                                        class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if order.status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% else %}bg-blue-50 text-blue-700 border border-blue-100{% endif %}">
                                         {{ order.status }}
                                     </span>
                                 </div>
-                                <div class="text-right tabular-nums text-slate-500">{{ order.quantity }} (<span class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{ order.action }}</span>)</div>
+                                <div class="text-right tabular-nums text-slate-500">{{ order.quantity }} (<span
+                                        class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
+                                        order.action }}</span>)</div>
                                 <div class="text-right font-mono text-slate-700 font-bold">
                                     {{ "{:,.2f}".format(order.target_price|float) if order.target_price else '-' }}
-                                    <span class="px-1.5 py-0.5 bg-slate-100 rounded text-[11px] font-black text-slate-500 font-mono leading-none">{{ order.order_type }}</span>
+                                    <span
+                                        class="px-1.5 py-0.5 bg-slate-100 rounded text-[11px] font-black text-slate-500 font-mono leading-none">{{
+                                        order.order_type }}</span>
                                 </div>
                             </div>
-                            <div id="acc-sub-{{ order.order_id }}" class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
+                            <div id="acc-sub-{{ order.order_id }}"
+                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
                                 <div class="pt-3 text-xs text-slate-500">
                                     <div class="font-semibold text-slate-700 mb-1">TWS Order Details:</div>
-                                    <p class="leading-relaxed">Permanent-ID (TWS): {{ order.perm_id or 'Keine' }}. Parent ID: {{ order.parent_id or 'Keine' }}. Trade-Group: {{ order.trade_group_id }}. Konto: {{ order.account_id }}. TIF: {{ order.tif }}. Übermittelt am: {{ order.transmitted_at | to_local_tz if order.transmitted_at else '-' }}</p>
+                                    <p class="leading-relaxed">Permanent-ID (TWS): {{ order.perm_id or 'Keine' }}.
+                                        Parent ID: {{ order.parent_id or 'Keine' }}. Trade-Group: {{
+                                        order.trade_group_id }}. Konto: {{ order.account_id }}. TIF: {{ order.tif }}.
+                                        Übermittelt am: {{ order.transmitted_at | to_local_tz if order.transmitted_at
+                                        else '-' }}</p>
                                 </div>
                             </div>
                         </div>
@@ -160,119 +206,146 @@
                 <div class="md:hidden flex flex-col gap-3">
                     {% set ns = namespace(seen_groups=[]) %}
                     {% for order in active_orders %}
-                        {% if order.trade_group_id not in ns.seen_groups %}
-                            {% set ns.seen_groups = ns.seen_groups + [order.trade_group_id] %}
-                        {% endif %}
+                    {% if order.trade_group_id not in ns.seen_groups %}
+                    {% set ns.seen_groups = ns.seen_groups + [order.trade_group_id] %}
+                    {% endif %}
                     {% endfor %}
 
                     {% for group_id in ns.seen_groups %}
-                        {% set group_legs = active_orders | selectattr('trade_group_id', 'equalto', group_id) | list %}
-                        {% set leg_count = group_legs | length %}
-                        {% set sorted_legs = group_legs | sort(attribute='order_id') %}
-                        {% set first_leg = sorted_legs[0] %}
+                    {% set group_legs = active_orders | selectattr('trade_group_id', 'equalto', group_id) | list %}
+                    {% set leg_count = group_legs | length %}
+                    {% set sorted_legs = group_legs | sort(attribute='order_id') %}
+                    {% set first_leg = sorted_legs[0] %}
 
-                        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ first_leg.strategy_filter }}" data-group-id="{{ group_id }}">
-                            <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group" onclick="toggleRow('mob-sub-{{ group_id }}')">
-                                <div class="p-4 flex justify-between items-center">
-                                    <div class="flex items-center gap-3 flex-wrap">
-                                        <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{ first_leg.symbol }}</span>
-                                        <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">{{ first_leg.strategy_name }}</span>
-                                        {% if leg_count > 1 %}
-                                        <span class="text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md whitespace-nowrap">{{ leg_count }} Orders</span>
-                                        {% endif %}
-                                    </div>
-                                    <div class="flex items-center gap-4 text-right whitespace-nowrap">
-                                        {% if leg_count == 1 %}
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if first_leg.status == 'Submitted' or first_leg.status == 'Filled' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif first_leg.status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %}">
-                                            {{ first_leg.status }}
-                                        </span>
-                                        {% endif %}
-                                        <i data-lucide="chevron-down" class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
-                                    </div>
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 group-linkable"
+                        data-strategy="{{ first_leg.strategy_filter }}" data-group-id="{{ group_id }}">
+                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                            onclick="toggleRow('mob-sub-{{ group_id }}')">
+                            <div class="p-4 flex justify-between items-center">
+                                <div class="flex items-center gap-3 flex-wrap">
+                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{
+                                        first_leg.symbol }}</span>
+                                    <span
+                                        class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap">{{
+                                        first_leg.strategy_name }}</span>
+                                    {% if leg_count > 1 %}
+                                    <span
+                                        class="text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md whitespace-nowrap">{{
+                                        leg_count }} Orders</span>
+                                    {% endif %}
                                 </div>
-                            </div>
-                            <div id="mob-sub-{{ group_id }}" class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
-                                {% if leg_count == 1 %}
-                                <div class="px-4 py-3">
-                                    <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
-                                        <div class="flex flex-col">
-                                            <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                                <span class="text-slate-500 font-medium">Quantity</span>
-                                                <span class="text-slate-700 font-bold">{{ first_leg.quantity }}</span>
-                                            </div>
-                                            <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                                <span class="text-slate-500 font-medium">Direction</span>
-                                                <span class="{% if first_leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{ first_leg.action }}</span>
-                                            </div>
-                                        </div>
-                                        <div class="flex flex-col">
-                                            <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                                <span class="text-slate-500 font-medium">Target Price</span>
-                                                <span class="font-mono text-slate-700 font-bold">{{ "{:,.2f}".format(first_leg.target_price|float) if first_leg.target_price else '-' }}</span>
-                                            </div>
-                                            <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                                <span class="text-slate-500 font-medium">Type / TIF</span>
-                                                <span class="text-slate-700 font-bold">{{ first_leg.order_type }} / {{ first_leg.tif }}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <p class="mt-3 text-[11px] text-slate-500 leading-relaxed border-t border-slate-100 pt-2">
-                                        TWS ID: {{ first_leg.order_id }} | Group: {{ first_leg.trade_group_id }} | Übermittelt: {{ first_leg.transmitted_at | to_local_tz if first_leg.transmitted_at else '-' }}
-                                    </p>
+                                <div class="flex items-center gap-4 text-right whitespace-nowrap">
+                                    {% if leg_count == 1 %}
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if first_leg.status == 'Submitted' or first_leg.status == 'Filled' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif first_leg.status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %}">
+                                        {{ first_leg.status }}
+                                    </span>
+                                    {% endif %}
+                                    <i data-lucide="chevron-down"
+                                        class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
                                 </div>
-                                {% else %}
-                                    {% for leg in sorted_legs %}
-                                    <div class="px-4 py-3 {% if not loop.last %}border-b border-slate-100{% endif %}">
-                                        <div class="flex justify-between items-center mb-2">
-                                            <span class="font-mono text-[11px] text-slate-400">{{ leg.trade_group_id }}</span>
-                                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if leg.status == 'Submitted' or leg.status == 'Filled' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif leg.status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %}">
-                                                {{ leg.status }}
-                                            </span>
-                                        </div>
-                                        <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
-                                            <div class="flex flex-col gap-1.5">
-                                                <div class="flex justify-between">
-                                                    <span class="text-slate-500">TWS ID</span>
-                                                    <span class="font-bold text-slate-700 font-mono">{{ leg.order_id }}</span>
-                                                </div>
-                                                <div class="flex justify-between">
-                                                    <span class="text-slate-500">Quantity</span>
-                                                    <span class="font-bold text-slate-700">{{ leg.quantity }}</span>
-                                                </div>
-                                                <div class="flex justify-between">
-                                                    <span class="text-slate-500">Direction</span>
-                                                    <span class="font-bold {% if leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ leg.action }}</span>
-                                                </div>
-                                            </div>
-                                            <div class="flex flex-col gap-1.5">
-                                                <div class="flex justify-between">
-                                                    <span class="text-slate-500">Exit target</span>
-                                                    <span class="font-bold text-slate-700 font-mono">{{ "{:,.2f}".format(leg.target_price|float) if leg.target_price else '-' }}</span>
-                                                </div>
-                                                <div class="flex justify-between">
-                                                    <span class="text-slate-500">Type / TIF</span>
-                                                    <span class="font-bold text-slate-700">{{ leg.order_type }} / {{ leg.tif }}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                {% endif %}
                             </div>
                         </div>
+                        <div id="mob-sub-{{ group_id }}"
+                            class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
+                            {% if leg_count == 1 %}
+                            <div class="px-4 py-3">
+                                <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
+                                    <div class="flex flex-col">
+                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                            <span class="text-slate-500 font-medium">Quantity</span>
+                                            <span class="text-slate-700 font-bold">{{ first_leg.quantity }}</span>
+                                        </div>
+                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                            <span class="text-slate-500 font-medium">Direction</span>
+                                            <span
+                                                class="{% if first_leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
+                                                first_leg.action }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                            <span class="text-slate-500 font-medium">Target Price</span>
+                                            <span class="font-mono text-slate-700 font-bold">{{
+                                                "{:,.2f}".format(first_leg.target_price|float) if first_leg.target_price
+                                                else '-' }}</span>
+                                        </div>
+                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                            <span class="text-slate-500 font-medium">Type / TIF</span>
+                                            <span class="text-slate-700 font-bold">{{ first_leg.order_type }} / {{
+                                                first_leg.tif }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p
+                                    class="mt-3 text-[11px] text-slate-500 leading-relaxed border-t border-slate-100 pt-2">
+                                    TWS ID: {{ first_leg.order_id }} | Group: {{ first_leg.trade_group_id }} |
+                                    Übermittelt: {{ first_leg.transmitted_at | to_local_tz if first_leg.transmitted_at
+                                    else '-' }}
+                                </p>
+                            </div>
+                            {% else %}
+                            {% for leg in sorted_legs %}
+                            <div class="px-4 py-3 {% if not loop.last %}border-b border-slate-100{% endif %}">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-mono text-[11px] text-slate-400">{{ leg.trade_group_id }}</span>
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if leg.status == 'Submitted' or leg.status == 'Filled' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif leg.status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %}">
+                                        {{ leg.status }}
+                                    </span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
+                                    <div class="flex flex-col gap-1.5">
+                                        <div class="flex justify-between">
+                                            <span class="text-slate-500">TWS ID</span>
+                                            <span class="font-bold text-slate-700 font-mono">{{ leg.order_id }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-slate-500">Quantity</span>
+                                            <span class="font-bold text-slate-700">{{ leg.quantity }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-slate-500">Direction</span>
+                                            <span
+                                                class="font-bold {% if leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{
+                                                leg.action }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col gap-1.5">
+                                        <div class="flex justify-between">
+                                            <span class="text-slate-500">Exit target</span>
+                                            <span class="font-bold text-slate-700 font-mono">{{
+                                                "{:,.2f}".format(leg.target_price|float) if leg.target_price else '-'
+                                                }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-slate-500">Type / TIF</span>
+                                            <span class="font-bold text-slate-700">{{ leg.order_type }} / {{ leg.tif
+                                                }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                            {% endif %}
+                        </div>
+                    </div>
                     {% endfor %}
                 </div>
             </div>
 
             <!-- CARD 2: TWS ERRORS -->
             <div id="card-errors" class="{% if error_orders|length == 0 %}hidden{% endif %}">
-                <h2 class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                <h2
+                    class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
                     <i data-lucide="alert-circle" class="w-3.5 h-3.5 md:w-5 md:h-5 text-rose-500"></i> Fehler
-                    <span class="text-xs font-medium text-slate-400" id="badge-error-count">{{ error_orders|length }} Fehler</span>
+                    <span class="text-xs font-medium text-slate-400" id="badge-error-count">{{ error_orders|length }}
+                        Fehler</span>
                 </h2>
                 <!-- Desktop View -->
                 <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="grid grid-cols-5 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+                    <div
+                        class="grid grid-cols-5 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
                         <div>ID & Symbol</div>
                         <div>Strategy</div>
                         <div>Status</div>
@@ -281,7 +354,9 @@
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for order in error_orders %}
-                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors" data-strategy="{{ order.strategy_filter }}" onclick="toggleRow('acc-err-{{ order.order_id }}')">
+                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors"
+                            data-strategy="{{ order.strategy_filter }}"
+                            onclick="toggleRow('acc-err-{{ order.order_id }}')">
                             <div class="grid grid-cols-5 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ order.order_id }}</span>
@@ -289,21 +364,29 @@
                                 </div>
                                 <div class="text-slate-500 font-medium font-mono">{{ order.strategy_name }}</div>
                                 <div class="flex flex-col gap-0.5 items-start">
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-100/50">
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-100/50">
                                         Error
                                     </span>
                                 </div>
-                                <div class="text-right tabular-nums text-slate-500">{{ order.quantity }} (<span class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{ order.action }}</span>)</div>
+                                <div class="text-right tabular-nums text-slate-500">{{ order.quantity }} (<span
+                                        class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
+                                        order.action }}</span>)</div>
                                 <div class="text-right font-mono text-slate-700 font-bold">
                                     {{ "{:,.2f}".format(order.target_price|float) if order.target_price else '-' }}
-                                    <span class="px-1.5 py-0.5 bg-slate-100 rounded text-[11px] font-black text-slate-500 font-mono leading-none">{{ order.order_type }}</span>
+                                    <span
+                                        class="px-1.5 py-0.5 bg-slate-100 rounded text-[11px] font-black text-slate-500 font-mono leading-none">{{
+                                        order.order_type }}</span>
                                 </div>
                             </div>
-                            <div id="acc-err-{{ order.order_id }}" class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
+                            <div id="acc-err-{{ order.order_id }}"
+                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
                                 <div class="pt-3 text-xs text-rose-800">
                                     <div class="font-semibold text-slate-700 mb-1">TWS API Error-Details:</div>
-                                    <p class="font-mono bg-rose-100/40 p-2.5 rounded border border-rose-200/55 leading-relaxed">
-                                        Fehlerübertragungskonflikt am Broker für Trade Group: {{ order.trade_group_id }}. Prüfen Sie die Symboldaten und Verbindungs-Logs.
+                                    <p
+                                        class="font-mono bg-rose-100/40 p-2.5 rounded border border-rose-200/55 leading-relaxed">
+                                        Fehlerübertragungskonflikt am Broker für Trade Group: {{ order.trade_group_id
+                                        }}. Prüfen Sie die Symboldaten und Verbindungs-Logs.
                                     </p>
                                 </div>
                             </div>
@@ -315,24 +398,32 @@
                 <!-- Mobile View -->
                 <div class="md:hidden flex flex-col gap-3">
                     {% for order in error_orders %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col" data-strategy="{{ order.strategy_filter }}">
-                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group" onclick="toggleRow('mob-err-{{ order.order_id }}')">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
+                        data-strategy="{{ order.strategy_filter }}">
+                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                            onclick="toggleRow('mob-err-{{ order.order_id }}')">
                             <div class="p-4 flex justify-between items-center">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{ order.symbol }}</span>
+                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{
+                                        order.symbol }}</span>
                                     <div class="flex gap-1.5 whitespace-nowrap">
-                                        <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">{{ order.strategy_name }}</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap">{{
+                                            order.strategy_name }}</span>
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-4 text-right whitespace-nowrap">
-                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-100/50">
+                                    <span
+                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-100/50">
                                         Error
                                     </span>
-                                    <i data-lucide="chevron-down" class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                                    <i data-lucide="chevron-down"
+                                        class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
                                 </div>
                             </div>
                         </div>
-                        <div id="mob-err-{{ order.order_id }}" class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
+                        <div id="mob-err-{{ order.order_id }}"
+                            class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
                             <div class="px-4 py-3">
                                 <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
                                     <div class="flex flex-col">
@@ -342,13 +433,17 @@
                                         </div>
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Direction</span>
-                                            <span class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{ order.action }}</span>
+                                            <span
+                                                class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
+                                                order.action }}</span>
                                         </div>
                                     </div>
                                     <div class="flex flex-col">
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Target Price</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{ "{:,.2f}".format(order.target_price|float) if order.target_price else '-' }}</span>
+                                            <span class="font-mono text-slate-700 font-bold">{{
+                                                "{:,.2f}".format(order.target_price|float) if order.target_price else
+                                                '-' }}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -364,13 +459,15 @@
 
             <!-- CARD 2.5: ACTIVE POSITIONS -->
             <div id="card-active-trades" class="{% if active_trades|length == 0 %}hidden{% endif %}">
-                <h2 class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                    <i data-lucide="trending-up" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> Active Positions
-                    <span class="text-xs font-medium text-slate-400" id="badge-active-trades-count">{{ active_trades|length }} Offen</span>
+                <h2
+                    class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                    <i data-lucide="trending-up"
+                        class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> Positions
                 </h2>
                 <!-- Desktop View -->
                 <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+                    <div
+                        class="grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
                         <div>ID & Symbol</div>
                         <div>Strategy</div>
                         <div>Entry Date (Days)</div>
@@ -382,41 +479,58 @@
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for trade in active_trades %}
-                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ trade.strategy_filter }}" data-group-id="{{ trade.trade_group_id }}" onclick="toggleRow('acc-act-{{ loop.index }}')">
+                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 group-linkable"
+                            data-strategy="{{ trade.strategy_filter }}" data-group-id="{{ trade.trade_group_id }}"
+                            onclick="toggleRow('acc-act-{{ loop.index }}')">
                             <div class="grid grid-cols-8 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
                                     <span class="text-xs font-bold text-slate-400 font-mono">{{ trade.id }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ trade.symbol }}</span>
                                 </div>
                                 <div class="text-slate-500 font-medium font-mono">{{ trade.strategy }}</div>
-                                <div class="text-slate-500 font-medium">{{ trade.entry_date }} ({{ trade.days_held }}d)</div>
+                                <div class="text-slate-500 font-medium">{{ trade.entry_date }} ({{ trade.days_held }}d)
+                                </div>
                                 <div class="text-right tabular-nums text-slate-600">{{ trade.current_size|int }}</div>
-                                <div class="text-right tabular-nums text-slate-600">{{ "{:,.2f}".format(trade.entry_price) }}</div>
-                                <div class="text-right tabular-nums text-slate-600">{{ "{:,.2f}".format(trade.current_price) }}</div>
+                                <div class="text-right tabular-nums text-slate-600">{{
+                                    "{:,.2f}".format(trade.entry_price) }}</div>
+                                <div class="text-right tabular-nums text-slate-600">{{
+                                    "{:,.2f}".format(trade.current_price) }}</div>
                                 <div>
                                     {% if trade.tws_status %}
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if trade.tws_status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif trade.tws_status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% elif trade.tws_status == 'Filled' %}bg-indigo-50 text-indigo-700 border border-indigo-100{% else %}bg-rose-50 text-rose-600 border border-rose-100/50{% endif %}">
+                                    <span
+                                        class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if trade.tws_status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif trade.tws_status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% elif trade.tws_status == 'Filled' %}bg-indigo-50 text-indigo-700 border border-indigo-100{% else %}bg-rose-50 text-rose-600 border border-rose-100/50{% endif %}">
                                         {{ trade.tws_status }}
                                     </span>
                                     {% else %}
                                     <span class="text-slate-400 font-medium">-</span>
                                     {% endif %}
                                 </div>
-                                <div class="text-right font-bold tabular-nums {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                                    {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(trade.unrealized_pnl) }} ({{ "{:+.2f}".format(trade.pnl_percentage) }}%)
+                                <div
+                                    class="text-right font-bold tabular-nums {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+                                    {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{
+                                    "{:,.2f}".format(trade.unrealized_pnl) }} ({{ "{:+.2f}".format(trade.pnl_percentage)
+                                    }}%)
                                 </div>
                             </div>
-                            <div id="acc-act-{{ loop.index }}" class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
+                            <div id="acc-act-{{ loop.index }}"
+                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
                                 <div class="pt-3 text-xs text-slate-500">
-                                    <div class="mb-2 flex justify-between items-center bg-slate-100/60 rounded px-2.5 py-1 border border-slate-200">
+                                    <div
+                                        class="mb-2 flex justify-between items-center bg-slate-100/60 rounded px-2.5 py-1 border border-slate-200">
                                         <span class="text-slate-600 font-medium">Trade Group ID:</span>
-                                        <span class="font-mono text-slate-800 font-bold">{{ trade.trade_group_id }}</span>
+                                        <span class="font-mono text-slate-800 font-bold">{{ trade.trade_group_id
+                                            }}</span>
                                     </div>
-                                    <div class="font-semibold text-slate-700 mb-1 flex items-center gap-1.5"><i data-lucide="zap" class="w-3.5 h-3.5 text-indigo-500"></i> Linked TWS Orders</div>
+                                    <div class="font-semibold text-slate-700 mb-1 flex items-center gap-1.5"><i
+                                            data-lucide="zap" class="w-3.5 h-3.5 text-indigo-500"></i> Linked TWS Orders
+                                    </div>
                                     {% for order in trade.tws_orders %}
                                     <div class="space-y-0.5 mb-1.5 font-mono">
-                                        <p class="text-[11px] text-slate-400">OrderID: {{ order.order_id }} | Permanent-ID: {{ order.perm_id or 'None' }}</p>
-                                        <p class="font-medium text-slate-800">{{ order.action }} {{ order.quantity|int }} shares at {{ "{:,.2f}".format(order.target_price) if order.target_price else '-' }} (Status: {{ order.status }})</p>
+                                        <p class="text-[11px] text-slate-400">OrderID: {{ order.order_id }} |
+                                            Permanent-ID: {{ order.perm_id or 'None' }}</p>
+                                        <p class="font-medium text-slate-800">{{ order.action }} {{ order.quantity|int
+                                            }} shares at {{ "{:,.2f}".format(order.target_price) if order.target_price
+                                            else '-' }} (Status: {{ order.status }})</p>
                                     </div>
                                     {% else %}
                                     <p class="italic text-slate-400">Keine verknüpften TWS-Orders gefunden.</p>
@@ -431,31 +545,41 @@
                 <!-- Mobile View -->
                 <div class="md:hidden flex flex-col gap-3">
                     {% for trade in active_trades %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ trade.strategy_filter }}" data-group-id="{{ trade.trade_group_id }}">
-                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group" onclick="toggleRow('mob-act-{{ loop.index }}')">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 group-linkable"
+                        data-strategy="{{ trade.strategy_filter }}" data-group-id="{{ trade.trade_group_id }}">
+                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                            onclick="toggleRow('mob-act-{{ loop.index }}')">
                             <div class="p-4 flex justify-between items-center">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{ trade.symbol }}</span>
+                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{
+                                        trade.symbol }}</span>
                                     <div class="flex gap-1.5 whitespace-nowrap">
-                                        <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">{{ trade.strategy }}</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap">{{
+                                            trade.strategy }}</span>
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-4 text-right whitespace-nowrap">
-                                    <span class="text-lg font-bold {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %} tabular-nums leading-none">
-                                        {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(trade.unrealized_pnl) }}
+                                    <span
+                                        class="text-lg font-bold {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %} tabular-nums leading-none">
+                                        {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{
+                                        "{:,.2f}".format(trade.unrealized_pnl) }}
                                     </span>
-                                    <i data-lucide="chevron-down" class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                                    <i data-lucide="chevron-down"
+                                        class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
                                 </div>
                             </div>
                         </div>
-                        <div id="mob-act-{{ loop.index }}" class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
+                        <div id="mob-act-{{ loop.index }}"
+                            class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
                             <div class="px-4 py-3">
                                 <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
                                     <!-- Left Column -->
                                     <div class="flex flex-col">
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Date</span>
-                                            <span class="text-slate-700 font-bold">{{ trade.entry_date }} ({{ trade.days_held }}d)</span>
+                                            <span class="text-slate-700 font-bold">{{ trade.entry_date }} ({{
+                                                trade.days_held }}d)</span>
                                         </div>
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Quantity</span>
@@ -466,11 +590,13 @@
                                     <div class="flex flex-col">
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Entry</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{ "{:,.2f}".format(trade.entry_price) }}</span>
+                                            <span class="font-mono text-slate-700 font-bold">{{
+                                                "{:,.2f}".format(trade.entry_price) }}</span>
                                         </div>
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Current</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{ "{:,.2f}".format(trade.current_price) }}</span>
+                                            <span class="font-mono text-slate-700 font-bold">{{
+                                                "{:,.2f}".format(trade.current_price) }}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -483,13 +609,17 @@
 
             <!-- CARD 3: CLOSED SETTLEMENTS -->
             <div id="card-settlements">
-                <h2 class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                    <i data-lucide="archive" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> Closed History
-                    <span class="text-xs font-medium text-slate-400" id="badge-settled-count">{{ settlements|length }} Abrechnungen</span>
+                <h2
+                    class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                    <i data-lucide="archive" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i>
+                    History
+                    <span class="text-xs font-medium text-slate-400" id="badge-settled-count">{{ settlements|length }}
+                        Abrechnungen</span>
                 </h2>
                 <!-- Desktop View -->
                 <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+                    <div
+                        class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
                         <div>ID & Symbol</div>
                         <div>Strategy</div>
                         <div class="text-right">Avg Entry Price</div>
@@ -500,39 +630,59 @@
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for settlement in settlements %}
-                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ settlement.strategy_filter }}" data-group-id="{{ settlement.trade_group_id }}" onclick="toggleRow('acc-settle-{{ loop.index }}')">
+                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 border-l-4 border-l-transparent group-linkable"
+                            data-strategy="{{ settlement.strategy_filter }}"
+                            data-group-id="{{ settlement.trade_group_id }}"
+                            onclick="toggleRow('acc-settle-{{ loop.index }}')">
                             <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xs font-bold text-slate-400 font-mono">{{ settlement.local_trade_id }}</span>
+                                    <span class="text-xs font-bold text-slate-400 font-mono">{{
+                                        settlement.local_trade_id }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ settlement.symbol }}</span>
                                 </div>
                                 <div class="text-slate-500 font-medium">{{ settlement.strategy_name }}</div>
-                                <div class="text-right tabular-nums text-slate-600">{{ "{:,.2f}".format(settlement.avg_entry_price) }}</div>
-                                <div class="text-right tabular-nums text-slate-600">{{ "{:,.2f}".format(settlement.avg_exit_price) }}</div>
-                                <div class="text-right tabular-nums {% if settlement.price_diff_slippage > 0 %}text-emerald-500 font-bold{% elif settlement.price_diff_slippage < 0 %}text-rose-500 font-bold{% else %}text-slate-400{% endif %}">
-                                    {% if settlement.price_diff_slippage > 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.price_diff_slippage) if settlement.price_diff_slippage != 0 else '-' }}
+                                <div class="text-right tabular-nums text-slate-600">{{
+                                    "{:,.2f}".format(settlement.avg_entry_price) }}</div>
+                                <div class="text-right tabular-nums text-slate-600">{{
+                                    "{:,.2f}".format(settlement.avg_exit_price) }}</div>
+                                <div
+                                    class="text-right tabular-nums {% if settlement.price_diff_slippage > 0 %}text-emerald-500 font-bold{% elif settlement.price_diff_slippage < 0 %}text-rose-500 font-bold{% else %}text-slate-400{% endif %}">
+                                    {% if settlement.price_diff_slippage > 0 %}+{% endif %}{{
+                                    "{:,.2f}".format(settlement.price_diff_slippage) if settlement.price_diff_slippage
+                                    != 0 else '-' }}
                                 </div>
-                                <div class="text-right tabular-nums text-slate-500">{{ "{:,.2f}".format(settlement.total_commissions) }}</div>
-                                <div class="text-right font-bold tabular-nums {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                                    {% if settlement.net_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.net_pnl) }}
+                                <div class="text-right tabular-nums text-slate-500">{{
+                                    "{:,.2f}".format(settlement.total_commissions) }}</div>
+                                <div
+                                    class="text-right font-bold tabular-nums {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+                                    {% if settlement.net_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.net_pnl)
+                                    }}
                                 </div>
                             </div>
-                            <div id="acc-settle-{{ loop.index }}" class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
+                            <div id="acc-settle-{{ loop.index }}"
+                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
                                 <div class="pt-3 grid grid-cols-2 gap-8 text-xs text-slate-500">
                                     <div>
-                                        <div class="font-semibold text-slate-700 mb-1 flex items-center gap-1.5"><i data-lucide="git-commit" class="w-3.5 h-3.5 text-indigo-500"></i> Fills (TWS API)</div>
+                                        <div class="font-semibold text-slate-700 mb-1 flex items-center gap-1.5"><i
+                                                data-lucide="git-commit" class="w-3.5 h-3.5 text-indigo-500"></i> Fills
+                                            (TWS API)</div>
                                         {% for execution in settlement.executions %}
                                         <div class="space-y-0.5 mb-1.5">
                                             <p class="text-[11px] text-slate-400">ExecID: {{ execution.exec_id }}</p>
-                                            <p class="font-medium text-slate-800">{{ execution.bracket_role }}: {{ execution.qty|int }} shares executed at {{ "{:,.2f}".format(execution.price) }} ({{ execution.action }})</p>
+                                            <p class="font-medium text-slate-800">{{ execution.bracket_role }}: {{
+                                                execution.qty|int }} shares executed at {{
+                                                "{:,.2f}".format(execution.price) }} ({{ execution.action }})</p>
                                         </div>
                                         {% else %}
-                                        <p class="italic text-slate-400">Keine detaillierten Teilausführungen gefunden.</p>
+                                        <p class="italic text-slate-400">Keine detaillierten Teilausführungen gefunden.
+                                        </p>
                                         {% endfor %}
                                     </div>
                                     <div class="flex flex-col justify-end text-right">
-                                        <p class="text-[11px] text-slate-400">Abrechnung am: {{ settlement.settled_at | to_local_tz if settlement.settled_at else '-' }}</p>
-                                        <p class="text-[11px] text-slate-400">Handelskonto: {{ settlement.account_id }}</p>
+                                        <p class="text-[11px] text-slate-400">Abrechnung am: {{ settlement.settled_at |
+                                            to_local_tz if settlement.settled_at else '-' }}</p>
+                                        <p class="text-[11px] text-slate-400">Handelskonto: {{ settlement.account_id }}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -544,24 +694,34 @@
                 <!-- Mobile View -->
                 <div class="md:hidden flex flex-col gap-3" id="settlements-mobile-list">
                     {% for settlement in settlements %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 border-l-4 border-l-transparent group-linkable" data-strategy="{{ settlement.strategy_filter }}" data-group-id="{{ settlement.trade_group_id }}">
-                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group" onclick="toggleRow('mob-settle-{{ loop.index }}')">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 border-l-4 border-l-transparent group-linkable"
+                        data-strategy="{{ settlement.strategy_filter }}"
+                        data-group-id="{{ settlement.trade_group_id }}">
+                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                            onclick="toggleRow('mob-settle-{{ loop.index }}')">
                             <div class="p-4 flex justify-between items-center">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{ settlement.symbol }}</span>
+                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{
+                                        settlement.symbol }}</span>
                                     <div class="flex gap-1.5 whitespace-nowrap">
-                                        <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">{{ settlement.strategy_name }}</span>
+                                        <span
+                                            class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap">{{
+                                            settlement.strategy_name }}</span>
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-4 text-right whitespace-nowrap">
-                                    <span class="text-lg font-bold {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %} tabular-nums leading-none">
-                                        {% if settlement.net_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.net_pnl) }}
+                                    <span
+                                        class="text-lg font-bold {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %} tabular-nums leading-none">
+                                        {% if settlement.net_pnl >= 0 %}+{% endif %}{{
+                                        "{:,.2f}".format(settlement.net_pnl) }}
                                     </span>
-                                    <i data-lucide="chevron-down" class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                                    <i data-lucide="chevron-down"
+                                        class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
                                 </div>
                             </div>
                         </div>
-                        <div id="mob-settle-{{ loop.index }}" class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
+                        <div id="mob-settle-{{ loop.index }}"
+                            class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
                             <div class="px-4 py-3">
                                 <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
                                     <!-- Left Column -->
@@ -569,17 +729,23 @@
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Date</span>
                                             <span class="text-slate-700 font-bold">
-                                                {% if settlement.entry_date %}{{ settlement.entry_date }} ({{ settlement.days_held }}d){% else %}{{ (settlement.settled_at | to_local_tz)[:10] if settlement.settled_at else '-' }}{% endif %}
+                                                {% if settlement.entry_date %}{{ settlement.entry_date }} ({{
+                                                settlement.days_held }}d){% else %}{{ (settlement.settled_at |
+                                                to_local_tz)[:10] if settlement.settled_at else '-' }}{% endif %}
                                             </span>
                                         </div>
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Quantity</span>
-                                            <span class="text-slate-700 font-bold">{{ settlement.quantity|int if settlement.quantity else '-' }}</span>
+                                            <span class="text-slate-700 font-bold">{{ settlement.quantity|int if
+                                                settlement.quantity else '-' }}</span>
                                         </div>
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Slippage</span>
-                                            <span class="font-mono {% if settlement.price_diff_slippage > 0 %}text-emerald-500{% elif settlement.price_diff_slippage < 0 %}text-rose-500{% else %}text-slate-600{% endif %} font-bold">
-                                                {% if settlement.price_diff_slippage > 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.price_diff_slippage) if settlement.price_diff_slippage != 0 else '-' }}
+                                            <span
+                                                class="font-mono {% if settlement.price_diff_slippage > 0 %}text-emerald-500{% elif settlement.price_diff_slippage < 0 %}text-rose-500{% else %}text-slate-600{% endif %} font-bold">
+                                                {% if settlement.price_diff_slippage > 0 %}+{% endif %}{{
+                                                "{:,.2f}".format(settlement.price_diff_slippage) if
+                                                settlement.price_diff_slippage != 0 else '-' }}
                                             </span>
                                         </div>
                                     </div>
@@ -587,15 +753,18 @@
                                     <div class="flex flex-col">
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Entry</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{ "{:,.2f}".format(settlement.avg_entry_price) }}</span>
+                                            <span class="font-mono text-slate-700 font-bold">{{
+                                                "{:,.2f}".format(settlement.avg_entry_price) }}</span>
                                         </div>
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Exit</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{ "{:,.2f}".format(settlement.avg_exit_price) }}</span>
+                                            <span class="font-mono text-slate-700 font-bold">{{
+                                                "{:,.2f}".format(settlement.avg_exit_price) }}</span>
                                         </div>
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Fee</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{ "{:,.2f}".format(settlement.total_commissions) }}</span>
+                                            <span class="font-mono text-slate-700 font-bold">{{
+                                                "{:,.2f}".format(settlement.total_commissions) }}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -612,7 +781,8 @@
     <div id="section-reconciliation" class="hidden space-y-6">
         <div>
             <h2 class="text-lg font-bold text-slate-900">Reconciliation & Audit Center</h2>
-            <p class="text-slate-500 text-xs mt-0.5">Datenabgleich zwischen lokalem Zustand (signals.db) und realen TWS-Ausführungen (trading.db).</p>
+            <p class="text-slate-500 text-xs mt-0.5">Datenabgleich zwischen lokalem Zustand (signals.db) und realen
+                TWS-Ausführungen (trading.db).</p>
         </div>
 
         {% if discrepancies|length > 0 %}
@@ -622,16 +792,19 @@
                 <i data-lucide="shield-alert" class="w-5 h-5"></i>
             </div>
             <div class="space-y-1">
-                <h4 class="text-sm font-bold text-amber-800">{{ discrepancies|length }} Broker-Diskrepanzen gefunden</h4>
+                <h4 class="text-sm font-bold text-amber-800">{{ discrepancies|length }} Broker-Diskrepanzen gefunden
+                </h4>
                 <p class="text-slate-500 text-xs leading-relaxed">
-                    Die Auswertung zeigt Abweichungen zwischen signals.db und trading.db. Da keine aktive Verbindung zu TWS besteht, müssen Korrekturen manuell vorgenommen werden.
+                    Die Auswertung zeigt Abweichungen zwischen signals.db und trading.db. Da keine aktive Verbindung zu
+                    TWS besteht, müssen Korrekturen manuell vorgenommen werden.
                 </p>
             </div>
         </div>
 
         <!-- Desktop Discrepancy Table -->
         <div class="hidden md:block bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
-            <div class="grid grid-cols-5 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-semibold text-xs uppercase tracking-wider">
+            <div
+                class="grid grid-cols-5 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-semibold text-xs uppercase tracking-wider">
                 <div>Wertpapier</div>
                 <div>Diskrepanz & Risiko</div>
                 <div>Status Lokal</div>
@@ -645,22 +818,30 @@
                     <div class="flex items-center gap-3">
                         <span class="font-bold text-slate-900 text-sm">{{ discrepancy.symbol }}</span>
                         {% if discrepancy.strategy %}
-                        <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">{{ discrepancy.strategy }}</span>
+                        <span
+                            class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap">{{
+                            discrepancy.strategy }}</span>
                         {% endif %}
                     </div>
                     <div class="text-slate-500 font-medium flex items-center gap-1.5">
-                        <span class="h-2 w-2 rounded-full {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}bg-amber-500 animate-pulse{% else %}bg-slate-400{% endif %}"></span>
+                        <span
+                            class="h-2 w-2 rounded-full {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}bg-amber-500 animate-pulse{% else %}bg-slate-400{% endif %}"></span>
                         {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}
                         Geisterposition (Erhöhtes Risiko)
                         {% else %}
                         Fehlende Ausführung (Tracking Error)
                         {% endif %}
                     </div>
-                    <div class="{% if discrepancy.local_status == 'CLOSED' %}text-rose-500{% else %}text-emerald-500{% endif %} font-semibold">{{ discrepancy.local_status }}</div>
+                    <div
+                        class="{% if discrepancy.local_status == 'CLOSED' %}text-rose-500{% else %}text-emerald-500{% endif %} font-semibold">
+                        {{ discrepancy.local_status }}</div>
                     <div class="text-slate-700 font-medium">{{ discrepancy.broker_status }}</div>
                     <div class="text-right">
-                        <span class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}bg-amber-50 text-amber-800 border border-amber-200{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %} rounded-full">
-                            <i data-lucide="help-circle" class="w-3 h-3 {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}text-amber-600{% else %}text-slate-400{% endif %}"></i> {{ discrepancy.recommended_action }}
+                        <span
+                            class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}bg-amber-50 text-amber-800 border border-amber-200{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %} rounded-full">
+                            <i data-lucide="help-circle"
+                                class="w-3 h-3 {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}text-amber-600{% else %}text-slate-400{% endif %}"></i>
+                            {{ discrepancy.recommended_action }}
                         </span>
                     </div>
                 </div>
@@ -672,30 +853,41 @@
         <div class="md:hidden flex flex-col gap-3">
             {% for discrepancy in discrepancies %}
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group" onclick="toggleRow('mob-rec-{{ loop.index }}')">
+                <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                    onclick="toggleRow('mob-rec-{{ loop.index }}')">
                     <div class="p-4 flex justify-between items-center">
                         <div class="flex items-center gap-3">
-                            <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{ discrepancy.symbol }}</span>
+                            <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{
+                                discrepancy.symbol }}</span>
                             {% if discrepancy.strategy %}
-                            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap leading-none py-1">{{ discrepancy.strategy }}</span>
+                            <span
+                                class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap leading-none py-1">{{
+                                discrepancy.strategy }}</span>
                             {% endif %}
-                            <span class="inline-flex items-center gap-1 text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200 rounded-md px-2 py-0.5 whitespace-nowrap">
-                                <span class="h-1.5 w-1.5 rounded-full {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}bg-amber-500 animate-pulse{% else %}bg-slate-400{% endif %}"></span>
-                                {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}Geisterposition{% else %}Fehlende Ausführung{% endif %}
+                            <span
+                                class="inline-flex items-center gap-1 text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200 rounded-md px-2 py-0.5 whitespace-nowrap">
+                                <span
+                                    class="h-1.5 w-1.5 rounded-full {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}bg-amber-500 animate-pulse{% else %}bg-slate-400{% endif %}"></span>
+                                {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}Geisterposition{% else
+                                %}Fehlende Ausführung{% endif %}
                             </span>
                         </div>
                         <div class="flex items-center gap-4 text-right whitespace-nowrap">
-                            <i data-lucide="chevron-down" class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                            <i data-lucide="chevron-down"
+                                class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
                         </div>
                     </div>
                 </div>
-                <div id="mob-rec-{{ loop.index }}" class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
+                <div id="mob-rec-{{ loop.index }}"
+                    class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
                     <div class="px-4 py-3">
                         <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
                             <div class="flex flex-col">
                                 <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                     <span class="text-slate-500 font-medium">Lokal</span>
-                                    <span class="{% if discrepancy.local_status == 'CLOSED' %}text-rose-500{% else %}text-emerald-500{% endif %} font-bold">{{ discrepancy.local_status }}</span>
+                                    <span
+                                        class="{% if discrepancy.local_status == 'CLOSED' %}text-rose-500{% else %}text-emerald-500{% endif %} font-bold">{{
+                                        discrepancy.local_status }}</span>
                                 </div>
                             </div>
                             <div class="flex flex-col">
@@ -705,8 +897,11 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="mt-3 flex items-center gap-1.5 px-3 py-2 text-xs font-bold {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}bg-amber-50 text-amber-800 border border-amber-200{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %} rounded-xl">
-                            <i data-lucide="help-circle" class="w-3.5 h-3.5 {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}text-amber-600{% else %}text-slate-400{% endif %}"></i> {{ discrepancy.recommended_action }}
+                        <div
+                            class="mt-3 flex items-center gap-1.5 px-3 py-2 text-xs font-bold {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}bg-amber-50 text-amber-800 border border-amber-200{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %} rounded-xl">
+                            <i data-lucide="help-circle"
+                                class="w-3.5 h-3.5 {% if discrepancy.discrepancy_type == 'GHOST_POSITION' %}text-amber-600{% else %}text-slate-400{% endif %}"></i>
+                            {{ discrepancy.recommended_action }}
                         </div>
                     </div>
                 </div>
@@ -716,7 +911,8 @@
         {% else %}
         <!-- Empty State -->
         <div class="py-12 text-center bg-white rounded-3xl shadow-sm border border-slate-200">
-            <div class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-500 mx-auto mb-3">
+            <div
+                class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-500 mx-auto mb-3">
                 <i data-lucide="check-circle" class="w-6 h-6"></i>
             </div>
             <h3 class="text-sm font-bold text-slate-900">Keine Diskrepanzen</h3>
@@ -733,40 +929,40 @@
 <script>
     // Real Data Metrics per Strategy from Backend View Service
     const strategyMetrics = {
-        all: { 
-            pnl: {{ metrics.all.pnl }}, 
-            pnlText: "{{ metrics.all.pnlText }}", 
-            winrate: "{{ metrics.all.winrate }}", 
-            slippage: "{{ metrics.all.slippage }}", 
-            fees: "{{ '{:,.2f}'.format(metrics.all.fees) }}" 
+        all: {
+            pnl: {{ metrics.all.pnl }},
+            pnlText: "{{ metrics.all.pnlText }}",
+            winrate: "{{ metrics.all.winrate }}",
+            slippage: "{{ metrics.all.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.all.fees) }}"
         },
-        DipBuyer: { 
-            pnl: {{ metrics.DipBuyer.pnl }}, 
-            pnlText: "{{ metrics.DipBuyer.pnlText }}", 
-            winrate: "{{ metrics.DipBuyer.winrate }}", 
-            slippage: "{{ metrics.DipBuyer.slippage }}", 
-            fees: "{{ '{:,.2f}'.format(metrics.DipBuyer.fees) }}" 
+        DipBuyer: {
+            pnl: {{ metrics.DipBuyer.pnl }},
+            pnlText: "{{ metrics.DipBuyer.pnlText }}",
+            winrate: "{{ metrics.DipBuyer.winrate }}",
+            slippage: "{{ metrics.DipBuyer.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.DipBuyer.fees) }}"
         },
-        TurnoverTiming: { 
-            pnl: {{ metrics.TurnoverTiming.pnl }}, 
-            pnlText: "{{ metrics.TurnoverTiming.pnlText }}", 
-            winrate: "{{ metrics.TurnoverTiming.winrate }}", 
-            slippage: "{{ metrics.TurnoverTiming.slippage }}", 
-            fees: "{{ '{:,.2f}'.format(metrics.TurnoverTiming.fees) }}" 
+        TurnoverTiming: {
+            pnl: {{ metrics.TurnoverTiming.pnl }},
+            pnlText: "{{ metrics.TurnoverTiming.pnlText }}",
+            winrate: "{{ metrics.TurnoverTiming.winrate }}",
+            slippage: "{{ metrics.TurnoverTiming.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.TurnoverTiming.fees) }}"
         },
-        TwoPercent: { 
-            pnl: {{ metrics.TwoPercent.pnl }}, 
-            pnlText: "{{ metrics.TwoPercent.pnlText }}", 
-            winrate: "{{ metrics.TwoPercent.winrate }}", 
-            slippage: "{{ metrics.TwoPercent.slippage }}", 
-            fees: "{{ '{:,.2f}'.format(metrics.TwoPercent.fees) }}" 
+        TwoPercent: {
+            pnl: {{ metrics.TwoPercent.pnl }},
+            pnlText: "{{ metrics.TwoPercent.pnlText }}",
+            winrate: "{{ metrics.TwoPercent.winrate }}",
+            slippage: "{{ metrics.TwoPercent.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.TwoPercent.fees) }}"
         },
-        NDXMomentum: { 
-            pnl: {{ metrics.NDXMomentum.pnl }}, 
-            pnlText: "{{ metrics.NDXMomentum.pnlText }}", 
-            winrate: "{{ metrics.NDXMomentum.winrate }}", 
-            slippage: "{{ metrics.NDXMomentum.slippage }}", 
-            fees: "{{ '{:,.2f}'.format(metrics.NDXMomentum.fees) }}" 
+        NDXMomentum: {
+            pnl: {{ metrics.NDXMomentum.pnl }},
+            pnlText: "{{ metrics.NDXMomentum.pnlText }}",
+            winrate: "{{ metrics.NDXMomentum.winrate }}",
+            slippage: "{{ metrics.NDXMomentum.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.NDXMomentum.fees) }}"
         }
     };
 
@@ -790,7 +986,7 @@
     function filterStrategy(stratName) {
         const container = document.getElementById('data-containers');
         container.style.opacity = '0.4';
-        
+
         setTimeout(() => {
             // Update filter pills style
             const strategies = ['all', 'DipBuyer', 'TurnoverTiming', 'TwoPercent', 'NDXMomentum'];
@@ -805,33 +1001,33 @@
 
             // Update KPI cards with real metrics
             const metrics = strategyMetrics[stratName];
-            
+
             // Render Net PnL value
             const pnlEl = document.getElementById('kpi-pnl');
             pnlEl.innerText = metrics.pnlText;
-            
+
             // Adjust card styling dynamically
             const pnlCard = document.getElementById('kpi-pnl-card');
             const upIconMobile = document.getElementById('kpi-pnl-icon-up-mobile');
             const downIconMobile = document.getElementById('kpi-pnl-icon-down-mobile');
             const pnlIconDesktop = document.getElementById('kpi-pnl-icon-desktop');
-            
+
             if (metrics.pnl >= 0) {
                 pnlCard.className = "col-span-2 md:col-span-1 bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200";
                 pnlEl.className = "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-emerald-500 tabular-nums";
-                
+
                 if (upIconMobile) upIconMobile.classList.remove('hidden');
                 if (downIconMobile) downIconMobile.classList.add('hidden');
                 if (pnlIconDesktop) pnlIconDesktop.setAttribute('data-lucide', 'trending-up');
             } else {
                 pnlCard.className = "col-span-2 md:col-span-1 bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200";
                 pnlEl.className = "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-rose-500 tabular-nums";
-                
+
                 if (downIconMobile) downIconMobile.classList.remove('hidden');
                 if (upIconMobile) upIconMobile.classList.add('hidden');
                 if (pnlIconDesktop) pnlIconDesktop.setAttribute('data-lucide', 'trending-down');
             }
-            
+
             // Re-render icons
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
@@ -843,16 +1039,16 @@
 
             // 1. Filter Errors Grid
             filterGridContainer('card-errors', stratName, 'badge-error-count', 'Fehler');
-            
+
             // 2. Filter Submitted Grid
             filterGridContainer('card-submitted', stratName, 'badge-submitted-count', 'Aktiv');
-            
+
             // 2.5. Filter Active Trades Grid
             filterGridContainer('card-active-trades', stratName, 'badge-active-trades-count', 'Offen');
 
             // 3. Filter Settlements Grid
             filterGridContainer('card-settlements', stratName, 'badge-settled-count', 'Abrechnungen');
-            
+
             container.style.opacity = '1';
         }, 200);
     }
@@ -866,7 +1062,7 @@
         let visibleCount = 0;
         let visibleDesktopCount = 0;
         const hasDesktop = container.querySelector('.md\\:block') !== null;
-        
+
         listRows.forEach(row => {
             // Close accordion
             const onclickAttr = row.getAttribute('onclick');
@@ -912,7 +1108,7 @@
 
         const triggerEl = detailEl.previousElementSibling;
         const chevron = triggerEl ? triggerEl.querySelector('[data-lucide="chevron-down"]') : null;
-        
+
         if (detailEl.classList.contains('hidden')) {
             detailEl.classList.remove('hidden');
             if (chevron) chevron.style.transform = 'rotate(180deg)';
@@ -925,7 +1121,7 @@
     // Group Highlights on Hover
     document.addEventListener('DOMContentLoaded', () => {
         const linkables = document.querySelectorAll('.group-linkable');
-        
+
         linkables.forEach(item => {
             const groupId = item.getAttribute('data-group-id');
             if (!groupId || groupId === '-' || groupId === 'None') return;
@@ -933,16 +1129,22 @@
             item.addEventListener('mouseenter', () => {
                 const matches = document.querySelectorAll(`.group-linkable[data-group-id="${groupId}"]`);
                 matches.forEach(m => {
-                    m.classList.add('bg-indigo-50/20', 'border-l-indigo-500', 'shadow-sm');
-                    m.classList.remove('border-l-transparent');
+                    m.classList.add('bg-indigo-50/20', 'shadow-sm');
+                    if (m.classList.contains('border-l-4')) {
+                        m.classList.add('border-l-indigo-500');
+                        m.classList.remove('border-l-transparent');
+                    }
                 });
             });
 
             item.addEventListener('mouseleave', () => {
                 const matches = document.querySelectorAll(`.group-linkable[data-group-id="${groupId}"]`);
                 matches.forEach(m => {
-                    m.classList.remove('bg-indigo-50/20', 'border-l-indigo-500', 'shadow-sm');
-                    m.classList.add('border-l-transparent');
+                    m.classList.remove('bg-indigo-50/20', 'shadow-sm');
+                    if (m.classList.contains('border-l-4')) {
+                        m.classList.remove('border-l-indigo-500');
+                        m.classList.add('border-l-transparent');
+                    }
                 });
             });
         });
