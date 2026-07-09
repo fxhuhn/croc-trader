@@ -1,0 +1,172 @@
+# Signal Definitions (comment out to disable)
+signals:
+  AW Rocket: "bull_orange == 1 and wolke == 'grün' and (trend == 'schwarz' or trend == 'grün')"
+  Full House rot&orange+grau/gruen: "bull_rot == 1 and bull_orange == 1 and (bull_grau == 1 or bull_gruen == 1)"
+  Full House grau&gruen+rot/orange: "bull_gruen == 1 and bull_grau == 1 and (bull_rot == 1 or bull_orange == 1)"
+  3 Kerzen Grau/Grün: "(bull_1 == 1 or bull_1_prev_1 == 1 or bull_1_prev_2) and (bull_grau == 1 or bull_grau_prev_1 == 1 or bull_grau_prev_2)"
+  Pearl Diver Light: (status_prev_2 == 'rot' and kerze_prev_2 == 'rot' and wolke_prev_2 == 'grün' and trend_prev_2 == 'rot' and setter_prev_2 == 'rot' and welle_prev_2 == 'rot') and (status_prev_1 == 'rot' and kerze_prev_1 == 'rot' and wolke_prev_1 == 'grün' and trend_prev_1 == 'rot' and setter_prev_1 == 'rot' and welle_prev_1 == 'rot') and (status == 'rot' and kerze != 'rot' and wolke== 'grün' and trend== 'rot' and setter == 'rot' and welle == 'rot')
+  Pearl Diver: (status_prev_2 == 'rot' and kerze_prev_2 == 'rot' and wolke_prev_2 == 'rot' and trend_prev_2 == 'rot' and setter_prev_2 == 'rot' and welle_prev_2 == 'rot') and (status_prev_1 == 'rot' and kerze_prev_1 == 'rot' and wolke_prev_1 == 'rot' and trend_prev_1 == 'rot' and setter_prev_1 == 'rot' and welle_prev_1 == 'rot') and (status == 'rot' and kerze != 'rot' and wolke== 'rot' and trend== 'rot' and setter == 'rot' and welle == 'rot')
+  Stephan: deluxe == 'dunkelrot' and wolke == 'grün' and trend == 'schwarz' and setter == 'rot'
+  Setup des Jahres: bear_plus == 1 and wolke == 'grün'
+  Red & Orange & Bull 1: "bull_rot == 1 and bull_orange == 1 and bull_1 == 1"
+  Red & Orange: "bull_rot == 1 and bull_orange == 1 and bull_1 != 1"
+  Red Lolly: "bull_rot == 1 and bull_1 == 1"
+  Orange Lolly: "bull_orange == 1 and bull_1 == 1"
+  Red Devil: "bull_rot == 1 and bull_1 != 1"
+  Orange: "bull_orange == 1 and bull_1 != 1"
+  Red Green Rocket (RGR): "bull_gruen == 1 and kerze == 'rot'"
+  Red Green Rocket: "bull_gruen == 1 and kerze == 'rot'"
+  Green Green Rocket: "bull_gruen == 1 and kerze == 'grün'"
+  Ultimate Blue: "bull_blau == 1 and bull_gruen == 1"
+  BearBull: "bull_bb == 1"
+  Grabber: "bull_grabber == 1"
+  Grau: "bull_grau == 1"
+  Grün: "bull_gruen == 1"
+  # Add more signals here as needed
+
+# Color Mappings
+mappings:
+  deluxe:
+    Standard: "schwarz"
+    Over Bought High: "dunkelgrün"
+    Over Bought: "grün"
+    Over Sold: "rot"
+    Over Sold High: "dunkelrot"
+
+  welle:
+    Welle: "grün"
+    Welle.1: "dunkelgrün"
+    Welle.2: "schwarz"
+    Welle.3: "rot"
+    Welle.4: "gelb"
+    Welle.5: "dunkelrot"
+
+  trend:
+    Trend: "schwarz"
+    Trend.1: "rot"
+    Trend.2: "grün"
+
+  setter:
+    Trend.3: "schwarz"
+    Trend.4: "rot"
+    Trend.5: "grün"
+
+  wolke:
+    Wolke: "grün"
+    Wolke.2: "rot"
+
+  kerze:
+    Kerzenfarbe: "grün"
+    Kerzenfarbe.1: "schwarz"
+    Kerzenfarbe.2: "rot"
+
+  status:
+    Status: "gelb"
+    Status.1: "rot"
+    Status.2: "grün"
+
+  msi_day:
+    Day OverBought: "grün"
+    Day OverBought.2: "rot"
+
+  msi_week:
+    Week OverBought: "grün"
+
+  msi_month:
+    Week OverBought.3: "grün"
+
+# Column Renaming
+renaming:
+  Bull Line Long: "bull_line"
+  Cloud Punkt Long: "bull_wolke"
+  Red Devil Long: "bull_rot"
+  Hellgrüner Punkt Long: "bull_hell_gruen"
+  Oranger Punkt Long: "bull_orange"
+  Blauer Punkt Long: "bull_blau"
+  Grauer Punkt Long: "bull_grau"
+  Kleiner grauen Punkt Long: "bull_grau_klein"
+  Grünes Plus: "bull_plus"
+  Türkis Punkt Long: "bull_gruen"
+  BB Kombi Long: "bull_bb"
+  schwarzer Punkt: "bull_schwarz"
+  Hellgrüner Punkt Long (Grab.): "bull_grabber"
+  Pinker Punkt Oben: "bull_pink"
+  Bull 1 Long: "bull_1"
+  ICEBull 2: "bull_2"
+  ICEBull 3: "bull_3"
+  ICEBull 4: "bull_4"
+  ICEBull 5: "bull_5"
+  ICEBull 6: "bull_6"
+  ICEBull 7: "bull_7"
+  ICEBull 8: "bull_8"
+  ICEBull 9: "bull_9"
+  ICEBull 10: "bull_10"
+  ICEBull 11: "bull_11"
+  ICEBull 12: "bull_12"
+  ICEBull 13: "bull_13"
+  ICEBull 14: "bull_14"
+  ICEBull 15: "bull_15"
+  Bear Line Short: "bear_line"
+  Red Devil Short: "bear_rot"
+  Hellgrüner Punkt Short: "bear_hell_gruen"
+  Grauer Punkt Short: "bear_grau"
+  Kleiner grauer Punkt Short: "bear_grau_klein"
+  Blauer Punkt Short: "bear_blau"
+  Rotes Plus: "bear_plus"
+  Oranger Punkt Short: "bear_orange"
+  Cloud Punkt Short: "bear_wolke"
+  Türkis Punkt Short: "bear_gruen"
+  BB Kombi Short: "bear_bb"
+  Hellgrüner Punkt Short (Grab.): "bear_grabber"
+  Pinker Punkt Unten: "bear_pink"
+  Bear 1 Short: "bear_1"
+  ICEBear 2: "bear_2"
+  ICEBear 3: "bear_3"
+  ICEBear 4: "bear_4"
+  ICEBear 5: "bear_5"
+  ICEBear 6: "bear_6"
+  ICEBear 7: "bear_7"
+  ICEBear 8: "bear_8"
+  ICEBear 9: "bear_9"
+  ICEBear 10: "bear_10"
+  ICEBear 11: "bear_11"
+  ICEBear 12: "bear_12"
+  ICEBear 13: "bear_13"
+  ICEBear 14: "bear_14"
+  ICEBear 15: "bear_15"
+
+# File prefixes to remove when extracting symbol names
+file_prefixes:
+  - "BATS_"
+  - "CBOE_DLY_"
+  - "NASDAQ_DLY_"
+  - "XETR_DLY_"
+  - "CBOEFTSE_DLY_"
+  - "EURONEXT_DLY_"
+
+# Optional: Add these columns to your CSV if not present
+# They are used for swing range calculations
+required_columns:
+  - "Wolke Linie Grün"
+  - "Wolke Linie Pink"
+
+use_swing_range: false
+
+# Multiprocessing settings
+# 0 = auto-detect (75% of CPU cores)
+# 1 = no multiprocessing (useful for debugging)
+# >1 = specific number of workers
+num_workers: 0
+
+shift_columns:
+  - setter
+  - trend
+  - welle
+  - wolke
+  - status
+  - kerze
+  - bull_gruen
+  - bull_grau
+  - bull_1
+
+shift_depth: 3
