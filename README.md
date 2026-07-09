@@ -116,9 +116,6 @@ The primary runtime settings file loaded by `app/config.py`. It configures:
 * **Logging:** Target directories, rotation schemes, and logging verbosity.
 * **Portfolio Budgets:** Capital allocation configuration for strategies (`dip_buyer`, `turnover_timing`, etc.).
 
-> [!NOTE]
-> **`config.yaml` vs. `settings.yaml`:**
-> `settings.yaml` is the **active** application configuration file. `config.yaml` is a legacy/unused file in the repository root and is not loaded by the application config system.
 
 ### 3. Data Calendars & Strategy Metadata (`data/`)
 Static definitions containing market schedule specifications:
