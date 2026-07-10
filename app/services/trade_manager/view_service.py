@@ -926,6 +926,15 @@ class TradeViewService:
                 e["qty"] for e in executions if e.get("action") == "BUY"
             )
 
+            entry_price = float(settlement.get("avg_entry_price") or 0.0)
+            exit_price = float(settlement.get("avg_exit_price") or 0.0)
+            pnl_percentage = (
+                ((exit_price - entry_price) / entry_price * 100)
+                if entry_price > 0
+                else 0.0
+            )
+            settlement["pnl_percentage"] = pnl_percentage
+
             # Map raw strategy name for the template's data-strategy attribute
             raw_strat_lower = settlement["strategy_name"].lower()
             if "dip" in raw_strat_lower:

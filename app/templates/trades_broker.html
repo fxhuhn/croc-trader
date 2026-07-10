@@ -185,14 +185,17 @@
                                 </div>
                             </div>
                             <div id="acc-sub-{{ order.order_id }}"
-                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
-                                <div class="pt-3 text-xs text-slate-500">
-                                    <div class="font-semibold text-slate-700 mb-1">TWS Order Details:</div>
-                                    <p class="leading-relaxed">Permanent-ID (TWS): {{ order.perm_id or 'Keine' }}.
-                                        Parent ID: {{ order.parent_id or 'Keine' }}. Trade-Group: {{
-                                        order.trade_group_id }}. Konto: {{ order.account_id }}. TIF: {{ order.tif }}.
-                                        Übermittelt am: {{ order.transmitted_at | to_local_tz if order.transmitted_at
-                                        else '-' }}</p>
+                                class="hidden px-4 pb-3 border-t border-slate-100 bg-slate-50/10">
+                                <div class="md:pl-[4.25rem] pt-2">
+                                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
+                                        <span class="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Group:</span>
+                                        <span class="font-mono text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded">{{ order.trade_group_id }}</span>
+                                        <span class="text-slate-300 font-light">|</span>
+                                        <span class="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Parent:</span>
+                                        <span class="font-mono text-slate-900">{{ order.parent_id or '-' }}</span>
+                                        <span class="text-slate-300 font-light">|</span>
+                                        <span class="text-slate-400 font-mono">{{ order.transmitted_at | to_local_tz if order.transmitted_at else '-' }}</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -499,28 +502,49 @@
                                 </div>
                             </div>
                             <div id="acc-act-{{ loop.index }}"
-                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
-                                <div class="pt-3 text-xs text-slate-500">
-                                    <div
-                                        class="mb-2 flex justify-between items-center bg-slate-100/60 rounded px-2.5 py-1 border border-slate-200">
-                                        <span class="text-slate-600 font-medium">Trade Group ID:</span>
-                                        <span class="font-mono text-slate-800 font-bold">{{ trade.trade_group_id
-                                            }}</span>
+                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/10">
+                                <div class="md:pl-[4.25rem] pt-3">
+                                    <div class="relative pl-4 ml-1.5 border-l border-slate-200 space-y-3 py-1">
+                                        {% for order in trade.tws_orders %}
+                                        {% set is_cancelled = order.status == 'Cancelled' %}
+                                        
+                                        {% set dot_color = "bg-slate-400" %}
+                                        {% set text_color = "text-slate-700" %}
+                                        {% set badge_style = "bg-slate-100 text-slate-600 border-slate-200" %}
+
+                                        {% if order.status == 'Submitted' or order.status == 'Filled' %}
+                                            {% set dot_color = "bg-emerald-500" %}
+                                            {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100/50" %}
+                                        {% elif order.status == 'PreSubmitted' %}
+                                            {% set dot_color = "bg-blue-500" %}
+                                            {% set badge_style = "bg-blue-50 text-blue-700 border-blue-100" %}
+                                        {% elif is_cancelled %}
+                                            {% set dot_color = "bg-slate-300 opacity-60" %}
+                                            {% set text_color = "text-slate-400" %}
+                                            {% set badge_style = "bg-slate-50 text-slate-400 border-slate-200 opacity-60" %}
+                                        {% elif order.status == 'Error' %}
+                                            {% set dot_color = "bg-rose-500" %}
+                                            {% set badge_style = "bg-rose-50 text-rose-700 border-rose-100/50" %}
+                                        {% endif %}
+
+                                        <div class="relative flex items-center gap-x-2.5 text-xs font-medium {{ text_color }} {% if is_cancelled %}opacity-60{% endif %}">
+                                            <!-- Punkt exakt auf der vertikalen Linie -->
+                                            <span class="absolute -left-[22px] flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
+                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
+                                            </span>
+                                            
+                                            <span class="font-mono text-slate-400">ID: #{{ order.order_id }}</span>
+                                            <span class="text-slate-300 font-light">|</span>
+                                            <span class="font-bold {% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ order.action }} {{ order.quantity|int }}</span>
+                                            <span class="text-slate-300 font-light">|</span>
+                                            <span class="font-bold text-slate-700 font-mono">Price: {{ "{:,.2f}".format(order.target_price|float) if order.target_price else '-' }}</span>
+                                            <span class="text-slate-300 font-light">|</span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold border {{ badge_style }}">{{ order.status }}</span>
+                                        </div>
+                                        {% else %}
+                                        <div class="text-xs text-slate-400 italic">Keine verknüpften TWS-Orders gefunden.</div>
+                                        {% endfor %}
                                     </div>
-                                    <div class="font-semibold text-slate-700 mb-1 flex items-center gap-1.5"><i
-                                            data-lucide="zap" class="w-3.5 h-3.5 text-indigo-500"></i> Linked TWS Orders
-                                    </div>
-                                    {% for order in trade.tws_orders %}
-                                    <div class="space-y-0.5 mb-1.5 font-mono">
-                                        <p class="text-[11px] text-slate-400">OrderID: {{ order.order_id }} |
-                                            Permanent-ID: {{ order.perm_id or 'None' }}</p>
-                                        <p class="font-medium text-slate-800">{{ order.action }} {{ order.quantity|int
-                                            }} shares at {{ "{:,.2f}".format(order.target_price) if order.target_price
-                                            else '-' }} (Status: {{ order.status }})</p>
-                                    </div>
-                                    {% else %}
-                                    <p class="italic text-slate-400">Keine verknüpften TWS-Orders gefunden.</p>
-                                    {% endfor %}
                                 </div>
                             </div>
                         </div>
@@ -642,33 +666,35 @@
                                 <div
                                     class="text-right font-bold tabular-nums {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
                                     {% if settlement.net_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.net_pnl)
-                                    }}
+                                    }} ({{ "{:+.2f}".format(settlement.pnl_percentage) }}%)
                                 </div>
                             </div>
                             <div id="acc-settle-{{ loop.index }}"
-                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/30">
-                                <div class="pt-3 grid grid-cols-2 gap-8 text-xs text-slate-500">
-                                    <div>
-                                        <div class="font-semibold text-slate-700 mb-1 flex items-center gap-1.5"><i
-                                                data-lucide="git-commit" class="w-3.5 h-3.5 text-indigo-500"></i> Fills
-                                            (TWS API)</div>
-                                        {% for execution in settlement.executions %}
-                                        <div class="space-y-0.5 mb-1.5">
-                                            <p class="text-[11px] text-slate-400">ExecID: {{ execution.exec_id }}</p>
-                                            <p class="font-medium text-slate-800">{{ execution.bracket_role }}: {{
-                                                execution.qty|int }} shares executed at {{
-                                                "{:,.2f}".format(execution.price) }} ({{ execution.action }})</p>
+                                class="hidden px-4 pb-4 border-t border-slate-100 bg-slate-50/10">
+                                <div class="md:pl-[4.25rem] pt-3">
+                                    <div class="relative pl-4 ml-1.5 border-l border-slate-200 space-y-3 py-1">
+                                        {% for execution in settlement.executions if execution.bracket_role | upper in ['ENTRY', 'EXIT'] %}
+                                        {% set is_entry = execution.bracket_role | upper == 'ENTRY' %}
+                                        {% set role_label = 'Entry' if is_entry else 'Exit' %}
+                                        {% set dot_color = "bg-emerald-500" if is_entry else "bg-indigo-500" %}
+                                        {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100" if is_entry else "bg-indigo-50 text-indigo-700 border-indigo-100" %}
+
+                                        <div class="relative flex items-center gap-x-2.5 text-xs font-medium text-slate-600">
+                                            <!-- Punkt exakt auf der vertikalen Linie -->
+                                            <span class="absolute -left-[22px] flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
+                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
+                                            </span>
+                                            <span class="font-mono text-slate-500">{{ execution.executed_at | to_local_tz if execution.executed_at else '-' }}</span>
+                                            <span class="text-slate-300 font-light">|</span>
+                                            <span class="font-bold {% if execution.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ execution.action }} {{ execution.qty|int }}</span>
+                                            <span class="text-slate-300 font-light">|</span>
+                                            <span class="font-bold text-slate-700 font-mono">Price: {{ "{:,.2f}".format(execution.price|float) }}</span>
+                                            <span class="text-slate-300 font-light">|</span>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold border {{ badge_style }}">{{ role_label }}</span>
                                         </div>
                                         {% else %}
-                                        <p class="italic text-slate-400">Keine detaillierten Teilausführungen gefunden.
-                                        </p>
+                                        <div class="text-xs text-slate-400 italic">Keine detaillierten Entry/Exit Ausführungen gefunden.</div>
                                         {% endfor %}
-                                    </div>
-                                    <div class="flex flex-col justify-end text-right">
-                                        <p class="text-[11px] text-slate-400">Abrechnung am: {{ settlement.settled_at |
-                                            to_local_tz if settlement.settled_at else '-' }}</p>
-                                        <p class="text-[11px] text-slate-400">Handelskonto: {{ settlement.account_id }}
-                                        </p>
                                     </div>
                                 </div>
                             </div>
