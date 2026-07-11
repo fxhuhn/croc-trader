@@ -50,7 +50,11 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
     # Register local timezone conversion filter
     @app.template_filter("to_local_tz")
     def to_local_tz(utc_str: str | None) -> str:
-        """Converts UTC date/time string from database to local Europe/Berlin timezone."""
+        """Converts UTC date/time string from database to local Europe/Berlin timezone.
+
+        Handles both naive (assumed UTC) and timezone-aware ISO strings
+        such as '2026-06-04 11:30:01+00:00'.
+        """
         if not utc_str:
             return "-"
         try:
@@ -58,11 +62,11 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
 
             import pytz
 
-            clean_str = str(utc_str).replace("T", " ").split(".")[0]
-            dt = datetime.datetime.strptime(clean_str, "%Y-%m-%d %H:%M:%S")
-            dt_utc = pytz.utc.localize(dt)
+            dt = datetime.datetime.fromisoformat(str(utc_str))
+            if dt.tzinfo is None:
+                dt = pytz.utc.localize(dt)
             berlin_tz = pytz.timezone("Europe/Berlin")
-            dt_local = dt_utc.astimezone(berlin_tz)
+            dt_local = dt.astimezone(berlin_tz)
             return dt_local.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             return str(utc_str)

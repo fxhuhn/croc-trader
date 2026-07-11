@@ -70,7 +70,7 @@ class BrokerRepository(BaseRepository):
             list[dict[str, Any]]: A list of execution records with their order details.
         """
         query_string = """
-            SELECT e.*, o.action, o.symbol, o.bracket_role
+            SELECT e.*, o.action, o.symbol, o.bracket_role, o.order_type
             FROM executions e
             JOIN orders o ON e.order_id = o.order_id
             WHERE o.trade_group_id = ?
@@ -164,7 +164,15 @@ class BrokerRepository(BaseRepository):
             local_id = int(parts[0]) if parts and parts[0].isdigit() else 0
             current_price = rows[-1]["price"]
 
-            orders_query = "SELECT * FROM orders WHERE trade_group_id = ?"
+            orders_query = """
+                SELECT o.*,
+                       COALESCE(e.price, NULLIF(o.target_price, 0)) AS display_price,
+                       COALESCE(e.executed_at, o.transmitted_at) AS display_date
+                FROM orders o
+                LEFT JOIN executions e ON e.order_id = o.order_id
+                WHERE o.trade_group_id = ?
+                ORDER BY COALESCE(e.executed_at, o.transmitted_at) ASC
+            """
             tws_orders = [
                 dict(r) for r in self.fetch_all(orders_query, (trade_group_id,))
             ]
