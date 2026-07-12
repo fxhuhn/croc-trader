@@ -42,12 +42,32 @@ def view_analytics_dashboard() -> str:
             "max_drawdown": 0.0,
             "total_trades": 0,
         }
+        german_month_names = {
+            1: "Januar",
+            2: "Februar",
+            3: "März",
+            4: "April",
+            5: "Mai",
+            6: "Juni",
+            7: "Juli",
+            8: "August",
+            9: "September",
+            10: "Oktober",
+            11: "November",
+            12: "Dezember",
+        }
+        today = pd.Timestamp.now()
+        current_month_name = f"{german_month_names[today.month]} {today.year}"
+        empty_monthly_evm = {"months": [], "allocations": {}}
+
         return render_template(
             "analytics.html",
             summary=empty_summary,
             strategies=[],
             weekly_trend={},
             weekly_pnl={},
+            monthly_evm=empty_monthly_evm,
+            current_month_name=current_month_name,
         )
 
     if not closed_trades:
@@ -138,7 +158,7 @@ def view_analytics_dashboard() -> str:
             else 0.0
         )
 
-        # Average ROI Calculation
+        # Average ROI Calculation (per-trade arithmetic mean)
         average_roi = 0.0
         average_roi_display_text = "0.00%"
         roi_series = pd.Series(dtype=float)
@@ -157,23 +177,21 @@ def view_analytics_dashboard() -> str:
                     strategy_dataframe.loc[valid_roi_mask, "realized_pnl"]
                     / invested_capital[valid_roi_mask]
                 )
-                total_pnl = strategy_dataframe.loc[valid_roi_mask, "realized_pnl"].sum()
-                total_invested = invested_capital[valid_roi_mask].sum()
-                average_roi = (
-                    float(total_pnl / total_invested) if total_invested > 0.0 else 0.0
-                )
+                average_roi = float(roi_series.mean())
                 average_roi_display_text = f"{average_roi * 100.0:.2f}%"
 
-        # Frequency Model (EV/M) Calculations
+        # Frequency Model (EV/M) Calculations — entry-to-exit span
         active_months = 1.0
-        if (
-            not strategy_dataframe.empty
-            and "exit_date_dt" in strategy_dataframe.columns
-        ):
-            first_date = strategy_dataframe["exit_date_dt"].min()
-            last_date = strategy_dataframe["exit_date_dt"].max()
-            days_span = max(1.0, float((last_date - first_date).days))
-            active_months = max(1.0, days_span / 30.44)
+        if not strategy_dataframe.empty:
+            entry_dates = pd.to_datetime(
+                strategy_dataframe["entry_date"], errors="coerce"
+            ).dropna()
+            exit_dates = strategy_dataframe["exit_date_dt"].dropna()
+            if not entry_dates.empty and not exit_dates.empty:
+                first_date = entry_dates.min()
+                last_date = exit_dates.max()
+                days_span = max(1.0, float((last_date - first_date).days))
+                active_months = max(1.0, days_span / 30.44)
 
         trades_per_month = len(strategy_dataframe) / active_months
         ev_per_trade_roi = average_roi
@@ -295,16 +313,8 @@ def view_analytics_dashboard() -> str:
             else 0.0
         )
 
-        # Calculate Sharpe Ratio with adjusted annualization factor based on trade frequency
+        # Sharpe Ratio — fixed annualization factor (Sharpe 1994 standard)
         sharpe_annualization_factor = 252.0
-        if not strategy_dataframe.empty and len(strategy_dataframe) >= 2:
-            first_exit = strategy_dataframe["exit_date_dt"].min()
-            last_exit = strategy_dataframe["exit_date_dt"].max()
-            days_range = (last_exit - first_exit).days
-            days_span = max(1.0, float(days_range))
-            years_span = days_span / 365.25
-            trades_per_year = len(strategy_dataframe) / years_span
-            sharpe_annualization_factor = min(252.0, max(1.0, float(trades_per_year)))
 
         # Calculate ROI series for Kelly Criterion
         closed_roi_list = []
@@ -344,41 +354,44 @@ def view_analytics_dashboard() -> str:
             else 0.0
         )
 
-        # Calculate relative W/L based on total invested capital
-        winning_invested = (
-            (
-                pd.to_numeric(winning_trades["entry_price"], errors="coerce").fillna(
-                    0.0
+        # Calculate per-trade average W/L ROI (arithmetic mean of individual ROIs)
+        avg_win_roi = 0.0
+        if not winning_trades.empty:
+            win_entry = pd.to_numeric(
+                winning_trades["entry_price"], errors="coerce"
+            ).fillna(0.0)
+            win_size = pd.to_numeric(
+                winning_trades["initial_size"], errors="coerce"
+            ).fillna(0.0)
+            win_invested = win_entry * win_size
+            valid_wins = win_invested > 0.0
+            if valid_wins.any():
+                avg_win_roi = float(
+                    (
+                        winning_trades.loc[valid_wins, "realized_pnl"]
+                        / win_invested[valid_wins]
+                    ).mean()
+                    * 100.0
                 )
-                * pd.to_numeric(winning_trades["initial_size"], errors="coerce").fillna(
-                    0.0
-                )
-            ).sum()
-            if not winning_trades.empty
-            else 0.0
-        )
 
-        losing_invested = (
-            (
-                pd.to_numeric(losing_trades["entry_price"], errors="coerce").fillna(0.0)
-                * pd.to_numeric(losing_trades["initial_size"], errors="coerce").fillna(
-                    0.0
+        avg_loss_roi = 0.0
+        if not losing_trades.empty:
+            loss_entry = pd.to_numeric(
+                losing_trades["entry_price"], errors="coerce"
+            ).fillna(0.0)
+            loss_size = pd.to_numeric(
+                losing_trades["initial_size"], errors="coerce"
+            ).fillna(0.0)
+            loss_invested = loss_entry * loss_size
+            valid_losses = loss_invested > 0.0
+            if valid_losses.any():
+                avg_loss_roi = float(
+                    (
+                        losing_trades.loc[valid_losses, "realized_pnl"]
+                        / loss_invested[valid_losses]
+                    ).mean()
+                    * 100.0
                 )
-            ).sum()
-            if not losing_trades.empty
-            else 0.0
-        )
-
-        avg_win_roi = (
-            (winning_trades["realized_pnl"].sum() / winning_invested) * 100.0
-            if winning_invested > 0.0
-            else 0.0
-        )
-        avg_loss_roi = (
-            (losing_trades["realized_pnl"].sum() / losing_invested) * 100.0
-            if losing_invested > 0.0
-            else 0.0
-        )
 
         strategies_data.append(
             {
@@ -462,9 +475,113 @@ def view_analytics_dashboard() -> str:
     # Sort strategies by realized pnl desc
     strategies_data.sort(key=lambda x: x["pnl"], reverse=True)
 
+    # 3.5. Monthly EV/M Calculation (Cumulative)
+    german_month_names = {
+        1: "Januar",
+        2: "Februar",
+        3: "März",
+        4: "April",
+        5: "Mai",
+        6: "Juni",
+        7: "Juli",
+        8: "August",
+        9: "September",
+        10: "Oktober",
+        11: "November",
+        12: "Dezember",
+    }
+
+    today = pd.Timestamp.now()
+    current_month_name = f"{german_month_names[today.month]} {today.year}"
+
+    # Generate list of month starts from 2026-01-01 to today
+    monthly_date_range = pd.date_range(start="2026-01-01", end=today, freq="MS")
+    monthly_labels = [
+        f"{german_month_names[m.month]} {m.year}" for m in monthly_date_range
+    ]
+
+    # Pre-allocate dictionary arrays for allocations
+    monthly_allocations = {name: [] for name in strategy_groups}
+
+    for month_start in monthly_date_range:
+        # Cumulative slice: all closed trades exiting up to the end of the month
+        month_end = month_start + pd.offsets.MonthEnd(0)
+
+        # If it is the current month, we slice up to today's date to include all trades up to now
+        if month_start.year == today.year and month_start.month == today.month:
+            slice_end = today
+        else:
+            slice_end = month_end
+
+        slice_df = (
+            dataframe[dataframe["exit_date_dt"] <= slice_end]
+            if not dataframe.empty
+            else pd.DataFrame()
+        )
+
+        # Calculate EV/M for each strategy on this slice
+        strategy_evs = {}
+        for name, filters in strategy_groups.items():
+            strat_slice_df = (
+                slice_df[slice_df["strategy"].isin(filters)]
+                if not slice_df.empty
+                else pd.DataFrame()
+            )
+            trades_count = len(strat_slice_df)
+
+            average_roi = 0.0
+            if not strat_slice_df.empty:
+                entry_prices = pd.to_numeric(
+                    strat_slice_df["entry_price"], errors="coerce"
+                ).fillna(0.0)
+                initial_sizes = pd.to_numeric(
+                    strat_slice_df["initial_size"], errors="coerce"
+                ).fillna(0.0)
+                invested_capital = entry_prices * initial_sizes
+                valid_roi_mask = invested_capital > 0.0
+                if valid_roi_mask.any():
+                    roi_per_trade = (
+                        strat_slice_df.loc[valid_roi_mask, "realized_pnl"]
+                        / invested_capital[valid_roi_mask]
+                    )
+                    average_roi = float(roi_per_trade.mean())
+
+            # active_months: entry-to-exit span for accurate frequency
+            active_months = 1.0
+            if not strat_slice_df.empty:
+                slice_entry_dates = pd.to_datetime(
+                    strat_slice_df["entry_date"], errors="coerce"
+                ).dropna()
+                slice_exit_dates = strat_slice_df["exit_date_dt"].dropna()
+                if not slice_entry_dates.empty and not slice_exit_dates.empty:
+                    first_date = slice_entry_dates.min()
+                    last_date = slice_exit_dates.max()
+                    days_span = max(1.0, float((last_date - first_date).days))
+                    active_months = max(1.0, days_span / 30.44)
+
+            trades_per_month = trades_count / active_months
+            ev_per_month = trades_per_month * average_roi
+            strategy_evs[name] = ev_per_month
+
+        # Calculate total positive EV/M for weighting in this month
+        total_ev_per_month = sum(max(0.0, val) for val in strategy_evs.values())
+
+        # Save allocations
+        for name in strategy_groups:
+            raw_ev = strategy_evs[name]
+            if raw_ev > 0.0 and total_ev_per_month > 0.0:
+                allocation = raw_ev / total_ev_per_month
+            else:
+                allocation = 0.0
+            monthly_allocations[name].append(allocation)
+
+    monthly_evm = {
+        "months": monthly_labels,
+        "allocations": monthly_allocations,
+    }
+
     # 4. Weekly Trend Data (Plotly) - Since 01.01.2026
     start_of_year = pd.Timestamp("2026-01-01")
-    today = pd.Timestamp.now()
 
     # Create a full weekly range to ensure no gaps at the start
     date_range = pd.date_range(start=start_of_year, end=today, freq="W-SUN")
@@ -555,5 +672,7 @@ def view_analytics_dashboard() -> str:
         strategies=strategies_data,
         weekly_trend=weekly_trend,
         weekly_pnl=weekly_profit_and_loss,
+        monthly_evm=monthly_evm,
+        current_month_name=current_month_name,
         active_page="analytics",
     )

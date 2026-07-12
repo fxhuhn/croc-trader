@@ -268,111 +268,57 @@
         </div>
     </section>
 
-    <!-- Section 4: Kelly Criterion Allocation -->
-    <section class="mb-8 md:mb-12">
-        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="percent" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Kelly Criterion Allocation
-        </h2>
-        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                <!-- Donut Chart Column -->
-                <div class="lg:col-span-5 flex flex-col items-center justify-center relative">
-                    <div id="kelly-donut-chart" class="h-[240px] w-full max-w-[280px]"></div>
-                </div>
-                
-                <!-- Metrics Table Column -->
-                <div class="lg:col-span-7 w-full">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="border-b border-slate-100 text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">
-                                    <th class="py-3 px-2">Strategy</th>
-                                    <th class="py-3 px-2 text-right">Win Rate</th>
-                                    <th class="py-3 px-2 text-right">Risk/Reward</th>
-                                    <th class="py-3 px-2 text-right">Kelly Fraction</th>
-                                    <th class="py-3 px-2 text-right">Suggested Allocation</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100 text-xs md:text-sm">
-                                {% for strategy in strategies %}
-                                <tr class="text-slate-700 font-medium hover:bg-slate-50/50 transition-colors">
-                                    <td class="py-3 px-2 flex items-center gap-2">
-                                        <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
-                                        <span class="font-bold text-slate-900">{{ strategy.name }}</span>
-                                    </td>
-                                    <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.1%}".format(strategy.metrics.win_rate) }}</td>
-                                    <td class="py-3 px-2 text-right text-slate-600 font-mono">
-                                        {% if strategy.metrics.risk_reward_ratio == 999.0 %}
-                                            &infin;
-                                        {% else %}
-                                            {{ "{:.2f}".format(strategy.metrics.risk_reward_ratio) }}
-                                        {% endif %}
-                                    </td>
-                                    <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.1%}".format(strategy.metrics.kelly_criterion) }}</td>
-                                    <td class="py-3 px-2 text-right font-black text-indigo-600 font-mono">
-                                        {{ "{:.1%}".format(strategy.metrics.suggested_allocation) }}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="mt-4 pt-4 border-t border-slate-100 flex items-start gap-2 text-xs text-slate-500">
-                        <i data-lucide="info" class="w-4 h-4 text-slate-400 shrink-0 mt-0.5"></i>
-                        <span>The Kelly Criterion calculates the mathematically optimal fraction of capital to allocate to each strategy to maximize long-term growth.</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
     <!-- Section 5: Frequenz-Modell (EV/M) -->
     <section class="mb-8 md:mb-12">
         <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
             <i data-lucide="activity" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Frequenz-Modell (EV/M)
         </h2>
         <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-                <!-- Donut Chart Column -->
-                <div class="lg:col-span-5 flex flex-col items-center justify-center relative">
-                    <div id="frequency-donut-chart" class="h-[240px] w-full max-w-[280px]"></div>
+            <!-- Stacked Bar Chart -->
+            <div class="mb-8">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-semibold text-slate-700">Monatliche EV/M Allokation</h3>
                 </div>
-                
-                <!-- Metrics Table Column -->
-                <div class="lg:col-span-7 w-full">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="border-b border-slate-100 text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">
-                                    <th class="py-3 px-2">Strategy</th>
-                                    <th class="py-3 px-2 text-right">Trades / Monat</th>
-                                    <th class="py-3 px-2 text-right">EV / Trade (ROI)</th>
-                                    <th class="py-3 px-2 text-right">EV / Monat</th>
-                                    <th class="py-3 px-2 text-right">Allocation (%)</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-100 text-xs md:text-sm">
-                                {% for strategy in strategies %}
-                                <tr class="text-slate-700 font-medium hover:bg-slate-50/50 transition-colors">
-                                    <td class="py-3 px-2 flex items-center gap-2">
-                                        <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
-                                        <span class="font-bold text-slate-900">{{ strategy.name }}</span>
-                                    </td>
-                                    <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.1f}".format(strategy.metrics.trades_per_month) }}</td>
-                                    <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strategy.metrics.ev_per_trade_roi * 100) }}</td>
-                                    <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.2f}%".format(strategy.metrics.ev_per_month * 100) }}</td>
-                                    <td class="py-3 px-2 text-right font-black text-indigo-600 font-mono">
-                                        {{ "{:.1f}%".format(strategy.metrics.ev_allocation * 100) }}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="mt-4 pt-4 border-t border-slate-100 flex items-start gap-2 text-xs text-slate-500">
-                        <i data-lucide="info" class="w-4 h-4 text-slate-400 shrink-0 mt-0.5"></i>
-                        <span>Das Frequenz-Modell gewichtet Strategien anhand ihres monatlichen Erwartungswertes (Trades pro Monat &times; Durchschnittlicher ROI pro Trade).</span>
-                    </div>
+                <div id="frequency-bar-chart" class="h-[300px] w-full"></div>
+            </div>
+            
+            <!-- Details Table -->
+            <div class="border-t border-slate-100 pt-6">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-semibold text-slate-700">Details der Berechnung (Aktueller Monat: {{ current_month_name }})</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-100 text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">
+                                <th class="py-3 px-2">Strategy</th>
+                                <th class="py-3 px-2 text-right">Trades / Monat</th>
+                                <th class="py-3 px-2 text-right">EV / Trade (ROI)</th>
+                                <th class="py-3 px-2 text-right">EV / Monat</th>
+                                <th class="py-3 px-2 text-right">Allocation (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-xs md:text-sm">
+                            {% for strategy in strategies %}
+                            <tr class="text-slate-700 font-medium hover:bg-slate-50/50 transition-colors">
+                                <td class="py-3 px-2 flex items-center gap-2">
+                                    <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
+                                    <span class="font-bold text-slate-900">{{ strategy.name }}</span>
+                                </td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.1f}".format(strategy.metrics.trades_per_month) }}</td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strategy.metrics.ev_per_trade_roi * 100) }}</td>
+                                <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.2f}%".format(strategy.metrics.ev_per_month * 100) }}</td>
+                                <td class="py-3 px-2 text-right font-black text-indigo-600 font-mono">
+                                    {{ "{:.1f}%".format(strategy.metrics.ev_allocation * 100) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-100 flex items-start gap-2 text-xs text-slate-500">
+                    <i data-lucide="info" class="w-4 h-4 text-slate-400 shrink-0 mt-0.5"></i>
+                    <span>Das Frequenz-Modell gewichtet Strategien anhand ihres monatlichen Erwartungswertes (Trades pro Monat &times; Durchschnittlicher ROI pro Trade) im aktuellen Monat.</span>
                 </div>
             </div>
         </div>
@@ -402,6 +348,7 @@
         const weeklyPnLData = {{ weekly_pnl | tojson | safe }};
         const strategiesMetadata = {{ strategies | tojson | safe }};
         const strategyHexColors = {{ strategy_hex_colors | tojson | safe }};
+        const monthlyEVData = {{ monthly_evm | tojson | safe }};
 
     if (!weeklyTrendData || !weeklyTrendData.dates) return;
 
@@ -541,126 +488,30 @@
         Plotly.newPlot('weekly-pnl-chart', tracesPnL, layoutPnL, config);
     }
 
-    // Kelly Donut Chart Generation
-    const kellyLabels = [];
-    const kellyValues = [];
-    const kellyColors = [];
-    const kellyTexts = [];
-
-    strategiesMetadata.forEach(strategy => {
-        const allocation = strategy.metrics.suggested_allocation || 0;
-        if (allocation > 0) {
-            kellyLabels.push(strategy.name);
-            kellyValues.push(allocation);
-            kellyColors.push(strategyHexColors[strategy.name] || '#64748b');
-            kellyTexts.push((allocation * 100).toFixed(1) + '%');
+    // Frequency Model Stacked Bar Chart (100% scale) Generation
+    if (monthlyEVData && monthlyEVData.months) {
+        const freqTraces = [];
+        
+        // Loop through all strategy names to build traces
+        for (const strategyName in monthlyEVData.allocations) {
+            const color = strategyHexColors[strategyName] || '#94a3b8';
+            freqTraces.push({
+                x: monthlyEVData.months,
+                y: monthlyEVData.allocations[strategyName],
+                name: strategyName,
+                type: 'bar',
+                marker: {
+                    color: color
+                },
+                hoverinfo: 'name+y',
+                yhoverformat: '.1%'
+            });
         }
-    });
 
-    if (kellyValues.length > 0) {
-        const kellyTraces = [{
-            labels: kellyLabels,
-            values: kellyValues,
-            text: kellyTexts,
-            hole: 0.75,
-            type: 'pie',
-            textinfo: 'text', // Show absolute allocation figures instead of relative percentages
-            hoverinfo: 'label+text', // Show strategy label and absolute percentage on hover
-            marker: {
-                colors: kellyColors,
-                line: {
-                    color: '#ffffff',
-                    width: 2
-                }
-            },
-            sort: false
-        }];
-
-        const kellyLayout = {
-            margin: { l: 15, r: 15, t: 15, b: 15 },
-            showlegend: false,
-            hoverlabel: {
-                bgcolor: '#ffffff',
-                bordercolor: '#cbd5e1', // slate-300
-                font: {
-                    color: '#1e293b', // slate-800
-                    size: 12
-                }
-            },
-            paper_bgcolor: 'rgba(0,0,0,0)',
-            plot_bgcolor: 'rgba(0,0,0,0)',
-            annotations: [
-                {
-                    font: {
-                        size: 13,
-                        color: '#475569', // slate-600
-                        weight: 'bold'
-                    },
-                    showarrow: false,
-                    text: 'Kelly<br>Allocation',
-                    x: 0.5,
-                    y: 0.5
-                }
-            ]
-        };
-
-        const kellyConfig = {
-            displayModeBar: false,
-            responsive: true
-        };
-
-        Plotly.newPlot('kelly-donut-chart', kellyTraces, kellyLayout, kellyConfig);
-    } else {
-        const chartContainer = document.getElementById('kelly-donut-chart');
-        if (chartContainer) {
-            chartContainer.innerHTML = `
-                <div class="flex flex-col items-center justify-center h-full text-slate-400 p-4">
-                    <i data-lucide="info" class="w-8 h-8 mb-2 text-slate-300"></i>
-                    <span class="text-xs font-semibold text-slate-400">No Positive Allocations</span>
-                    <span class="text-[10px] text-slate-400 text-center mt-1">All strategies currently have negative expectancy.</span>
-                </div>
-            `;
-        }
-    }
-
-    // Frequency Model Donut Chart Generation
-    const freqLabels = [];
-    const freqValues = [];
-    const freqColors = [];
-    const freqTexts = [];
-
-    strategiesMetadata.forEach(strategy => {
-        const allocation = strategy.metrics.ev_allocation || 0;
-        if (allocation > 0) {
-            freqLabels.push(strategy.name);
-            freqValues.push(allocation);
-            freqColors.push(strategyHexColors[strategy.name] || '#64748b');
-            freqTexts.push((allocation * 100).toFixed(1) + '%');
-        }
-    });
-
-    if (freqValues.length > 0) {
-        const freqTraces = [{
-            labels: freqLabels,
-            values: freqValues,
-            text: freqTexts,
-            hole: 0.75,
-            type: 'pie',
-            textinfo: 'text',
-            hoverinfo: 'label+text',
-            marker: {
-                colors: freqColors,
-                line: {
-                    color: '#ffffff',
-                    width: 2
-                }
-            },
-            sort: false
-        }];
-
-        const freqLayout = {
-            margin: { l: 15, r: 15, t: 15, b: 15 },
-            showlegend: false,
+        const layoutFreq = {
+            margin: { l: 45, r: 10, t: 15, b: 35 },
+            showlegend: false, // Custom styled legend exists in the details table
+            barmode: 'stack',
             hoverlabel: {
                 bgcolor: '#ffffff',
                 bordercolor: '#cbd5e1',
@@ -671,19 +522,32 @@
             },
             paper_bgcolor: 'rgba(0,0,0,0)',
             plot_bgcolor: 'rgba(0,0,0,0)',
-            annotations: [
-                {
-                    font: {
-                        size: 13,
-                        color: '#475569',
-                        weight: 'bold'
-                    },
-                    showarrow: false,
-                    text: 'EV/M<br>Allocation',
-                    x: 0.5,
-                    y: 0.5
-                }
-            ]
+            xaxis: {
+                showgrid: false,
+                zeroline: false,
+                showticklabels: true,
+                tickfont: {
+                    size: 11,
+                    color: '#475569',
+                    weight: 'bold'
+                },
+                fixedrange: true
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: '#f1f5f9',
+                zeroline: true,
+                zerolinecolor: '#cbd5e1',
+                zerolinewidth: 1.5,
+                showticklabels: true,
+                tickfont: {
+                    size: 12,
+                    color: '#94a3b8',
+                    family: 'monospace'
+                },
+                tickformat: '.0%',
+                fixedrange: true
+            }
         };
 
         const freqConfig = {
@@ -691,18 +555,7 @@
             responsive: true
         };
 
-        Plotly.newPlot('frequency-donut-chart', freqTraces, freqLayout, freqConfig);
-    } else {
-        const chartContainer = document.getElementById('frequency-donut-chart');
-        if (chartContainer) {
-            chartContainer.innerHTML = `
-                <div class="flex flex-col items-center justify-center h-full text-slate-400 p-4">
-                    <i data-lucide="info" class="w-8 h-8 mb-2 text-slate-300"></i>
-                    <span class="text-xs font-semibold text-slate-400">No Positive Allocations</span>
-                    <span class="text-[10px] text-slate-400 text-center mt-1">All strategies currently have negative EV/M.</span>
-                </div>
-            `;
-        }
+        Plotly.newPlot('frequency-bar-chart', freqTraces, layoutFreq, freqConfig);
     }
 
     // Ensure Lucide icons are updated after JS changes if any
@@ -718,13 +571,9 @@
         if (pnlChart && pnlChart.classList.contains('js-plotly-plot')) {
             Plotly.Plots.resize('weekly-pnl-chart');
         }
-        const kellyChart = document.getElementById('kelly-donut-chart');
-        if (kellyChart && kellyChart.classList.contains('js-plotly-plot')) {
-            Plotly.Plots.resize('kelly-donut-chart');
-        }
-        const freqChart = document.getElementById('frequency-donut-chart');
+        const freqChart = document.getElementById('frequency-bar-chart');
         if (freqChart && freqChart.classList.contains('js-plotly-plot')) {
-            Plotly.Plots.resize('frequency-donut-chart');
+            Plotly.Plots.resize('frequency-bar-chart');
         }
     });
 </script>

@@ -15,7 +15,11 @@ EPSILON: float = 1e-6
 def calculate_win_rate(trades_pnl: pd.Series) -> float:
     """Calculates the percentage of winning trades.
 
-    Formula: (Winning Trades / Total Trades)
+    Formula: Win Rate = Winning Trades / Total Trades
+
+    Source:
+        Tharp, Van K. *Trade Your Way to Financial Freedom*,
+        2nd ed., McGraw-Hill, 2007, Ch. 7.
 
     Args:
         trades_pnl: Series of realized profit and loss per trade.
@@ -33,7 +37,11 @@ def calculate_win_rate(trades_pnl: pd.Series) -> float:
 def calculate_profit_factor(trades_pnl: pd.Series) -> float:
     """Calculates the gross profit divided by gross loss.
 
-    Formula: Sum of Profits / Abs(Sum of Losses)
+    Formula: Profit Factor = Σ(Profits) / |Σ(Losses)|
+
+    Source:
+        Kaufman, Perry J. *Trading Systems and Methods*,
+        6th ed., Wiley, 2020, Ch. 21.
 
     Args:
         trades_pnl: Series of realized profit and loss per trade.
@@ -53,6 +61,12 @@ def calculate_profit_factor(trades_pnl: pd.Series) -> float:
 def calculate_expectancy(trades_pnl: pd.Series) -> float:
     """Calculates the average profit/loss per trade.
 
+    Formula: E[X] = Σ(xᵢ) / n ≡ (W% × AvgW) − (L% × AvgL)
+
+    Source:
+        Tharp, Van K. *Trade Your Way to Financial Freedom*,
+        2nd ed., McGraw-Hill, 2007, Ch. 7.
+
     Args:
         trades_pnl: Series of realized profit and loss per trade.
 
@@ -66,6 +80,12 @@ def calculate_expectancy(trades_pnl: pd.Series) -> float:
 
 def calculate_risk_reward_ratio(trades_pnl: pd.Series) -> float:
     """Calculates the average win divided by the average loss.
+
+    Formula: Payoff Ratio = Mean(Wins) / |Mean(Losses)|
+
+    Source:
+        Tharp, Van K. *Trade Your Way to Financial Freedom*,
+        2nd ed., McGraw-Hill, 2007, Ch. 7.
 
     Args:
         trades_pnl: Series of realized profit and loss per trade.
@@ -92,6 +112,12 @@ def calculate_max_drawdown(
     equity_curve: pd.Series, initial_value: float | None = None
 ) -> float:
     """Calculates the maximum peak-to-trough decline.
+
+    Formula: MDD = Min((Equity − CumMax) / CumMax)
+
+    Source:
+        Magdon-Ismail, M. & Atiya, A.F. *"Maximum Drawdown"*,
+        Risk Magazine, Oct 2004.
 
     Args:
         equity_curve: Series of portfolio equity values over time.
@@ -120,6 +146,12 @@ def calculate_sharpe_ratio(
 ) -> float:
     """Calculates the annualized Sharpe Ratio.
 
+    Formula: SR = (Mean(R) / Std(R)) × √N, with Rƒ = 0 (implicit).
+
+    Source:
+        Sharpe, William F. *"The Sharpe Ratio"*,
+        Journal of Portfolio Management, Fall 1994, pp. 49-58.
+
     Args:
         trades_pnl: Series of realized profit and loss per trade.
         initial_capital: Starting capital used for return calculation.
@@ -143,7 +175,11 @@ def calculate_sharpe_ratio(
 def calculate_sqn(r_multiples: pd.Series) -> float:
     """Calculates the System Quality Number (SQN).
 
-    Formula: (Mean R / Std R) * Sqrt(Total Trades)
+    Formula: SQN = (Mean(R) / Std(R)) × √n
+
+    Source:
+        Tharp, Van K. *Definitive Guide to Position Sizing*,
+        IITM, 2008.
 
     Args:
         r_multiples: Series of R-Multiples (PnL / Initial Risk).
@@ -167,7 +203,11 @@ def calculate_sqn(r_multiples: pd.Series) -> float:
 def calculate_kelly_criterion(win_rate: float, risk_reward_ratio: float) -> float:
     """Calculates the Kelly Criterion fraction.
 
-    Formula: WinRate - (LossRate / RewardToRisk)
+    Formula: f* = W − (1 − W) / b, where b = avg_win / avg_loss.
+
+    Source:
+        Kelly, J.L. *"A New Interpretation of Information Rate"*,
+        Bell System Technical Journal, Vol. 35(4), 1956, pp. 917-926.
 
     Args:
         win_rate: Probability of a winning trade (0.0 to 1.0).
@@ -192,6 +232,12 @@ def calculate_ulcer_index(equity_curve: pd.Series) -> float:
     """Calculates the Ulcer Index (Pain Index).
 
     Measures the depth and duration of drawdowns.
+
+    Formula: UI = √(Mean(DD²)), where DD = percentage drawdown from peak.
+
+    Source:
+        Martin, Peter G. & McCann, Byron B.
+        *The Investor's Guide to Fidelity Funds*, Wiley, 1989.
 
     Args:
         equity_curve: Series of portfolio equity values over time.
