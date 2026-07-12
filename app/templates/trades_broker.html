@@ -164,7 +164,8 @@
                             onclick="toggleRow('acc-sub-{{ order.order_id }}')">
                             <div class="grid grid-cols-5 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xs font-bold text-slate-400 font-mono">{{ order.order_id }}</span>
+                                    <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{
+                                        order.order_id }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ order.symbol }}</span>
                                 </div>
                                 <div class="text-slate-500 font-medium">{{ order.strategy_name }}</div>
@@ -184,17 +185,21 @@
                                         order.order_type }}</span>
                                 </div>
                             </div>
-                            <div id="acc-sub-{{ order.order_id }}"
-                                class="hidden px-4 pb-3 bg-slate-50/10">
+                            <div id="acc-sub-{{ order.order_id }}" class="hidden px-4 pb-3 bg-slate-50/10">
                                 <div class="md:pl-[4.25rem] pt-2">
-                                    <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
-                                        <span class="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Group:</span>
-                                        <span class="font-mono text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded">{{ order.trade_group_id }}</span>
+                                    <div
+                                        class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
+                                        <span
+                                            class="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Group:</span>
+                                        <span class="font-mono text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded">{{
+                                            order.trade_group_id }}</span>
                                         <span class="text-slate-300 font-light">|</span>
-                                        <span class="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Parent:</span>
+                                        <span
+                                            class="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Parent:</span>
                                         <span class="font-mono text-slate-900">{{ order.parent_id or '-' }}</span>
                                         <span class="text-slate-300 font-light">|</span>
-                                        <span class="text-slate-400 font-mono">{{ order.transmitted_at | to_local_tz if order.transmitted_at else '-' }}</span>
+                                        <span class="text-slate-400 font-mono">{{ order.transmitted_at | to_local_tz if
+                                            order.transmitted_at else '-' }}</span>
                                     </div>
                                 </div>
                             </div>
@@ -359,7 +364,8 @@
                             onclick="toggleRow('acc-err-{{ order.order_id }}')">
                             <div class="grid grid-cols-5 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xs font-bold text-slate-400 font-mono">{{ order.order_id }}</span>
+                                    <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{
+                                        order.order_id }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ order.symbol }}</span>
                                 </div>
                                 <div class="text-slate-500 font-medium">{{ order.strategy_name }}</div>
@@ -483,7 +489,8 @@
                             onclick="toggleRow('acc-act-{{ loop.index }}')">
                             <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xs font-bold text-slate-400 font-mono">{{ trade.id }}</span>
+                                    <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{ trade.id
+                                        }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ trade.symbol }}</span>
                                 </div>
                                 <div class="text-slate-500 font-medium">{{ trade.strategy }}</div>
@@ -501,49 +508,62 @@
                                     }}%)
                                 </div>
                             </div>
-                            <div id="acc-act-{{ loop.index }}"
-                                class="hidden px-4 pb-4 bg-slate-50/10">
+                            <div id="acc-act-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
                                 <div class="md:pl-[4.25rem] pt-3">
                                     <div class="relative pl-4 ml-1.5 border-l border-slate-200 space-y-3 py-1">
-                                        {% for order in trade.tws_orders %}
+                                        {% for order in trade.tws_orders | sort(attribute='order_id') %}
                                         {% set is_cancelled = order.status == 'Cancelled' %}
-                                        
+
                                         {% set dot_color = "bg-slate-400" %}
                                         {% set text_color = "text-slate-700" %}
                                         {% set badge_style = "bg-slate-100 text-slate-600 border-slate-200" %}
 
                                         {% if order.status == 'Submitted' or order.status == 'Filled' %}
-                                            {% set dot_color = "bg-emerald-500" %}
-                                            {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100/50" %}
+                                        {% set dot_color = "bg-emerald-500" %}
+                                        {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100/50" %}
                                         {% elif order.status == 'PreSubmitted' %}
-                                            {% set dot_color = "bg-blue-500" %}
-                                            {% set badge_style = "bg-blue-50 text-blue-700 border-blue-100" %}
+                                        {% set dot_color = "bg-blue-500" %}
+                                        {% set badge_style = "bg-blue-50 text-blue-700 border-blue-100" %}
                                         {% elif is_cancelled %}
-                                            {% set dot_color = "bg-slate-300 opacity-60" %}
-                                            {% set text_color = "text-slate-400" %}
-                                            {% set badge_style = "bg-slate-50 text-slate-400 border-slate-200 opacity-60" %}
+                                        {% set dot_color = "bg-slate-300 opacity-60" %}
+                                        {% set text_color = "text-slate-400" %}
+                                        {% set badge_style = "bg-slate-50 text-slate-400 border-slate-200 opacity-60" %}
                                         {% elif order.status == 'Error' %}
-                                            {% set dot_color = "bg-rose-500" %}
-                                            {% set badge_style = "bg-rose-50 text-rose-700 border-rose-100/50" %}
+                                        {% set dot_color = "bg-rose-500" %}
+                                        {% set badge_style = "bg-rose-50 text-rose-700 border-rose-100/50" %}
                                         {% endif %}
 
-                                        <div class="relative flex items-center gap-x-2.5 text-xs font-medium {{ text_color }} {% if is_cancelled %}opacity-60{% endif %}">
+                                        <div
+                                            class="relative flex items-center gap-x-2.5 text-xs font-medium {{ text_color }} {% if is_cancelled %}opacity-60{% endif %}">
                                             <!-- Punkt exakt auf der vertikalen Linie -->
-                                            <span class="absolute -left-[22px] flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
+                                            <span
+                                                class="absolute -left-[22px] flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
                                                 <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
                                             </span>
-                                            <span class="font-mono text-slate-400">#{{ order.order_id }}</span>
+                                            <span class="font-mono text-slate-400 w-16 shrink-0">#{{ order.order_id
+                                                }}</span>
                                             <span class="text-slate-300 font-light">|</span>
-                                            <span class="font-mono text-slate-500">{{ order.display_date | to_local_tz if order.display_date else '-' }}</span>
+                                            <span class="font-mono text-slate-500 w-40 shrink-0">{{ order.display_date |
+                                                to_local_tz if order.display_date else '-' }}</span>
                                             <span class="text-slate-300 font-light">|</span>
-                                            <span class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{ order.action }} {{ order.quantity|int }}</span>
-                                            <span class="text-slate-600 font-mono">@ {{ "{:,.2f}".format(order.display_price|float) if order.display_price else '-' }}</span>
-                                            <span class="text-slate-400 font-mono text-[11px]">({{ order.order_type | default('—') }})</span>
+                                            <div class="w-60 shrink-0 flex items-center gap-x-1.5">
+                                                <span
+                                                    class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
+                                                    order.action }} {{ order.quantity|int }}</span>
+                                                <span class="text-slate-600 font-mono">@ {{
+                                                    "{:,.2f}".format(order.display_price|float) if order.display_price
+                                                    else '-' }}</span>
+                                                <span class="text-slate-400 font-mono text-[11px]">({{ order.order_type
+                                                    | default('—') }})</span>
+                                            </div>
                                             <span class="text-slate-300 font-light">|</span>
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold border {{ badge_style }}">{{ order.status }}</span>
+                                            <span
+                                                class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold border {{ badge_style }}">{{
+                                                order.status }}</span>
                                         </div>
                                         {% else %}
-                                        <div class="text-xs text-slate-400 italic">Keine verknüpften TWS-Orders gefunden.</div>
+                                        <div class="text-xs text-slate-400 italic">Keine verknüpften TWS-Orders
+                                            gefunden.</div>
                                         {% endfor %}
                                     </div>
                                 </div>
@@ -633,8 +653,8 @@
                         class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
                         <div>ID & Symbol</div>
                         <div>Strategy</div>
-                        <div class="text-right">Avg Entry Price</div>
-                        <div class="text-right">Avg Exit Price</div>
+                        <div class="text-right">Entry Price</div>
+                        <div class="text-right">Exit Price</div>
                         <div class="text-right">Slippage</div>
                         <div class="text-right">Commissions</div>
                         <div class="text-right">Net PnL</div>
@@ -647,7 +667,7 @@
                             onclick="toggleRow('acc-settle-{{ loop.index }}')">
                             <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-xs font-bold text-slate-400 font-mono">{{
+                                    <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{
                                         settlement.local_trade_id }}</span>
                                     <span class="font-bold text-slate-900 text-sm">{{ settlement.symbol }}</span>
                                 </div>
@@ -670,33 +690,48 @@
                                     }} ({{ "{:+.2f}".format(settlement.pnl_percentage) }}%)
                                 </div>
                             </div>
-                            <div id="acc-settle-{{ loop.index }}"
-                                class="hidden px-4 pb-4 bg-slate-50/10">
+                            <div id="acc-settle-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
                                 <div class="md:pl-[4.25rem] pt-3">
                                     <div class="relative pl-4 ml-1.5 border-l border-slate-200 space-y-3 py-1">
-                                        {% for execution in settlement.executions if execution.bracket_role | upper in ['ENTRY', 'EXIT'] %}
+                                        {% for execution in settlement.executions | sort(attribute='order_id') if
+                                        execution.bracket_role | upper in ['ENTRY', 'EXIT'] %}
                                         {% set is_entry = execution.bracket_role | upper == 'ENTRY' %}
                                         {% set role_label = 'Entry' if is_entry else 'Exit' %}
                                         {% set dot_color = "bg-emerald-500" if is_entry else "bg-indigo-500" %}
-                                        {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100" if is_entry else "bg-indigo-50 text-indigo-700 border-indigo-100" %}
+                                        {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100" if
+                                        is_entry else "bg-indigo-50 text-indigo-700 border-indigo-100" %}
 
-                                        <div class="relative flex items-center gap-x-2.5 text-xs font-medium text-slate-600">
+                                        <div
+                                            class="relative flex items-center gap-x-2.5 text-xs font-medium text-slate-600">
                                             <!-- Punkt exakt auf der vertikalen Linie -->
-                                            <span class="absolute -left-[22px] flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
+                                            <span
+                                                class="absolute -left-[22px] flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
                                                 <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
                                             </span>
-                                            <span class="font-mono text-slate-400">#{{ execution.order_id }}</span>
+                                            <span class="font-mono text-slate-400 w-16 shrink-0">#{{ execution.order_id
+                                                }}</span>
                                             <span class="text-slate-300 font-light">|</span>
-                                            <span class="font-mono text-slate-500">{{ execution.executed_at | to_local_tz if execution.executed_at else '-' }}</span>
+                                            <span class="font-mono text-slate-500 w-40 shrink-0">{{
+                                                execution.executed_at | to_local_tz if execution.executed_at else '-'
+                                                }}</span>
                                             <span class="text-slate-300 font-light">|</span>
-                                            <span class="{% if execution.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{ execution.action }} {{ execution.qty|int }}</span>
-                                            <span class="text-slate-600 font-mono">@ {{ "{:,.2f}".format(execution.price|float) }}</span>
-                                            <span class="text-slate-400 font-mono text-[11px]">({{ execution.order_type | default('—') }})</span>
+                                            <div class="w-60 shrink-0 flex items-center gap-x-1.5">
+                                                <span
+                                                    class="{% if execution.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
+                                                    execution.action }} {{ execution.qty|int }}</span>
+                                                <span class="text-slate-600 font-mono">@ {{
+                                                    "{:,.2f}".format(execution.price|float) }}</span>
+                                                <span class="text-slate-400 font-mono text-[11px]">({{
+                                                    execution.order_type | default('—') }})</span>
+                                            </div>
                                             <span class="text-slate-300 font-light">|</span>
-                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold border {{ badge_style }}">{{ role_label }}</span>
+                                            <span
+                                                class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold border {{ badge_style }}">{{
+                                                role_label }}</span>
                                         </div>
                                         {% else %}
-                                        <div class="text-xs text-slate-400 italic">Keine detaillierten Entry/Exit Ausführungen gefunden.</div>
+                                        <div class="text-xs text-slate-400 italic">Keine detaillierten Entry/Exit
+                                            Ausführungen gefunden.</div>
                                         {% endfor %}
                                     </div>
                                 </div>
@@ -946,39 +981,39 @@
     const strategyMetrics = {
         all: {
             pnl: {{ metrics.all.pnl }},
-            pnlText: "{{ metrics.all.pnlText }}",
-            winrate: "{{ metrics.all.winrate }}",
+    pnlText: "{{ metrics.all.pnlText }}",
+        winrate: "{{ metrics.all.winrate }}",
             slippage: "{{ metrics.all.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.all.fees) }}"
+                fees: "{{ '{:,.2f}'.format(metrics.all.fees) }}"
         },
-        DipBuyer: {
-            pnl: {{ metrics.DipBuyer.pnl }},
-            pnlText: "{{ metrics.DipBuyer.pnlText }}",
-            winrate: "{{ metrics.DipBuyer.winrate }}",
-            slippage: "{{ metrics.DipBuyer.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.DipBuyer.fees) }}"
-        },
-        TurnoverTiming: {
-            pnl: {{ metrics.TurnoverTiming.pnl }},
-            pnlText: "{{ metrics.TurnoverTiming.pnlText }}",
-            winrate: "{{ metrics.TurnoverTiming.winrate }}",
-            slippage: "{{ metrics.TurnoverTiming.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.TurnoverTiming.fees) }}"
-        },
-        TwoPercent: {
-            pnl: {{ metrics.TwoPercent.pnl }},
-            pnlText: "{{ metrics.TwoPercent.pnlText }}",
-            winrate: "{{ metrics.TwoPercent.winrate }}",
-            slippage: "{{ metrics.TwoPercent.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.TwoPercent.fees) }}"
-        },
-        NDXMomentum: {
-            pnl: {{ metrics.NDXMomentum.pnl }},
-            pnlText: "{{ metrics.NDXMomentum.pnlText }}",
-            winrate: "{{ metrics.NDXMomentum.winrate }}",
-            slippage: "{{ metrics.NDXMomentum.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.NDXMomentum.fees) }}"
-        }
+    DipBuyer: {
+        pnl: {{ metrics.DipBuyer.pnl }},
+        pnlText: "{{ metrics.DipBuyer.pnlText }}",
+        winrate: "{{ metrics.DipBuyer.winrate }}",
+        slippage: "{{ metrics.DipBuyer.slippage }}",
+        fees: "{{ '{:,.2f}'.format(metrics.DipBuyer.fees) }}"
+    },
+    TurnoverTiming: {
+        pnl: {{ metrics.TurnoverTiming.pnl }},
+        pnlText: "{{ metrics.TurnoverTiming.pnlText }}",
+        winrate: "{{ metrics.TurnoverTiming.winrate }}",
+        slippage: "{{ metrics.TurnoverTiming.slippage }}",
+        fees: "{{ '{:,.2f}'.format(metrics.TurnoverTiming.fees) }}"
+    },
+    TwoPercent: {
+        pnl: {{ metrics.TwoPercent.pnl }},
+        pnlText: "{{ metrics.TwoPercent.pnlText }}",
+        winrate: "{{ metrics.TwoPercent.winrate }}",
+        slippage: "{{ metrics.TwoPercent.slippage }}",
+        fees: "{{ '{:,.2f}'.format(metrics.TwoPercent.fees) }}"
+    },
+    NDXMomentum: {
+        pnl: {{ metrics.NDXMomentum.pnl }},
+        pnlText: "{{ metrics.NDXMomentum.pnlText }}",
+        winrate: "{{ metrics.NDXMomentum.winrate }}",
+        slippage: "{{ metrics.NDXMomentum.slippage }}",
+        fees: "{{ '{:,.2f}'.format(metrics.NDXMomentum.fees) }}"
+    }
     };
 
     // Switch Tabs Script

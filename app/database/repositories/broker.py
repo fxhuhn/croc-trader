@@ -133,36 +133,71 @@ class BrokerRepository(BaseRepository):
         Returns:
             list[dict[str, Any]]: Active positions list.
         """
-        net_qty_map = self.get_net_positions_by_symbol()
-        active_positions = []
+        active_groups_query = """
+            SELECT
+                o.trade_group_id,
+                o.symbol,
+                o.strategy_name,
+                SUM(CASE WHEN o.action = 'BUY' THEN e.qty ELSE -e.qty END) AS net_quantity
+            FROM executions e
+            JOIN orders o ON e.order_id = o.order_id
+            WHERE o.strategy_name NOT IN ('SplitTarget', 'HoldTarget')
+            GROUP BY o.trade_group_id
+            HAVING net_quantity > 0.0
+        """
+        active_group_rows = [dict(row) for row in self.fetch_all(active_groups_query)]
+        active_positions: list[dict[str, Any]] = []
 
-        for symbol, qty in net_qty_map.items():
-            if qty <= 0.0:
-                continue
+        for group_row in active_group_rows:
+            trade_group_id = str(group_row["trade_group_id"])
+            symbol = str(group_row["symbol"])
+            net_quantity = float(group_row["net_quantity"])
+            strategy_name = str(group_row["strategy_name"])
 
-            query = """
+            executions_query = """
                 SELECT e.*, o.strategy_name, o.action, o.trade_group_id
                 FROM executions e
                 JOIN orders o ON e.order_id = o.order_id
-                WHERE o.symbol = ? AND o.strategy_name NOT IN ('SplitTarget', 'HoldTarget')
+                WHERE o.trade_group_id = ?
                 ORDER BY e.executed_at ASC
             """
-            rows = [dict(r) for r in self.fetch_all(query, (symbol,))]
-            if not rows:
-                continue
+            trade_group_executions = [
+                dict(row) for row in self.fetch_all(executions_query, (trade_group_id,))
+            ]
 
-            buys = [r for r in rows if r["action"] == "BUY"]
-            total_qty = sum(b["qty"] for b in buys)
-            total_cost = sum(b["qty"] * b["price"] for b in buys)
-            avg_entry_price = total_cost / total_qty if total_qty > 0 else 0.0
+            buy_executions = [r for r in trade_group_executions if r["action"] == "BUY"]
+            total_buy_qty = sum(b["qty"] for b in buy_executions)
+            total_buy_cost = sum(b["qty"] * b["price"] for b in buy_executions)
+            avg_entry_price = (
+                total_buy_cost / total_buy_qty if total_buy_qty > 0 else 0.0
+            )
 
-            latest_buy = buys[-1] if buys else rows[-1]
-            strategy_name = latest_buy["strategy_name"]
-            trade_group_id = latest_buy["trade_group_id"]
+            latest_buy = (
+                buy_executions[-1]
+                if buy_executions
+                else (trade_group_executions[-1] if trade_group_executions else None)
+            )
 
             parts = trade_group_id.split("_")
             local_id = int(parts[0]) if parts and parts[0].isdigit() else 0
-            current_price = rows[-1]["price"]
+
+            # Get the latest execution price for this symbol across all executions
+            fallback_price_query = """
+                SELECT e.price FROM executions e
+                JOIN orders o ON e.order_id = o.order_id
+                WHERE o.symbol = ?
+                ORDER BY e.executed_at DESC LIMIT 1
+            """
+            fallback_price_row = self.fetch_one(fallback_price_query, (symbol,))
+            current_price = (
+                fallback_price_row["price"]
+                if fallback_price_row
+                else (
+                    trade_group_executions[-1]["price"]
+                    if trade_group_executions
+                    else 0.0
+                )
+            )
 
             orders_query = """
                 SELECT o.*,
@@ -174,17 +209,17 @@ class BrokerRepository(BaseRepository):
                 ORDER BY COALESCE(e.executed_at, o.transmitted_at) ASC
             """
             tws_orders = [
-                dict(r) for r in self.fetch_all(orders_query, (trade_group_id,))
+                dict(row) for row in self.fetch_all(orders_query, (trade_group_id,))
             ]
 
             tws_status = "Filled"
             if tws_orders:
-                statuses = [o.get("status") for o in tws_orders]
-                if "Error" in statuses:
+                order_statuses = [o.get("status") for o in tws_orders]
+                if "Error" in order_statuses:
                     tws_status = "Error"
-                elif "Submitted" in statuses:
+                elif "Submitted" in order_statuses:
                     tws_status = "Submitted"
-                elif "PreSubmitted" in statuses:
+                elif "PreSubmitted" in order_statuses:
                     tws_status = "PreSubmitted"
 
             active_positions.append(
@@ -193,10 +228,10 @@ class BrokerRepository(BaseRepository):
                     "symbol": symbol,
                     "strategy": strategy_name,
                     "entry_date": latest_buy["executed_at"][:10]
-                    if latest_buy["executed_at"]
+                    if latest_buy and latest_buy.get("executed_at")
                     else "-",
                     "days_held": 0,
-                    "current_size": qty,
+                    "current_size": net_quantity,
                     "entry_price": avg_entry_price,
                     "current_price": current_price,
                     "tws_status": tws_status,
