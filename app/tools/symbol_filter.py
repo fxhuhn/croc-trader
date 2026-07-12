@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # Constants
 CACHE_DIR = Path(__file__).resolve().parent.parent.parent / "data"
 CACHE_FILE = CACHE_DIR / "preferred_symbols.json"
+CACHE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60  # 30 days
 
 
 class SymbolFilter:
@@ -49,10 +50,24 @@ class SymbolFilter:
             # 1. Try to load from cache
             self._load_from_cache()
 
-            # 2. Start background thread to refresh mapping
-            threading.Thread(
-                target=self._refresh_mapping_background, daemon=True
-            ).start()
+            # 2. Start background thread to refresh mapping only if cache is missing or stale
+            cache_is_fresh = False
+            if CACHE_FILE.exists():
+                try:
+                    cache_mtime = CACHE_FILE.stat().st_mtime
+                    if (time.time() - cache_mtime) < CACHE_MAX_AGE_SECONDS:
+                        cache_is_fresh = True
+                except Exception as error:
+                    logger.warning("Failed to check cache modification time: %s", error)
+
+            if not cache_is_fresh:
+                threading.Thread(
+                    target=self._refresh_mapping_background, daemon=True
+                ).start()
+            else:
+                logger.debug(
+                    "Skipping symbol preference refresh; cached mapping is fresh."
+                )
 
             SymbolFilter._initialized = True
 
