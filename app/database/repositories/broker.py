@@ -145,7 +145,9 @@ class BrokerRepository(BaseRepository):
             GROUP BY o.trade_group_id
             HAVING net_quantity > 0.0
         """
-        active_group_rows = [dict(row) for row in self.fetch_all(active_groups_query)]
+        active_group_rows = [
+            dict(group_row) for group_row in self.fetch_all(active_groups_query)
+        ]
         active_positions: list[dict[str, Any]] = []
 
         for group_row in active_group_rows:
@@ -154,73 +156,19 @@ class BrokerRepository(BaseRepository):
             net_quantity = float(group_row["net_quantity"])
             strategy_name = str(group_row["strategy_name"])
 
-            executions_query = """
-                SELECT e.*, o.strategy_name, o.action, o.trade_group_id
-                FROM executions e
-                JOIN orders o ON e.order_id = o.order_id
-                WHERE o.trade_group_id = ?
-                ORDER BY e.executed_at ASC
-            """
-            trade_group_executions = [
-                dict(row) for row in self.fetch_all(executions_query, (trade_group_id,))
-            ]
-
-            buy_executions = [r for r in trade_group_executions if r["action"] == "BUY"]
-            total_buy_qty = sum(b["qty"] for b in buy_executions)
-            total_buy_cost = sum(b["qty"] * b["price"] for b in buy_executions)
-            avg_entry_price = (
-                total_buy_cost / total_buy_qty if total_buy_qty > 0 else 0.0
+            trade_group_executions = self._fetch_trade_group_executions(trade_group_id)
+            avg_entry_price = self._calculate_average_entry_price(
+                trade_group_executions
+            )
+            latest_buy = self._resolve_latest_buy_execution(trade_group_executions)
+            current_price = self._resolve_latest_price_fallback(
+                symbol, trade_group_executions
             )
 
-            latest_buy = (
-                buy_executions[-1]
-                if buy_executions
-                else (trade_group_executions[-1] if trade_group_executions else None)
-            )
+            tws_status, tws_orders = self._determine_tws_status(trade_group_id)
 
             parts = trade_group_id.split("_")
             local_id = int(parts[0]) if parts and parts[0].isdigit() else 0
-
-            # Get the latest execution price for this symbol across all executions
-            fallback_price_query = """
-                SELECT e.price FROM executions e
-                JOIN orders o ON e.order_id = o.order_id
-                WHERE o.symbol = ?
-                ORDER BY e.executed_at DESC LIMIT 1
-            """
-            fallback_price_row = self.fetch_one(fallback_price_query, (symbol,))
-            current_price = (
-                fallback_price_row["price"]
-                if fallback_price_row
-                else (
-                    trade_group_executions[-1]["price"]
-                    if trade_group_executions
-                    else 0.0
-                )
-            )
-
-            orders_query = """
-                SELECT o.*,
-                       COALESCE(e.price, NULLIF(o.target_price, 0)) AS display_price,
-                       COALESCE(e.executed_at, o.transmitted_at) AS display_date
-                FROM orders o
-                LEFT JOIN executions e ON e.order_id = o.order_id
-                WHERE o.trade_group_id = ?
-                ORDER BY COALESCE(e.executed_at, o.transmitted_at) ASC
-            """
-            tws_orders = [
-                dict(row) for row in self.fetch_all(orders_query, (trade_group_id,))
-            ]
-
-            tws_status = "Filled"
-            if tws_orders:
-                order_statuses = [o.get("status") for o in tws_orders]
-                if "Error" in order_statuses:
-                    tws_status = "Error"
-                elif "Submitted" in order_statuses:
-                    tws_status = "Submitted"
-                elif "PreSubmitted" in order_statuses:
-                    tws_status = "PreSubmitted"
 
             active_positions.append(
                 {
@@ -243,3 +191,87 @@ class BrokerRepository(BaseRepository):
             )
 
         return active_positions
+
+    def _fetch_trade_group_executions(
+        self, trade_group_id: str
+    ) -> list[dict[str, Any]]:
+        """Fetches executions for a specific trade group."""
+        executions_query = """
+            SELECT e.*, o.strategy_name, o.action, o.symbol, o.bracket_role, o.order_type
+            FROM executions e
+            JOIN orders o ON e.order_id = o.order_id
+            WHERE o.trade_group_id = ?
+            ORDER BY e.executed_at ASC
+        """
+        return [
+            dict(row) for row in self.fetch_all(executions_query, (trade_group_id,))
+        ]
+
+    def _calculate_average_entry_price(self, executions: list[dict[str, Any]]) -> float:
+        """Calculates average entry price from BUY executions."""
+        buy_executions = [
+            execution for execution in executions if execution["action"] == "BUY"
+        ]
+        total_buy_quantity = sum(
+            buy_execution["qty"] for buy_execution in buy_executions
+        )
+        total_buy_cost = sum(
+            buy_execution["qty"] * buy_execution["price"]
+            for buy_execution in buy_executions
+        )
+        return total_buy_cost / total_buy_quantity if total_buy_quantity > 0 else 0.0
+
+    def _resolve_latest_buy_execution(
+        self, executions: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
+        """Determines the last buy execution or fallback execution."""
+        buy_executions = [
+            execution for execution in executions if execution["action"] == "BUY"
+        ]
+        if buy_executions:
+            return buy_executions[-1]
+        return executions[-1] if executions else None
+
+    def _resolve_latest_price_fallback(
+        self, symbol: str, executions: list[dict[str, Any]]
+    ) -> float:
+        """Queries the absolute latest execution price for the symbol."""
+        fallback_price_query = """
+            SELECT e.price FROM executions e
+            JOIN orders o ON e.order_id = o.order_id
+            WHERE o.symbol = ?
+            ORDER BY e.executed_at DESC LIMIT 1
+        """
+        fallback_price_row = self.fetch_one(fallback_price_query, (symbol,))
+        if fallback_price_row:
+            return float(fallback_price_row["price"])
+        return float(executions[-1]["price"]) if executions else 0.0
+
+    def _determine_tws_status(
+        self, trade_group_id: str
+    ) -> tuple[str, list[dict[str, Any]]]:
+        """Resolves TWS state and loads associated orders."""
+        orders_query = """
+            SELECT o.*,
+                   COALESCE(e.price, NULLIF(o.target_price, 0)) AS display_price,
+                   COALESCE(e.executed_at, o.transmitted_at) AS display_date
+            FROM orders o
+            LEFT JOIN executions e ON e.order_id = o.order_id
+            WHERE o.trade_group_id = ?
+            ORDER BY COALESCE(e.executed_at, o.transmitted_at) ASC
+        """
+        tws_orders = [
+            dict(row) for row in self.fetch_all(orders_query, (trade_group_id,))
+        ]
+        tws_status = "Filled"
+
+        if tws_orders:
+            order_statuses = [order.get("status") for order in tws_orders]
+            if "Error" in order_statuses:
+                tws_status = "Error"
+            elif "Submitted" in order_statuses:
+                tws_status = "Submitted"
+            elif "PreSubmitted" in order_statuses:
+                tws_status = "PreSubmitted"
+
+        return tws_status, tws_orders
