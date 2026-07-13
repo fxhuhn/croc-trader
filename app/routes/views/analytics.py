@@ -74,18 +74,32 @@ def view_analytics_dashboard() -> str:
         dataframe = pd.DataFrame(columns=["exit_date", "realized_pnl", "strategy"])
     else:
         dataframe = pd.DataFrame(closed_trades)
-    dataframe["exit_date_dt"] = pd.to_datetime(dataframe["exit_date"])
+
+    expected_trade_columns = (
+        "exit_date",
+        "realized_pnl",
+        "strategy",
+        "entry_price",
+        "initial_size",
+        "entry_date",
+        "stop_loss",
+    )
+    for column_name in expected_trade_columns:
+        if column_name not in dataframe.columns:
+            dataframe[column_name] = np.nan
+
+    dataframe["exit_date_dt"] = pd.to_datetime(dataframe["exit_date"], errors="coerce")
     dataframe = dataframe.sort_values("exit_date_dt")
 
     # 2. Summary Metrics (Using metrics.py)
     # Portfolio equity curve for drawdown calculation
     initial_capital = 100000.0
-    dataframe["cum_pnl"] = dataframe["realized_pnl"].cumsum()
+    dataframe["cum_pnl"] = dataframe["realized_pnl"].fillna(0.0).cumsum()
     dataframe["equity"] = initial_capital + dataframe["cum_pnl"]
 
     summary = {
-        "net_pnl": float(dataframe["realized_pnl"].sum()),
-        "win_rate": metrics.calculate_win_rate(dataframe["realized_pnl"]),
+        "net_pnl": float(dataframe["realized_pnl"].fillna(0.0).sum()),
+        "win_rate": metrics.calculate_win_rate(dataframe["realized_pnl"].fillna(0.0)),
         "max_drawdown": metrics.calculate_max_drawdown(
             dataframe["equity"], initial_capital
         ),
@@ -182,11 +196,15 @@ def view_analytics_dashboard() -> str:
 
         # Frequency Model (EV/M) Calculations — entry-to-exit span
         active_months = 1.0
-        if not strategy_dataframe.empty:
+        if not strategy_dataframe.empty and "entry_date" in strategy_dataframe.columns:
             entry_dates = pd.to_datetime(
                 strategy_dataframe["entry_date"], errors="coerce"
             ).dropna()
-            exit_dates = strategy_dataframe["exit_date_dt"].dropna()
+            exit_dates = (
+                strategy_dataframe["exit_date_dt"].dropna()
+                if "exit_date_dt" in strategy_dataframe.columns
+                else pd.Series(dtype="datetime64[ns]")
+            )
             if not entry_dates.empty and not exit_dates.empty:
                 first_date = entry_dates.min()
                 last_date = exit_dates.max()
@@ -548,11 +566,15 @@ def view_analytics_dashboard() -> str:
 
             # active_months: entry-to-exit span for accurate frequency
             active_months = 1.0
-            if not strat_slice_df.empty:
+            if not strat_slice_df.empty and "entry_date" in strat_slice_df.columns:
                 slice_entry_dates = pd.to_datetime(
                     strat_slice_df["entry_date"], errors="coerce"
                 ).dropna()
-                slice_exit_dates = strat_slice_df["exit_date_dt"].dropna()
+                slice_exit_dates = (
+                    strat_slice_df["exit_date_dt"].dropna()
+                    if "exit_date_dt" in strat_slice_df.columns
+                    else pd.Series(dtype="datetime64[ns]")
+                )
                 if not slice_entry_dates.empty and not slice_exit_dates.empty:
                     first_date = slice_entry_dates.min()
                     last_date = slice_exit_dates.max()
