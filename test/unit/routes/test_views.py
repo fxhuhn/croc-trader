@@ -323,3 +323,55 @@ def test_view_backtest_dashboard_handles_missing_run_id_gracefully(
         # Assert
         assert response.status_code == 200
         assert b"No backtest results found." in response.data
+
+
+def test_prepare_active_orders_hierarchical_sorting_and_child_marking() -> None:
+    """Verifies that active orders are sorted ascending by order_id, grouped by trade_group_id,
+    and child orders are properly flagged depending on whether their parent is open.
+    """
+    from app.routes.views.trades import _prepare_active_orders
+
+    # Test Case 1: Both Parent (731) and Child (732) are open
+    # Test Case 2: Standalone Order (735)
+    # Test Case 3: Order (742) whose parent (739) is Filled/missing (Active Position)
+    orders = [
+        {
+            "order_id": 742,
+            "parent_id": 739,
+            "trade_group_id": "TG_NVDA",
+            "symbol": "NVDA",
+        },
+        {
+            "order_id": 735,
+            "parent_id": None,
+            "trade_group_id": "TG_AAPL",
+            "symbol": "AAPL",
+        },
+        {
+            "order_id": 732,
+            "parent_id": 731,
+            "trade_group_id": "TG_GILD",
+            "symbol": "GILD",
+        },
+        {
+            "order_id": 731,
+            "parent_id": None,
+            "trade_group_id": "TG_GILD",
+            "symbol": "GILD",
+        },
+    ]
+
+    result = _prepare_active_orders(orders)
+
+    # Assert correct order of elements (731, 732, 735, 742)
+    assert [o["order_id"] for o in result] == [731, 732, 735, 742]
+
+    # Assert is_child flags:
+    # 731 is parent -> is_child=False
+    # 732 has parent 731 in open orders -> is_child=True
+    # 735 is standalone -> is_child=False
+    # 742 parent 739 is NOT in open orders (active position) -> is_child=False
+    assert result[0]["is_child"] is False
+    assert result[1]["is_child"] is True
+    assert result[2]["is_child"] is False
+    assert result[3]["is_child"] is False

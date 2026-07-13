@@ -1,5 +1,7 @@
 """Routes and views for active and closed trades across strategies."""
 
+from typing import Any
+
 from flask import render_template, request
 
 from ...const import ExitReason, Strategies
@@ -398,6 +400,74 @@ def view_trades_twopercent() -> str:
     )
 
 
+def _prepare_active_orders(orders: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Groups and sorts active orders for hierarchical presentation on desktop.
+
+    Orders belonging to the same trade group are sorted by order_id.
+    If a parent order is present in the active orders list, its child orders
+    are marked with is_child=True. If the parent order is already executed/filled
+    (or missing), orders are treated as independent standalone rows (is_child=False).
+
+    Args:
+        orders: List of active order dictionaries.
+
+    Returns:
+        list[dict[str, Any]]: Hierarchically ordered list with is_child attribute.
+    """
+    if not orders:
+        return []
+
+    # 1. Collect set of open order IDs
+    open_order_ids: set[int] = set()
+    for order in orders:
+        order_id_val = order.get("order_id")
+        if order_id_val is not None and str(order_id_val).isdigit():
+            open_order_ids.add(int(order_id_val))
+
+    # 2. Group orders by trade_group_id
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for order in orders:
+        group_key = str(order.get("trade_group_id") or order.get("order_id") or "")
+        groups.setdefault(group_key, []).append(order)
+
+    # 3. Sort orders inside each group by order_id asc
+    for group_orders in groups.values():
+        group_orders.sort(key=lambda x: int(x.get("order_id") or 0))
+
+    # 4. Sort groups by the minimum order_id (first order in group)
+    sorted_group_keys = sorted(
+        groups.keys(),
+        key=lambda k: int(groups[k][0].get("order_id") or 0),
+    )
+
+    # 5. Process and flatten with is_child flag
+    prepared_orders: list[dict[str, Any]] = []
+    for group_key in sorted_group_keys:
+        group_orders = groups[group_key]
+        primary_order = group_orders[0]
+        primary_parent_id = primary_order.get("parent_id")
+
+        # Parent is open if primary order has no parent_id or if parent_id is in open_order_ids
+        parent_is_open = (
+            primary_parent_id is None
+            or primary_parent_id == 0
+            or str(primary_parent_id).strip() in ("", "0", "None", "-")
+            or (
+                str(primary_parent_id).isdigit()
+                and int(primary_parent_id) in open_order_ids
+            )
+        )
+
+        for idx, order in enumerate(group_orders):
+            if idx == 0:
+                order["is_child"] = False
+            else:
+                order["is_child"] = parent_is_open
+            prepared_orders.append(order)
+
+    return prepared_orders
+
+
 @views_bp.route("/broker", methods=["GET"])
 def view_broker_dashboard() -> str:
     """Displays the Trader Workstation (TWS) broker execution and reconciliation dashboard.
@@ -416,13 +486,12 @@ def view_broker_dashboard() -> str:
     # 2. Fetch Active orders (Submitted / PreSubmitted) and Error orders
     active_orders = service.broker_repository.get_orders_by_status("Submitted")
     presubmitted_orders = service.broker_repository.get_orders_by_status("PreSubmitted")
-    all_active_orders = active_orders + presubmitted_orders
-    all_active_orders.sort(key=lambda x: x.get("transmitted_at") or "", reverse=True)
+    raw_active_orders = active_orders + presubmitted_orders
 
     error_orders = service.broker_repository.get_orders_by_status("Error")
 
     # Map raw strategy name to strategy filters on the orders
-    for order in all_active_orders + error_orders:
+    for order in raw_active_orders + error_orders:
         strategy_name_lower = str(order.get("strategy_name") or "").lower()
         if "dipbuyer" in strategy_name_lower:
             order["strategy_filter"] = "DipBuyer"
@@ -434,6 +503,8 @@ def view_broker_dashboard() -> str:
             order["strategy_filter"] = "NDXMomentum"
         else:
             order["strategy_filter"] = order.get("strategy_name") or "Unknown"
+
+    all_active_orders = _prepare_active_orders(raw_active_orders)
 
     # 3. Fetch Closed settlements with attached executions
     settlements = service.get_broker_settlements()

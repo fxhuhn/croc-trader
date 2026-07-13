@@ -159,26 +159,28 @@
                     </div>
                     <div class="divide-y divide-slate-100">
                         {% for order in active_orders %}
-                        <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 group-linkable"
+                        <div class="cursor-pointer transition-colors transition-all duration-200 group-linkable {% if order.is_child %}bg-slate-50/70 text-slate-500 opacity-75 hover:bg-slate-100/70 border-l-2 border-slate-300{% else %}hover:bg-slate-50/50{% endif %}"
                             data-strategy="{{ order.strategy_filter }}" data-group-id="{{ order.trade_group_id }}"
                             onclick="toggleRow('acc-sub-{{ order.order_id }}')">
                             <div class="grid grid-cols-5 gap-4 px-4 py-3.5 items-center text-sm">
                                 <div class="flex items-center gap-3">
                                     <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{
                                         order.order_id }}</span>
-                                    <span class="font-bold text-slate-900 text-sm">{{ order.symbol }}</span>
+                                    <span class="font-bold {% if order.is_child %}text-slate-600{% else %}text-slate-900{% endif %} text-sm flex items-center gap-1">
+                                        {% if order.is_child %}<span class="text-slate-400 font-mono">└─</span>{% endif %}{{ order.symbol }}
+                                    </span>
                                 </div>
-                                <div class="text-slate-500 font-medium">{{ order.strategy_name }}</div>
+                                <div class="{% if order.is_child %}text-slate-400{% else %}text-slate-500{% endif %} font-medium">{{ order.strategy_name }}</div>
                                 <div>
                                     <span
-                                        class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if order.status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% else %}bg-blue-50 text-blue-700 border border-blue-100{% endif %}">
+                                        class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if order.is_child %}bg-slate-100 text-slate-500 border border-slate-200{% elif order.status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% else %}bg-blue-50 text-blue-700 border border-blue-100{% endif %}">
                                         {{ order.status }}
                                     </span>
                                 </div>
-                                <div class="text-right tabular-nums text-slate-500">{{ order.quantity }} (<span
-                                        class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
+                                <div class="text-right tabular-nums {% if order.is_child %}text-slate-400{% else %}text-slate-500{% endif %}">{{ order.quantity }} (<span
+                                        class="{% if order.is_child %}text-slate-500{% elif order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
                                         order.action }}</span>)</div>
-                                <div class="text-right font-mono text-slate-700 font-bold">
+                                <div class="text-right font-mono {% if order.is_child %}text-slate-500{% else %}text-slate-700{% endif %} font-bold">
                                     {{ "{:,.2f}".format(order.target_price|float) if order.target_price else '-' }}
                                     <span
                                         class="px-1.5 py-0.5 bg-slate-100 rounded text-[11px] font-black text-slate-500 font-mono leading-none">{{
