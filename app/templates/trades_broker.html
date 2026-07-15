@@ -210,7 +210,15 @@
                     </div>
                 </div>
 
-                <div class="md:hidden flex flex-col gap-3">
+                <!-- Mobile Orders: Tabellarisches Accordion mit Stammbaum-Timeline & Bracket-Sonderbehandlung -->
+                <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+                    <!-- Table Header -->
+                    <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+                        <div class="col-span-4">Symbol & Strategy</div>
+                        <div class="col-span-4 text-right">Qty / Direction</div>
+                        <div class="col-span-4 text-right pr-6">Status</div>
+                    </div>
+
                     {% set ns = namespace(seen_groups=[]) %}
                     {% for order in active_orders %}
                     {% if order.trade_group_id not in ns.seen_groups %}
@@ -224,120 +232,102 @@
                     {% set sorted_legs = group_legs | sort(attribute='order_id') %}
                     {% set first_leg = sorted_legs[0] %}
 
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 group-linkable"
-                        data-strategy="{{ first_leg.strategy_filter }}" data-group-id="{{ group_id }}">
-                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
-                            onclick="toggleRow('mob-sub-{{ group_id }}')">
-                            <div class="p-4 flex justify-between items-center">
-                                <div class="flex items-center gap-3 flex-wrap">
-                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{
-                                        first_leg.symbol }}</span>
-                                    <span
-                                        class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap">{{
-                                        first_leg.strategy_name }}</span>
-                                    {% if leg_count > 1 %}
-                                    <span
-                                        class="text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-md whitespace-nowrap">{{
-                                        leg_count }} Orders</span>
-                                    {% endif %}
+                    <div class="group-linkable"
+                         data-strategy="{{ first_leg.strategy_filter }}"
+                         data-group-id="{{ group_id }}">
+
+                        <!-- Trigger Row -->
+                        <button type="button"
+                                id="trigger-order-{{ group_id }}"
+                                class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors"
+                                aria-expanded="false"
+                                aria-controls="details-order-{{ group_id }}"
+                                onclick="togglePositionAccordion(this, 'details-order-{{ group_id }}')">
+                            <div class="grid grid-cols-12 items-center gap-1">
+                                <!-- Col 1–4: Symbol & Strategy • Group Count -->
+                                <div class="col-span-4">
+                                    <span class="text-sm font-bold text-slate-900 leading-none">{{ first_leg.symbol }}</span>
+                                    <span class="block text-xs text-slate-400 font-medium mt-0.5">
+                                        {{ first_leg.strategy_name }}{% if leg_count > 1 %} • {{ leg_count }} Orders{% endif %}
+                                    </span>
                                 </div>
-                                <div class="flex items-center gap-4 text-right whitespace-nowrap">
-                                    {% if leg_count == 1 %}
-                                    <span
-                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if first_leg.status == 'Submitted' or first_leg.status == 'Filled' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif first_leg.status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %}">
+                                <!-- Col 5–8: Quantity / Direction -->
+                                <div class="col-span-4 text-right">
+                                    <span class="text-xs font-bold text-slate-600 tabular-nums">
+                                        {{ first_leg.quantity }} (<span class="{% if first_leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{ first_leg.action }}</span>)
+                                    </span>
+                                </div>
+                                <!-- Col 9–12: Status & Chevron -->
+                                <div class="col-span-4 flex items-center justify-end gap-2">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border
+                                        {% if first_leg.status == 'Submitted' or first_leg.status == 'Filled' %}bg-emerald-50 text-emerald-700 border-emerald-100/50
+                                        {% elif first_leg.status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border-blue-100
+                                        {% else %}bg-slate-50 text-slate-500 border-slate-200{% endif %} shrink-0">
                                         {{ first_leg.status }}
                                     </span>
-                                    {% endif %}
                                     <i data-lucide="chevron-down"
-                                        class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                                       class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
                                 </div>
                             </div>
-                        </div>
-                        <div id="mob-sub-{{ group_id }}"
-                            class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
-                            {% if leg_count == 1 %}
-                            <div class="px-4 py-3">
-                                <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
-                                    <div class="flex flex-col">
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Quantity</span>
-                                            <span class="text-slate-700 font-bold">{{ first_leg.quantity }}</span>
+                        </button>
+
+                        <!-- Accordion Detail: Stammbaum-Timeline mit Bracket-Behandlung -->
+                        <div id="details-order-{{ group_id }}"
+                             role="region"
+                             aria-labelledby="trigger-order-{{ group_id }}"
+                             class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                             style="grid-template-rows: 0fr;">
+                            <div class="overflow-hidden">
+                                <div class="px-4 pb-3 pt-1">
+                                    <div class="relative pl-4 ml-1.5 border-l-2 border-slate-200 space-y-2.5 py-1">
+                                        {% for leg in sorted_legs %}
+                                        {% set is_child_leg = leg.is_child or not loop.first %}
+                                        {% set is_cancelled = leg.status == 'Cancelled' %}
+
+                                        {% set dot_color = "bg-slate-300" if is_cancelled else ("bg-blue-500" if leg.status == 'PreSubmitted' else "bg-emerald-500") %}
+                                        {% set badge_style = "bg-slate-100 text-slate-500 border-slate-200" if is_child_leg else ("bg-blue-50 text-blue-700 border-blue-100" if leg.status == 'PreSubmitted' else "bg-emerald-50 text-emerald-700 border-emerald-100/50") %}
+
+                                        <div class="relative {% if is_cancelled %}opacity-60{% elif is_child_leg %}opacity-85{% endif %}">
+                                            {% if loop.first %}
+                                            <!-- Dot (nur für den 1. Eintrag / BUY Zeile) -->
+                                            <span class="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
+                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
+                                            </span>
+                                            {% endif %}
+                                            <!-- Main Row: Parent vs. Child Leg mit └─ Präfix -->
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% elif is_child_leg %}text-slate-600{% else %}text-slate-700{% endif %} flex items-center gap-1">
+                                                    {% if is_child_leg %}<span class="text-slate-400 font-mono font-normal">└─</span>{% endif %}
+                                                    <span class="{% if is_cancelled %}text-slate-400{% elif leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ leg.action }}</span>
+                                                    {{ leg.quantity }} @ {{ "{:,.2f}".format(leg.target_price|float) if leg.target_price else '-' }}
+                                                    <span class="text-slate-400 font-normal">({{ leg.order_type | default('—') }})</span>
+                                                </span>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border {{ badge_style }} shrink-0">
+                                                    {{ leg.status }}
+                                                </span>
+                                            </div>
+                                            <!-- Meta Row: #ID • Datum • TIF • (weitere Details) -->
+                                            <div class="text-[11px] text-slate-400 font-mono mt-0.5">
+                                                #{{ leg.order_id }} • {{ (leg.transmitted_at | to_local_tz)[:10] if leg.transmitted_at else '-' }} • {{ leg.tif | default('—') }}{% if leg.parent_id %} • Parent #{{ leg.parent_id }}{% endif %}
+                                            </div>
                                         </div>
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Direction</span>
-                                            <span
-                                                class="{% if first_leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
-                                                first_leg.action }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="flex flex-col">
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Target Price</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{
-                                                "{:,.2f}".format(first_leg.target_price|float) if first_leg.target_price
-                                                else '-' }}</span>
-                                        </div>
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Type / TIF</span>
-                                            <span class="text-slate-700 font-bold">{{ first_leg.order_type }} / {{
-                                                first_leg.tif }}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <p
-                                    class="mt-3 text-[11px] text-slate-500 leading-relaxed border-t border-slate-100 pt-2">
-                                    TWS ID: {{ first_leg.order_id }} | Group: {{ first_leg.trade_group_id }} |
-                                    Übermittelt: {{ first_leg.transmitted_at | to_local_tz if first_leg.transmitted_at
-                                    else '-' }}
-                                </p>
-                            </div>
-                            {% else %}
-                            {% for leg in sorted_legs %}
-                            <div class="px-4 py-3 {% if not loop.last %}border-b border-slate-100{% endif %}">
-                                <div class="flex justify-between items-center mb-2">
-                                    <span class="font-mono text-[11px] text-slate-400">{{ leg.trade_group_id }}</span>
-                                    <span
-                                        class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if leg.status == 'Submitted' or leg.status == 'Filled' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% elif leg.status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border border-blue-100{% else %}bg-slate-100 text-slate-500 border border-slate-200{% endif %}">
-                                        {{ leg.status }}
-                                    </span>
-                                </div>
-                                <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
-                                    <div class="flex flex-col gap-1.5">
-                                        <div class="flex justify-between">
-                                            <span class="text-slate-500">TWS ID</span>
-                                            <span class="font-bold text-slate-700 font-mono">{{ leg.order_id }}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-slate-500">Quantity</span>
-                                            <span class="font-bold text-slate-700">{{ leg.quantity }}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-slate-500">Direction</span>
-                                            <span
-                                                class="font-bold {% if leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{
-                                                leg.action }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="flex flex-col gap-1.5">
-                                        <div class="flex justify-between">
-                                            <span class="text-slate-500">Exit target</span>
-                                            <span class="font-bold text-slate-700 font-mono">{{
-                                                "{:,.2f}".format(leg.target_price|float) if leg.target_price else '-'
-                                                }}</span>
-                                        </div>
-                                        <div class="flex justify-between">
-                                            <span class="text-slate-500">Type / TIF</span>
-                                            <span class="font-bold text-slate-700">{{ leg.order_type }} / {{ leg.tif
-                                                }}</span>
-                                        </div>
+                                        {% endfor %}
                                     </div>
                                 </div>
                             </div>
-                            {% endfor %}
-                            {% endif %}
                         </div>
                     </div>
                     {% endfor %}
+
+                    <!-- Table Footer: Total Active Groups -->
+                    <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 border-t border-slate-200">
+                        <div class="col-span-8 text-slate-500 font-medium text-sm">
+                            Total Active Orders
+                        </div>
+                        <div class="col-span-4 text-right pr-6 font-bold tabular-nums text-sm text-slate-700">
+                            {{ ns.seen_groups | length }} Groups
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -575,68 +565,142 @@
                     </div>
                 </div>
 
-                <!-- Mobile View -->
-                <div class="md:hidden flex flex-col gap-3">
+                <!-- Mobile Positions: Tabellarisches Accordion -->
+                <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+                    <!-- Table Header -->
+                    <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+                        <div class="col-span-5">Symbol & Strategy</div>
+                        <div class="col-span-3 text-right">Quantity</div>
+                        <div class="col-span-4 text-right pr-6">Open PnL</div>
+                    </div>
+
                     {% for trade in active_trades %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 group-linkable"
-                        data-strategy="{{ trade.strategy_filter }}" data-group-id="{{ trade.trade_group_id }}">
-                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
-                            onclick="toggleRow('mob-act-{{ loop.index }}')">
-                            <div class="p-4 flex justify-between items-center">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{
-                                        trade.symbol }}</span>
-                                    <div class="flex gap-1.5 whitespace-nowrap">
-                                        <span
-                                            class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap">{{
-                                            trade.strategy }}</span>
-                                    </div>
+                    {% set has_orders = trade.tws_orders | length > 0 %}
+                    <div class="group-linkable"
+                         data-strategy="{{ trade.strategy_filter }}"
+                         data-group-id="{{ trade.trade_group_id }}">
+
+                        <!-- Trigger Row -->
+                        {% if has_orders %}
+                        <button type="button"
+                                id="trigger-pos-{{ loop.index }}"
+                                class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors"
+                                aria-expanded="false"
+                                aria-controls="details-pos-{{ loop.index }}"
+                                onclick="togglePositionAccordion(this, 'details-pos-{{ loop.index }}')">
+                        {% else %}
+                        <div class="px-4 py-3">
+                        {% endif %}
+                            <div class="grid grid-cols-12 items-center gap-1">
+                                <!-- Col 1–5: Symbol & Strategy -->
+                                <div class="col-span-5">
+                                    <span class="text-sm font-bold text-slate-900 leading-none">{{ trade.symbol }}</span>
+                                    <span class="block text-xs text-slate-400 font-medium mt-0.5">{{ trade.strategy }}</span>
                                 </div>
-                                <div class="flex items-center gap-4 text-right whitespace-nowrap">
-                                    <span
-                                        class="text-lg font-bold {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %} tabular-nums leading-none">
-                                        {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{
-                                        "{:,.2f}".format(trade.unrealized_pnl) }}
+                                <!-- Col 6–8: Quantity -->
+                                <div class="col-span-3 text-right">
+                                    <span class="text-sm font-bold text-slate-600 tabular-nums">{{ trade.current_size|int }}</span>
+                                </div>
+                                <!-- Col 9–12: PnL & Chevron -->
+                                <div class="col-span-4 flex items-center justify-end gap-2">
+                                    <span class="text-sm font-bold tabular-nums
+                                        {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+                                        {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(trade.unrealized_pnl) }}
                                     </span>
+                                    {% if has_orders %}
                                     <i data-lucide="chevron-down"
-                                        class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                                       class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% if has_orders %}
+                        </button>
+                        {% else %}
+                        </div>
+                        {% endif %}
+
+                        <!-- Accordion Detail: Stammbaum-Timeline -->
+                        {% if has_orders %}
+                        <div id="details-pos-{{ loop.index }}"
+                             role="region"
+                             aria-labelledby="trigger-pos-{{ loop.index }}"
+                             class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                             style="grid-template-rows: 0fr;">
+                            <div class="overflow-hidden">
+                                <div class="px-4 pb-3 pt-1">
+                                    <div class="relative pl-4 ml-1.5 border-l-2 border-slate-200 space-y-2.5 py-1">
+                                        {% for order in trade.tws_orders | sort(attribute='order_id') %}
+                                        {% set is_cancelled = order.status == 'Cancelled' %}
+
+                                        {% set dot_color = "bg-slate-400" %}
+                                        {% set badge_style = "bg-slate-100 text-slate-600 border-slate-200" %}
+
+                                        {% if order.status == 'Filled' %}
+                                            {% set dot_color = "bg-emerald-500" %}
+                                            {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100/50" %}
+                                        {% elif order.status == 'Submitted' %}
+                                            {% set dot_color = "bg-emerald-500" %}
+                                            {% set badge_style = "bg-emerald-50 text-emerald-600 border-emerald-100/50" %}
+                                        {% elif order.status == 'PreSubmitted' %}
+                                            {% set dot_color = "bg-blue-500" %}
+                                            {% set badge_style = "bg-blue-50 text-blue-700 border-blue-100" %}
+                                        {% elif is_cancelled %}
+                                            {% set dot_color = "bg-slate-300" %}
+                                            {% set badge_style = "bg-slate-50 text-slate-400 border-slate-200" %}
+                                        {% elif order.status == 'Error' %}
+                                            {% set dot_color = "bg-rose-500" %}
+                                            {% set badge_style = "bg-rose-50 text-rose-700 border-rose-100/50" %}
+                                        {% endif %}
+
+                                        <div class="relative {% if is_cancelled %}opacity-60{% endif %}">
+                                            <!-- Dot auf der vertikalen Linie -->
+                                            <span class="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
+                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
+                                            </span>
+                                            <!-- Hauptzeile: Action Qty @ Price (Type) + Status-Badge -->
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% else %}text-slate-700{% endif %}">
+                                                    <span class="{% if is_cancelled %}text-slate-400{% elif order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ order.action }}</span>
+                                                    {{ order.quantity|int }} @ {{ "{:,.2f}".format(order.display_price|float) if order.display_price else '-' }}
+                                                    <span class="text-slate-400 font-normal">({{ order.order_type | default('—') }})</span>
+                                                </span>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border {{ badge_style }} shrink-0">
+                                                    {{ order.status }}
+                                                </span>
+                                            </div>
+                                            <!-- Meta-Zeile: #ID • Datum -->
+                                            <div class="text-[11px] text-slate-400 font-mono mt-0.5">
+                                                #{{ order.order_id }} • {{ (order.display_date | to_local_tz)[:10] if order.display_date else '-' }}
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div id="mob-act-{{ loop.index }}"
-                            class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
-                            <div class="px-4 py-3">
-                                <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
-                                    <!-- Left Column -->
-                                    <div class="flex flex-col">
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Date</span>
-                                            <span class="text-slate-700 font-bold">{{ trade.entry_date }} ({{
-                                                trade.days_held }}d)</span>
-                                        </div>
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Quantity</span>
-                                            <span class="text-slate-700 font-bold">{{ trade.current_size|int }}</span>
-                                        </div>
-                                    </div>
-                                    <!-- Right Column -->
-                                    <div class="flex flex-col">
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Entry</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{
-                                                "{:,.2f}".format(trade.entry_price) }}</span>
-                                        </div>
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Current</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{
-                                                "{:,.2f}".format(trade.current_price) }}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
+
+                    <!-- Table Footer: Total Open PnL & Average per position -->
+                    {% set total_unrealized_pnl = active_trades | map(attribute='unrealized_pnl') | sum %}
+                    {% set count_active = active_trades | length %}
+                    {% set avg_unrealized_pnl = (total_unrealized_pnl / count_active) if count_active > 0 else 0.0 %}
+                    <div class="grid grid-cols-12 items-center gap-1 px-4 py-3 bg-slate-50 border-t border-slate-200">
+                        <div class="col-span-8 text-slate-500 font-medium text-sm">
+                            Total Open PnL
+                        </div>
+                        <div class="col-span-4 text-right pr-6 font-bold tabular-nums">
+                            <div class="text-sm {% if total_unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+                                {% if total_unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(total_unrealized_pnl) }}
+                            </div>
+                            {% if count_active > 0 %}
+                            <div class="text-xs font-semibold {% if avg_unrealized_pnl >= 0 %}text-emerald-600/90{% else %}text-rose-600/90{% endif %} mt-0.5">
+                                {% if avg_unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(avg_unrealized_pnl) }} ∅
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -743,87 +807,134 @@
                     </div>
                 </div>
 
-                <!-- Mobile View -->
-                <div class="md:hidden flex flex-col gap-3" id="settlements-mobile-list">
+                <!-- Mobile View: Tabellarisches Accordion mit Stammbaum-Timeline -->
+                <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100" id="settlements-mobile-list">
+                    <!-- Table Header -->
+                    <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+                        <div class="col-span-5">Symbol & Strategy</div>
+                        <div class="col-span-3 text-right">Quantity</div>
+                        <div class="col-span-4 text-right pr-6">Net PnL</div>
+                    </div>
+
                     {% for settlement in settlements %}
-                    <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col transition-all duration-200 border-l-4 border-l-transparent group-linkable"
-                        data-strategy="{{ settlement.strategy_filter }}"
-                        data-group-id="{{ settlement.trade_group_id }}">
-                        <div class="cursor-pointer hover:bg-slate-50/50 transition-colors group"
-                            onclick="toggleRow('mob-settle-{{ loop.index }}')">
-                            <div class="p-4 flex justify-between items-center">
-                                <div class="flex items-center gap-3">
-                                    <span class="text-xl font-bold text-slate-900 leading-none whitespace-nowrap">{{
-                                        settlement.symbol }}</span>
-                                    <div class="flex gap-1.5 whitespace-nowrap">
-                                        <span
-                                            class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap">{{
-                                            settlement.strategy_name }}</span>
-                                    </div>
-                                </div>
-                                <div class="flex items-center gap-4 text-right whitespace-nowrap">
-                                    <span
-                                        class="text-lg font-bold {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %} tabular-nums leading-none">
-                                        {% if settlement.net_pnl >= 0 %}+{% endif %}{{
-                                        "{:,.2f}".format(settlement.net_pnl) }}
+                    {% set valid_executions = [] %}
+                    {% for exec in settlement.executions %}
+                        {% if exec.bracket_role and exec.bracket_role | upper in ['ENTRY', 'EXIT'] %}
+                            {% set _ = valid_executions.append(exec) %}
+                        {% endif %}
+                    {% endfor %}
+                    {% set has_executions = valid_executions | length > 0 %}
+
+                    <div class="group-linkable"
+                         data-strategy="{{ settlement.strategy_filter }}"
+                         data-group-id="{{ settlement.trade_group_id }}">
+
+                        <!-- Trigger Row -->
+                        {% if has_executions %}
+                        <button type="button"
+                                id="trigger-settle-{{ loop.index }}"
+                                class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors"
+                                aria-expanded="false"
+                                aria-controls="details-settle-{{ loop.index }}"
+                                onclick="togglePositionAccordion(this, 'details-settle-{{ loop.index }}')">
+                        {% else %}
+                        <div class="px-4 py-3">
+                        {% endif %}
+                            <div class="grid grid-cols-12 items-center gap-1">
+                                <!-- Col 1–5: Symbol & Strategy • Haltedauer -->
+                                <div class="col-span-5">
+                                    <span class="text-sm font-bold text-slate-900 leading-none">{{ settlement.symbol }}</span>
+                                    <span class="block text-xs text-slate-400 font-medium mt-0.5">
+                                        {{ settlement.strategy_name }}{% if settlement.days_held %} • {{ settlement.days_held }}d{% endif %}
                                     </span>
+                                </div>
+                                <!-- Col 6–8: Quantity -->
+                                <div class="col-span-3 text-right">
+                                    <span class="text-sm font-bold text-slate-600 tabular-nums">{{ settlement.quantity|int if settlement.quantity else '-' }}</span>
+                                </div>
+                                <!-- Col 9–12: Net PnL & Chevron -->
+                                <div class="col-span-4 flex items-center justify-end gap-2">
+                                    <span class="text-sm font-bold tabular-nums
+                                        {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+                                        {% if settlement.net_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.net_pnl) }}
+                                    </span>
+                                    {% if has_executions %}
                                     <i data-lucide="chevron-down"
-                                        class="w-5 h-5 text-slate-500 transition-transform duration-200 chevron-icon"></i>
+                                       class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
+                                    {% endif %}
                                 </div>
                             </div>
+                        {% if has_executions %}
+                        </button>
+                        {% else %}
                         </div>
-                        <div id="mob-settle-{{ loop.index }}"
-                            class="hidden bg-slate-50/50 overflow-hidden border-t border-slate-100">
-                            <div class="px-4 py-3">
-                                <div class="grid grid-cols-2 gap-x-8 gap-y-1.5 text-xs leading-relaxed items-start">
-                                    <!-- Left Column -->
-                                    <div class="flex flex-col">
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Date</span>
-                                            <span class="text-slate-700 font-bold">
-                                                {% if settlement.entry_date %}{{ settlement.entry_date }} ({{
-                                                settlement.days_held }}d){% else %}{{ (settlement.settled_at |
-                                                to_local_tz)[:10] if settlement.settled_at else '-' }}{% endif %}
+                        {% endif %}
+
+                        <!-- Accordion Detail: Executions Stammbaum-Timeline -->
+                        {% if has_executions %}
+                        <div id="details-settle-{{ loop.index }}"
+                             role="region"
+                             aria-labelledby="trigger-settle-{{ loop.index }}"
+                             class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                             style="grid-template-rows: 0fr;">
+                            <div class="overflow-hidden">
+                                <div class="px-4 pb-3 pt-1">
+                                    <div class="relative pl-4 ml-1.5 border-l-2 border-slate-200 space-y-2.5 py-1">
+                                        {% for execution in valid_executions | sort(attribute='order_id') %}
+                                        {% set is_entry = execution.bracket_role | upper == 'ENTRY' %}
+                                        {% set role_label = 'Entry' if is_entry else 'Exit' %}
+                                        {% set dot_color = "bg-emerald-500" if is_entry else "bg-indigo-500" %}
+                                        {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100" if is_entry else "bg-indigo-50 text-indigo-700 border-indigo-100" %}
+
+                                        <div class="relative">
+                                            <!-- Dot auf der vertikalen Linie -->
+                                            <span class="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
+                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
                                             </span>
+                                            <!-- Hauptzeile: Action Qty @ Price (Type) + Role-Badge -->
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span class="text-xs font-bold text-slate-700">
+                                                    <span class="{% if execution.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ execution.action }}</span>
+                                                    {{ execution.qty|int }} @ {{ "{:,.2f}".format(execution.price|float) }}
+                                                    <span class="text-slate-400 font-normal">({{ execution.order_type | default('—') }})</span>
+                                                </span>
+                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border {{ badge_style }} shrink-0">
+                                                    {{ role_label }}
+                                                </span>
+                                            </div>
+                                            <!-- Meta-Zeile: #ID • Datum • Slippage • Fee -->
+                                            <div class="text-[11px] text-slate-400 font-mono mt-0.5">
+                                                #{{ execution.order_id }} • {{ (execution.executed_at | to_local_tz)[:10] if execution.executed_at else '-' }}{% if not is_entry and settlement.price_diff_slippage and settlement.price_diff_slippage != 0 %} • Slippage {% if settlement.price_diff_slippage > 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.price_diff_slippage) }}{% endif %}{% if execution.commission and execution.commission > 0 %} • Fee {{ "{:,.2f}".format(execution.commission) }}{% elif settlement.total_commissions and settlement.total_commissions > 0 and loop.last %} • Fee {{ "{:,.2f}".format(settlement.total_commissions) }}{% endif %}
+                                            </div>
                                         </div>
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Quantity</span>
-                                            <span class="text-slate-700 font-bold">{{ settlement.quantity|int if
-                                                settlement.quantity else '-' }}</span>
-                                        </div>
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Slippage</span>
-                                            <span
-                                                class="font-mono {% if settlement.price_diff_slippage > 0 %}text-emerald-500{% elif settlement.price_diff_slippage < 0 %}text-rose-500{% else %}text-slate-600{% endif %} font-bold">
-                                                {% if settlement.price_diff_slippage > 0 %}+{% endif %}{{
-                                                "{:,.2f}".format(settlement.price_diff_slippage) if
-                                                settlement.price_diff_slippage != 0 else '-' }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <!-- Right Column -->
-                                    <div class="flex flex-col">
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Entry</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{
-                                                "{:,.2f}".format(settlement.avg_entry_price) }}</span>
-                                        </div>
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Exit</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{
-                                                "{:,.2f}".format(settlement.avg_exit_price) }}</span>
-                                        </div>
-                                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                                            <span class="text-slate-500 font-medium">Fee</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{
-                                                "{:,.2f}".format(settlement.total_commissions) }}</span>
-                                        </div>
+                                        {% endfor %}
                                     </div>
                                 </div>
                             </div>
                         </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
+
+                    <!-- Table Footer: Total Net PnL & Average per settlement -->
+                    {% set total_settled_pnl = settlements | map(attribute='net_pnl') | sum %}
+                    {% set count_settlements = settlements | length %}
+                    {% set avg_settled_pnl = (total_settled_pnl / count_settlements) if count_settlements > 0 else 0.0 %}
+                    <div class="grid grid-cols-12 items-center gap-1 px-4 py-3 bg-slate-50 border-t border-slate-200">
+                        <div class="col-span-8 text-slate-500 font-medium text-sm">
+                            Total Net PnL
+                        </div>
+                        <div class="col-span-4 text-right pr-6 font-bold tabular-nums">
+                            <div class="text-sm {% if total_settled_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+                                {% if total_settled_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(total_settled_pnl) }}
+                            </div>
+                            {% if count_settlements > 0 %}
+                            <div class="text-xs font-semibold {% if avg_settled_pnl >= 0 %}text-emerald-600/90{% else %}text-rose-600/90{% endif %} mt-0.5">
+                                {% if avg_settled_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(avg_settled_pnl) }} ∅
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1115,6 +1226,17 @@
         let visibleDesktopCount = 0;
         const hasDesktop = container.querySelector('.md\\:block') !== null;
 
+        // Grid-animierte Accordions zurücksetzen
+        const gridAccordions = container.querySelectorAll('[role="region"]');
+        gridAccordions.forEach(acc => {
+            acc.style.gridTemplateRows = '0fr';
+            const triggerId = acc.getAttribute('aria-labelledby');
+            if (triggerId) {
+                const trigger = document.getElementById(triggerId);
+                if (trigger) trigger.setAttribute('aria-expanded', 'false');
+            }
+        });
+
         listRows.forEach(row => {
             // Close accordion
             const onclickAttr = row.getAttribute('onclick');
@@ -1167,6 +1289,25 @@
         } else {
             detailEl.classList.add('hidden');
             if (chevron) chevron.style.transform = 'rotate(0deg)';
+        }
+    }
+
+    // Toggle für grid-animierte Position-Accordions (Mobile)
+    function togglePositionAccordion(triggerButton, detailId) {
+        const detailEl = document.getElementById(detailId);
+        if (!detailEl) return;
+
+        const isExpanded = triggerButton.getAttribute('aria-expanded') === 'true';
+        const chevron = triggerButton.querySelector('.chevron-icon');
+
+        if (isExpanded) {
+            detailEl.style.gridTemplateRows = '0fr';
+            triggerButton.setAttribute('aria-expanded', 'false');
+            if (chevron) chevron.style.transform = 'rotate(0deg)';
+        } else {
+            detailEl.style.gridTemplateRows = '1fr';
+            triggerButton.setAttribute('aria-expanded', 'true');
+            if (chevron) chevron.style.transform = 'rotate(180deg)';
         }
     }
 
