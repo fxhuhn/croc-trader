@@ -179,6 +179,39 @@
 </div>
 {% endmacro %}
 
+{% macro render_mobile_table_footer(label, total_val, avg_val=none, count=0) %}
+<div class="grid grid-cols-12 items-center gap-1 px-4 py-3 bg-slate-50 border-t border-slate-200">
+    <div class="col-span-8 text-slate-500 font-medium text-sm">
+        {{ label }}
+    </div>
+    <div class="col-span-4 text-right pr-6 font-bold tabular-nums">
+        <div class="text-sm {% if total_val >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
+            {% if total_val >= 0 %}+{% endif %}{{ "{:,.2f}".format(total_val) }}
+        </div>
+        {% if avg_val is not none and count > 0 %}
+        <div class="text-xs font-semibold {% if avg_val >= 0 %}text-emerald-600/90{% else %}text-rose-600/90{% endif %} mt-0.5">
+            {% if avg_val >= 0 %}+{% endif %}{{ "{:,.2f}".format(avg_val) }} ∅
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{% macro render_pnl_cell(pnl_val, pnl_pct, show_sign=true) %}
+<div class="flex flex-col items-end text-right whitespace-nowrap">
+    <div class="font-bold {{ 'text-emerald-500' if pnl_val >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
+        {% if show_sign %}{{ "{:+,.2f}".format(pnl_val) }}{% else %}{{ "{:,.2f}".format(pnl_val) }}{% endif %}
+    </div>
+    {% if pnl_pct is not none %}
+    <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
+        {{ "{:+.2f}".format(pnl_pct) }}%
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+
+
 {% macro trade_accordion_card(symbol, badges=[], pnl_value=0.0, pnl_percentage=none, show_currency=false,
 progress_current=none, progress_max=none) %}
 <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">

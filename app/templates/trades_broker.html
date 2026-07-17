@@ -6,7 +6,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import render_kpi_card %}
+{% from "macros/cards.html" import render_kpi_card, render_mobile_table_footer, render_pnl_cell %}
 {% from "macros/timeline.html" import render_order_badge, render_timeline_node %}
 
 <!-- NAV/HEADER -->
@@ -410,12 +410,7 @@
                                     "{:,.2f}".format(trade.entry_price) }}</div>
                                 <div class="text-right tabular-nums text-slate-600">{{
                                     "{:,.2f}".format(trade.current_price) }}</div>
-                                <div
-                                    class="text-right font-bold tabular-nums {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                                    {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{
-                                    "{:,.2f}".format(trade.unrealized_pnl) }} ({{ "{:+.2f}".format(trade.pnl_percentage)
-                                    }}%)
-                                </div>
+                                {{ render_pnl_cell(trade.unrealized_pnl, trade.pnl_percentage) }}
                             </div>
                             <div id="acc-act-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
                                 <div class="md:pl-[4.25rem] pt-3">
@@ -463,7 +458,7 @@
                                 <!-- Col 1–5: Symbol & Strategy -->
                                 <div class="col-span-5">
                                     <span class="text-sm font-bold text-slate-900 leading-none">{{ trade.symbol }}</span>
-                                    <span class="block text-xs text-slate-400 font-medium mt-0.5">{{ trade.strategy }}</span>
+                                    <span class="block text-xs text-slate-400 font-medium mt-0.5">{{ trade.strategy }}{% if trade.days_held %} • {{ trade.days_held }}d{% endif %}</span>
                                 </div>
                                 <!-- Col 6–8: Quantity -->
                                 <div class="col-span-3 text-right">
@@ -471,10 +466,7 @@
                                 </div>
                                 <!-- Col 9–12: PnL & Chevron -->
                                 <div class="col-span-4 flex items-center justify-end gap-2">
-                                    <span class="text-sm font-bold tabular-nums
-                                        {% if trade.unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                                        {% if trade.unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(trade.unrealized_pnl) }}
-                                    </span>
+                                    {{ render_pnl_cell(trade.unrealized_pnl, trade.pnl_percentage) }}
                                     {% if has_orders %}
                                     <i data-lucide="chevron-down"
                                        class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
@@ -512,21 +504,7 @@
                     {% set total_unrealized_pnl = active_trades | map(attribute='unrealized_pnl') | sum %}
                     {% set count_active = active_trades | length %}
                     {% set avg_unrealized_pnl = (total_unrealized_pnl / count_active) if count_active > 0 else 0.0 %}
-                    <div class="grid grid-cols-12 items-center gap-1 px-4 py-3 bg-slate-50 border-t border-slate-200">
-                        <div class="col-span-8 text-slate-500 font-medium text-sm">
-                            Total Open PnL
-                        </div>
-                        <div class="col-span-4 text-right pr-6 font-bold tabular-nums">
-                            <div class="text-sm {% if total_unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                                {% if total_unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(total_unrealized_pnl) }}
-                            </div>
-                            {% if count_active > 0 %}
-                            <div class="text-xs font-semibold {% if avg_unrealized_pnl >= 0 %}text-emerald-600/90{% else %}text-rose-600/90{% endif %} mt-0.5">
-                                {% if avg_unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(avg_unrealized_pnl) }} ∅
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
+                    {{ render_mobile_table_footer("Total Open PnL", total_unrealized_pnl, avg_unrealized_pnl, count_active) }}
                 </div>
             </div>
 
@@ -576,11 +554,7 @@
                                 </div>
                                 <div class="text-right tabular-nums text-slate-500">{{
                                     "{:,.2f}".format(settlement.total_commissions) }}</div>
-                                <div
-                                    class="text-right font-bold tabular-nums {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                                    {% if settlement.net_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.net_pnl)
-                                    }} ({{ "{:+.2f}".format(settlement.pnl_percentage) }}%)
-                                </div>
+                                {{ render_pnl_cell(settlement.net_pnl, settlement.pnl_percentage) }}
                             </div>
                             <div id="acc-settle-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
                                 <div class="md:pl-[4.25rem] pt-3">
@@ -646,10 +620,7 @@
                                 </div>
                                 <!-- Col 9–12: Net PnL & Chevron -->
                                 <div class="col-span-4 flex items-center justify-end gap-2">
-                                    <span class="text-sm font-bold tabular-nums
-                                        {% if settlement.net_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                                        {% if settlement.net_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.net_pnl) }}
-                                    </span>
+                                    {{ render_pnl_cell(settlement.net_pnl, settlement.pnl_percentage) }}
                                     {% if has_executions %}
                                     <i data-lucide="chevron-down"
                                        class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
@@ -688,21 +659,7 @@
                     {% set total_settled_pnl = settlements | map(attribute='net_pnl') | sum %}
                     {% set count_settlements = settlements | length %}
                     {% set avg_settled_pnl = (total_settled_pnl / count_settlements) if count_settlements > 0 else 0.0 %}
-                    <div class="grid grid-cols-12 items-center gap-1 px-4 py-3 bg-slate-50 border-t border-slate-200">
-                        <div class="col-span-8 text-slate-500 font-medium text-sm">
-                            Total Net PnL
-                        </div>
-                        <div class="col-span-4 text-right pr-6 font-bold tabular-nums">
-                            <div class="text-sm {% if total_settled_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                                {% if total_settled_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(total_settled_pnl) }}
-                            </div>
-                            {% if count_settlements > 0 %}
-                            <div class="text-xs font-semibold {% if avg_settled_pnl >= 0 %}text-emerald-600/90{% else %}text-rose-600/90{% endif %} mt-0.5">
-                                {% if avg_settled_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(avg_settled_pnl) }} ∅
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
+                    {{ render_mobile_table_footer("Total Net PnL", total_settled_pnl, avg_settled_pnl, count_settlements) }}
                 </div>
             </div>
         </div>
@@ -1042,73 +999,5 @@
             container.classList.remove('hidden');
         }
     }
-
-    // Toggle Details Row Script
-    function toggleRow(accId) {
-        const detailEl = document.getElementById(accId);
-        if (!detailEl) return;
-
-        const triggerEl = detailEl.previousElementSibling;
-        const chevron = triggerEl ? triggerEl.querySelector('[data-lucide="chevron-down"]') : null;
-
-        if (detailEl.classList.contains('hidden')) {
-            detailEl.classList.remove('hidden');
-            if (chevron) chevron.style.transform = 'rotate(180deg)';
-        } else {
-            detailEl.classList.add('hidden');
-            if (chevron) chevron.style.transform = 'rotate(0deg)';
-        }
-    }
-
-    // Toggle für grid-animierte Position-Accordions (Mobile)
-    function togglePositionAccordion(triggerButton, detailId) {
-        const detailEl = document.getElementById(detailId);
-        if (!detailEl) return;
-
-        const isExpanded = triggerButton.getAttribute('aria-expanded') === 'true';
-        const chevron = triggerButton.querySelector('.chevron-icon');
-
-        if (isExpanded) {
-            detailEl.style.gridTemplateRows = '0fr';
-            triggerButton.setAttribute('aria-expanded', 'false');
-            if (chevron) chevron.style.transform = 'rotate(0deg)';
-        } else {
-            detailEl.style.gridTemplateRows = '1fr';
-            triggerButton.setAttribute('aria-expanded', 'true');
-            if (chevron) chevron.style.transform = 'rotate(180deg)';
-        }
-    }
-
-    // Group Highlights on Hover
-    document.addEventListener('DOMContentLoaded', () => {
-        const linkables = document.querySelectorAll('.group-linkable');
-
-        linkables.forEach(item => {
-            const groupId = item.getAttribute('data-group-id');
-            if (!groupId || groupId === '-' || groupId === 'None') return;
-
-            item.addEventListener('mouseenter', () => {
-                const matches = document.querySelectorAll(`.group-linkable[data-group-id="${groupId}"]`);
-                matches.forEach(m => {
-                    m.classList.add('bg-indigo-50/20', 'shadow-sm');
-                    if (m.classList.contains('border-l-4')) {
-                        m.classList.add('border-l-indigo-500');
-                        m.classList.remove('border-l-transparent');
-                    }
-                });
-            });
-
-            item.addEventListener('mouseleave', () => {
-                const matches = document.querySelectorAll(`.group-linkable[data-group-id="${groupId}"]`);
-                matches.forEach(m => {
-                    m.classList.remove('bg-indigo-50/20', 'shadow-sm');
-                    if (m.classList.contains('border-l-4')) {
-                        m.classList.remove('border-l-indigo-500');
-                        m.classList.add('border-l-transparent');
-                    }
-                });
-            });
-        });
-    });
 </script>
 {% endblock %}

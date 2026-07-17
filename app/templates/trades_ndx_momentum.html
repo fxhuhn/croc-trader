@@ -5,7 +5,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import render_kpi_card, history_footer, tradingview_link %}
+{% from "macros/cards.html" import render_kpi_card, history_footer, tradingview_link, render_mobile_table_footer, render_pnl_cell %}
 {% from "macros/timeline.html" import render_order_badge, render_timeline_node, render_trade_timeline %}
 
 <!-- Header -->
@@ -70,16 +70,8 @@
                         <div class="col-span-3 text-right">
                             <span class="text-sm font-bold text-slate-600 tabular-nums">{{ trade.current_size|int }}</span>
                         </div>
-                        <!-- Col 9–12: Open PnL & Chevron -->
                         <div class="col-span-4 flex items-center justify-end gap-2">
-                            <div class="flex flex-col items-end text-right whitespace-nowrap">
-                                <span class="text-sm font-bold tabular-nums {{ 'text-emerald-500' if trade.unrealized_pnl >= 0 else 'text-rose-500' }}">
-                                    {{ "{:+,.2f}".format(trade.unrealized_pnl) }}
-                                </span>
-                                <span class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                                    {{ "{:+.2f}".format(trade.pnl_percentage) }}%
-                                </span>
-                            </div>
+                            {{ render_pnl_cell(trade.unrealized_pnl, trade.pnl_percentage) }}
                             <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
                         </div>
                     </div>
@@ -107,21 +99,7 @@
             {% set total_unrealized_pnl = active_trades | map(attribute='unrealized_pnl') | sum %}
             {% set count_active = active_trades | length %}
             {% set avg_unrealized_pnl = (total_unrealized_pnl / count_active) if count_active > 0 else 0.0 %}
-            <div class="grid grid-cols-12 items-center gap-1 px-4 py-3 bg-slate-50 border-t border-slate-200">
-                <div class="col-span-8 text-slate-500 font-medium text-sm">
-                    Total Open PnL
-                </div>
-                <div class="col-span-4 text-right pr-6 font-bold tabular-nums">
-                    <div class="text-sm {% if total_unrealized_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                        {% if total_unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(total_unrealized_pnl) }}
-                    </div>
-                    {% if count_active > 0 %}
-                    <div class="text-xs font-semibold {% if avg_unrealized_pnl >= 0 %}text-emerald-600/90{% else %}text-rose-600/90{% endif %} mt-0.5">
-                        {% if avg_unrealized_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(avg_unrealized_pnl) }} ∅
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
+            {{ render_mobile_table_footer("Total Open PnL", total_unrealized_pnl, avg_unrealized_pnl, count_active) }}
         </div>
 
         <!-- Desktop Grid View -->
@@ -168,14 +146,7 @@
                         </div>
 
                         <!-- 6. Open PnL -->
-                        <div class="flex flex-col items-end text-right whitespace-nowrap">
-                            <div class="font-bold {{ 'text-emerald-500' if trade.unrealized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
-                                {{ "{:+,.2f}".format(trade.unrealized_pnl) }}
-                            </div>
-                            <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                                {{ "{:+.2f}".format(trade.pnl_percentage) }}%
-                            </div>
-                        </div>
+                        {{ render_pnl_cell(trade.unrealized_pnl, trade.pnl_percentage) }}
                     </div>
 
                     <!-- Accordion Detail: Stammbaum-Timeline from Trades Table Data -->
@@ -233,16 +204,8 @@
                         <div class="col-span-3 text-right">
                             <span class="text-sm font-bold text-slate-600 tabular-nums">{{ trade.initial_size|int }}</span>
                         </div>
-                        <!-- Col 9–12: Net PnL & Chevron -->
                         <div class="col-span-4 flex items-center justify-end gap-2">
-                            <div class="flex flex-col items-end text-right whitespace-nowrap">
-                                <span class="text-sm font-bold tabular-nums {{ 'text-emerald-500' if trade.realized_pnl >= 0 else 'text-rose-500' }}">
-                                    {{ "{:+,.2f}".format(trade.realized_pnl) }}
-                                </span>
-                                <span class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                                    {{ "{:+.2f}".format(trade.pnl_percentage) }}%
-                                </span>
-                            </div>
+                            {{ render_pnl_cell(trade.realized_pnl, trade.pnl_percentage) }}
                             <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
                         </div>
                     </div>
@@ -268,19 +231,7 @@
             {% endfor %}
 
             <!-- Table Footer: Total Net PnL & Average per closed trade -->
-            <div class="grid grid-cols-12 items-center gap-1 px-4 py-3 bg-slate-50 border-t border-slate-200">
-                <div class="col-span-8 text-slate-500 font-medium text-sm">
-                    Total Net PnL
-                </div>
-                <div class="col-span-4 text-right pr-6 font-bold tabular-nums">
-                    <div class="text-sm {% if closed_summary.total_pnl >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-                        {% if closed_summary.total_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(closed_summary.total_pnl) }}
-                    </div>
-                    <div class="text-xs font-semibold {% if closed_summary.average_pnl >= 0 %}text-emerald-600/90{% else %}text-rose-600/90{% endif %} mt-0.5">
-                        {% if closed_summary.average_pnl >= 0 %}+{% endif %}{{ "{:,.2f}".format(closed_summary.average_pnl) }} ∅
-                    </div>
-                </div>
-            </div>
+            {{ render_mobile_table_footer("Total Net PnL", closed_summary.total_pnl, closed_summary.average_pnl, 1) }}
         </div>
 
         <!-- Desktop Grid View -->
@@ -332,14 +283,7 @@
                         </div>
 
                         <!-- 6. Net PnL -->
-                        <div class="flex flex-col items-end text-right whitespace-nowrap">
-                            <div class="font-bold {{ 'text-emerald-500' if trade.realized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
-                                {{ "{:+,.2f}".format(trade.realized_pnl) }}
-                            </div>
-                            <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                                {{ "{:+.2f}".format(trade.pnl_percentage) }}%
-                            </div>
-                        </div>
+                        {{ render_pnl_cell(trade.realized_pnl, trade.pnl_percentage) }}
 
                         <!-- 7. Reason -->
                         <div class="text-right whitespace-nowrap">
@@ -379,67 +323,4 @@
 
 {% set active_page = 'trades' %}
 {% include "partials/mobile_nav.html" with context %}
-
-<!-- INTERACTIVE SCRIPTS -->
-<script>
-    // Toggle Details Row Script (Desktop)
-    function toggleRow(accId) {
-        const detailEl = document.getElementById(accId);
-        if (!detailEl) return;
-
-        const triggerEl = detailEl.previousElementSibling;
-        const chevron = triggerEl ? triggerEl.querySelector('[data-lucide="chevron-down"]') : null;
-
-        if (detailEl.classList.contains('hidden')) {
-            detailEl.classList.remove('hidden');
-            if (chevron) chevron.style.transform = 'rotate(180deg)';
-        } else {
-            detailEl.classList.add('hidden');
-            if (chevron) chevron.style.transform = 'rotate(0deg)';
-        }
-    }
-
-    // Toggle for grid-animated Position Accordions (Mobile)
-    function togglePositionAccordion(triggerButton, detailId) {
-        const detailEl = document.getElementById(detailId);
-        if (!detailEl) return;
-
-        const isExpanded = triggerButton.getAttribute('aria-expanded') === 'true';
-        const chevron = triggerButton.querySelector('.chevron-icon');
-
-        if (isExpanded) {
-            detailEl.style.gridTemplateRows = '0fr';
-            triggerButton.setAttribute('aria-expanded', 'false');
-            if (chevron) chevron.style.transform = 'rotate(0deg)';
-        } else {
-            detailEl.style.gridTemplateRows = '1fr';
-            triggerButton.setAttribute('aria-expanded', 'true');
-            if (chevron) chevron.style.transform = 'rotate(180deg)';
-        }
-    }
-
-    // Group Highlights on Hover
-    document.addEventListener('DOMContentLoaded', () => {
-        const linkables = document.querySelectorAll('.group-linkable');
-
-        linkables.forEach(item => {
-            const groupId = item.getAttribute('data-group-id');
-            if (!groupId || groupId === '-' || groupId === 'None') return;
-
-            item.addEventListener('mouseenter', () => {
-                const matches = document.querySelectorAll(`.group-linkable[data-group-id="${groupId}"]`);
-                matches.forEach(m => {
-                    m.classList.add('bg-indigo-50/20', 'shadow-sm');
-                });
-            });
-
-            item.addEventListener('mouseleave', () => {
-                const matches = document.querySelectorAll(`.group-linkable[data-group-id="${groupId}"]`);
-                matches.forEach(m => {
-                    m.classList.remove('bg-indigo-50/20', 'shadow-sm');
-                });
-            });
-        });
-    });
-</script>
 {% endblock %}
