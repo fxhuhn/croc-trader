@@ -10,7 +10,7 @@
 {% endmacro %}
 
 {% macro render_timeline_node(item, is_child=False, is_first=False, role_label=None) %}
-{% set is_cancelled = item.status == 'Cancelled' %}
+{% set is_cancelled = item.status and ('Cancel' in item.status or 'Inactive' in item.status) %}
 {% set is_entry = role_label | upper == 'ENTRY' if role_label else False %}
 
 {% set dot_color = "bg-slate-300" if is_cancelled else
@@ -45,7 +45,9 @@
             {% if is_child %}<span class="text-slate-400 font-mono font-normal">└─</span>{% endif %}
             <span class="{% if is_cancelled %}text-slate-400{% elif action_val == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ action_val }}</span>
             {{ qty_val }} @ {{ "{:,.2f}".format(price_val|float) if price_val else '-' }}
-            <span class="text-slate-400 font-normal">({{ item.order_type | default('—') }})</span>
+            {% if item.order_type and item.order_type | upper != 'ENTRY' %}
+            <span class="text-slate-400 font-normal">({{ item.order_type }})</span>
+            {% endif %}
         </span>
         <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold border {{ badge_style }} shrink-0">
             {{ role_label if role_label else item.status }}
@@ -61,7 +63,7 @@
 {% macro render_trade_timeline(trade, is_active=true, border_class="border-l-2 border-slate-200") %}
 <div class="relative pl-4 ml-1.5 {{ border_class }} space-y-2.5 py-1">
     {% if is_active %}
-        {% set entry_node = {'action': 'BUY', 'quantity': trade.current_size|int, 'price': trade.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': trade.id, 'transmitted_at': trade.entry_date, 'days_held': trade.days_held} %}
+        {% set entry_node = {'action': 'BUY', 'quantity': trade.current_size|int, 'price': trade.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': trade.id, 'transmitted_at': trade.entry_date} %}
         {{ render_timeline_node(entry_node, is_child=False, is_first=True, role_label='Entry') }}
 
         {% if trade.current_target %}
@@ -79,7 +81,7 @@
 
         {% set exit_reason_label = trade.exit_reason | replace('_', ' ') | title if trade.exit_reason else 'Exit' %}
         {% set exit_node = {'action': 'SELL', 'quantity': trade.initial_size|int, 'price': trade.exit_price, 'order_type': exit_reason_label, 'status': 'Closed', 'order_id': trade.id, 'transmitted_at': trade.exit_date} %}
-        {{ render_timeline_node(exit_node, is_child=False, is_first=False, role_label='Exit') }}
+        {{ render_timeline_node(exit_node, is_child=False, is_first=True, role_label='Exit') }}
     {% endif %}
 </div>
 {% endmacro %}

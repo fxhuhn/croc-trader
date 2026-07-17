@@ -10,7 +10,7 @@
         <p class="text-xs font-bold {{ label_classes }} uppercase tracking-wider md:mb-1">{{ title }}</p>
     </div>
     {% if caller is defined %}
-    <div class="md:hidden absolute right-4 top-1/2 -translate-y-1/2 flex items-center justify-center">
+    <div class="md:hidden absolute right-4 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-white/10 border border-white/10 backdrop-blur-sm flex items-center justify-center shrink-0 shadow-sm">
         {{ caller() }}
     </div>
     {% endif %}
@@ -208,6 +208,10 @@
     </div>
     {% endif %}
 </div>
+{% endmacro %}
+
+{% macro render_row_subline(text) %}
+<span class="block text-[11px] text-slate-500 tabular-nums whitespace-nowrap mt-0.5">{{ text }}</span>
 {% endmacro %}
 
 

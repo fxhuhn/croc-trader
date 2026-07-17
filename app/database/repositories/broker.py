@@ -250,15 +250,16 @@ class BrokerRepository(BaseRepository):
     def _determine_tws_status(
         self, trade_group_id: str
     ) -> tuple[str, list[dict[str, Any]]]:
-        """Resolves TWS state and loads associated orders."""
+        """Resolves TWS state and loads associated orders strictly for a trade group."""
         orders_query = """
             SELECT o.*,
-                   COALESCE(e.price, NULLIF(o.target_price, 0)) AS display_price,
-                   COALESCE(e.executed_at, o.transmitted_at) AS display_date
+                   COALESCE(MAX(e.price), NULLIF(o.target_price, 0)) AS display_price,
+                   COALESCE(MAX(e.executed_at), o.transmitted_at) AS display_date
             FROM orders o
             LEFT JOIN executions e ON e.order_id = o.order_id
             WHERE o.trade_group_id = ?
-            ORDER BY COALESCE(e.executed_at, o.transmitted_at) ASC
+            GROUP BY o.order_id
+            ORDER BY COALESCE(MAX(e.executed_at), o.transmitted_at) ASC
         """
         tws_orders = [
             dict(row) for row in self.fetch_all(orders_query, (trade_group_id,))
