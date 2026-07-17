@@ -4,7 +4,7 @@
                      ("bg-blue-50 text-blue-700 border-blue-100" if status == 'PreSubmitted' else
                      ("bg-rose-50 text-rose-700 border-rose-100/50" if status == 'Error' else
                      "bg-slate-50 text-slate-400 border-slate-200"))) %}
-<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border {{ badge_style }} shrink-0">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold border {{ badge_style }} shrink-0">
     {{ status }}
 </span>
 {% endmacro %}
@@ -19,18 +19,28 @@
                   ("bg-indigo-500" if role_label else
                   ("bg-rose-500" if item.status == 'Error' else "bg-slate-400")))) %}
 
-{% set badge_style = "bg-slate-100 text-slate-500 border-slate-200" if (is_child and not role_label) else
-                     ("bg-emerald-50 text-emerald-700 border-emerald-100/50" if (is_entry or item.status in ['Submitted', 'Filled']) else
-                     ("bg-blue-50 text-blue-700 border-blue-100" if item.status == 'PreSubmitted' else
-                     ("bg-indigo-50 text-indigo-700 border-indigo-100" if role_label else
-                     ("bg-rose-50 text-rose-700 border-rose-100/50" if item.status == 'Error' else
-                     "bg-slate-50 text-slate-400 border-slate-200")))) %}
+{% set action_name = item.action | default('') %}
+{% set quantity_amount = item.quantity | default(item.qty | default(0)) | int %}
+{% set price_value = item.price | default(item.display_price | default(item.target_price | default(none))) %}
+{% set date_value = item.transmitted_at | default(item.display_date | default(item.executed_at | default(none))) %}
+{% set order_identifier = item.order_id | default('-') %}
 
-{% set action_val = item.action | default('') %}
-{% set qty_val = item.quantity | default(item.qty | default(0)) | int %}
-{% set price_val = item.target_price | default(item.display_price | default(item.price | default(none))) %}
-{% set date_val = item.transmitted_at | default(item.display_date | default(item.executed_at | default(none))) %}
-{% set order_id_val = item.order_id | default('-') %}
+{% set commission_fee = item.commission if item.commission is defined and item.commission is not none else (item.fee if item.fee is defined and item.fee is not none else (item.total_commissions if item.total_commissions is defined and item.total_commissions is not none else none)) %}
+{% set executed_price = item.price | default(item.display_price | default(none)) %}
+{% set target_price = item.target_price | default(none) %}
+{% set price_slippage = none %}
+
+{% if item.slippage is defined and item.slippage is not none %}
+    {% set price_slippage = item.slippage | float(0.0) %}
+{% elif item.price_diff_slippage is defined and item.price_diff_slippage is not none %}
+    {% set price_slippage = item.price_diff_slippage | float(0.0) %}
+{% elif target_price is not none and target_price | float(0.0) > 0 and executed_price is not none and executed_price | float(0.0) > 0 %}
+    {% if action_name == 'BUY' %}
+        {% set price_slippage = target_price | float(0.0) - executed_price | float(0.0) %}
+    {% elif action_name == 'SELL' %}
+        {% set price_slippage = executed_price | float(0.0) - target_price | float(0.0) %}
+    {% endif %}
+{% endif %}
 
 <div class="relative {% if is_cancelled %}opacity-60{% elif is_child %}opacity-85{% endif %}">
     {% if is_first %}
@@ -43,19 +53,22 @@
     <div class="flex items-center justify-between gap-2">
         <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% elif is_child %}text-slate-600{% else %}text-slate-700{% endif %} flex items-center gap-1">
             {% if is_child %}<span aria-hidden="true" class="text-slate-400 font-mono font-normal">└─</span>{% endif %}
-            <span class="{% if is_cancelled %}text-slate-400{% elif action_val == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ action_val }}</span>
-            {{ qty_val }} @ {{ "{:,.2f}".format(price_val|float) if price_val else '-' }}
+            <span class="{% if is_cancelled %}text-slate-400{% elif action_name == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ action_name }}</span>
+            {{ quantity_amount }} @ {{ "{:,.2f}".format(price_value | float(0.0)) if price_value else '-' }}
             {% if item.order_type and item.order_type | upper != 'ENTRY' %}
             <span class="text-slate-400 font-normal">({{ item.order_type }})</span>
             {% endif %}
         </span>
-        <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold border {{ badge_style }} shrink-0">
-            {{ role_label if role_label else item.status }}
-        </span>
+        {{ render_order_badge(role_label if role_label else item.status, is_child=(is_child and not role_label)) }}
     </div>
     <!-- Meta Row -->
     <div class="text-[11px] text-slate-400 font-mono mt-0.5">
-        #{{ order_id_val }} • {{ (date_val | to_local_tz)[:10] if date_val else '-' }}{% if item.days_held %} ({{ item.days_held }}d){% endif %}{% if item.tif %} • {{ item.tif }}{% endif %}{% if item.parent_id %} • Parent #{{ item.parent_id }}{% endif %}
+        #{{ order_identifier }} • {{ (date_value | to_local_tz)[:10] if date_value else '-' }}
+        {% if item.days_held %} ({{ item.days_held }}d){% endif %}
+        {% if item.tif %} • {{ item.tif }}{% endif %}
+        {% if item.parent_id %} • Parent #{{ item.parent_id }}{% endif %}
+        {% if commission_fee is not none and commission_fee | float(0.0) > 0 %} • Fee: ${{ "{:,.2f}".format(commission_fee | float(0.0)) }}{% endif %}
+        {% if price_slippage is not none and price_slippage != 0 %} • <span class="{% if price_slippage > 0 %}text-emerald-600 font-bold{% else %}text-rose-600 font-bold{% endif %}">Slippage: {{ "{:+,.2f}".format(price_slippage) }}</span>{% endif %}
     </div>
 </div>
 {% endmacro %}
@@ -63,24 +76,24 @@
 {% macro render_trade_timeline(trade, is_active=true, border_class="border-l-2 border-slate-200") %}
 <div class="relative pl-4 ml-1.5 {{ border_class }} space-y-2.5 py-1">
     {% if is_active %}
-        {% set entry_node = {'action': 'BUY', 'quantity': trade.current_size|int, 'price': trade.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': trade.id, 'transmitted_at': trade.entry_date} %}
+        {% set entry_node = {'action': 'BUY', 'quantity': trade.current_size | int, 'price': trade.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': trade.id, 'transmitted_at': trade.entry_date} %}
         {{ render_timeline_node(entry_node, is_child=False, is_first=True, role_label='Entry') }}
 
         {% if trade.current_target %}
-        {% set target_node = {'action': 'SELL', 'quantity': trade.current_size|int, 'price': trade.current_target, 'order_type': 'LMT', 'status': 'Target', 'order_id': trade.id} %}
+        {% set target_node = {'action': 'SELL', 'quantity': trade.current_size | int, 'price': trade.current_target, 'order_type': 'LMT', 'status': 'Target', 'order_id': trade.id} %}
         {{ render_timeline_node(target_node, is_child=True, is_first=False, role_label='Target') }}
         {% endif %}
 
         {% if trade.current_stop_loss %}
-        {% set stop_node = {'action': 'SELL', 'quantity': trade.current_size|int, 'price': trade.current_stop_loss, 'order_type': 'STP', 'status': 'Stop Loss', 'order_id': trade.id} %}
+        {% set stop_node = {'action': 'SELL', 'quantity': trade.current_size | int, 'price': trade.current_stop_loss, 'order_type': 'STP', 'status': 'Stop Loss', 'order_id': trade.id} %}
         {{ render_timeline_node(stop_node, is_child=True, is_first=False, role_label='Stop') }}
         {% endif %}
     {% else %}
-        {% set entry_node = {'action': 'BUY', 'quantity': trade.initial_size|int, 'price': trade.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': trade.id, 'transmitted_at': trade.entry_date} %}
+        {% set entry_node = {'action': 'BUY', 'quantity': trade.initial_size | int, 'price': trade.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': trade.id, 'transmitted_at': trade.entry_date} %}
         {{ render_timeline_node(entry_node, is_child=False, is_first=True, role_label='Entry') }}
 
         {% set exit_reason_label = trade.exit_reason | replace('_', ' ') | title if trade.exit_reason else 'Exit' %}
-        {% set exit_node = {'action': 'SELL', 'quantity': trade.initial_size|int, 'price': trade.exit_price, 'order_type': exit_reason_label, 'status': 'Closed', 'order_id': trade.id, 'transmitted_at': trade.exit_date} %}
+        {% set exit_node = {'action': 'SELL', 'quantity': trade.initial_size | int, 'price': trade.exit_price, 'order_type': exit_reason_label, 'status': 'Closed', 'order_id': trade.id, 'transmitted_at': trade.exit_date} %}
         {{ render_timeline_node(exit_node, is_child=False, is_first=True, role_label='Exit') }}
     {% endif %}
 </div>
