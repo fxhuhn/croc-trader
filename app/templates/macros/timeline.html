@@ -28,21 +28,21 @@
 
 {% set action_val = item.action | default('') %}
 {% set qty_val = item.quantity | default(item.qty | default(0)) | int %}
-{% set price_val = item.target_price if item.target_price is defined and item.target_price else (item.display_price if item.display_price is defined and item.display_price else (item.price if item.price is defined and item.price else None)) %}
-{% set date_val = item.transmitted_at if item.transmitted_at is defined and item.transmitted_at else (item.display_date if item.display_date is defined and item.display_date else (item.executed_at if item.executed_at is defined and item.executed_at else None)) %}
+{% set price_val = item.target_price | default(item.display_price | default(item.price | default(none))) %}
+{% set date_val = item.transmitted_at | default(item.display_date | default(item.executed_at | default(none))) %}
 {% set order_id_val = item.order_id | default('-') %}
 
 <div class="relative {% if is_cancelled %}opacity-60{% elif is_child %}opacity-85{% endif %}">
     {% if is_first %}
     <!-- Dot (only for 1st item if specified) -->
-    <span class="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
+    <span aria-hidden="true" class="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
         <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
     </span>
     {% endif %}
     <!-- Main Row -->
     <div class="flex items-center justify-between gap-2">
         <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% elif is_child %}text-slate-600{% else %}text-slate-700{% endif %} flex items-center gap-1">
-            {% if is_child %}<span class="text-slate-400 font-mono font-normal">└─</span>{% endif %}
+            {% if is_child %}<span aria-hidden="true" class="text-slate-400 font-mono font-normal">└─</span>{% endif %}
             <span class="{% if is_cancelled %}text-slate-400{% elif action_val == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ action_val }}</span>
             {{ qty_val }} @ {{ "{:,.2f}".format(price_val|float) if price_val else '-' }}
             {% if item.order_type and item.order_type | upper != 'ENTRY' %}
@@ -85,4 +85,3 @@
     {% endif %}
 </div>
 {% endmacro %}
-

@@ -1,5 +1,5 @@
 {% macro render_header(title, strategy_slug, show_switcher=True, active_tab='trades') %}
-<nav class="glass-nav sticky top-0 w-full z-50 bg-slate-100/90 md:bg-white/95 border-b md:border-b-0 border-slate-200">
+<nav aria-label="Global Navigation" class="glass-nav sticky top-0 w-full z-50 bg-slate-100/90 md:bg-white/95 border-b md:border-b-0 border-slate-200">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 md:h-16 flex items-center justify-between">
         <!-- Brand -->
         <span class="text-lg md:text-xl font-bold md:font-medium text-slate-900 tracking-tight">{{ title }}</span>
@@ -9,13 +9,17 @@
         <div class="flex md:hidden items-center bg-slate-200/60 p-1 rounded-lg">
             {% if active_tab in ['analytics', 'broker'] %}
             <a href="/analytics"
+                {% if active_tab == 'analytics' %}aria-current="page"{% endif %}
                 class="{{ 'bg-white shadow-sm text-slate-900' if active_tab == 'analytics' else 'text-slate-500 active:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all">Analytics</a>
             <a href="/broker"
+                {% if active_tab == 'broker' %}aria-current="page"{% endif %}
                 class="{{ 'bg-white shadow-sm text-slate-900' if active_tab == 'broker' else 'text-slate-500 active:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-colors">Broker</a>
             {% else %}
             <a href="/trades/{{ strategy_slug }}"
+                {% if active_tab == 'trades' %}aria-current="page"{% endif %}
                 class="{{ 'bg-white shadow-sm text-slate-900' if active_tab == 'trades' else 'text-slate-500 active:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all">Trades</a>
             <a href="/screener/{{ strategy_slug }}"
+                {% if active_tab == 'screener' %}aria-current="page"{% endif %}
                 class="{{ 'bg-white shadow-sm text-slate-900' if active_tab == 'screener' else 'text-slate-500 active:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-colors">Screener</a>
             {% endif %}
         </div>
@@ -27,13 +31,17 @@
                 {% if show_switcher %}
                 {% if active_tab in ['analytics', 'broker'] %}
                 <a href="/analytics"
+                    {% if active_tab == 'analytics' %}aria-current="page"{% endif %}
                     class="{{ 'bg-blue-50 text-blue-600' if active_tab == 'analytics' else 'text-slate-500 hover:text-slate-900' }} px-3 py-2 rounded-lg text-sm font-medium transition-colors">Analytics</a>
                 <a href="/broker"
+                    {% if active_tab == 'broker' %}aria-current="page"{% endif %}
                     class="{{ 'bg-blue-50 text-blue-600' if active_tab == 'broker' else 'text-slate-500 hover:text-slate-900' }} px-3 py-2 rounded-md text-sm font-medium transition-colors">Broker</a>
                 {% else %}
                 <a href="/trades/{{ strategy_slug }}"
+                    {% if active_tab == 'trades' %}aria-current="page"{% endif %}
                     class="{{ 'bg-blue-50 text-blue-600' if active_tab == 'trades' else 'text-slate-500 hover:text-slate-900' }} px-3 py-2 rounded-lg text-sm font-medium transition-colors">Trades</a>
                 <a href="/screener/{{ strategy_slug }}"
+                    {% if active_tab == 'screener' %}aria-current="page"{% endif %}
                     class="{{ 'bg-blue-50 text-blue-600' if active_tab == 'screener' else 'text-slate-500 hover:text-slate-900' }} px-3 py-2 rounded-md text-sm font-medium transition-colors">Screener</a>
                 {% endif %}
                 {% endif %}

@@ -1,43 +1,33 @@
 <script>
-    function toggleCard(card) {
-        // Toggle the hidden details section
-        const details = card.querySelector('.hidden-details');
-        const icon = card.querySelector('.chevron-icon');
+    function toggleCard(cardElement) {
+        if (!cardElement) return;
 
-        if (!details || !icon) return;
+        const detailsElement = cardElement.querySelector('.hidden-details');
+        const chevronIcon = cardElement.querySelector('.chevron-icon');
 
-        const isHidden = details.classList.contains('hidden');
+        if (!detailsElement || !chevronIcon) return;
 
-        if (isHidden) {
-            details.classList.remove('hidden');
-            icon.style.transform = 'rotate(180deg)';
-            card.classList.add('shadow-md', 'border-slate-200');
-            card.classList.remove('shadow-soft', 'border-slate-100');
-        } else {
-            details.classList.add('hidden');
-            icon.style.transform = 'rotate(0deg)';
-            card.classList.remove('shadow-md', 'border-slate-200');
-            card.classList.add('shadow-soft', 'border-slate-100');
-        }
+        const isCurrentlyHidden = detailsElement.classList.toggle('hidden');
+        chevronIcon.classList.toggle('rotate-180', !isCurrentlyHidden);
+
+        cardElement.classList.toggle('shadow-md', !isCurrentlyHidden);
+        cardElement.classList.toggle('border-slate-200', !isCurrentlyHidden);
+        cardElement.classList.toggle('shadow-soft', isCurrentlyHidden);
+        cardElement.classList.toggle('border-slate-100', isCurrentlyHidden);
     }
 
-    function toggleTradeCard(header) {
-        // Toggle visibility of the next element (details container)
-        const details = header.nextElementSibling;
-        const isHidden = details.classList.contains('hidden');
+    function toggleTradeCard(headerElement) {
+        if (!headerElement) return;
 
-        if (isHidden) {
-            details.classList.remove('hidden');
-            header.classList.add('opacity-90');
-        } else {
-            details.classList.add('hidden');
-            header.classList.remove('opacity-90');
-        }
+        const detailsElement = headerElement.nextElementSibling;
+        if (!detailsElement || !detailsElement.classList) return;
 
-        // Rotate Chevron
-        const icon = header.querySelector('[data-lucide="chevron-down"]');
-        if (icon) {
-            icon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+        const isCurrentlyHidden = detailsElement.classList.toggle('hidden');
+        headerElement.classList.toggle('opacity-90', !isCurrentlyHidden);
+
+        const chevronIcon = headerElement.querySelector('[data-lucide="chevron-down"]');
+        if (chevronIcon) {
+            chevronIcon.classList.toggle('rotate-180', !isCurrentlyHidden);
         }
     }
 </script>
