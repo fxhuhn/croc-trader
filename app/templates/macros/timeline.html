@@ -53,7 +53,34 @@
     </div>
     <!-- Meta Row -->
     <div class="text-[11px] text-slate-400 font-mono mt-0.5">
-        #{{ order_id_val }} • {{ (date_val | to_local_tz)[:10] if date_val else '-' }}{% if item.tif %} • {{ item.tif }}{% endif %}{% if item.parent_id %} • Parent #{{ item.parent_id }}{% endif %}
+        #{{ order_id_val }} • {{ (date_val | to_local_tz)[:10] if date_val else '-' }}{% if item.days_held %} ({{ item.days_held }}d){% endif %}{% if item.tif %} • {{ item.tif }}{% endif %}{% if item.parent_id %} • Parent #{{ item.parent_id }}{% endif %}
     </div>
 </div>
 {% endmacro %}
+
+{% macro render_trade_timeline(trade, is_active=true, border_class="border-l-2 border-slate-200") %}
+<div class="relative pl-4 ml-1.5 {{ border_class }} space-y-2.5 py-1">
+    {% if is_active %}
+        {% set entry_node = {'action': 'BUY', 'quantity': trade.current_size|int, 'price': trade.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': trade.id, 'transmitted_at': trade.entry_date, 'days_held': trade.days_held} %}
+        {{ render_timeline_node(entry_node, is_child=False, is_first=True, role_label='Entry') }}
+
+        {% if trade.current_target %}
+        {% set target_node = {'action': 'SELL', 'quantity': trade.current_size|int, 'price': trade.current_target, 'order_type': 'LMT', 'status': 'Target', 'order_id': trade.id} %}
+        {{ render_timeline_node(target_node, is_child=True, is_first=False, role_label='Target') }}
+        {% endif %}
+
+        {% if trade.current_stop_loss %}
+        {% set stop_node = {'action': 'SELL', 'quantity': trade.current_size|int, 'price': trade.current_stop_loss, 'order_type': 'STP', 'status': 'Stop Loss', 'order_id': trade.id} %}
+        {{ render_timeline_node(stop_node, is_child=True, is_first=False, role_label='Stop') }}
+        {% endif %}
+    {% else %}
+        {% set entry_node = {'action': 'BUY', 'quantity': trade.initial_size|int, 'price': trade.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': trade.id, 'transmitted_at': trade.entry_date} %}
+        {{ render_timeline_node(entry_node, is_child=False, is_first=True, role_label='Entry') }}
+
+        {% set exit_reason_label = trade.exit_reason | replace('_', ' ') | title if trade.exit_reason else 'Exit' %}
+        {% set exit_node = {'action': 'SELL', 'quantity': trade.initial_size|int, 'price': trade.exit_price, 'order_type': exit_reason_label, 'status': 'Closed', 'order_id': trade.id, 'transmitted_at': trade.exit_date} %}
+        {{ render_timeline_node(exit_node, is_child=False, is_first=False, role_label='Exit') }}
+    {% endif %}
+</div>
+{% endmacro %}
+
