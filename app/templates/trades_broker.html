@@ -6,6 +6,8 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
+{% from "macros/cards.html" import render_kpi_card %}
+{% from "macros/timeline.html" import render_order_badge, render_timeline_node %}
 
 <!-- NAV/HEADER -->
 {{ render_header("TWS Status", "broker", show_switcher=True, active_tab='broker') }}
@@ -68,77 +70,28 @@
             <section class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6" id="kpi-grid">
                 <!-- Net PnL -->
                 {% set pnl_all = metrics.all.pnl %}
-                <article id="kpi-pnl-card"
-                    class="col-span-2 md:col-span-1 {% if pnl_all >= 0 %}bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30{% else %}bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30{% endif %} md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200">
-                    <div
-                        class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
-                        <i data-lucide="{% if pnl_all >= 0 %}trending-up{% else %}trending-down{% endif %}"
-                            class="w-6 h-6" id="kpi-pnl-icon-desktop"></i>
-                    </div>
-                    <div class="flex flex-col">
-                        <div class="text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last {% if pnl_all >= 0 %}md:!text-emerald-500{% else %}md:!text-rose-500{% endif %} tabular-nums"
-                            id="kpi-pnl">
-                            {{ metrics.all.pnlText }}
-                        </div>
-                        <div
-                            class="text-emerald-50/80 md:text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">
-                            Net PnL (TWS)</div>
-                    </div>
+                {% set pnl_card_bg = "col-span-2 md:col-span-1 bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 border md:border-slate-200" if pnl_all >= 0 else "col-span-2 md:col-span-1 bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 border md:border-slate-200" %}
+                {% set pnl_val_cls = "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-emerald-500 tabular-nums" if pnl_all >= 0 else "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-rose-500 tabular-nums" %}
+                {% set pnl_icon = "trending-up" if pnl_all >= 0 else "trending-down" %}
+                {% set pnl_lbl_cls = "text-emerald-50/80 md:text-slate-500 text-xs font-bold uppercase tracking-wider md:mb-1" if pnl_all >= 0 else "text-rose-100/80 md:text-slate-500 text-xs font-bold uppercase tracking-wider md:mb-1" %}
+
+                {% call render_kpi_card("Net PnL (TWS)", metrics.all.pnlText, pnl_icon, value_classes=pnl_val_cls, bg_classes=pnl_card_bg, label_classes=pnl_lbl_cls, card_id="kpi-pnl-card", value_id="kpi-pnl", icon_id="kpi-pnl-icon-desktop") %}
                     <!-- Mobile icons -->
-                    <i data-lucide="trending-up"
-                        class="w-8 h-8 text-emerald-100 md:hidden {% if pnl_all < 0 %}hidden{% endif %}"
-                        id="kpi-pnl-icon-up-mobile"></i>
-                    <i data-lucide="trending-down"
-                        class="w-8 h-8 text-rose-200 md:hidden {% if pnl_all >= 0 %}hidden{% endif %}"
-                        id="kpi-pnl-icon-down-mobile"></i>
-                </article>
+                    <i data-lucide="trending-up" class="w-8 h-8 text-emerald-100 {% if pnl_all < 0 %}hidden{% endif %}" id="kpi-pnl-icon-up-mobile"></i>
+                    <i data-lucide="trending-down" class="w-8 h-8 text-rose-200 {% if pnl_all >= 0 %}hidden{% endif %}" id="kpi-pnl-icon-down-mobile"></i>
+                {% endcall %}
 
                 <!-- Win Rate -->
-                <article
-                    class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4">
-                    <div
-                        class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
-                        <i data-lucide="percent" class="w-6 h-6"></i>
-                    </div>
-                    <div class="flex flex-col items-center md:items-start text-center md:text-left">
-                        <p class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last"
-                            id="kpi-winrate">{{ metrics.all.winrate }}</p>
-                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">Win Rate
-                        </p>
-                    </div>
-                </article>
+                {{ render_kpi_card("Win Rate", metrics.all.winrate, "percent", value_classes="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last", value_id="kpi-winrate") }}
 
                 <!-- Slippage -->
-                <article
-                    class="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4">
-                    <div
-                        class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
-                        <i data-lucide="git-compare" class="w-6 h-6"></i>
-                    </div>
-                    <div class="flex flex-col items-center md:items-start text-center md:text-left">
-                        <p class="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums"
-                            id="kpi-slippage">{{ metrics.all.slippage }}</p>
-                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">Slippage
-                        </p>
-                    </div>
-                </article>
+                {{ render_kpi_card("Slippage", metrics.all.slippage, "git-compare", value_classes="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums", value_id="kpi-slippage") }}
 
                 <!-- Broker Fees -->
-                <article
-                    class="col-span-2 md:col-span-1 bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200">
-                    <div
-                        class="hidden md:flex w-12 h-12 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
-                        <i data-lucide="receipt" class="w-6 h-6"></i>
-                    </div>
-                    <div class="flex flex-col">
-                        <p class="text-3xl md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums"
-                            id="kpi-fees">{{ "{:,.2f}".format(metrics.all.fees) }}</p>
-                        <p class="text-slate-500 text-xs md:text-xs font-bold uppercase tracking-wider md:mb-1">
-                            Commissions</p>
-                    </div>
+                {% call render_kpi_card("Commissions", "{:,.2f}".format(metrics.all.fees), "receipt", value_classes="text-3xl md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums", bg_classes="col-span-2 md:col-span-1 bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm border md:border-slate-200", value_id="kpi-fees") %}
                     <!-- Mobile icon -->
-                    <i data-lucide="receipt" class="w-8 h-8 text-slate-300 md:hidden"></i>
-                </article>
+                    <i data-lucide="receipt" class="w-8 h-8 text-slate-300"></i>
+                {% endcall %}
             </section>
 
             <!-- CARD 1: ACTIVE / SUBMITTED ORDERS -->
@@ -172,10 +125,7 @@
                                 </div>
                                 <div class="{% if order.is_child %}text-slate-400{% else %}text-slate-500{% endif %} font-medium">{{ order.strategy_name }}</div>
                                 <div>
-                                    <span
-                                        class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold {% if order.is_child %}bg-slate-100 text-slate-500 border border-slate-200{% elif order.status == 'Submitted' %}bg-emerald-50 text-emerald-600 border border-emerald-100/50{% else %}bg-blue-50 text-blue-700 border border-blue-100{% endif %}">
-                                        {{ order.status }}
-                                    </span>
+                                    {{ render_order_badge(order.status, is_child=order.is_child) }}
                                 </div>
                                 <div class="text-right tabular-nums {% if order.is_child %}text-slate-400{% else %}text-slate-500{% endif %}">{{ order.quantity }} (<span
                                         class="{% if order.is_child %}text-slate-500{% elif order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
@@ -259,12 +209,7 @@
                                 </div>
                                 <!-- Col 9–12: Status & Chevron -->
                                 <div class="col-span-4 flex items-center justify-end gap-2">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border
-                                        {% if first_leg.status == 'Submitted' or first_leg.status == 'Filled' %}bg-emerald-50 text-emerald-700 border-emerald-100/50
-                                        {% elif first_leg.status == 'PreSubmitted' %}bg-blue-50 text-blue-700 border-blue-100
-                                        {% else %}bg-slate-50 text-slate-500 border-slate-200{% endif %} shrink-0">
-                                        {{ first_leg.status }}
-                                    </span>
+                                    {{ render_order_badge(first_leg.status, is_child=False) }}
                                     <i data-lucide="chevron-down"
                                        class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
                                 </div>
@@ -282,35 +227,7 @@
                                     <div class="relative pl-4 ml-1.5 border-l-2 border-slate-200 space-y-2.5 py-1">
                                         {% for leg in sorted_legs %}
                                         {% set is_child_leg = leg.is_child or not loop.first %}
-                                        {% set is_cancelled = leg.status == 'Cancelled' %}
-
-                                        {% set dot_color = "bg-slate-300" if is_cancelled else ("bg-blue-500" if leg.status == 'PreSubmitted' else "bg-emerald-500") %}
-                                        {% set badge_style = "bg-slate-100 text-slate-500 border-slate-200" if is_child_leg else ("bg-blue-50 text-blue-700 border-blue-100" if leg.status == 'PreSubmitted' else "bg-emerald-50 text-emerald-700 border-emerald-100/50") %}
-
-                                        <div class="relative {% if is_cancelled %}opacity-60{% elif is_child_leg %}opacity-85{% endif %}">
-                                            {% if loop.first %}
-                                            <!-- Dot (nur für den 1. Eintrag / BUY Zeile) -->
-                                            <span class="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
-                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
-                                            </span>
-                                            {% endif %}
-                                            <!-- Main Row: Parent vs. Child Leg mit └─ Präfix -->
-                                            <div class="flex items-center justify-between gap-2">
-                                                <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% elif is_child_leg %}text-slate-600{% else %}text-slate-700{% endif %} flex items-center gap-1">
-                                                    {% if is_child_leg %}<span class="text-slate-400 font-mono font-normal">└─</span>{% endif %}
-                                                    <span class="{% if is_cancelled %}text-slate-400{% elif leg.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ leg.action }}</span>
-                                                    {{ leg.quantity }} @ {{ "{:,.2f}".format(leg.target_price|float) if leg.target_price else '-' }}
-                                                    <span class="text-slate-400 font-normal">({{ leg.order_type | default('—') }})</span>
-                                                </span>
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border {{ badge_style }} shrink-0">
-                                                    {{ leg.status }}
-                                                </span>
-                                            </div>
-                                            <!-- Meta Row: #ID • Datum • TIF • (weitere Details) -->
-                                            <div class="text-[11px] text-slate-400 font-mono mt-0.5">
-                                                #{{ leg.order_id }} • {{ (leg.transmitted_at | to_local_tz)[:10] if leg.transmitted_at else '-' }} • {{ leg.tif | default('—') }}{% if leg.parent_id %} • Parent #{{ leg.parent_id }}{% endif %}
-                                            </div>
-                                        </div>
+                                        {{ render_timeline_node(leg, is_child=is_child_leg, is_first=loop.first) }}
                                         {% endfor %}
                                     </div>
                                 </div>
@@ -504,58 +421,9 @@
                                 <div class="md:pl-[4.25rem] pt-3">
                                     <div class="relative pl-4 ml-1.5 border-l border-slate-200 space-y-3 py-1">
                                         {% for order in trade.tws_orders | sort(attribute='order_id') %}
-                                        {% set is_cancelled = order.status == 'Cancelled' %}
-
-                                        {% set dot_color = "bg-slate-400" %}
-                                        {% set text_color = "text-slate-700" %}
-                                        {% set badge_style = "bg-slate-100 text-slate-600 border-slate-200" %}
-
-                                        {% if order.status == 'Submitted' or order.status == 'Filled' %}
-                                        {% set dot_color = "bg-emerald-500" %}
-                                        {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100/50" %}
-                                        {% elif order.status == 'PreSubmitted' %}
-                                        {% set dot_color = "bg-blue-500" %}
-                                        {% set badge_style = "bg-blue-50 text-blue-700 border-blue-100" %}
-                                        {% elif is_cancelled %}
-                                        {% set dot_color = "bg-slate-300 opacity-60" %}
-                                        {% set text_color = "text-slate-400" %}
-                                        {% set badge_style = "bg-slate-50 text-slate-400 border-slate-200 opacity-60" %}
-                                        {% elif order.status == 'Error' %}
-                                        {% set dot_color = "bg-rose-500" %}
-                                        {% set badge_style = "bg-rose-50 text-rose-700 border-rose-100/50" %}
-                                        {% endif %}
-
-                                        <div
-                                            class="relative flex items-center gap-x-2.5 text-xs font-medium {{ text_color }} {% if is_cancelled %}opacity-60{% endif %}">
-                                            <!-- Punkt exakt auf der vertikalen Linie -->
-                                            <span
-                                                class="absolute -left-[22px] flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
-                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
-                                            </span>
-                                            <span class="font-mono text-slate-400 w-16 shrink-0">#{{ order.order_id
-                                                }}</span>
-                                            <span class="text-slate-300 font-light">|</span>
-                                            <span class="font-mono text-slate-500 w-40 shrink-0">{{ order.display_date |
-                                                to_local_tz if order.display_date else '-' }}</span>
-                                            <span class="text-slate-300 font-light">|</span>
-                                            <div class="w-60 shrink-0 flex items-center gap-x-1.5">
-                                                <span
-                                                    class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
-                                                    order.action }} {{ order.quantity|int }}</span>
-                                                <span class="text-slate-600 font-mono">@ {{
-                                                    "{:,.2f}".format(order.display_price|float) if order.display_price
-                                                    else '-' }}</span>
-                                                <span class="text-slate-400 font-mono text-[11px]">({{ order.order_type
-                                                    | default('—') }})</span>
-                                            </div>
-                                            <span class="text-slate-300 font-light">|</span>
-                                            <span
-                                                class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold border {{ badge_style }}">{{
-                                                order.status }}</span>
-                                        </div>
+                                        {{ render_timeline_node(order, is_child=False, is_first=True) }}
                                         {% else %}
-                                        <div class="text-xs text-slate-400 italic">Keine verknüpften TWS-Orders
-                                            gefunden.</div>
+                                        <div class="text-xs text-slate-400 italic">Keine verknüpften TWS-Orders gefunden.</div>
                                         {% endfor %}
                                     </div>
                                 </div>
@@ -630,49 +498,7 @@
                                 <div class="px-4 pb-3 pt-1">
                                     <div class="relative pl-4 ml-1.5 border-l-2 border-slate-200 space-y-2.5 py-1">
                                         {% for order in trade.tws_orders | sort(attribute='order_id') %}
-                                        {% set is_cancelled = order.status == 'Cancelled' %}
-
-                                        {% set dot_color = "bg-slate-400" %}
-                                        {% set badge_style = "bg-slate-100 text-slate-600 border-slate-200" %}
-
-                                        {% if order.status == 'Filled' %}
-                                            {% set dot_color = "bg-emerald-500" %}
-                                            {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100/50" %}
-                                        {% elif order.status == 'Submitted' %}
-                                            {% set dot_color = "bg-emerald-500" %}
-                                            {% set badge_style = "bg-emerald-50 text-emerald-600 border-emerald-100/50" %}
-                                        {% elif order.status == 'PreSubmitted' %}
-                                            {% set dot_color = "bg-blue-500" %}
-                                            {% set badge_style = "bg-blue-50 text-blue-700 border-blue-100" %}
-                                        {% elif is_cancelled %}
-                                            {% set dot_color = "bg-slate-300" %}
-                                            {% set badge_style = "bg-slate-50 text-slate-400 border-slate-200" %}
-                                        {% elif order.status == 'Error' %}
-                                            {% set dot_color = "bg-rose-500" %}
-                                            {% set badge_style = "bg-rose-50 text-rose-700 border-rose-100/50" %}
-                                        {% endif %}
-
-                                        <div class="relative {% if is_cancelled %}opacity-60{% endif %}">
-                                            <!-- Dot auf der vertikalen Linie -->
-                                            <span class="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
-                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
-                                            </span>
-                                            <!-- Hauptzeile: Action Qty @ Price (Type) + Status-Badge -->
-                                            <div class="flex items-center justify-between gap-2">
-                                                <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% else %}text-slate-700{% endif %}">
-                                                    <span class="{% if is_cancelled %}text-slate-400{% elif order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ order.action }}</span>
-                                                    {{ order.quantity|int }} @ {{ "{:,.2f}".format(order.display_price|float) if order.display_price else '-' }}
-                                                    <span class="text-slate-400 font-normal">({{ order.order_type | default('—') }})</span>
-                                                </span>
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border {{ badge_style }} shrink-0">
-                                                    {{ order.status }}
-                                                </span>
-                                            </div>
-                                            <!-- Meta-Zeile: #ID • Datum -->
-                                            <div class="text-[11px] text-slate-400 font-mono mt-0.5">
-                                                #{{ order.order_id }} • {{ (order.display_date | to_local_tz)[:10] if order.display_date else '-' }}
-                                            </div>
-                                        </div>
+                                        {{ render_timeline_node(order, is_child=False, is_first=True) }}
                                         {% endfor %}
                                     </div>
                                 </div>
@@ -759,45 +585,11 @@
                             <div id="acc-settle-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
                                 <div class="md:pl-[4.25rem] pt-3">
                                     <div class="relative pl-4 ml-1.5 border-l border-slate-200 space-y-3 py-1">
-                                        {% for execution in settlement.executions | sort(attribute='order_id') if
-                                        execution.bracket_role | upper in ['ENTRY', 'EXIT'] %}
-                                        {% set is_entry = execution.bracket_role | upper == 'ENTRY' %}
-                                        {% set role_label = 'Entry' if is_entry else 'Exit' %}
-                                        {% set dot_color = "bg-emerald-500" if is_entry else "bg-indigo-500" %}
-                                        {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100" if
-                                        is_entry else "bg-indigo-50 text-indigo-700 border-indigo-100" %}
-
-                                        <div
-                                            class="relative flex items-center gap-x-2.5 text-xs font-medium text-slate-600">
-                                            <!-- Punkt exakt auf der vertikalen Linie -->
-                                            <span
-                                                class="absolute -left-[22px] flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
-                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
-                                            </span>
-                                            <span class="font-mono text-slate-400 w-16 shrink-0">#{{ execution.order_id
-                                                }}</span>
-                                            <span class="text-slate-300 font-light">|</span>
-                                            <span class="font-mono text-slate-500 w-40 shrink-0">{{
-                                                execution.executed_at | to_local_tz if execution.executed_at else '-'
-                                                }}</span>
-                                            <span class="text-slate-300 font-light">|</span>
-                                            <div class="w-60 shrink-0 flex items-center gap-x-1.5">
-                                                <span
-                                                    class="{% if execution.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
-                                                    execution.action }} {{ execution.qty|int }}</span>
-                                                <span class="text-slate-600 font-mono">@ {{
-                                                    "{:,.2f}".format(execution.price|float) }}</span>
-                                                <span class="text-slate-400 font-mono text-[11px]">({{
-                                                    execution.order_type | default('—') }})</span>
-                                            </div>
-                                            <span class="text-slate-300 font-light">|</span>
-                                            <span
-                                                class="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-bold border {{ badge_style }}">{{
-                                                role_label }}</span>
-                                        </div>
+                                        {% for execution in settlement.executions | sort(attribute='order_id') if execution.bracket_role | upper in ['ENTRY', 'EXIT'] %}
+                                        {% set role_label = 'Entry' if execution.bracket_role | upper == 'ENTRY' else 'Exit' %}
+                                        {{ render_timeline_node(execution, is_child=False, is_first=True, role_label=role_label) }}
                                         {% else %}
-                                        <div class="text-xs text-slate-400 italic">Keine detaillierten Entry/Exit
-                                            Ausführungen gefunden.</div>
+                                        <div class="text-xs text-slate-400 italic">Keine detaillierten Entry/Exit Ausführungen gefunden.</div>
                                         {% endfor %}
                                     </div>
                                 </div>
@@ -881,32 +673,8 @@
                                 <div class="px-4 pb-3 pt-1">
                                     <div class="relative pl-4 ml-1.5 border-l-2 border-slate-200 space-y-2.5 py-1">
                                         {% for execution in valid_executions | sort(attribute='order_id') %}
-                                        {% set is_entry = execution.bracket_role | upper == 'ENTRY' %}
-                                        {% set role_label = 'Entry' if is_entry else 'Exit' %}
-                                        {% set dot_color = "bg-emerald-500" if is_entry else "bg-indigo-500" %}
-                                        {% set badge_style = "bg-emerald-50 text-emerald-700 border-emerald-100" if is_entry else "bg-indigo-50 text-indigo-700 border-indigo-100" %}
-
-                                        <div class="relative">
-                                            <!-- Dot auf der vertikalen Linie -->
-                                            <span class="absolute -left-[22px] top-1 flex h-3 w-3 items-center justify-center rounded-full bg-white ring-4 ring-white">
-                                                <span class="h-1.5 w-1.5 rounded-full {{ dot_color }}"></span>
-                                            </span>
-                                            <!-- Hauptzeile: Action Qty @ Price (Type) + Role-Badge -->
-                                            <div class="flex items-center justify-between gap-2">
-                                                <span class="text-xs font-bold text-slate-700">
-                                                    <span class="{% if execution.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ execution.action }}</span>
-                                                    {{ execution.qty|int }} @ {{ "{:,.2f}".format(execution.price|float) }}
-                                                    <span class="text-slate-400 font-normal">({{ execution.order_type | default('—') }})</span>
-                                                </span>
-                                                <span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border {{ badge_style }} shrink-0">
-                                                    {{ role_label }}
-                                                </span>
-                                            </div>
-                                            <!-- Meta-Zeile: #ID • Datum • Slippage • Fee -->
-                                            <div class="text-[11px] text-slate-400 font-mono mt-0.5">
-                                                #{{ execution.order_id }} • {{ (execution.executed_at | to_local_tz)[:10] if execution.executed_at else '-' }}{% if not is_entry and settlement.price_diff_slippage and settlement.price_diff_slippage != 0 %} • Slippage {% if settlement.price_diff_slippage > 0 %}+{% endif %}{{ "{:,.2f}".format(settlement.price_diff_slippage) }}{% endif %}{% if execution.commission and execution.commission > 0 %} • Fee {{ "{:,.2f}".format(execution.commission) }}{% elif settlement.total_commissions and settlement.total_commissions > 0 and loop.last %} • Fee {{ "{:,.2f}".format(settlement.total_commissions) }}{% endif %}
-                                            </div>
-                                        </div>
+                                        {% set role_label = 'Entry' if execution.bracket_role | upper == 'ENTRY' else 'Exit' %}
+                                        {{ render_timeline_node(execution, is_child=False, is_first=True, role_label=role_label) }}
                                         {% endfor %}
                                     </div>
                                 </div>

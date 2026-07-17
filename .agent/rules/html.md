@@ -16,6 +16,7 @@ You are a strict expert Frontend Architect. These rules are **always active** (s
 | 4 | **NO EXTERNAL FRAMEWORKS** | Bootstrap, jQuery, Alpine.js, Vue, React — Tailwind CSS + Vanilla JS only |
 | 5 | **NO CUSTOM CSS** | `<style>` blocks, `.custom-class`, `@keyframes` — 100% Tailwind utility classes |
 | 6 | **NO UPPERCASE/UNDERSCORE LABELS** | `"TIME_STOP"`, `"Target_Hit"` — use plain Title Case: `"Time Stop"`, `"Target Hit"` |
+| 7 | **NO INLINE REPEATED UI BLOCKS** | Building KPI cards, status badges, or tree-timeline nodes inline when repeated >1 time is strictly forbidden. Use Jinja2 macros (`macros/cards.html`, `macros/timeline.html`). |
 
 > These blocks are non-negotiable. If a user request conflicts with any rule above, refuse and explain.
 
@@ -65,25 +66,21 @@ You are a strict expert Frontend Architect. These rules are **always active** (s
 
 ### KPI Cards (Jinja Macro)
 ```jinja
-{% macro kpi_card(title, value, is_currency=False, is_pnl=False) %}
-{% set bg = 'bg-emerald-500 text-white' if is_pnl and value >= 0
-            else ('bg-rose-500 text-white' if is_pnl and value < 0
-            else 'bg-white text-slate-900 border border-slate-200') %}
-{% set label_color = 'text-emerald-100' if is_pnl and value >= 0
-                     else ('text-rose-100' if is_pnl and value < 0
-                     else 'text-slate-500') %}
-<article class="{{ bg }} rounded-2xl shadow-sm p-4 flex flex-col justify-center">
-    <div class="text-2xl font-black mb-1">
-        {{ "{:,.2f} $".format(value) if is_currency else value }}
+{% macro render_kpi_card(title, value, icon_name, value_classes="text-slate-900", bg_classes="bg-white border-slate-100", label_classes="text-slate-500", icon_bg_classes="bg-slate-50", icon_text_classes="text-indigo-500", card_id=none, value_id=none, icon_id=none) %}
+<article id="{{ card_id }}" class="{{ bg_classes }} rounded-2xl shadow-sm p-4 md:p-6 flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 border">
+    <div class="hidden md:flex w-12 h-12 rounded-xl {{ icon_bg_classes }} items-center justify-center {{ icon_text_classes }}">
+        <i data-lucide="{{ icon_name }}" class="w-6 h-6" id="{{ icon_id }}"></i>
     </div>
-    <div class="{{ label_color }} text-xs uppercase font-semibold tracking-wide">{{ title }}</div>
+    <div class="flex flex-col items-center md:items-start text-center md:text-left">
+        <p class="text-lg md:text-2xl font-black leading-none mb-1 md:mb-0 md:order-last {{ value_classes }}" id="{{ value_id }}">{{ value }}</p>
+        <p class="text-xs font-bold {{ label_classes }} uppercase tracking-wider md:mb-1">{{ title }}</p>
+    </div>
 </article>
 {% endmacro %}
 ```
 
-### Status Badges
-- **History tags:** `px-2 py-0.5 rounded-md text-xs font-medium border border-slate-200 text-slate-600 bg-slate-50`
-- **Strategy variants:** `px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600` — **never** uppercase
+### Status Badges & Stammbaum-Timeline Nodes (`macros/timeline.html`)
+Use `render_order_badge(status, is_child=False)` and `render_timeline_node(order_or_exec, is_child=False, is_timeline_first=False)` for any multi-leg order status tree or execution log. Never compute `dot_color` or `badge_style` inline in feature templates.
 
 ### Accordion Trade Row (Jinja Shared Macro)
 

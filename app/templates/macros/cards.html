@@ -1,17 +1,19 @@
-{% macro render_kpi_card(title, value, icon_name, value_classes="text-slate-900", bg_classes="bg-white
-border-slate-100", label_classes="text-slate-600", icon_bg_classes="bg-slate-50", icon_text_classes="text-indigo-500")
-%}
-<article
-    class="{{ bg_classes }} rounded-2xl shadow-sm p-4 md:p-6 flex flex-col md:flex-row items-center md:items-center justify-center md:justify-start gap-1 md:gap-4 border">
+{% macro render_kpi_card(title, value, icon_name, value_classes="text-slate-900", bg_classes="bg-white border-slate-100", label_classes="text-slate-500", icon_bg_classes="bg-slate-50", icon_text_classes="text-indigo-500", card_id=none, value_id=none, icon_id=none) %}
+<article {% if card_id %}id="{{ card_id }}"{% endif %}
+    class="{{ bg_classes }} rounded-2xl shadow-sm p-4 md:p-6 flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 border relative">
     <div
-        class="hidden md:flex w-12 h-12 rounded-xl {{ icon_bg_classes }} items-center justify-center {{ icon_text_classes }}">
-        <i data-lucide="{{ icon_name }}" class="w-6 h-6"></i>
+        class="hidden md:flex w-12 h-12 rounded-xl {{ icon_bg_classes }} items-center justify-center {{ icon_text_classes }} shrink-0">
+        <i data-lucide="{{ icon_name }}" class="w-6 h-6" {% if icon_id %}id="{{ icon_id }}"{% endif %}></i>
     </div>
-    <div class="flex flex-col items-center md:items-start text-center md:text-left">
-        <p class="text-lg md:text-2xl font-black leading-none mb-1 md:mb-0 md:order-last {{ value_classes }}">{{ value
-            }}</p>
-        <p class="text-xs font-bold {{ label_classes }} uppercase tracking-widest md:mb-1">{{ title }}</p>
+    <div class="flex flex-col items-center text-center w-full md:w-auto md:items-start md:text-left">
+        <p class="text-lg md:text-2xl font-black leading-none mb-1 md:mb-0 md:order-last {{ value_classes }}" {% if value_id %}id="{{ value_id }}"{% endif %}>{{ value }}</p>
+        <p class="text-xs font-bold {{ label_classes }} uppercase tracking-wider md:mb-1">{{ title }}</p>
     </div>
+    {% if caller is defined %}
+    <div class="md:hidden absolute right-4 top-1/2 -translate-y-1/2 flex items-center justify-center">
+        {{ caller() }}
+    </div>
+    {% endif %}
 </article>
 {% endmacro %}
 
