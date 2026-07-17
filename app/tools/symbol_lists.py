@@ -115,7 +115,10 @@ class ExchangeSymbol:
 
             # 2. NASDAQ-100
             nasdaq_100 = self._fetch_from_wikipedia(
-                url="https://en.wikipedia.org/wiki/Nasdaq-100",
+                url=[
+                    "https://en.wikipedia.org/wiki/List_of_NASDAQ-100_companies",
+                    "https://en.wikipedia.org/wiki/Nasdaq-100",
+                ],
                 search_columns=["Ticker", "Symbol"],
                 name="NASDAQ-100",
             )
@@ -158,74 +161,81 @@ class ExchangeSymbol:
             logger.error("Background symbol refresh failed: %s", e)
 
     def _fetch_from_wikipedia(
-        self, url: str, search_columns: list[str], name: str
+        self, url: str | list[str], search_columns: list[str], name: str
     ) -> list[str]:
         """
-        Fetches all tables from a Wikipedia page and identifies the correct one
+        Fetches all tables from Wikipedia page(s) and identifies the correct one
         by checking if one of the 'search_columns' is present in the table.
+        Accepts a single URL or a list of fallback URLs.
         """
-        try:
-            logger.debug("Fetching %s from %s...", name, url)
+        urls = [url] if isinstance(url, str) else url
 
-            # Load all tables on the page
+        for target_url in urls:
             try:
-                tables = pd.read_html(
-                    url, storage_options={"User-Agent": "Mozilla/5.0"}
-                )
-            except Exception as e:
-                logger.error("Error reading HTML from %s: %s", url, e)
-                return []
+                logger.debug("Fetching %s from %s...", name, target_url)
 
-            target_df = None
-            found_col = None
-
-            # Search all discovered tables
-            for _i, df in enumerate(tables):
-                # Check if one of the target columns (e.g. "Symbol") exists
-                for col_candidate in search_columns:
-                    # Case-insensitive check of column names
-                    match = next(
-                        (
-                            c
-                            for c in df.columns
-                            if str(c).strip().lower() == col_candidate.lower()
-                        ),
-                        None,
+                # Load all tables on the page
+                try:
+                    tables = pd.read_html(
+                        target_url, storage_options={"User-Agent": "Mozilla/5.0"}
                     )
-                    if match:
-                        target_df = df
-                        found_col = match
+                except Exception as e:
+                    logger.error("Error reading HTML from %s: %s", target_url, e)
+                    continue
+
+                target_df = None
+                found_col = None
+
+                # Search all discovered tables
+                for _i, df in enumerate(tables):
+                    # Check if one of the target columns (e.g. "Symbol") exists
+                    for col_candidate in search_columns:
+                        # Case-insensitive check of column names
+                        match = next(
+                            (
+                                c
+                                for c in df.columns
+                                if str(c).strip().lower() == col_candidate.lower()
+                            ),
+                            None,
+                        )
+                        if match:
+                            target_df = df
+                            found_col = match
+                            break
+
+                    if target_df is not None:
                         break
 
-                if target_df is not None:
-                    break
+                if target_df is None:
+                    logger.warning(
+                        "Could not find a table with columns %s for %s at %s. Found %d tables.",
+                        search_columns,
+                        name,
+                        target_url,
+                        len(tables),
+                    )
+                    continue
 
-            if target_df is None:
-                logger.warning(
-                    "Could not find a table with columns %s for %s. Found %d tables.",
-                    search_columns,
-                    name,
-                    len(tables),
-                )
-                return []
+                # Extract and clean symbols
+                symbols = target_df[found_col].astype(str).str.strip()
 
-            # Extract and clean symbols
-            symbols = target_df[found_col].astype(str).str.strip()
+                # Clean symbols: replace dots with dashes (BRK.B -> BRK-B), filter empty/nan
+                clean_symbols = [
+                    s.replace(".", "-")
+                    for s in symbols
+                    if len(s) > 0 and s.lower() != "nan"
+                ]
 
-            # Clean symbols: replace dots with dashes (BRK.B -> BRK-B), filter empty/nan
-            clean_symbols = [
-                s.replace(".", "-")
-                for s in symbols
-                if len(s) > 0 and s.lower() != "nan"
-            ]
+                # Deduplicate and sort
+                result = sorted(set(clean_symbols))
+                if result:
+                    return result
 
-            # Deduplicate and sort
-            result = sorted(set(clean_symbols))
-            return result
+            except Exception as e:
+                logger.error("Failed to load %s from %s: %s", name, target_url, e)
 
-        except Exception as e:
-            logger.error("Failed to load %s: %s", name, e)
-            return []
+        return []
 
     @property
     def sp_500(self) -> list[str]:
