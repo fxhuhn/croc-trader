@@ -2,6 +2,8 @@ import logging
 from datetime import datetime, timedelta
 
 from app.services.market.updater import MarketDataUpdater
+from app.tools.market_holidays import MarketHolidayChecker
+from app.tools.trading_calendar import get_last_completed_trading_day
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +15,14 @@ class MarketQualityService:
     - Check History (Gap at the start)
     """
 
-    def __init__(self, updater: MarketDataUpdater):
+    def __init__(
+        self,
+        updater: MarketDataUpdater,
+        holiday_checker: MarketHolidayChecker | None = None,
+    ):
         self.updater = updater
         self.repo = updater.repo
+        self.holiday_checker = holiday_checker or MarketHolidayChecker()
 
     def perform_gap_check(self) -> None:
         """
@@ -24,8 +31,11 @@ class MarketQualityService:
         logger.info("Performing gap check...")
 
         # 1. Check Recency (Data Gap at the end)
-        # Symbols not updated in the last 3 days
-        thresh_recency = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+        # Dynamic calculation based on trading days and market holidays
+        last_completed_trading_day = get_last_completed_trading_day(
+            datetime.now().date(), self.holiday_checker
+        )
+        thresh_recency = last_completed_trading_day.strftime("%Y-%m-%d")
 
         # 2. Check History (Data Gap at the start / Shallow History)
         # Symbols starting AFTER this date (e.g. less than 300 days history)

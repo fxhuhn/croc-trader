@@ -1,10 +1,12 @@
+import datetime
 import json
 import logging
 import os
 import re
 import sqlite3
-from datetime import datetime
 from pathlib import Path
+
+import pandas as pd
 
 from ...config import settings
 from ...const import STRATEGY_ALIASES, Strategies
@@ -12,7 +14,10 @@ from ...database.repositories.market import MarketRepository
 from ...database.repositories.trade import TradeRepository
 from ...database.session import DatabaseSession
 from ...models import Order
+from ...services.market.updater import MarketDataUpdater
 from ...services.telegram import TelegramBot
+from ...tools.market_holidays import MarketHolidayChecker
+from ...tools.trading_calendar import get_last_completed_trading_day
 from ...types import TradeStatus
 from .order_export import write_csv_orders_file
 from .strategies.abstract import BaseTradeStrategy
@@ -86,6 +91,7 @@ class TradeManager:
 
         self.signals_session = DatabaseSession(str(db_path))
         self.trade_repository = TradeRepository(self.signals_session)
+        self.holiday_checker = MarketHolidayChecker()
 
         self.strategies: dict[Strategies, BaseTradeStrategy] = {
             Strategies.DipBuyer: DipBuyerStrategy(),
@@ -102,6 +108,16 @@ class TradeManager:
             "TradeManager initialized. Registered strategies: %s",
             list(self.strategies.keys()),
         )
+
+    def _attempt_targeted_market_update(self, symbol: str) -> None:
+        """Attempts a targeted market data update for a single active trade symbol."""
+        try:
+            updater = MarketDataUpdater(self.stocks_session, self.signals_session)
+            updater.run_update(specific_symbols=[symbol])
+        except Exception as error:
+            logger.warning(
+                "Failed targeted market data update for %s: %s", symbol, error
+            )
 
     def _resolve_strategy_name(self, name: str) -> Strategies | None:
         """Resolves a string (legacy or canonical) to a strict Strategies Enum member.
@@ -164,11 +180,14 @@ class TradeManager:
         )
         return None
 
-    def run_daily_process(self) -> None:
+    def run_daily_process(self, reference_date: str | None = None) -> None:
         """Orchestrates the full EOD batch: exit checks then entry checks.
 
         Fails closed on database errors — a locked or corrupt database raises
         RuntimeError to halt the pipeline rather than silently skipping trades.
+
+        Args:
+            reference_date: Optional reference date string (YYYY-MM-DD) for batch execution.
         """
         logger.info("TradeManager: Starting daily process.")
 
@@ -195,7 +214,12 @@ class TradeManager:
 
         logger.info("Checking %d active trades for exits.", len(active_trades))
         for trade in active_trades:
-            self._process_active_trade(trade, latest_leaders=latest_leaders)
+            self._process_active_trade(
+                trade,
+                latest_leaders=latest_leaders,
+                reference_date=reference_date,
+                verify_recency=True,
+            )
 
         # 2. Pending trade entry checks
         try:
@@ -237,6 +261,8 @@ class TradeManager:
         self,
         trade: dict[str, object],
         latest_leaders: set[str] | None = None,
+        reference_date: str | pd.Timestamp | datetime.date | None = None,
+        verify_recency: bool = False,
     ) -> None:
         """Processes a single active trade: loads history and evaluates exit conditions.
 
@@ -246,6 +272,8 @@ class TradeManager:
         Args:
             trade: The trade record dictionary from the database.
             latest_leaders: Optional set of active leaders.
+            reference_date: Optional reference date for recency calculation.
+            verify_recency: Whether to enforce recency verification against the expected trading day.
         """
         symbol = str(trade.get("symbol", ""))
         strategy_name = str(trade.get("strategy", ""))
@@ -266,6 +294,44 @@ class TradeManager:
             )
             if history_dataframe.empty:
                 return
+
+            if verify_recency:
+                if reference_date is not None:
+                    ref_date_obj = pd.Timestamp(reference_date).date()
+                else:
+                    ref_date_obj = datetime.datetime.now().date()
+
+                expected_last_trading_day = get_last_completed_trading_day(
+                    ref_date_obj, self.holiday_checker
+                )
+                latest_candle_date = pd.Timestamp(
+                    history_dataframe.iloc[-1]["date"]
+                ).date()
+
+                if latest_candle_date < expected_last_trading_day:
+                    logger.info(
+                        "Active trade [%s] missing expected candle for %s (latest in DB: %s). Attempting targeted update...",
+                        symbol,
+                        expected_last_trading_day,
+                        latest_candle_date,
+                    )
+                    self._attempt_targeted_market_update(symbol)
+                    history_dataframe = self.market_repository.get_symbol_history_raw(
+                        symbol, start_date=start_date
+                    )
+                    if not history_dataframe.empty:
+                        latest_candle_date = pd.Timestamp(
+                            history_dataframe.iloc[-1]["date"]
+                        ).date()
+
+                if latest_candle_date < expected_last_trading_day:
+                    logger.warning(
+                        "Active trade [%s] still missing candle for %s after sync (latest in DB: %s). Deferring exit check.",
+                        symbol,
+                        expected_last_trading_day,
+                        latest_candle_date,
+                    )
+                    return
 
             transition = strategy.manage_active_trade(
                 trade, history_dataframe, latest_leaders=latest_leaders
@@ -416,7 +482,7 @@ class TradeManager:
 
         created_symbols = {str(t["symbol"]) for t in created_trades}
 
-        date_string = reference_date or datetime.now().strftime("%Y-%m-%d")
+        date_string = reference_date or datetime.datetime.now().strftime("%Y-%m-%d")
 
         active_exit_orders, active_symbols_by_strategy = (
             self._collect_exit_orders_for_active_trades(
