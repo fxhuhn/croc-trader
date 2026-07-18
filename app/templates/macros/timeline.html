@@ -1,9 +1,11 @@
 {% macro render_order_badge(status, is_child=False) %}
+{% set status_upper = status | upper if status else '' %}
 {% set badge_style = "bg-slate-100 text-slate-500 border-slate-200" if is_child else
-                     ("bg-emerald-50 text-emerald-700 border-emerald-100/50" if status in ['Submitted', 'Filled'] else
-                     ("bg-blue-50 text-blue-700 border-blue-100" if status == 'PreSubmitted' else
-                     ("bg-rose-50 text-rose-700 border-rose-100/50" if status == 'Error' else
-                     "bg-slate-50 text-slate-400 border-slate-200"))) %}
+                     ("bg-emerald-50 text-emerald-700 border-emerald-100/50" if status in ['Entry', 'Submitted', 'Filled'] or status_upper == 'ENTRY' else
+                     ("bg-blue-50 text-blue-700 border-blue-100" if status in ['Exit', 'PreSubmitted', 'Closed'] or status_upper in ['EXIT', 'CLOSED'] else
+                     ("bg-rose-50 text-rose-700 border-rose-100/50" if status in ['Error', 'Stop Loss', 'Stop'] or 'STOP' in status_upper else
+                     ("bg-indigo-50 text-indigo-700 border-indigo-100" if status in ['Target'] or 'TARGET' in status_upper else
+                     "bg-slate-50 text-slate-400 border-slate-200")))) %}
 <span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold border {{ badge_style }} shrink-0">
     {{ status }}
 </span>
@@ -67,8 +69,8 @@
         {% if item.days_held %} ({{ item.days_held }}d){% endif %}
         {% if item.tif %} • {{ item.tif }}{% endif %}
         {% if item.parent_id %} • Parent #{{ item.parent_id }}{% endif %}
-        {% if commission_fee is not none and commission_fee | float(0.0) > 0 %} • Fee: ${{ "{:,.2f}".format(commission_fee | float(0.0)) }}{% endif %}
-        {% if price_slippage is not none and price_slippage != 0 %} • <span class="{% if price_slippage > 0 %}text-emerald-600 font-bold{% else %}text-rose-600 font-bold{% endif %}">Slippage: {{ "{:+,.2f}".format(price_slippage) }}</span>{% endif %}
+        {% if commission_fee is not none and commission_fee | float(0.0) > 0 %} • +{{ "{:,.2f}".format(commission_fee | float(0.0)) }} (fee){% endif %}
+        {% if price_slippage is not none and price_slippage != 0 %} • {{ "{:+,.2f}".format(price_slippage) }} (slip){% endif %}
     </div>
 </div>
 {% endmacro %}
