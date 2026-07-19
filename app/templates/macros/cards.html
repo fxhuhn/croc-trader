@@ -386,15 +386,21 @@ progress_current=none, progress_max=none) %}
                 aria-controls="details-settle-{{ history_counter.idx }}"
                 onclick="togglePositionAccordion(this, 'details-settle-{{ history_counter.idx }}')">
                 <div class="grid grid-cols-12 items-center gap-1">
-                    <!-- Col 1–5: Symbol & Optional Signal Badge & Duration -->
+                    <!-- Col 1–5: Symbol & Subline (Signal/Strategy & Date/Duration) -->
                     <div class="col-span-5">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-sm font-bold text-slate-900 leading-none">{{ trade.symbol }}</span>
-                            {% if show_signal and clean_sig %}
-                            <span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase">{{ clean_sig }}</span>
-                            {% endif %}
-                        </div>
-                        {{ render_row_subline((trade.entry_date or trade.display_entry) ~ ' (' ~ (trade.days_held ~ 'd' if trade.days_held else '-') ~ ')') }}
+                        <span class="text-sm font-bold text-slate-900 leading-none">{{ trade.symbol }}</span>
+                        {% set subline_parts = [] %}
+                        {% if show_signal and clean_sig %}
+                            {% set _ = subline_parts.append(clean_sig) %}
+                        {% endif %}
+                        {% set date_val = trade.entry_date or trade.display_entry %}
+                        {% if date_val %}
+                            {% set date_str = date_val ~ (' (' ~ trade.days_held ~ 'd)' if trade.days_held else '') %}
+                            {% set _ = subline_parts.append(date_str) %}
+                        {% elif trade.days_held %}
+                            {% set _ = subline_parts.append(trade.days_held ~ 'd') %}
+                        {% endif %}
+                        {{ render_row_subline(subline_parts | join(' • ')) }}
                     </div>
                     <!-- Col 6–8: Quantity -->
                     <div class="col-span-3 text-right">

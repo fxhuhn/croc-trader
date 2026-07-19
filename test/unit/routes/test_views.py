@@ -441,3 +441,131 @@ def test_prepare_active_orders_hierarchical_sorting_and_child_marking() -> None:
     assert result[1]["is_child"] is True
     assert result[2]["is_child"] is False
     assert result[3]["is_child"] is False
+
+
+def test_view_broker_dashboard_renders_dom_elements_and_headers(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that the broker dashboard renders table wrappers, section headers, and column headers."""
+    mock_order = {
+        "order_id": 101,
+        "symbol": "AAPL",
+        "action": "BUY",
+        "quantity": 10,
+        "status": "Submitted",
+        "strategy_name": "DipBuyer",
+        "strategy_filter": "DipBuyer",
+        "trade_group_id": "TG_1",
+        "parent_id": None,
+        "is_child": False,
+        "target_price": 150.0,
+        "order_type": "LMT",
+    }
+
+    with patch(
+        "app.routes.views.trades._get_trade_view_service"
+    ) as mock_broker_service:
+        mock_service_instance = mock_broker_service.return_value
+        default_metric = {
+            "pnl": 0.0,
+            "pnlText": "0.00",
+            "winrate": "0.0%",
+            "slippage": "0.00",
+            "fees": 0.0,
+            "win_count": 0,
+            "total_count": 0,
+            "slippage_sum": 0.0,
+        }
+        mock_service_instance.get_broker_summary.return_value = {
+            strat: default_metric.copy()
+            for strat in [
+                "all",
+                "DipBuyer",
+                "TurnoverTiming",
+                "TwoPercent",
+                "NDXMomentum",
+            ]
+        }
+        mock_service_instance.get_broker_active_trades.return_value = []
+        mock_service_instance.get_broker_settlements.return_value = []
+        mock_service_instance.broker_repository.get_orders_by_status.return_value = [
+            mock_order
+        ]
+
+        response = test_client.get("/broker")
+
+        assert response.status_code == 200
+        # Section Headers
+        assert b"Orders" in response.data
+        assert b"Fehler" in response.data
+        assert b"Positions" in response.data
+        assert b"History" in response.data
+        # Desktop Table Wrapper & Desktop Column Headers
+        assert b"hidden md:block bg-white rounded-3xl" in response.data
+        assert (
+            b"Quantity &amp; Direction" in response.data
+            or b"Quantity & Direction" in response.data
+        )
+        assert (
+            b"Exit &amp; Target" in response.data or b"Exit & Target" in response.data
+        )
+
+
+def test_view_trades_dip_buyer_history_omits_signal_label(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that single-strategy dip buyer history omits redundant signal labels."""
+    mock_history_trade = {
+        "id": "trade-dip-1",
+        "symbol": "AMD",
+        "entry_date": "2026-06-01",
+        "exit_date": "2026-06-05",
+        "display_entry": "2026-06-01",
+        "days_held": 4,
+        "initial_size": 20,
+        "current_size": 0,
+        "entry_price": 160.0,
+        "exit_price": 170.0,
+        "realized_pnl": 200.0,
+        "unrealized_pnl": 0.0,
+        "pnl_percentage": 6.25,
+        "exit_reason": "PROFIT_TARGET",
+        "strategy": "DipBuyer",
+        "version": "1.0",
+        "variant": "1.0",
+        "context": {},
+        "executions": [],
+    }
+
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.return_value = []
+        mock_service.get_portfolio_summary.return_value = {
+            "invested": 0,
+            "open_pnl": 0,
+            "win_rate": 0,
+            "total_pnl": 0,
+        }
+        mock_service.get_closed_summary.return_value = {
+            "count": 1,
+            "average_pnl": 200.0,
+            "total_pnl": 200.0,
+            "win_rate": 100.0,
+        }
+        mock_service.get_index_stats.return_value = {}
+        mock_service.get_weekday_stats.return_value = {}
+        mock_service.group_trades_by_symbol.return_value = []
+        mock_service.group_trades_history.return_value = [
+            {"symbol": "AMD", "trades": [mock_history_trade]}
+        ]
+
+        response = test_client.get("/trades/dip-buyer")
+
+        assert response.status_code == 200
+        # Symbol and date should be present
+        assert b"AMD" in response.data
+        assert b"2026-06-01" in response.data
+        # Signal name should NOT be rendered in history subline when show_signal=false
+        # Verify no 'DipBuyer &bull;' or 'DipBuyer •' in history row
+        assert b"DipBuyer &bull;" not in response.data
+        assert b"DipBuyer \xe2\x80\xa2" not in response.data
