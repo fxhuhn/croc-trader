@@ -5,7 +5,8 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import render_kpi_card, history_footer, tradingview_link, render_mobile_table_footer, render_pnl_cell, render_row_subline %}
+{% from "macros/cards.html" import render_kpi_card, history_footer, tradingview_link, render_mobile_table_footer,
+render_pnl_cell, render_row_subline %}
 {% from "macros/timeline.html" import render_order_badge, render_timeline_node, render_trade_timeline %}
 
 <!-- Header -->
@@ -18,36 +19,51 @@
     <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8 mt-2 md:mt-0">
         <!-- Open PnL -->
         {% set open_pnl = summary.open_pnl %}
-        {% set pnl_card_bg = "col-span-2 md:col-span-1 bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 border md:border-slate-200" if open_pnl >= 0 else "col-span-2 md:col-span-1 bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 border md:border-slate-200" %}
-        {% set pnl_val_cls = "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-emerald-500 tabular-nums" if open_pnl >= 0 else "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-rose-500 tabular-nums" %}
+        {% set pnl_card_bg = "col-span-2 md:col-span-1 bg-gradient-to-r from-emerald-500 to-teal-500
+        shadow-emerald-200/50 border-emerald-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6
+        border md:border-slate-200" if open_pnl >= 0 else "col-span-2 md:col-span-1 bg-gradient-to-r from-rose-500
+        to-rose-600 shadow-rose-200/50 border-rose-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4
+        md:p-6 border md:border-slate-200" %}
+        {% set pnl_val_cls = "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0
+        md:order-last md:!text-emerald-500 tabular-nums" if open_pnl >= 0 else "text-3xl md:text-2xl font-black
+        text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-rose-500 tabular-nums" %}
         {% set pnl_icon = "trending-up" if open_pnl >= 0 else "trending-down" %}
-        {% set pnl_lbl_cls = "text-emerald-50/80 md:text-slate-500 text-xs font-bold uppercase tracking-wider md:mb-1" if open_pnl >= 0 else "text-rose-100/80 md:text-slate-500 text-xs font-bold uppercase tracking-wider md:mb-1" %}
+        {% set pnl_lbl_cls = "text-emerald-50/80 md:text-slate-500 text-xs font-bold uppercase tracking-wider md:mb-1"
+        if open_pnl >= 0 else "text-rose-100/80 md:text-slate-500 text-xs font-bold uppercase tracking-wider md:mb-1" %}
         {% set formatted_pnl = "{:+,.2f}".format(open_pnl) %}
 
-        {% call render_kpi_card("Open PnL", formatted_pnl, pnl_icon, value_classes=pnl_val_cls, bg_classes=pnl_card_bg, label_classes=pnl_lbl_cls) %}
-            <i data-lucide="trending-up" class="w-5 h-5 text-emerald-100 {% if open_pnl < 0 %}hidden{% endif %}"></i>
-            <i data-lucide="trending-down" class="w-5 h-5 text-rose-100 {% if open_pnl >= 0 %}hidden{% endif %}"></i>
+        {% call render_kpi_card("Open PnL", formatted_pnl, pnl_icon, value_classes=pnl_val_cls, bg_classes=pnl_card_bg,
+        label_classes=pnl_lbl_cls) %}
+        <i data-lucide="trending-up" class="w-5 h-5 text-emerald-100 {% if open_pnl < 0 %}hidden{% endif %}"></i>
+        <i data-lucide="trending-down" class="w-5 h-5 text-rose-100 {% if open_pnl >= 0 %}hidden{% endif %}"></i>
         {% endcall %}
 
         <!-- Invested -->
-        {{ render_kpi_card("Invested", "{:,.0f}".format(summary.invested), "wallet", value_classes="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums", bg_classes="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm border md:border-slate-200") }}
+        {{ render_kpi_card("Invested", "{:,.0f}".format(summary.invested), "wallet", value_classes="text-lg md:text-2xl
+        font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums", bg_classes="bg-white border
+        border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm border md:border-slate-200") }}
 
         <!-- Active Positions -->
-        {{ render_kpi_card("Active", active_trades|length, "activity", value_classes="text-lg md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last", bg_classes="bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm border md:border-slate-200") }}
+        {{ render_kpi_card("Active", active_trades|length, "activity", value_classes="text-lg md:text-2xl font-black
+        text-slate-900 leading-none mb-1 md:mb-0 md:order-last", bg_classes="bg-white border border-slate-200
+        rounded-2xl p-4 md:p-6 shadow-sm border md:border-slate-200") }}
     </section>
 
     <!-- Active Trades Section -->
     {% if active_trades %}
     <section class="mb-12">
-        <h2 class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+        <h2
+            class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
             <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> Active
         </h2>
 
         <!-- Mobile View (Tabular Accordion) -->
-        <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+        <div
+            class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
             <!-- Table Header -->
-            <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
-                <div class="col-span-5">Symbol & Duration</div>
+            <div
+                class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+                <div class="col-span-5">Symbol</div>
                 <div class="col-span-3 text-right">Quantity</div>
                 <div class="col-span-4 text-right pr-6">Open PnL</div>
             </div>
@@ -55,38 +71,38 @@
             {% for trade in active_trades %}
             <div class="group-linkable">
                 <!-- Trigger Row -->
-                <button type="button"
-                        id="trigger-pos-{{ loop.index }}"
-                        class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors"
-                        aria-expanded="false"
-                        aria-controls="details-pos-{{ loop.index }}"
-                        onclick="togglePositionAccordion(this, 'details-pos-{{ loop.index }}')">
+                <button type="button" id="trigger-pos-{{ loop.index }}"
+                    class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors" aria-expanded="false"
+                    aria-controls="details-pos-{{ loop.index }}"
+                    onclick="togglePositionAccordion(this, 'details-pos-{{ loop.index }}')">
                     <div class="grid grid-cols-12 items-center gap-1">
                         <!-- Col 1–5: Symbol & Duration -->
                         <div class="col-span-5">
                             <span class="text-sm font-bold text-slate-900 leading-none">{{ trade.symbol }}</span>
-                            {{ render_row_subline(trade.entry_date ~ ' (' ~ (trade.days_held ~ 'd' if trade.days_held else '-') ~ ')') }}
+                            {{ render_row_subline(trade.entry_date ~ ' (' ~ (trade.days_held ~ 'd' if trade.days_held
+                            else '-') ~ ')') }}
                         </div>
                         <!-- Col 6–8: Quantity -->
                         <div class="col-span-3 text-right">
-                            <span class="text-sm font-bold text-slate-600 tabular-nums">{{ trade.current_size|int }}</span>
+                            <span class="text-sm font-bold text-slate-600 tabular-nums">{{ trade.current_size|int
+                                }}</span>
                         </div>
                         <div class="col-span-4 flex items-center justify-end gap-2">
                             {{ render_pnl_cell(trade.unrealized_pnl, trade.pnl_percentage) }}
-                            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
+                            <i data-lucide="chevron-down"
+                                class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
                         </div>
                     </div>
                 </button>
 
                 <!-- Accordion Detail: Stammbaum-Timeline from Trades Table Data -->
-                <div id="details-pos-{{ loop.index }}"
-                     role="region"
-                     aria-labelledby="trigger-pos-{{ loop.index }}"
-                     class="grid transition-[grid-template-rows] duration-300 ease-in-out"
-                     style="grid-template-rows: 0fr;">
+                <div id="details-pos-{{ loop.index }}" role="region" aria-labelledby="trigger-pos-{{ loop.index }}"
+                    class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                    style="grid-template-rows: 0fr;">
                     <div class="overflow-hidden">
                         <div class="px-4 pb-3 pt-1">
-                            {{ render_trade_timeline(trade, is_active=true, border_class="border-l-2 border-slate-200") }}
+                            {{ render_trade_timeline(trade, is_active=true, border_class="border-l-2 border-slate-200")
+                            }}
 
                             <!-- Mobile TradingView Button outside timeline stem -->
                             {{ tradingview_link(trade.symbol, text="View on TradingView", is_button=true) }}
@@ -106,7 +122,8 @@
         <!-- Desktop Grid View -->
         <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <!-- Desktop Header -->
-            <div class="grid grid-cols-6 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+            <div
+                class="grid grid-cols-6 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
                 <div>Date</div>
                 <div>Symbol</div>
                 <div class="text-right">Quantity</div>
@@ -119,7 +136,7 @@
             <div class="divide-y divide-slate-100">
                 {% for trade in active_trades %}
                 <div class="cursor-pointer transition-colors transition-all duration-200 group-linkable hover:bg-slate-50/50"
-                     onclick="toggleRow('acc-act-{{ loop.index }}')">
+                    onclick="toggleRow('acc-act-{{ loop.index }}')">
                     <div class="grid grid-cols-6 gap-4 px-4 py-3.5 items-center text-sm">
                         <!-- 1. Date -->
                         <div class="text-slate-600 tabular-nums whitespace-nowrap">
@@ -167,15 +184,18 @@
     <!-- Trade History -->
     {% if history_groups %}
     <section class="mb-4">
-        <h2 class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+        <h2
+            class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
             <i data-lucide="archive" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> History
         </h2>
 
         <!-- Mobile View (Tabular Accordion) -->
-        <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+        <div
+            class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
             <!-- Table Header -->
-            <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
-                <div class="col-span-5">Symbol & Duration</div>
+            <div
+                class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+                <div class="col-span-5">Symbol</div>
                 <div class="col-span-3 text-right">Quantity</div>
                 <div class="col-span-4 text-right pr-6">Net PnL</div>
             </div>
@@ -187,38 +207,39 @@
 
             <div class="group-linkable">
                 <!-- Trigger Row -->
-                <button type="button"
-                        id="trigger-settle-{{ history_counter.idx }}"
-                        class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors"
-                        aria-expanded="false"
-                        aria-controls="details-settle-{{ history_counter.idx }}"
-                        onclick="togglePositionAccordion(this, 'details-settle-{{ history_counter.idx }}')">
+                <button type="button" id="trigger-settle-{{ history_counter.idx }}"
+                    class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors" aria-expanded="false"
+                    aria-controls="details-settle-{{ history_counter.idx }}"
+                    onclick="togglePositionAccordion(this, 'details-settle-{{ history_counter.idx }}')">
                     <div class="grid grid-cols-12 items-center gap-1">
                         <!-- Col 1–5: Symbol & Duration -->
                         <div class="col-span-5">
                             <span class="text-sm font-bold text-slate-900 leading-none">{{ trade.symbol }}</span>
-                            {{ render_row_subline(trade.entry_date ~ ' (' ~ (trade.days_held ~ 'd' if trade.days_held else '-') ~ ')') }}
+                            {{ render_row_subline(trade.entry_date ~ ' (' ~ (trade.days_held ~ 'd' if trade.days_held
+                            else '-') ~ ')') }}
                         </div>
                         <!-- Col 6–8: Quantity -->
                         <div class="col-span-3 text-right">
-                            <span class="text-sm font-bold text-slate-600 tabular-nums">{{ trade.initial_size|int }}</span>
+                            <span class="text-sm font-bold text-slate-600 tabular-nums">{{ trade.initial_size|int
+                                }}</span>
                         </div>
                         <div class="col-span-4 flex items-center justify-end gap-2">
                             {{ render_pnl_cell(trade.realized_pnl, trade.pnl_percentage) }}
-                            <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
+                            <i data-lucide="chevron-down"
+                                class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
                         </div>
                     </div>
                 </button>
 
                 <!-- Accordion Detail: Executions Stammbaum-Timeline from Trades Table Data -->
-                <div id="details-settle-{{ history_counter.idx }}"
-                     role="region"
-                     aria-labelledby="trigger-settle-{{ history_counter.idx }}"
-                     class="grid transition-[grid-template-rows] duration-300 ease-in-out"
-                     style="grid-template-rows: 0fr;">
+                <div id="details-settle-{{ history_counter.idx }}" role="region"
+                    aria-labelledby="trigger-settle-{{ history_counter.idx }}"
+                    class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                    style="grid-template-rows: 0fr;">
                     <div class="overflow-hidden">
                         <div class="px-4 pb-3 pt-1">
-                            {{ render_trade_timeline(trade, is_active=false, border_class="border-l-2 border-slate-200") }}
+                            {{ render_trade_timeline(trade, is_active=false, border_class="border-l-2 border-slate-200")
+                            }}
 
                             <!-- Mobile TradingView Button outside timeline stem -->
                             {{ tradingview_link(trade.symbol, text="View on TradingView", is_button=true) }}
@@ -236,7 +257,8 @@
         <!-- Desktop Grid View -->
         <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <!-- Desktop Header -->
-            <div class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+            <div
+                class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
                 <div>Date</div>
                 <div>Symbol</div>
                 <div class="text-right">Quantity</div>
@@ -254,7 +276,7 @@
                 {% set history_desktop_counter.idx = history_desktop_counter.idx + 1 %}
 
                 <div class="cursor-pointer transition-colors transition-all duration-200 group-linkable hover:bg-slate-50/50"
-                     onclick="toggleRow('acc-settle-{{ history_desktop_counter.idx }}')">
+                    onclick="toggleRow('acc-settle-{{ history_desktop_counter.idx }}')">
                     <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
                         <!-- 1. Date -->
                         <div class="text-slate-600 tabular-nums whitespace-nowrap">
@@ -286,16 +308,20 @@
 
                         <!-- 7. Reason -->
                         <div class="text-right whitespace-nowrap">
-                            {% if 'TARGET' in trade.exit_reason or 'PROFIT' in trade.exit_reason or 'LOC' in trade.exit_reason %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50 whitespace-nowrap">
+                            {% if 'TARGET' in trade.exit_reason or 'PROFIT' in trade.exit_reason or 'LOC' in
+                            trade.exit_reason %}
+                            <span
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50 whitespace-nowrap">
                                 {{ trade.exit_reason | replace('_', ' ') | title }}
                             </span>
                             {% elif 'STOP_LOSS' in trade.exit_reason %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50 whitespace-nowrap">
+                            <span
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50 whitespace-nowrap">
                                 STOP
                             </span>
                             {% else %}
-                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
+                            <span
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
                                 {{ trade.exit_reason | replace('_', ' ') | title }}
                             </span>
                             {% endif %}
@@ -305,7 +331,8 @@
                     <!-- Accordion Detail: Stammbaum-Timeline from Trades Table Data -->
                     <div id="acc-settle-{{ history_desktop_counter.idx }}" class="hidden px-4 pb-4 bg-slate-50/10">
                         <div class="md:pl-[4.25rem] pt-3">
-                            {{ render_trade_timeline(trade, is_active=false, border_class="border-l border-slate-200") }}
+                            {{ render_trade_timeline(trade, is_active=false, border_class="border-l border-slate-200")
+                            }}
                         </div>
                     </div>
                 </div>
