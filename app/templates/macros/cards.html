@@ -202,7 +202,7 @@
     <div class="font-bold {{ 'text-emerald-500' if pnl_val >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
         {% if show_sign %}{{ "{:+,.2f}".format(pnl_val) }}{% else %}{{ "{:,.2f}".format(pnl_val) }}{% endif %}
     </div>
-    {% if pnl_pct is not none %}
+    {% if pnl_pct is defined and pnl_pct is not none and pnl_pct != '' %}
     <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
         {{ "{:+.2f}".format(pnl_pct) }}%
     </div>
@@ -271,4 +271,188 @@ progress_current=none, progress_max=none) %}
         </div>
     </div>
 </div>
+{% endmacro %}
+
+{% macro render_history_table(history_groups, closed_summary, show_signal=false, title="History", icon="archive") %}
+{% from "macros/timeline.html" import render_trade_timeline %}
+{% if history_groups %}
+<section class="mb-4">
+    <h2
+        class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+        <i data-lucide="{{ icon }}" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> {{ title }}
+    </h2>
+
+    <!-- Mobile View (Tabular Accordion) -->
+    <div
+        class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+        <!-- Table Header -->
+        <div
+            class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+            <div class="col-span-5">Symbol</div>
+            <div class="col-span-3 text-right">Quantity</div>
+            <div class="col-span-4 text-right pr-6">Net PnL</div>
+        </div>
+
+        {% set history_counter = namespace(idx=0) %}
+        {% for group in history_groups %}
+        {% for trade in group.trades %}
+        {% set history_counter.idx = history_counter.idx + 1 %}
+        {% set raw_sig = trade.version or trade.variant or (trade.context.get('original_signal') or (trade.context.get('match_rule') or {}).get('Signal') or trade.strategy or '') if trade.context else (trade.version or trade.variant or trade.strategy or '') %}
+        {% set clean_sig = (raw_sig | string).replace('Croc_', '') %}
+
+        <div class="group-linkable">
+            <!-- Trigger Row -->
+            <button type="button" id="trigger-settle-{{ history_counter.idx }}"
+                class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors" aria-expanded="false"
+                aria-controls="details-settle-{{ history_counter.idx }}"
+                onclick="togglePositionAccordion(this, 'details-settle-{{ history_counter.idx }}')">
+                <div class="grid grid-cols-12 items-center gap-1">
+                    <!-- Col 1–5: Symbol & Optional Signal Badge & Duration -->
+                    <div class="col-span-5">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-sm font-bold text-slate-900 leading-none">{{ trade.symbol }}</span>
+                            {% if show_signal and clean_sig %}
+                            <span class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase">{{ clean_sig }}</span>
+                            {% endif %}
+                        </div>
+                        {{ render_row_subline((trade.entry_date or trade.display_entry) ~ ' (' ~ (trade.days_held ~ 'd' if trade.days_held else '-') ~ ')') }}
+                    </div>
+                    <!-- Col 6–8: Quantity -->
+                    <div class="col-span-3 text-right">
+                        <span class="text-sm font-bold text-slate-600 tabular-nums">{{ trade.initial_size|int }}</span>
+                    </div>
+                    <div class="col-span-4 flex items-center justify-end gap-2">
+                        {{ render_pnl_cell(trade.realized_pnl, trade.pnl_percentage) }}
+                        <i data-lucide="chevron-down"
+                            class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
+                    </div>
+                </div>
+            </button>
+
+            <!-- Accordion Detail: Executions Stammbaum-Timeline from Trades Table Data -->
+            <div id="details-settle-{{ history_counter.idx }}" role="region"
+                aria-labelledby="trigger-settle-{{ history_counter.idx }}"
+                class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                style="grid-template-rows: 0fr;">
+                <div class="overflow-hidden">
+                    <div class="px-4 pb-3 pt-1">
+                        {{ render_trade_timeline(trade, is_active=false, border_class="border-l-2 border-slate-200") }}
+                        {{ tradingview_link(trade.symbol, text="View on TradingView", is_button=true) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endfor %}
+
+        <!-- Table Footer: Total Net PnL & Average per closed trade -->
+        {{ render_mobile_table_footer("Total Net PnL", closed_summary.total_pnl, closed_summary.average_pnl, 1) }}
+    </div>
+
+    <!-- Desktop Grid View -->
+    {% set desktop_cols = "8" if show_signal else "7" %}
+    <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <!-- Desktop Header -->
+        <div
+            class="grid grid-cols-{{ desktop_cols }} gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+            <div>Date</div>
+            <div>Symbol</div>
+            {% if show_signal %}<div>Signal</div>{% endif %}
+            <div class="text-right">Quantity</div>
+            <div class="text-right">Entry Price</div>
+            <div class="text-right">Exit Price</div>
+            <div class="text-right">Net PnL</div>
+            <div class="text-right">Reason</div>
+        </div>
+
+        <!-- Trade History List (Desktop) -->
+        <div class="divide-y divide-slate-100">
+            {% set history_desktop_counter = namespace(idx=0) %}
+            {% for group in history_groups %}
+            {% for trade in group.trades %}
+            {% set history_desktop_counter.idx = history_desktop_counter.idx + 1 %}
+            {% set raw_sig = trade.version or trade.variant or (trade.context.get('original_signal') or (trade.context.get('match_rule') or {}).get('Signal') or trade.strategy or '') if trade.context else (trade.version or trade.variant or trade.strategy or '') %}
+            {% set clean_sig = (raw_sig | string).replace('Croc_', '') %}
+
+            <div class="cursor-pointer transition-colors transition-all duration-200 group-linkable hover:bg-slate-50/50"
+                onclick="toggleRow('acc-settle-{{ history_desktop_counter.idx }}')">
+                <div class="grid grid-cols-{{ desktop_cols }} gap-4 px-4 py-3.5 items-center text-sm">
+                    <!-- 1. Date -->
+                    <div class="text-slate-600 tabular-nums whitespace-nowrap">
+                        {{ trade.entry_date or trade.display_entry }} ({{ trade.days_held }}d)
+                    </div>
+
+                    <!-- 2. Symbol -->
+                    <div class="font-bold text-slate-900 text-sm whitespace-nowrap">
+                        {{ tradingview_link(trade.symbol, is_button=false) }}
+                    </div>
+
+                    <!-- 3. Signal (Optional) -->
+                    {% if show_signal %}
+                    <div class="flex flex-wrap gap-1 whitespace-nowrap">
+                        {% if clean_sig %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                            {{ clean_sig }}
+                        </span>
+                        {% else %}
+                        <span class="text-slate-500 whitespace-nowrap">-</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+
+                    <!-- 4. Quantity -->
+                    <div class="text-right tabular-nums text-slate-600">
+                        {{ trade.initial_size|int }}
+                    </div>
+
+                    <!-- 5. Entry Price -->
+                    <div class="text-right tabular-nums text-slate-600">
+                        {{ "{:,.2f}".format(trade.entry_price|float) }}
+                    </div>
+
+                    <!-- 6. Exit Price -->
+                    <div class="text-right tabular-nums text-slate-600">
+                        {{ "{:,.2f}".format(trade.exit_price|float) if trade.exit_price else '-' }}
+                    </div>
+
+                    <!-- 7. Net PnL -->
+                    {{ render_pnl_cell(trade.realized_pnl, trade.pnl_percentage) }}
+
+                    <!-- 8. Reason -->
+                    <div class="text-right whitespace-nowrap">
+                        {% if 'TARGET' in trade.exit_reason or 'PROFIT' in trade.exit_reason or 'LOC' in
+                        trade.exit_reason %}
+                        <span
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50 whitespace-nowrap">
+                            {{ trade.exit_reason | replace('_', ' ') | title }}
+                        </span>
+                        {% elif 'STOP_LOSS' in trade.exit_reason %}
+                        <span
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50 whitespace-nowrap">
+                            STOP
+                        </span>
+                        {% else %}
+                        <span
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
+                            {{ trade.exit_reason | replace('_', ' ') | title }}
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Accordion Detail: Stammbaum-Timeline from Trades Table Data -->
+                <div id="acc-settle-{{ history_desktop_counter.idx }}" class="hidden px-4 pb-4 bg-slate-50/10">
+                    <div class="md:pl-[4.25rem] pt-3">
+                        {{ render_trade_timeline(trade, is_active=false, border_class="border-l border-slate-200") }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endfor %}
+
+            {{ history_footer(closed_summary, desktop_cols) }}
+        </div>
+    </div>
+</section>
+{% endif %}
 {% endmacro %}

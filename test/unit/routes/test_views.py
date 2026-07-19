@@ -129,27 +129,84 @@ def test_view_trades_overview_returns_correct_response(
 def test_view_trades_strategy_specific_routes(
     test_client: FlaskClient, trades_route: str, expected_title: bytes
 ) -> None:
-    """Verifies that each strategy-specific trades dashboard renders correctly."""
+    """Verifies that each strategy-specific trades dashboard renders correctly with active and history trades."""
+    mock_active_trade = {
+        "id": "trade-1",
+        "symbol": "AAPL",
+        "entry_date": "2026-06-01",
+        "display_entry": "2026-06-01",
+        "exit_date": None,
+        "days_held": 5,
+        "initial_size": 100,
+        "current_size": 100,
+        "entry_price": 150.0,
+        "current_price": 155.0,
+        "current_stop_loss": 145.0,
+        "current_target": 160.0,
+        "unrealized_pnl": 500.0,
+        "realized_pnl": 0.0,
+        "pnl_percentage": 3.33,
+        "strategy": "NDXMomentum",
+        "version": "1.0",
+        "variant": "1.0",
+        "context": {},
+        "executions": [],
+        "exit_reason": None,
+    }
+    mock_history_group = {
+        "symbol": "MSFT",
+        "trades": [
+            {
+                "id": "trade-2",
+                "symbol": "MSFT",
+                "entry_date": "2026-05-01",
+                "exit_date": "2026-05-11",
+                "display_entry": "2026-05-01",
+                "days_held": 10,
+                "initial_size": 50,
+                "current_size": 0,
+                "entry_price": 400.0,
+                "exit_price": 420.0,
+                "realized_pnl": 1000.0,
+                "unrealized_pnl": 0.0,
+                "pnl_percentage": 5.0,
+                "exit_reason": "PROFIT_TARGET",
+                "strategy": "NDXMomentum",
+                "version": "1.0",
+                "variant": "1.0",
+                "context": {},
+                "executions": [],
+            }
+        ],
+    }
+    mock_active_group = {
+        "symbol": "AAPL",
+        "total_pnl": 500.0,
+        "total_invested": 15000.0,
+        "total_pnl_percentage": 3.33,
+        "variants": [mock_active_trade],
+    }
+
     # Arrange
     with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
         mock_service_instance = mock_trade_service.return_value
-        mock_service_instance.get_trades.return_value = []
+        mock_service_instance.get_trades.return_value = [mock_active_trade]
         mock_service_instance.get_portfolio_summary.return_value = {
-            "invested": 0.0,
-            "open_pnl": 0.0,
-            "win_rate": 0.0,
-            "total_pnl": 0.0,
+            "invested": 15000.0,
+            "open_pnl": 500.0,
+            "win_rate": 100.0,
+            "total_pnl": 1000.0,
         }
         mock_service_instance.get_closed_summary.return_value = {
-            "count": 0,
-            "average_pnl": 0.0,
-            "total_pnl": 0.0,
-            "win_rate": 0.0,
+            "count": 1,
+            "average_pnl": 1000.0,
+            "total_pnl": 1000.0,
+            "win_rate": 100.0,
         }
         mock_service_instance.get_index_stats.return_value = {}
         mock_service_instance.get_weekday_stats.return_value = {}
-        mock_service_instance.group_trades_by_symbol.return_value = {}
-        mock_service_instance.group_trades_history.return_value = {}
+        mock_service_instance.group_trades_by_symbol.return_value = [mock_active_group]
+        mock_service_instance.group_trades_history.return_value = [mock_history_group]
 
         # Act
         response = test_client.get(trades_route)
