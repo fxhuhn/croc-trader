@@ -16,21 +16,21 @@
            data-tab
            {% if active_page == 'screener' %}aria-current="page" data-active{% endif %}
            class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'screener' else 'text-slate-500' }}">
-            <svg aria-hidden="true" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="m9 11 2 2 4-4"></path></svg>
+            <i data-lucide="search-check" class="w-6 h-6"></i>
             <span class="text-xs font-medium mt-1">Screener</span>
         </a>
         <a href="{{ '/trades/' ~ strategy_slug if strategy_slug else '/trades' }}"
            data-tab
            {% if active_page == 'trades' %}aria-current="page" data-active{% endif %}
            class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'trades' else 'text-slate-500' }}">
-            <svg aria-hidden="true" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path></svg>
+            <i data-lucide="wallet" class="w-6 h-6"></i>
             <span class="text-xs font-medium mt-1">Trades</span>
         </a>
         <a href="/analytics"
            data-tab
            {% if active_page == 'analytics' %}aria-current="page" data-active{% endif %}
            class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'analytics' else 'text-slate-500' }}">
-            <svg aria-hidden="true" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12c.552 0 1.005-.449.95-.998a10 10 0 0 0-8.953-8.951c-.55-.055-.998.398-.998.95v8a1 1 0 0 0 1 1z"></path><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path></svg>
+            <i data-lucide="pie-chart" class="w-6 h-6"></i>
             <span class="text-xs font-medium mt-1">Analytics</span>
         </a>
     </div>
