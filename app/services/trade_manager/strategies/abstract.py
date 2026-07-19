@@ -1,17 +1,25 @@
+import datetime
 import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import final
+from typing import Protocol, final
 
 import pandas as pd
 
+from ....config import settings
 from ....models import Order, OrderLeg, TradeParams
 from ....types import ExitReason, TradeData, TradeStatus
 from ..types import TradeTransition
 
 logger = logging.getLogger(__name__)
+
+
+class HolidayCheckerProtocol(Protocol):
+    """Protocol defining the required holiday checking interface."""
+
+    def is_holiday(self, check_date: datetime.date) -> bool: ...
 
 
 class BaseTradeStrategy(ABC):
@@ -26,7 +34,7 @@ class BaseTradeStrategy(ABC):
     def _is_end_of_trading_week(
         self,
         current_date: pd.Timestamp,
-        holiday_checker: object,
+        holiday_checker: HolidayCheckerProtocol | object,
     ) -> bool:
         """Checks if today is the last trading day of the week.
 
@@ -35,7 +43,7 @@ class BaseTradeStrategy(ABC):
 
         Args:
             current_date: The date to evaluate.
-            holiday_checker: An object with an `is_holiday(date)` method.
+            holiday_checker: An object or protocol implementing `is_holiday(date)`.
 
         Returns:
             bool: True if this is the last trading day of the week.
@@ -45,7 +53,6 @@ class BaseTradeStrategy(ABC):
 
         if current_date.dayofweek == self.THURSDAY_INDEX:
             next_day = current_date + pd.Timedelta(days=1)
-            # Use getattr for duck typing — accepts any checker with is_holiday()
             is_holiday_fn = getattr(holiday_checker, "is_holiday", None)
             if is_holiday_fn and is_holiday_fn(next_day.date()):
                 return True
@@ -56,7 +63,7 @@ class BaseTradeStrategy(ABC):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        holiday_checker: object,
+        holiday_checker: HolidayCheckerProtocol | object,
     ) -> Order | None:
         """Generates a weekly time stop (MOC) exit order if the next trading day is the end of the week.
 
@@ -331,22 +338,20 @@ class BaseTradeStrategy(ABC):
         )
 
     def _get_signal_date(self, trade: TradeData) -> pd.Timestamp | None:
-        """
-        Extracts the signal date from the JSON context.
-
-        Args:
-            trade: The trade data dictionary.
-
-        Returns:
-            pd.Timestamp | None: The signal date if found.
-        """
+        """Extracts the signal date from the JSON context."""
         date_value = self._get_context_value(trade, "date") or self._get_context_value(
             trade, "setup_date"
         )
         if date_value:
             try:
                 return pd.Timestamp(date_value)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as error:
+                logger.warning(
+                    "Failed to parse signal date '%s' for trade %s: %s",
+                    date_value,
+                    trade.get("id"),
+                    error,
+                )
                 return None
         return None
 
@@ -357,13 +362,6 @@ class BaseTradeStrategy(ABC):
 
         Handles both pre-parsed dict and raw JSON string formats
         since the repository layer may or may not have parsed the context.
-
-        Args:
-            trade: The trade data dictionary.
-            key: The context key to look up.
-
-        Returns:
-            The extracted value, or None if not found or unparseable.
         """
         try:
             context_data = trade.get("signal_context")
@@ -377,7 +375,13 @@ class BaseTradeStrategy(ABC):
             # Otherwise parse from JSON string
             context = json.loads(context_data)
             return context.get(key)
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError) as error:
+            logger.warning(
+                "Failed to parse signal_context for trade %s (key: %s): %s",
+                trade.get("id"),
+                key,
+                error,
+            )
             return None
 
     def _get_full_context(self, trade: TradeData) -> dict[str, object]:
@@ -501,13 +505,7 @@ class BaseTradeStrategy(ABC):
         date_string: str,
         extra_updates: dict[str, object] | None = None,
     ) -> TradeTransition:
-        """Moves a trade from CREATED to ACTIVE status.
-
-        Delegates position sizing to the centralized _resolve_position_size
-        method to maintain a single source of truth for sizing logic.
-        """
-        from ....config import settings
-
+        """Moves a trade from CREATED to ACTIVE status."""
         strategy_key = getattr(
             getattr(self, "name", ""), "value", str(getattr(self, "name", ""))
         )
@@ -567,13 +565,7 @@ class BaseTradeStrategy(ABC):
         stop_loss: float,
         date_string: str,
     ) -> TradeTransition:
-        """Handles Day 1 turnarounds: entry and stop hit on same day.
-
-        Delegates position sizing to the centralized _resolve_position_size
-        method to maintain a single source of truth.
-        """
-        from ....config import settings
-
+        """Handles Day 1 turnarounds: entry and stop hit on same day."""
         strategy_key = getattr(
             getattr(self, "name", ""), "value", str(getattr(self, "name", ""))
         )
@@ -600,15 +592,15 @@ class BaseTradeStrategy(ABC):
                 message="ERROR: Zero Size",
             )
 
-        dec_fill = Decimal(str(fill_price))
-        dec_stop = Decimal(str(stop_loss))
-        dec_qty = Decimal(str(int(size)))
+        decimal_fill_price = Decimal(str(fill_price))
+        decimal_stop_loss = Decimal(str(stop_loss))
+        decimal_quantity = Decimal(str(int(size)))
 
         direction = str(self._get_context_value(trade, "direction") or "long").lower()
         if direction == "short":
-            pnl_chunk = (dec_fill - dec_stop) * dec_qty
+            pnl_chunk = (decimal_fill_price - decimal_stop_loss) * decimal_quantity
         else:
-            pnl_chunk = (dec_stop - dec_fill) * dec_qty
+            pnl_chunk = (decimal_stop_loss - decimal_fill_price) * decimal_quantity
 
         profit_and_loss = float(pnl_chunk)
 
@@ -638,28 +630,18 @@ class BaseTradeStrategy(ABC):
         reason: str,
         date_string: str,
     ) -> TradeTransition:
-        """Closes a trade and calculates final PnL.
-
-        Args:
-            trade: The trade dictionary.
-            exit_price: The price at exit.
-            reason: The exit reason.
-            date_string: The date of exit.
-
-        Returns:
-            TradeTransition: Computed state updates.
-        """
+        """Closes a trade and calculates final PnL."""
         entry_price = float(trade.get("entry_price") or 0.0)
         current_size = float(trade.get("current_size") or 0.0)
-        dec_entry = Decimal(str(entry_price))
-        dec_exit = Decimal(str(exit_price))
-        dec_qty = Decimal(str(int(current_size)))
+        decimal_entry_price = Decimal(str(entry_price))
+        decimal_exit_price = Decimal(str(exit_price))
+        decimal_quantity = Decimal(str(int(current_size)))
 
         direction = str(self._get_context_value(trade, "direction") or "long").lower()
         if direction == "short":
-            pnl_chunk = (dec_entry - dec_exit) * dec_qty
+            pnl_chunk = (decimal_entry_price - decimal_exit_price) * decimal_quantity
         else:
-            pnl_chunk = (dec_exit - dec_entry) * dec_qty
+            pnl_chunk = (decimal_exit_price - decimal_entry_price) * decimal_quantity
 
         total_pnl = float(Decimal(str(trade.get("realized_pnl") or "0.0")) + pnl_chunk)
 
@@ -759,11 +741,7 @@ class BaseTradeStrategy(ABC):
     def _get_strategy_budget(
         self, trade: TradeData, override_budget: float = 0.0
     ) -> float:
-        """
-        Centralized DRY helper to resolve budget for the strategy without duplicating settings imports.
-        """
-        from ....config import settings
-
+        """Centralized DRY helper to resolve budget for the strategy."""
         strategy_key = getattr(self.name, "value", str(self.name))
         config_budget = settings.app.portfolio.get_budget(strategy_key)
         return float(trade.get("budget") or override_budget or config_budget)

@@ -15,32 +15,18 @@ from .abstract import BaseTradeStrategy
 logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(frozen=True)
 class _RebalanceCache:
-    """Typed cache for the monthly rebalance leader lookup.
-
-    Avoids O(N²) DB queries during a full portfolio rebalance by caching
-    the leaders set for a given date key.
-    """
+    """Typed immutable cache for the monthly rebalance leader lookup."""
 
     cache_key: str
     latest_signal_date: str
-    leaders_symbols: set[str] = field(default_factory=set)
+    leaders_symbols: frozenset[str] = field(default_factory=frozenset)
 
 
 @final
 class NDXMomentumTradeStrategy(BaseTradeStrategy):
-    """
-    NDX Momentum Strategy implementation for monthly rebalancing.
-
-    This strategy manages symbols selected by the NDX Momentum Screener.
-    It follows a strict month-start rebalancing rule, entering top performers
-    if market conditions are favorable and exiting symbols that fall out of
-    the leaders list.
-
-    Attributes:
-        DEFAULT_BUDGET: The standard dollar amount allocated per position.
-    """
+    """NDX Momentum Strategy implementation for monthly rebalancing."""
 
     name = Strategies.NDXMomentum
     _rebalance_cache: _RebalanceCache | None = None
@@ -171,12 +157,17 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
 
         if reference_date:
             try:
-                ref_date = pd.Timestamp(reference_date)
+                reference_timestamp = pd.Timestamp(reference_date)
                 return (
-                    ref_date.month != last_date.month or ref_date.year != last_date.year
+                    reference_timestamp.month != last_date.month
+                    or reference_timestamp.year != last_date.year
                 )
-            except (ValueError, TypeError):
-                pass
+            except (ValueError, TypeError) as error:
+                logger.warning(
+                    "Failed to parse reference_date '%s' for month switch check: %s",
+                    reference_date,
+                    error,
+                )
 
         # Fallback to the standard candle-to-candle comparison
         return self._is_month_switch(dataframe_history)

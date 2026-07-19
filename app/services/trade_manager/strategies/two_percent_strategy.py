@@ -36,25 +36,23 @@ class TwoPercentStrategy(BaseTradeStrategy):
         """Initializes the strategy with holiday checking support."""
         self.holiday_checker = MarketHolidayChecker()
 
+    def _calculate_target_price(self, entry_price: Decimal) -> Decimal:
+        """Calculates exact 2% take profit target using Decimal precision and banker's rounding."""
+        if entry_price <= Decimal("0"):
+            return Decimal("0.0")
+        multiplier = Decimal(str(self.REWARD_TARGET_MULTIPLIER))
+        return (entry_price * multiplier).quantize(Decimal("0.01"))
+
     @override
     def get_current_parameters(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame | None = None,
     ) -> TradeParams | None:
-        """
-        Calculates current strategy parameters for display.
-
-        Args:
-            trade: The current trade record.
-            dataframe_history: Optional historical price data.
-
-        Returns:
-            TradeParams: Object containing stop loss and take profit levels.
-        """
+        """Calculates current strategy parameters for display."""
         entry_price = float(trade.get("entry_price") or 0.0)
         target_exit_price = (
-            round(entry_price * self.REWARD_TARGET_MULTIPLIER, 2)
+            float(self._calculate_target_price(Decimal(str(entry_price))))
             if entry_price > 0
             else float(trade.get("current_target") or 0.0)
         )
@@ -103,42 +101,43 @@ class TwoPercentStrategy(BaseTradeStrategy):
         reference_date: str | None = None,
     ) -> Order | None:
         quantity = int(trade.get("current_size") or 0)
-        if quantity <= 0:
+        if quantity <= 0 or dataframe_history.empty:
+            return None
+
+        time_stop_order = self._generate_time_stop_exit_order(
+            trade, dataframe_history, self.holiday_checker
+        )
+        if time_stop_order is not None:
+            return time_stop_order
+
+        entry_date_str = trade.get("entry_date")
+        if not entry_date_str:
+            return None
+
+        last_date = pd.Timestamp(dataframe_history.iloc[-1]["date"])
+        next_day = last_date + pd.Timedelta(days=1)
+        entry_date = pd.Timestamp(entry_date_str)
+
+        if next_day.date() <= entry_date.date():
             return None
 
         entry_price = float(trade.get("entry_price") or 0.0)
         target_price = float(trade.get("current_target") or 0.0)
         if target_price <= 0 and entry_price > 0:
-            target_price = round(entry_price * self.REWARD_TARGET_MULTIPLIER, 2)
+            target_price = float(
+                self._calculate_target_price(Decimal(str(entry_price)))
+            )
 
         if target_price <= 0:
             return None
 
-        if not dataframe_history.empty:
-            last_date = pd.Timestamp(dataframe_history.iloc[-1]["date"])
-            next_day = last_date + pd.Timedelta(days=1)
-
-            # Check for Friday Time Stop (MOC)
-            time_stop_order = self._generate_time_stop_exit_order(
-                trade, dataframe_history, self.holiday_checker
-            )
-            if time_stop_order is not None:
-                return time_stop_order
-
-            # Check if Take Profit target is active on next_day (Day + 1 or later)
-            entry_date_str = trade.get("entry_date")
-            if entry_date_str:
-                entry_date = pd.Timestamp(entry_date_str)
-                if next_day.date() > entry_date.date():
-                    return self._create_exit_order(
-                        symbol=trade["symbol"],
-                        quantity=quantity,
-                        price=Decimal(str(target_price)),
-                        order_type="LMT",
-                        time_in_force="DAY",
-                    )
-
-        return None
+        return self._create_exit_order(
+            symbol=trade["symbol"],
+            quantity=quantity,
+            price=Decimal(str(target_price)),
+            order_type="LMT",
+            time_in_force="DAY",
+        )
 
     @override
     def check_entry(
@@ -215,7 +214,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
     ) -> TradeTransition | None:
         """Handles entry logic for the primary entry window (Day 1)."""
         if open_price < limit_price:
-            target_price = round(open_price * self.REWARD_TARGET_MULTIPLIER, 2)
+            target_price = float(self._calculate_target_price(Decimal(str(open_price))))
             return self._execute_activation(
                 trade,
                 open_price,
@@ -225,7 +224,9 @@ class TwoPercentStrategy(BaseTradeStrategy):
             )
 
         if low_price <= limit_price:
-            target_price = round(limit_price * self.REWARD_TARGET_MULTIPLIER, 2)
+            target_price = float(
+                self._calculate_target_price(Decimal(str(limit_price)))
+            )
             return self._execute_activation(
                 trade,
                 limit_price,
@@ -249,7 +250,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
     ) -> TradeTransition | None:
         """Handles fallback entry logic if Day 1 was a holiday."""
         if open_price < limit_price:
-            target_price = round(open_price * self.REWARD_TARGET_MULTIPLIER, 2)
+            target_price = float(self._calculate_target_price(Decimal(str(open_price))))
             return self._execute_activation(
                 trade,
                 open_price,
@@ -259,7 +260,9 @@ class TwoPercentStrategy(BaseTradeStrategy):
             )
 
         if low_price <= limit_price:
-            target_price = round(limit_price * self.REWARD_TARGET_MULTIPLIER, 2)
+            target_price = float(
+                self._calculate_target_price(Decimal(str(limit_price)))
+            )
             return self._execute_activation(
                 trade,
                 limit_price,
@@ -279,9 +282,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         latest_leaders: set[str] | None = None,
     ) -> TradeTransition | None:
-        """
-        Manages Exits: Take Profit and Time Stop.
-        """
+        """Manages Exits: Take Profit and Time Stop."""
         entry_price = float(trade.get("entry_price") or 0.0)
         entry_date_string = trade.get("entry_date")
         if not entry_date_string:
@@ -290,8 +291,10 @@ class TwoPercentStrategy(BaseTradeStrategy):
         entry_date_timestamp = pd.Timestamp(entry_date_string)
         current_date_timestamp = pd.Timestamp(current_candle["date"])
 
-        # Target Calculation
-        target_exit_price = round(entry_price * self.REWARD_TARGET_MULTIPLIER, 2)
+        # Target Calculation via Decimal precision
+        target_exit_price = float(
+            self._calculate_target_price(Decimal(str(entry_price)))
+        )
 
         # Current Stats
         high_price = float(current_candle["high"])

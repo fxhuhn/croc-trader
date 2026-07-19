@@ -605,8 +605,12 @@ def view_analytics_dashboard() -> str:
     # 4. Weekly Trend Data (Plotly) - Since 01.01.2026
     start_of_year = pd.Timestamp("2026-01-01")
 
-    # Create a full weekly range to ensure no gaps at the start
-    date_range = pd.date_range(start=start_of_year, end=today, freq="W-SUN")
+    # Create a full weekly range up to the end of the current week (Saturday)
+    days_until_saturday = (5 - today.weekday()) % 7
+    current_week_saturday = today.normalize() + pd.Timedelta(days=days_until_saturday)
+    date_range = pd.date_range(
+        start=start_of_year, end=current_week_saturday, freq="W-SAT"
+    )
 
     # Filter trades for chart
     chart_dataframe = dataframe[dataframe["exit_date_dt"] >= start_of_year].copy()
@@ -626,7 +630,7 @@ def view_analytics_dashboard() -> str:
         # Cumulative Weekly Trend
         dataframe_weekly = (
             chart_dataframe.set_index("exit_date_dt")["realized_pnl"]
-            .resample("W-SUN")
+            .resample("W-SAT")
             .sum()
             .cumsum()
         )
@@ -643,7 +647,7 @@ def view_analytics_dashboard() -> str:
         # Non-Cumulative Weekly Performance
         dataframe_weekly_profit_and_loss = (
             chart_dataframe.set_index("exit_date_dt")["realized_pnl"]
-            .resample("W-SUN")
+            .resample("W-SAT")
             .sum()
         )
         dataframe_weekly_profit_and_loss = dataframe_weekly_profit_and_loss.reindex(
@@ -666,7 +670,7 @@ def view_analytics_dashboard() -> str:
             # Strategy Cumulative Trend
             strategy_cumulative = (
                 strategy_trades.set_index("exit_date_dt")["realized_pnl"]
-                .resample("W-SUN")
+                .resample("W-SAT")
                 .sum()
                 .cumsum()
             )
@@ -678,7 +682,7 @@ def view_analytics_dashboard() -> str:
             # Strategy Non-Cumulative Weekly profit and loss
             strategy_weekly_profit_and_loss = (
                 strategy_trades.set_index("exit_date_dt")["realized_pnl"]
-                .resample("W-SUN")
+                .resample("W-SAT")
                 .sum()
             )
             strategy_weekly_profit_and_loss = strategy_weekly_profit_and_loss.reindex(
