@@ -7,7 +7,7 @@
 {% from "macros/navigation.html" import render_header %}
 {% import "macros/cards.html" as cards %}
 {% from "macros/cards.html" import render_kpi_card, history_footer, tradingview_link, render_mobile_table_footer,
-render_pnl_cell, render_row_subline, render_history_table %}
+render_pnl_cell, render_row_subline, render_history_table, render_section_header %}
 {% from "macros/timeline.html" import render_order_badge, render_timeline_node, render_trade_timeline %}
 
 <!-- Header -->
@@ -72,10 +72,7 @@ render_pnl_cell, render_row_subline, render_history_table %}
     <!-- Active Positions Section -->
     {% if active_trades %}
     <section class="mb-12">
-        <h2
-            class="text-xs md:text-lg font-bold text-slate-500 md:text-slate-900 uppercase tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="zap" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-500 md:text-indigo-500"></i> Active Positions
-        </h2>
+        {{ render_section_header("Active Positions", icon="zap") }}
 
         <!-- Mobile View (Tabular Accordion) -->
         <div

@@ -203,7 +203,16 @@ def test_view_trades_strategy_specific_routes(
             "total_pnl": 1000.0,
             "win_rate": 100.0,
         }
-        mock_service_instance.get_index_stats.return_value = {}
+        mock_service_instance.get_index_stats.return_value = {
+            "NASDAQ": {
+                "name": "NASDAQ 100",
+                "count": 1,
+                "win": 1,
+                "loss": 0,
+                "pnl": 1000.0,
+                "average_pnl": 1000.0,
+            }
+        }
         mock_service_instance.get_weekday_stats.return_value = {}
         mock_service_instance.group_trades_by_symbol.return_value = [mock_active_group]
         mock_service_instance.group_trades_history.return_value = [mock_history_group]

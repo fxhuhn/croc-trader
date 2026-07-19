@@ -7,7 +7,7 @@
 {% from "macros/navigation.html" import render_header %}
 {% import "macros/cards.html" as cards %}
 {% from "macros/cards.html" import render_kpi_card, history_footer, tradingview_link, render_mobile_table_footer,
-render_pnl_cell, render_row_subline, render_history_table %}
+render_pnl_cell, render_row_subline, render_history_table, render_section_header, render_stats_breakdown %}
 {% from "macros/timeline.html" import render_order_badge, render_timeline_node, render_trade_timeline %}
 
 <!-- Header -->
@@ -24,9 +24,7 @@ render_pnl_cell, render_row_subline, render_history_table %}
     <!-- Active Trades Section -->
     {% if active_trades %}
     <section class="mb-12">
-        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2 px-1 md:px-0">
-            <i data-lucide="zap" class="w-5 h-5 text-indigo-500"></i>Active
-        </h2>
+        {{ render_section_header("Active", icon="zap") }}
 
         <!-- Mobile View (Accordion Cards) -->
         <div class="md:hidden flex flex-col gap-4">
@@ -172,152 +170,10 @@ render_pnl_cell, render_row_subline, render_history_table %}
     </section>
     {% endif %}
 
-    <!-- Performance Grid -->
-    <section class="mb-12">
-        <h2
-            class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i>
-            Performance
-        </h2>
-
-        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="flex flex-col divide-y divide-slate-100">
-                <!-- Desktop Header -->
-                <div
-                    class="hidden md:grid grid-cols-4 gap-4 px-6 py-4 text-sm text-slate-500 uppercase font-medium bg-slate-50 border-b border-slate-200">
-                    <div>Index</div>
-                    <div class="text-center">W — L</div>
-                    <div class="text-right">Average</div>
-                    <div class="text-right">PnL</div>
-                </div>
-
-                <!-- Single-DOM Rows -->
-                {% for row in index_stats.values() %}
-                {% if row.win > 0 or row.loss > 0 %}
-                <div
-                    class="flex flex-col md:grid md:grid-cols-4 md:items-center px-4 md:px-6 py-3 hover:bg-slate-50/50 active:bg-slate-50/50 transition-colors gap-1 md:gap-4">
-                    <div class="flex justify-between items-center md:contents">
-                        <span class="font-bold md:font-medium text-sm text-slate-800 md:text-slate-700 md:order-1">{{
-                            row.name }}</span>
-                        <span
-                            class="text-sm font-bold {{ 'text-emerald-600' if row.pnl >= 0 else 'text-rose-600' }} md:order-4 md:text-right tabular-nums">
-                            {{ "{:+.0f}".format(row.pnl) }}
-                        </span>
-                    </div>
-                    <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
-                        <span class="text-xs font-bold md:text-sm md:font-bold md:order-2 md:text-center">
-                            <span class="text-emerald-600">{{ row.win }}W</span>
-                            <span class="text-slate-300 mx-1">—</span>
-                            <span class="text-rose-600">{{ row.loss }}L</span>
-                        </span>
-                        <span
-                            class="text-xs text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
-                            {{ "{:+.2f}".format(row.average_pnl) }} ∅
-                        </span>
-                    </div>
-                </div>
-                {% endif %}
-                {% endfor %}
-
-                <!-- Footer -->
-                <div
-                    class="flex flex-col md:grid md:grid-cols-4 md:items-center px-4 md:px-6 py-3 md:py-4 bg-slate-50 border-t border-slate-200">
-                    <div class="flex justify-between items-center md:contents">
-                        <span
-                            class="text-xs md:text-sm uppercase md:normal-case font-bold md:font-semibold text-slate-500 md:text-slate-900 tracking-wider md:tracking-normal md:order-1">Overall
-                            <span class="hidden md:inline">(Unique)</span></span>
-                        <span
-                            class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right tabular-nums">
-                            {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
-                        </span>
-                    </div>
-                    <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
-                        <span
-                            class="text-xs font-medium text-slate-500 md:text-sm md:font-medium md:order-2 md:text-center">{{
-                            closed_summary.count }} Trades</span>
-                        <span
-                            class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
-                            {{ "{:+,.2f}".format(closed_summary.average_pnl) }} ∅
-                        </span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Weekday Grid -->
-    <section class="mb-12">
-        <h2
-            class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="calendar" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i>
-            Weekday
-        </h2>
-
-        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="flex flex-col divide-y divide-slate-100">
-                <!-- Desktop Header -->
-                <div
-                    class="hidden md:grid grid-cols-4 gap-4 px-6 py-4 text-sm text-slate-500 uppercase font-medium bg-slate-50 border-b border-slate-200">
-                    <div>Weekday</div>
-                    <div class="text-center">W — L</div>
-                    <div class="text-right">Average</div>
-                    <div class="text-right">PnL</div>
-                </div>
-
-                <!-- Single-DOM Rows -->
-                {% for row in weekday_stats.values() %}
-                {% if row.win > 0 or row.loss > 0 %}
-                <div
-                    class="flex flex-col md:grid md:grid-cols-4 md:items-center px-4 md:px-6 py-3 hover:bg-slate-50/50 active:bg-slate-50/50 transition-colors gap-1 md:gap-4">
-                    <div class="flex justify-between items-center md:contents">
-                        <span class="font-bold md:font-medium text-sm text-slate-800 md:text-slate-700 md:order-1">{{
-                            row.name }}</span>
-                        <span
-                            class="text-sm font-bold {{ 'text-emerald-600' if row.pnl >= 0 else 'text-rose-600' }} md:order-4 md:text-right tabular-nums">
-                            {{ "{:+.0f}".format(row.pnl) }}
-                        </span>
-                    </div>
-                    <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
-                        <span class="text-xs font-bold md:text-sm md:font-bold md:order-2 md:text-center">
-                            <span class="text-emerald-600">{{ row.win }}W</span>
-                            <span class="text-slate-300 mx-1">—</span>
-                            <span class="text-rose-600">{{ row.loss }}L</span>
-                        </span>
-                        <span
-                            class="text-xs text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
-                            {{ "{:+.2f}".format(row.average_pnl) }} ∅
-                        </span>
-                    </div>
-                </div>
-                {% endif %}
-                {% endfor %}
-
-                <!-- Footer -->
-                {% if closed_summary %}
-                <div
-                    class="flex flex-col md:grid md:grid-cols-4 md:items-center px-4 md:px-6 py-3 md:py-4 bg-slate-50 border-t border-slate-200">
-                    <div class="flex justify-between items-center md:contents">
-                        <span
-                            class="text-xs md:text-sm uppercase md:normal-case font-bold md:font-semibold text-slate-500 md:text-slate-900 tracking-wider md:tracking-normal md:order-1">Overall
-                            <span class="hidden md:inline">(Unique)</span></span>
-                        <span
-                            class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if closed_summary.total_pnl >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right tabular-nums">
-                            {{ "{:+,.2f}".format(closed_summary.total_pnl) }}
-                        </span>
-                    </div>
-                    <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">
-                        <span
-                            class="text-xs font-medium text-slate-500 md:text-sm md:font-medium md:order-2 md:text-center">{{
-                            closed_summary.count }} Trades</span>
-                        <span
-                            class="text-xs font-bold text-slate-500 md:text-sm md:text-slate-600 md:font-medium md:order-3 md:text-right tabular-nums">
-                            {{ "{:+,.2f}".format(closed_summary.average_pnl) }} ∅
-                        </span>
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-        </div>
+    <!-- Stats Grid (Performance + Weekday) -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 md:mb-12">
+        {{ render_stats_breakdown("Performance", index_stats, closed_summary, icon="layers", name_label="Index") }}
+        {{ render_stats_breakdown("Weekday", weekday_stats, closed_summary, icon="calendar", name_label="Weekday") }}
     </section>
 
     <!-- Trade History -->
