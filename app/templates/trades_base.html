@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% from "macros/navigation.html" import render_header %}
+{% import "macros/cards.html" as cards %}
+{% from "macros/cards.html" import render_kpi_card, history_footer, tradingview_link, render_mobile_table_footer,
+render_pnl_cell, render_row_subline, render_history_table, render_section_header, render_stats_breakdown %}
+{% from "macros/timeline.html" import render_order_badge, render_timeline_node, render_trade_timeline %}
+
+{% block title %}{% block page_title %}Trades{% endblock %} Dashboard{% endblock %}
+{% block body_class %}bg-slate-100 md:bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
+
+{% block content %}
+<!-- Header -->
+{{ render_header(self.page_title()|trim, self.page_key()|trim) }}
+
+<!-- MAIN CONTENT -->
+<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+
+    <!-- KPI Cards -->
+    {% block kpi_cards %}
+    {{ cards.dashboard_kpis(summary, active_trades|length if active_trades is defined else (active_groups|length if active_groups is defined else 0)) }}
+    {% endblock %}
+
+    <!-- Active Trades Section -->
+    {% block active_trades %}{% endblock %}
+
+    <!-- Stats Breakdown Section -->
+    {% block stats %}{% endblock %}
+
+    <!-- Trade History -->
+    {% block history %}
+    {% set show_signal = (self.show_history_signal()|trim == 'true') %}
+    {{ render_history_table(history_groups, closed_summary, show_signal=show_signal) }}
+    {% endblock %}
+
+</main>
+
+{% set active_page = 'trades' %}
+{% include "partials/mobile_nav.html" with context %}
+{% endblock %}
+
+{% block page_key %}trades{% endblock %}
+{% block show_history_signal %}true{% endblock %}

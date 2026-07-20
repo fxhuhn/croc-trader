@@ -1,206 +1,213 @@
-{% extends "base.html" %}
+{% extends "trades_base.html" %}
 
-{% block title %}Croc Dashboard{% endblock %}
-{% block body_class %}bg-slate-100 md:bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
+{% block page_title %}Croc Setup{% endblock %}
+{% block page_key %}croc{% endblock %}
+{% block show_history_signal %}true{% endblock %}
 
-{% block content %}
-{% from "macros/navigation.html" import render_header %}
-{% import "macros/cards.html" as cards %}
-{% from "macros/cards.html" import render_kpi_card, history_footer, tradingview_link, render_mobile_table_footer,
-render_pnl_cell, render_row_subline, render_history_table, render_section_header, render_stats_breakdown %}
-{% from "macros/timeline.html" import render_order_badge, render_timeline_node, render_trade_timeline %}
+{% block active_trades %}
+{% if active_trades %}
+<section class="mb-12">
+    {{ render_section_header("Active", icon="zap") }}
 
-<!-- Header -->
-{{ render_header("Croc Setup", "croc") }}
+    <!-- Mobile View (Tabular Accordion with Broker Timeline & Date/Index Grid) -->
+    <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+        <!-- Table Header -->
+        <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+            <div class="col-span-5">Symbol & Strategy</div>
+            <div class="col-span-3 text-right">Quantity</div>
+            <div class="col-span-4 text-right pr-6">Open PnL</div>
+        </div>
 
-<!-- MAIN CONTENT -->
-<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+        {% for t in active_trades %}
+        {% set signal_name = t.context.get('original_signal') or (t.context.get('match_rule') or {}).get('Signal') or t.strategy %}
+        {% set clean_signal = signal_name.replace('Croc_', '') %}
+        {% set direction_text = t.context.get('direction', 'long') | upper %}
 
-    <!-- KPI Cards -->
-    {{ cards.dashboard_kpis(summary, active_trades|length) }}
-
-    <!-- Active Trades Section -->
-    {% if active_trades %}
-    <section class="mb-12">
-        {{ render_section_header("Active", icon="zap") }}
-
-        <!-- Mobile View (Accordion Cards) -->
-        <div class="md:hidden flex flex-col gap-4">
-            {% for t in active_trades %}
-            {% set signal_name = t.context.get('original_signal') or (t.context.get('match_rule') or {}).get('Signal') or t.strategy %}
-            {% set clean_signal = signal_name.replace('Croc_', '') %}
-            {% call cards.trade_accordion_card(
-                symbol=t.symbol,
-                badges=[{'text': clean_signal, 'class': 'bg-indigo-50 text-indigo-600 border border-indigo-100'}],
-                pnl_value=t.unrealized_pnl,
-                pnl_percentage=t.pnl_percentage
-            ) %}
-                <div class="grid grid-cols-2 gap-8 items-start">
-                    <!-- Left Column: Date, Index & Quantity -->
-                    <div class="flex flex-col">
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs">Date</span>
-                            <span class="text-slate-700 font-bold text-xs">{{ t.display_entry }} ({{ t.days_held }}d)</span>
-                        </div>
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs">Index</span>
-                            <span class="text-slate-700 font-bold text-xs">{% if t.context.indices %}{{ t.context.indices }}{% else %}-{% endif %}</span>
-                        </div>
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs">Quantity</span>
-                            <span class="text-slate-700 font-bold text-xs">{{ t.current_size|int }}</span>
-                        </div>
+        <div class="group-linkable" data-strategy="{{ t.strategy }}">
+            <!-- Trigger Row (Eingeklappter Zustand: Ohne Badges) -->
+            <button type="button" id="trigger-croc-{{ loop.index }}"
+                class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors"
+                aria-expanded="false" aria-controls="details-croc-{{ loop.index }}"
+                onclick="togglePositionAccordion(this, 'details-croc-{{ loop.index }}')">
+                <div class="grid grid-cols-12 items-center gap-1">
+                    <!-- Col 1–5: Symbol & Subline (Clean: Signal • Haltedauer) -->
+                    <div class="col-span-5">
+                        <span class="text-sm font-bold text-slate-900 leading-none">{{ t.symbol }}</span>
+                        {{ render_row_subline(clean_signal ~ ' • ' ~ t.days_held ~ 'd') }}
                     </div>
+                    <!-- Col 6–8: Quantity -->
+                    <div class="col-span-3 text-right">
+                        <span class="text-sm font-bold text-slate-600 tabular-nums">{{ t.current_size|int }}</span>
+                    </div>
+                    <!-- Col 9–12: Open PnL & Chevron -->
+                    <div class="col-span-4 flex items-center justify-end gap-2">
+                        {{ render_pnl_cell(t.unrealized_pnl, t.pnl_percentage) }}
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
+                    </div>
+                </div>
+            </button>
 
-                    <!-- Right Column: Entry, Stop, Target, Direction -->
-                    <div class="flex flex-col">
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs">Entry</span>
-                            <span class="tabular-nums text-slate-700 font-bold text-xs">{{ "{:,.2f}".format(t.entry_price|float) }}</span>
+            <!-- Accordion Details (Ausgeklappter Zustand) -->
+            <div id="details-croc-{{ loop.index }}" role="region"
+                aria-labelledby="trigger-croc-{{ loop.index }}"
+                class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                style="grid-template-rows: 0fr;">
+                <div class="overflow-hidden">
+                    <div class="px-4 pb-3 pt-1">
+                        <!-- Minimized Grid (Nur Date & Index) -->
+                        <div class="grid grid-cols-2 gap-8 items-start mb-3">
+                            <div class="flex flex-col">
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">Date</span>
+                                    <span class="text-slate-700 font-bold text-xs">{{ t.display_entry }} ({{ t.days_held }}d)</span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col">
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">Index</span>
+                                    <span class="text-slate-700 font-bold text-xs">{% if t.context.indices %}{{ t.context.indices }}{% else %}-{% endif %}</span>
+                                </div>
+                            </div>
                         </div>
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs text-rose-500">Stop</span>
-                            <span class="tabular-nums text-rose-600 font-bold text-xs">{{ "{:,.2f}".format(t.current_stop_loss|float) }}</span>
-                        </div>
-                        {% if t.context.target_level %}
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs text-emerald-600">Target (TP{{ t.context.target_level }})</span>
-                            <span class="tabular-nums text-emerald-600 font-bold text-xs">
-                                {{ "{:,.2f}".format(t.current_target|float) if t.current_target else '-' }}
-                            </span>
+
+                        <!-- Broker-Style Order Timeline -->
+                        {% if t.tws_orders and t.tws_orders | length > 0 %}
+                        <div class="relative pl-4 ml-1.5 border-l-2 border-slate-200 space-y-2.5 py-1 mb-3">
+                            {% for order in t.tws_orders | sort(attribute='order_id') %}
+                            {{ render_timeline_node(order, is_child=(order.parent_id is defined and order.parent_id), is_first=loop.first) }}
+                            {% endfor %}
                         </div>
                         {% else %}
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs text-emerald-600">Target 1</span>
-                            <span class="tabular-nums text-emerald-600 font-bold text-xs">
-                                {% if t.context.tp1 %}{{ "{:,.2f}".format(t.context.tp1|float) }}{% else %}-{% endif %}
-                            </span>
-                        </div>
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs text-emerald-600">Target 2</span>
-                            <span class="tabular-nums text-emerald-600 font-bold text-xs">
-                                {% if t.context.tp3 %}{{ "{:,.2f}".format(t.context.tp3|float) }}{% else %}-{% endif %}
-                            </span>
+                        <div class="mb-3">
+                            {{ render_trade_timeline(t, is_active=true, border_class="border-l-2 border-slate-200") }}
                         </div>
                         {% endif %}
-                        <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                            <span class="text-slate-500 font-medium text-xs">Direction</span>
-                            {% set direction = t.context.get('direction', 'long') | lower %}
-                            <span class="font-bold {% if direction == 'short' %}text-rose-600{% else %}text-emerald-600{% endif %} text-xs uppercase">{{ direction }}</span>
+
+                        <!-- Full Width Button -->
+                        {{ tradingview_link(t.symbol, text="View on TradingView", is_button=true) }}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- Table Footer: Total Open PnL & Average per position -->
+        {% set total_unrealized_pnl = active_trades | map(attribute='unrealized_pnl') | sum %}
+        {% set count_active = active_trades | length %}
+        {% set avg_unrealized_pnl = (total_unrealized_pnl / count_active) if count_active > 0 else 0.0 %}
+        {{ render_mobile_table_footer("Total Open PnL", total_unrealized_pnl, avg_unrealized_pnl, count_active) }}
+    </div>
+
+    <!-- Desktop Grid View -->
+    <div class="hidden md:block bg-white md:rounded-3xl md:shadow-sm border border-slate-200 overflow-hidden">
+        <!-- Desktop Header -->
+        <div
+            class="grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+            <div>Date</div>
+            <div>Symbol</div>
+            <div>Signal</div>
+            <div class="text-right">Quantity</div>
+            <div class="text-right">Entry</div>
+            <div class="text-right">Stop</div>
+            <div class="text-right">Target</div>
+            <div class="text-right">PnL</div>
+        </div>
+
+        <!-- Active Trades List (Desktop) -->
+        <div class="divide-y divide-slate-100">
+            {% for t in active_trades %}
+            <div class="hover:bg-slate-50/50 transition-colors cursor-pointer" onclick="toggleRow('acc-act-croc-{{ loop.index }}')">
+                <div class="grid grid-cols-8 gap-4 px-4 py-3 items-center text-sm">
+                    <!-- 1. Date -->
+                    <div class="text-slate-500 tabular-nums whitespace-nowrap">
+                        {{ t.display_entry }} ({{ t.days_held }}d)
+                    </div>
+
+                    <!-- 2. Symbol -->
+                    <div class="font-bold text-slate-700 whitespace-nowrap">
+                        <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
+                            target="_blank"
+                            onclick="event.stopPropagation();"
+                            class="hover:text-indigo-500 transition-colors flex items-center gap-1 whitespace-nowrap">
+                            {{ t.symbol }}
+                            <i data-lucide="chart-candlestick" class="w-3 h-3 text-slate-300 inline-block"></i>
+                        </a>
+                    </div>
+
+                    <!-- 3. Signal -->
+                    <div class="whitespace-nowrap flex items-center gap-1.5">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                            {{ (t.context.get('original_signal') or (t.context.get('match_rule') or {}).get('Signal') or t.strategy).replace('Croc_', '') }}
+                        </span>
+                    </div>
+
+                    <!-- 4. Quantity -->
+                    <div class="text-right tabular-nums text-slate-500 whitespace-nowrap">
+                        {{ t.current_size|int }}
+                    </div>
+
+                    <!-- 5. Entry -->
+                    <div class="text-right tabular-nums text-slate-500 whitespace-nowrap">
+                        {{ "{:,.2f}".format(t.entry_price|float) }}
+                    </div>
+
+                    <!-- 6. Stop -->
+                    <div class="text-right tabular-nums text-rose-500/80 whitespace-nowrap">
+                        {{ "{:,.2f}".format(t.current_stop_loss|float) }}
+                    </div>
+
+                    <!-- 7. Target -->
+                    <div class="flex flex-col items-end gap-0.5 text-xs text-emerald-600/80 font-medium text-right tabular-nums whitespace-nowrap">
+                        {% if t.context.target_level %}
+                        <div class="whitespace-nowrap">TP{{ t.context.target_level }}: {{ "{:,.2f}".format(t.current_target|float) if t.current_target else '-' }}</div>
+                        {% else %}
+                        {% if t.context.tp1 %}
+                        <div class="whitespace-nowrap">TP1: {{ "{:,.2f}".format(t.context.tp1|float) }}</div>
+                        {% endif %}
+                        {% if t.context.tp3 %}
+                        <div class="whitespace-nowrap">TP2: {{ "{:,.2f}".format(t.context.tp3|float) }}</div>
+                        {% endif %}
+                        {% if not t.context.tp1 and not t.context.tp3 %}
+                        <div class="whitespace-nowrap">-</div>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+
+                    <!-- 8. PnL -->
+                    <div class="flex flex-col items-end text-right whitespace-nowrap">
+                        <div class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
+                            {{ "{:+,.2f}".format(t.unrealized_pnl) }}
+                        </div>
+                        <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
+                            {{ "{:+.2f}".format(t.pnl_percentage) }}%
                         </div>
                     </div>
                 </div>
-
-                <!-- Full Width Button -->
-                {{ tradingview_link(t.symbol, text="View on TradingView", is_button=true) }}
-            {% endcall %}
+                <!-- Desktop Accordion Timeline Detail -->
+                <div id="acc-act-croc-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
+                    <div class="md:pl-[4.25rem] pt-3">
+                        {% if t.tws_orders and t.tws_orders | length > 0 %}
+                        <div class="relative pl-4 ml-1.5 border-l border-slate-200 space-y-3 py-1">
+                            {% for order in t.tws_orders | sort(attribute='order_id') %}
+                            {{ render_timeline_node(order, is_child=False, is_first=True) }}
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        {{ render_trade_timeline(t, is_active=true, border_class="border-l border-slate-200") }}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
             {% endfor %}
         </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}
 
-        <!-- Desktop Grid View -->
-        <div class="hidden md:block bg-white md:rounded-3xl md:shadow-sm border border-slate-200 overflow-hidden">
-            <!-- Desktop Header -->
-            <div
-                class="grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
-                <div>Date</div>
-                <div>Symbol</div>
-                <div>Signal</div>
-                <div class="text-right">Quantity</div>
-                <div class="text-right">Entry</div>
-                <div class="text-right">Stop</div>
-                <div class="text-right">Target</div>
-                <div class="text-right">PnL</div>
-            </div>
-
-            <!-- Active Trades List (Desktop) -->
-            <div class="divide-y divide-slate-100">
-                {% for t in active_trades %}
-                <div class="hover:bg-slate-50/50 transition-colors">
-                    <div class="grid grid-cols-8 gap-4 px-4 py-3 items-center text-sm">
-                        <!-- 1. Date -->
-                        <div class="text-slate-500 tabular-nums whitespace-nowrap">
-                            {{ t.display_entry }} ({{ t.days_held }}d)
-                        </div>
-
-                        <!-- 2. Symbol -->
-                        <div class="font-bold text-slate-700 whitespace-nowrap">
-                            <a href="https://www.tradingview.com/chart/?symbol={{ t.symbol }}"
-                                target="_blank"
-                                class="hover:text-indigo-500 transition-colors flex items-center gap-1 whitespace-nowrap">
-                                {{ t.symbol }}
-                                <i data-lucide="chart-candlestick" class="w-3 h-3 text-slate-300 inline-block"></i>
-                            </a>
-                        </div>
-
-                        <!-- 3. Signal -->
-                        <div class="whitespace-nowrap flex items-center gap-1.5">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
-                                {{ (t.context.get('original_signal') or (t.context.get('match_rule') or {}).get('Signal') or t.strategy).replace('Croc_', '') }}
-                            </span>
-                        </div>
-
-                        <!-- 4. Quantity -->
-                        <div class="text-right tabular-nums text-slate-500 whitespace-nowrap">
-                            {{ t.current_size|int }}
-                        </div>
-
-                        <!-- 5. Entry -->
-                        <div class="text-right tabular-nums text-slate-500 whitespace-nowrap">
-                            {{ "{:,.2f}".format(t.entry_price|float) }}
-                        </div>
-
-                        <!-- 6. Stop -->
-                        <div class="text-right tabular-nums text-rose-500/80 whitespace-nowrap">
-                            {{ "{:,.2f}".format(t.current_stop_loss|float) }}
-                        </div>
-
-                        <!-- 7. Target -->
-                        <div class="flex flex-col items-end gap-0.5 text-xs text-emerald-600/80 font-medium text-right tabular-nums whitespace-nowrap">
-                            {% if t.context.target_level %}
-                            <div class="whitespace-nowrap">TP{{ t.context.target_level }}: {{ "{:,.2f}".format(t.current_target|float) if t.current_target else '-' }}</div>
-                            {% else %}
-                            {% if t.context.tp1 %}
-                            <div class="whitespace-nowrap">TP1: {{ "{:,.2f}".format(t.context.tp1|float) }}</div>
-                            {% endif %}
-                            {% if t.context.tp3 %}
-                            <div class="whitespace-nowrap">TP2: {{ "{:,.2f}".format(t.context.tp3|float) }}</div>
-                            {% endif %}
-                            {% if not t.context.tp1 and not t.context.tp3 %}
-                            <div class="whitespace-nowrap">-</div>
-                            {% endif %}
-                            {% endif %}
-                        </div>
-
-                        <!-- 8. PnL -->
-                        <div class="flex flex-col items-end text-right whitespace-nowrap">
-                            <div class="font-bold {{ 'text-emerald-500' if t.unrealized_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
-                                {{ "{:+,.2f}".format(t.unrealized_pnl) }}
-                            </div>
-                            <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                                {{ "{:+.2f}".format(t.pnl_percentage) }}%
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-    </section>
-    {% endif %}
-
-    <!-- Stats Grid (Index + Signals) -->
-    <section class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 md:mb-12">
-        {{ render_stats_breakdown("Index", index_stats, closed_summary, icon="layers", name_label="Index") }}
-        {{ render_stats_breakdown("Signals", signal_stats, icon="zap", name_label="Signal") }}
-    </section>
-
-    <!-- Trade History -->
-    {{ render_history_table(history_groups, closed_summary, show_signal=true) }}
-
-</main>
-
-
-
-{% set active_page = 'trades' %}
-{% include "partials/mobile_nav.html" with context %}
+{% block stats %}
+<section class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8 md:mb-12">
+    {{ render_stats_breakdown("Index", index_stats, closed_summary, icon="layers", name_label="Index") }}
+    {{ render_stats_breakdown("Signals", signal_stats, icon="zap", name_label="Signal") }}
+</section>
 {% endblock %}
