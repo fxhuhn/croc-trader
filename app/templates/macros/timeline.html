@@ -11,7 +11,7 @@
 </span>
 {% endmacro %}
 
-{% macro render_timeline_node(item, is_child=False, is_first=False, role_label=None) %}
+{% macro render_timeline_node(item, is_child=False, is_first=False, role_label=None, variant_label=None) %}
 {% set is_cancelled = item.status and ('Cancel' in item.status or 'Inactive' in item.status) %}
 {% set is_entry = role_label | upper == 'ENTRY' if role_label else False %}
 
@@ -46,7 +46,7 @@
 
 {% set raw_order_type = item.order_type | default('') %}
 {% set bracket_role_val = item.bracket_role | default('') %}
-{% set combined_role = role_label if role_label else (raw_order_type if raw_order_type else bracket_role_val) %}
+{% set combined_role = raw_order_type if raw_order_type else (role_label if role_label else bracket_role_val) %}
 {% set upper_role = combined_role | upper %}
 
 {% set display_order_type =
@@ -65,10 +65,13 @@
     {% endif %}
     <!-- Main Row -->
     <div class="flex items-center justify-between gap-2">
-        <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% elif is_child %}text-slate-600{% else %}text-slate-700{% endif %} flex items-center gap-1">
+        <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% elif is_child %}text-slate-600{% else %}text-slate-700{% endif %} flex items-center gap-1.5">
             {% if is_child %}<span aria-hidden="true" class="text-slate-400 font-mono font-normal">└─</span>{% endif %}
             <span class="{% if is_cancelled %}text-slate-400{% elif action_name == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ action_name }}</span>
             {{ quantity_amount }} @ {{ "{:,.2f}".format(price_value | float(0.0)) if price_value else '-' }}
+            {% if variant_label %}
+            <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase">{{ variant_label }}</span>
+            {% endif %}
             {% if display_order_type and display_order_type | upper != 'ENTRY' %}
             <span class="text-slate-400 font-normal">({{ display_order_type }})</span>
             {% endif %}

@@ -9,11 +9,17 @@
 <section class="mb-8 md:mb-12">
     {{ render_section_header("Active", icon="zap") }}
 
-    <!-- Mobile View (Accordion Cards) -->
-    <div class="md:hidden flex flex-col gap-4">
+    <!-- Mobile View (Tabular Accordion with Order Timeline & Date/Index Grid) -->
+    <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+        <!-- Table Header -->
+        <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+            <div class="col-span-5">Symbol & Strategy</div>
+            <div class="col-span-3 text-right">Quantity</div>
+            <div class="col-span-4 text-right pr-6">Open PnL</div>
+        </div>
+
         {% for group in active_trades %}
-        {% set variant_metrics = namespace(half_percent_variant=none, one_percent_variant=none, total_quantity=0,
-        max_days=0, green_candle_count=0) %}
+        {% set variant_metrics = namespace(half_percent_variant=none, one_percent_variant=none, total_quantity=0, max_days=0, green_candle_count=0) %}
         {% for variant in group.variants %}
         {% if '0.5' in variant.strategy %}{% set variant_metrics.half_percent_variant = variant %}{% endif %}
         {% if '1.0' in variant.strategy %}{% set variant_metrics.one_percent_variant = variant %}{% endif %}
@@ -22,85 +28,113 @@
         {% set variant_metrics.green_candle_count = variant.green_candle_count|default(0) %}
         {% endfor %}
 
-        {% set active_badges = [] %}
-        {% if variant_metrics.half_percent_variant %}
-            {% set _ = active_badges.append({'text': '0.5', 'class': 'bg-indigo-50 text-indigo-600'}) %}
-        {% endif %}
-        {% if variant_metrics.one_percent_variant %}
-            {% set _ = active_badges.append({'text': '1.0', 'class': 'bg-indigo-50 text-indigo-600'}) %}
-        {% endif %}
+        {% set active_signals_parts = [] %}
+        {% if variant_metrics.half_percent_variant %}{% set _ = active_signals_parts.append('0.5') %}{% endif %}
+        {% if variant_metrics.one_percent_variant %}{% set _ = active_signals_parts.append('1.0') %}{% endif %}
+        {% set active_signals_subline = active_signals_parts | join(' • ') %}
 
-        {% call cards.trade_accordion_card(
-            symbol=group.symbol,
-            badges=active_badges,
-            pnl_value=group.total_pnl,
-            pnl_percentage=group.total_pnl_percentage,
-            progress_current=variant_metrics.max_days,
-            progress_max=5
-        ) %}
-            <div class="grid grid-cols-2 gap-8 items-start">
-                <!-- Left Column: Date & Qty -->
-                <div class="flex flex-col">
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs">Date</span>
-                        <span class="text-slate-700 font-bold text-xs">
-                            {{ variant_metrics.half_percent_variant.display_entry if
-                            variant_metrics.half_percent_variant else
-                            variant_metrics.one_percent_variant.display_entry }} ({{
-                            variant_metrics.max_days
-                            }}d)
-                        </span>
+        <div class="group-linkable">
+            <!-- Trigger Row -->
+            <button type="button" id="trigger-turnover-{{ loop.index }}"
+                class="w-full text-left px-4 py-3 active:bg-slate-50 transition-colors"
+                aria-expanded="false" aria-controls="details-turnover-{{ loop.index }}"
+                onclick="togglePositionAccordion(this, 'details-turnover-{{ loop.index }}')">
+                <div class="grid grid-cols-12 items-center gap-1">
+                    <!-- Col 1–5: Symbol & Subline -->
+                    <div class="col-span-5">
+                        <span class="text-sm font-bold text-slate-900 leading-none">{{ group.symbol }}</span>
+                        {{ render_row_subline(active_signals_subline ~ ' • ' ~ variant_metrics.max_days ~ 'd') }}
                     </div>
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs">Quantity</span>
-                        <span class="text-slate-700 font-bold text-xs">{{ variant_metrics.total_quantity
-                            }}</span>
+                    <!-- Col 6–8: Quantity -->
+                    <div class="col-span-3 text-right">
+                        <span class="text-sm font-bold text-slate-600 tabular-nums">{{ variant_metrics.total_quantity }}</span>
                     </div>
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs">Green Candle</span>
-                        <span class="text-slate-700 font-bold text-xs">{{ variant_metrics.green_candle_count }}/2</span>
+                    <!-- Col 9–12: Open PnL & Chevron -->
+                    <div class="col-span-4 flex items-center justify-end gap-2">
+                        {{ render_pnl_cell(group.total_pnl, group.total_pnl_percentage) }}
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-300 transition-transform duration-200 chevron-icon shrink-0"></i>
                     </div>
                 </div>
+            </button>
 
-                <!-- Right Column: Entry Prices -->
-                <div class="flex flex-col">
-                    {% if variant_metrics.half_percent_variant %}
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-slate-500 font-medium text-xs">Entry</span>
-                            <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">0.5</span>
+            <!-- Accordion Details (Ausgeklappter Zustand) -->
+            <div id="details-turnover-{{ loop.index }}" role="region"
+                aria-labelledby="trigger-turnover-{{ loop.index }}"
+                class="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                style="grid-template-rows: 0fr;">
+                <div class="overflow-hidden">
+                    <div class="px-4 pb-3 pt-1">
+                        <!-- Details Grid -->
+                        <div class="grid grid-cols-2 gap-8 items-start mb-3">
+                            <div class="flex flex-col">
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">Date</span>
+                                    <span class="text-slate-700 font-bold text-xs tabular-nums">
+                                        {{ variant_metrics.half_percent_variant.display_entry if variant_metrics.half_percent_variant else variant_metrics.one_percent_variant.display_entry }} ({{ variant_metrics.max_days }}d)
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">Quantity</span>
+                                    <span class="text-slate-700 font-bold text-xs tabular-nums">{{ variant_metrics.total_quantity }}</span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col">
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">Time Stop</span>
+                                    <span class="text-slate-700 font-bold text-xs inline-flex items-center gap-1">
+                                        5d <i data-lucide="arrow-right-to-line" class="w-3.5 h-3.5 text-slate-500"></i>
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                                    <span class="text-slate-500 font-medium text-xs">Candle</span>
+                                    <span class="text-slate-700 font-bold text-xs">
+                                        {% if variant_metrics.green_candle_count == 0 %}
+                                        <span class="inline-flex items-center gap-1 text-rose-500">
+                                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
+                                        </span>
+                                        {% elif variant_metrics.green_candle_count == 1 %}
+                                        <span class="inline-flex items-center gap-1 text-emerald-500">
+                                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
+                                        </span>
+                                        {% else %}
+                                        <span class="inline-flex items-center gap-0.5 text-emerald-500">
+                                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
+                                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
+                                        </span>
+                                        {% endif %}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        <span class="tabular-nums text-slate-500 font-bold text-xs">
-                            {{ "{:,.2f}".format(variant_metrics.half_percent_variant.entry_price|float) }}
-                        </span>
-                    </div>
-                    {% endif %}
-                    {% if variant_metrics.one_percent_variant %}
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-slate-500 font-medium text-xs">Entry</span>
-                            <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600">1.0</span>
+
+                        <!-- Order Timeline -->
+                        <div class="relative pl-4 ml-1.5 border-l-2 border-slate-200 space-y-2.5 py-1 mb-3">
+                            {% for variant in group.variants %}
+                            {% set variant_badge = '0.5' if '0.5' in variant.strategy else ('1.0' if '1.0' in variant.strategy else '') %}
+                            {% if variant.tws_orders and variant.tws_orders | length > 0 %}
+                                {% for order in variant.tws_orders | sort(attribute='order_id') %}
+                                {{ render_timeline_node(order, is_child=(order.parent_id is defined and order.parent_id), is_first=loop.first, variant_label=variant_badge) }}
+                                {% endfor %}
+                            {% else %}
+                                {% set entry_node = {'action': 'BUY', 'quantity': variant.current_size | int, 'price': variant.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': variant.id, 'transmitted_at': variant.entry_date} %}
+                                {{ render_timeline_node(entry_node, is_child=False, is_first=True, role_label='Entry', variant_label=variant_badge) }}
+                            {% endif %}
+                            {% endfor %}
                         </div>
-                        <span class="tabular-nums text-slate-500 font-bold text-xs">
-                            {{ "{:,.2f}".format(variant_metrics.one_percent_variant.entry_price|float) }}
-                        </span>
+
+                        <!-- Full Width Button -->
+                        {{ tradingview_link(group.symbol, text="View on TradingView", is_button=true) }}
                     </div>
-                    {% endif %}
-                    {% if not variant_metrics.half_percent_variant and not
-                    variant_metrics.one_percent_variant %}
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span
-                            class="px-2 py-0.5 rounded-md text-xs font-bold bg-slate-100 text-slate-500">Entry</span>
-                        <span class="text-slate-500 font-bold text-xs">-</span>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
-
-            <!-- Full Width Button (Fat-finger safe) -->
-            {{ tradingview_link(group.symbol, text="View on TradingView", is_button=true) }}
-        {% endcall %}
+        </div>
         {% endfor %}
+
+        <!-- Table Footer: Total Open PnL & Average per position -->
+        {% set total_unrealized_pnl = active_trades | map(attribute='total_pnl') | sum %}
+        {% set count_active = active_trades | length %}
+        {% set avg_unrealized_pnl = (total_unrealized_pnl / count_active) if count_active > 0 else 0.0 %}
+        {{ render_mobile_table_footer("Total Open PnL", total_unrealized_pnl, avg_unrealized_pnl, count_active) }}
     </div>
 
     <!-- Desktop Grid View -->
@@ -114,7 +148,7 @@
             <div class="text-right">Quantity</div>
             <div class="text-right">Entry</div>
             <div class="text-right">Stop</div>
-            <div class="text-right">Target</div>
+            <div class="text-right">Candle</div>
             <div class="text-right">PnL</div>
         </div>
 
@@ -130,73 +164,109 @@
             {% set variant_metrics.green_candle_count = variant.green_candle_count|default(0) %}
             {% endfor %}
 
-            <div class="grid grid-cols-8 gap-4 px-4 py-3 items-center text-sm hover:bg-slate-50/50 transition-colors">
-                <!-- 1. Date -->
-                <div class="text-slate-500 tabular-nums whitespace-nowrap">
-                    {% if variant_metrics.half_percent_variant %}
-                        {{ variant_metrics.half_percent_variant.display_entry }}
-                    {% else %}
-                        {{ variant_metrics.one_percent_variant.display_entry }}
-                    {% endif %}
-                    ({{ variant_metrics.max_days }}d)
-                </div>
-
-                <!-- 2. Symbol -->
-                <div class="font-bold text-slate-700 whitespace-nowrap">
-                    <a href="https://www.tradingview.com/chart/?symbol={{ group.symbol }}"
-                        target="_blank"
-                        class="hover:text-indigo-500 transition-colors flex items-center gap-1 whitespace-nowrap">
-                        {{ group.symbol }}
-                        <i data-lucide="chart-candlestick" class="w-3 h-3 text-slate-300 inline-block"></i>
-                    </a>
-                </div>
-
-                <!-- 3. Signal (Strategy Badges) -->
-                <div class="flex flex-nowrap gap-1 whitespace-nowrap">
-                    {% if variant_metrics.half_percent_variant %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
-                        0.5
-                    </span>
-                    {% endif %}
-                    {% if variant_metrics.one_percent_variant %}
-                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
-                        1.0
-                    </span>
-                    {% endif %}
-                </div>
-
-                <!-- 4. Quantity -->
-                <div class="text-right tabular-nums text-slate-500 whitespace-nowrap">
-                    {{ variant_metrics.total_quantity }}
-                </div>
-
-                <!-- 5. Entry (sub-rows for multiple strategy variants) -->
-                <div class="flex flex-col items-end gap-0.5 text-xs text-slate-500 font-medium tabular-nums whitespace-nowrap">
-                    {% if variant_metrics.half_percent_variant %}
-                    <div class="whitespace-nowrap">Entry 0.5: {{ "{:,.2f}".format(variant_metrics.half_percent_variant.entry_price|float) }}</div>
-                    {% endif %}
-                    {% if variant_metrics.one_percent_variant %}
-                    <div class="whitespace-nowrap">Entry 1.0: {{ "{:,.2f}".format(variant_metrics.one_percent_variant.entry_price|float) }}</div>
-                    {% endif %}
-                </div>
-
-                <!-- 6. Stop (5 Days Limit representation) -->
-                <div class="text-right tabular-nums text-rose-500/80 whitespace-nowrap">
-                    5 Days Limit
-                </div>
-
-                <!-- 7. Target (Green Candle count) -->
-                <div class="text-right tabular-nums text-emerald-600/80 font-medium whitespace-nowrap">
-                    Green Candle: {{ variant_metrics.green_candle_count }}/2
-                </div>
-
-                <!-- 8. PnL -->
-                <div class="flex flex-col items-end text-right whitespace-nowrap">
-                    <div class="font-bold {{ 'text-emerald-500' if group.total_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
-                        {{ "{:+,.2f}".format(group.total_pnl) }}
+            <div class="hover:bg-slate-50/50 transition-colors cursor-pointer" onclick="toggleRow('acc-act-turnover-{{ loop.index }}')">
+                <div class="grid grid-cols-8 gap-4 px-4 py-3 items-center text-sm">
+                    <!-- 1. Date -->
+                    <div class="text-slate-500 tabular-nums whitespace-nowrap">
+                        {% if variant_metrics.half_percent_variant %}
+                            {{ variant_metrics.half_percent_variant.display_entry }}
+                        {% else %}
+                            {{ variant_metrics.one_percent_variant.display_entry }}
+                        {% endif %}
+                        ({{ variant_metrics.max_days }}d)
                     </div>
-                    <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                        {{ "{:+.2f}".format(group.total_pnl_percentage) }}%
+
+                    <!-- 2. Symbol -->
+                    <div class="font-bold text-slate-700 whitespace-nowrap">
+                        <a href="https://www.tradingview.com/chart/?symbol={{ group.symbol }}"
+                            target="_blank"
+                            onclick="event.stopPropagation();"
+                            class="hover:text-indigo-500 transition-colors flex items-center gap-1 whitespace-nowrap">
+                            {{ group.symbol }}
+                            <i data-lucide="chart-candlestick" class="w-3 h-3 text-slate-300 inline-block"></i>
+                        </a>
+                    </div>
+
+                    <!-- 3. Signal (Strategy Badges) -->
+                    <div class="flex flex-nowrap gap-1 whitespace-nowrap">
+                        {% if variant_metrics.half_percent_variant %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                            0.5
+                        </span>
+                        {% endif %}
+                        {% if variant_metrics.one_percent_variant %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                            1.0
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- 4. Quantity -->
+                    <div class="text-right tabular-nums text-slate-500 whitespace-nowrap">
+                        {{ variant_metrics.total_quantity }}
+                    </div>
+
+                    <!-- 5. Entry (sub-rows for multiple strategy variants) -->
+                    <div class="flex flex-col items-end gap-0.5 text-xs text-slate-500 font-medium tabular-nums whitespace-nowrap">
+                        {% if variant_metrics.half_percent_variant %}
+                        <div class="whitespace-nowrap">Entry 0.5: {{ "{:,.2f}".format(variant_metrics.half_percent_variant.entry_price|float) }}</div>
+                        {% endif %}
+                        {% if variant_metrics.one_percent_variant %}
+                        <div class="whitespace-nowrap">Entry 1.0: {{ "{:,.2f}".format(variant_metrics.one_percent_variant.entry_price|float) }}</div>
+                        {% endif %}
+                    </div>
+
+                    <!-- 6. Stop (5 Days Limit representation) -->
+                    <div class="text-right tabular-nums text-rose-500/80 whitespace-nowrap flex items-center justify-end gap-1">
+                        <span>5d</span>
+                        <i data-lucide="arrow-right-to-line" class="w-3.5 h-3.5 text-rose-500/80 inline-block"></i>
+                    </div>
+
+                    <!-- 7. Target (Green Candle count) -->
+                    <div class="text-right tabular-nums text-emerald-600/80 font-medium whitespace-nowrap flex items-center justify-end gap-1">
+                        {% if variant_metrics.green_candle_count == 0 %}
+                        <span class="inline-flex items-center gap-1 text-rose-500">
+                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+                        </span>
+                        {% elif variant_metrics.green_candle_count == 1 %}
+                        <span class="inline-flex items-center gap-1 text-emerald-500">
+                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+                        </span>
+                        {% else %}
+                        <span class="inline-flex items-center gap-0.5 text-emerald-500">
+                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+                        </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- 8. PnL -->
+                    <div class="flex flex-col items-end text-right whitespace-nowrap">
+                        <div class="font-bold {{ 'text-emerald-500' if group.total_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
+                            {{ "{:+,.2f}".format(group.total_pnl) }}
+                        </div>
+                        <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
+                            {{ "{:+.2f}".format(group.total_pnl_percentage) }}%
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Desktop Accordion Timeline Detail -->
+                <div id="acc-act-turnover-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
+                    <div class="md:pl-[4.25rem] pt-3">
+                        <div class="relative pl-4 ml-1.5 border-l border-slate-200 space-y-2.5 py-1">
+                            {% for variant in group.variants %}
+                            {% set variant_badge = '0.5' if '0.5' in variant.strategy else ('1.0' if '1.0' in variant.strategy else '') %}
+                            {% if variant.tws_orders and variant.tws_orders | length > 0 %}
+                                {% for order in variant.tws_orders | sort(attribute='order_id') %}
+                                {{ render_timeline_node(order, is_child=(order.parent_id is defined and order.parent_id), is_first=loop.first, variant_label=variant_badge) }}
+                                {% endfor %}
+                            {% else %}
+                                {% set entry_node = {'action': 'BUY', 'quantity': variant.current_size | int, 'price': variant.entry_price, 'order_type': 'ENTRY', 'status': 'Filled', 'order_id': variant.id, 'transmitted_at': variant.entry_date} %}
+                                {{ render_timeline_node(entry_node, is_child=False, is_first=True, role_label='Entry', variant_label=variant_badge) }}
+                            {% endif %}
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
             </div>
