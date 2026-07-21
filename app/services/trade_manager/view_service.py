@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 
 from ...const import (
     STRATEGY_ALIASES,
+    ExitReason,
     IndexAliases,
     Strategies,
     TargetColumn,
@@ -560,19 +561,136 @@ class TradeViewService:
 
         return view_models
 
+    def _calculate_open_pnl_5d_change(
+        self,
+        active_trades: list[TradeViewData],
+        reference_date: pd.Timestamp | None = None,
+    ) -> float:
+        """Calculates 5-day Open PnL change for active trades.
+
+        Args:
+            active_trades: List of active trade view objects.
+            reference_date: Optional timestamp override for reference date.
+
+        Returns:
+            float: Aggregated 5-day Open PnL change in base currency.
+        """
+        if not active_trades:
+            return 0.0
+
+        today = reference_date if reference_date is not None else pd.Timestamp.now()
+        start_date = (today - pd.Timedelta(days=20)).strftime("%Y-%m-%d")
+        symbols = list({trade["symbol"] for trade in active_trades})
+
+        history_dataframe = self.market_repository.get_batch_history_raw(
+            symbols, start_date, today.strftime("%Y-%m-%d")
+        )
+        if history_dataframe.empty:
+            return 0.0
+
+        total_5d_change = 0.0
+
+        for trade in active_trades:
+            symbol = trade["symbol"]
+            rows = history_dataframe[history_dataframe["symbol"] == symbol].sort_values(
+                "date"
+            )
+            if rows.empty:
+                total_5d_change += trade["unrealized_pnl"]
+                continue
+
+            past_row = rows.iloc[-6] if len(rows) >= 6 else rows.iloc[0]
+            past_date_str = str(past_row["date"]).split("T")[0].split(" ")[0]
+            past_price = float(past_row["close"])
+
+            entry_date_str = (
+                str(trade.get("entry_date") or "").split("T")[0].split(" ")[0]
+            )
+            initial_size = float(trade.get("initial_size") or 0.0)
+            current_price = float(trade.get("current_price") or past_price)
+            direction = str(trade.get("context", {}).get("direction", "long")).lower()
+
+            if entry_date_str and entry_date_str > past_date_str:
+                total_5d_change += trade["unrealized_pnl"]
+            else:
+                if direction == "short":
+                    trade_5d_change = (past_price - current_price) * initial_size
+                else:
+                    trade_5d_change = (current_price - past_price) * initial_size
+                total_5d_change += trade_5d_change
+
+        return total_5d_change
+
+    def get_latest_signal_date(self) -> str | None:
+        """Fetches the latest timestamp date from signals.db."""
+        try:
+            row = self.trade_repository.fetch_one(
+                "SELECT timestamp FROM croc WHERE timestamp IS NOT NULL AND timestamp != '' ORDER BY timestamp DESC LIMIT 1"
+            )
+            if row and row[0]:
+                raw_ts = str(row[0]).strip()
+                parts = raw_ts.replace("T", " ").split(" ")
+                if len(parts) >= 2:
+                    date_part = parts[0]
+                    time_part = parts[1].split(".")[0][:5]
+                    return f"{date_part} {time_part}"
+                return parts[0]
+        except Exception as err:
+            logger.debug("Failed to query market_prices timestamp: %s", err)
+
+        try:
+            row = self.trade_repository.fetch_one(
+                "SELECT created_at FROM trades WHERE created_at IS NOT NULL ORDER BY created_at DESC LIMIT 1"
+            )
+            if row and row[0]:
+                raw_ts = str(row[0]).strip()
+                parts = raw_ts.replace("T", " ").split(" ")
+                if len(parts) >= 2:
+                    date_part = parts[0]
+                    time_part = parts[1].split(".")[0][:5]
+                    return f"{date_part} {time_part}"
+                return parts[0]
+        except Exception as err:
+            logger.debug("Failed to query trades timestamp: %s", err)
+
+        return None
+
     def get_portfolio_summary(
-        self, active_trades: list[TradeViewData]
-    ) -> dict[str, float | int]:
+        self,
+        active_trades: list[TradeViewData],
+        reference_date: pd.Timestamp | None = None,
+    ) -> dict[str, float | int | str | None]:
         """Calculates summary metrics for active trades."""
         total_invested = sum(
             trade["entry_price"] * trade["initial_size"] for trade in active_trades
         )
         total_open_pnl = sum(trade["unrealized_pnl"] for trade in active_trades)
+        open_pnl_5d_change = self._calculate_open_pnl_5d_change(
+            active_trades, reference_date=reference_date
+        )
+
+        try:
+            closed_trades = self.get_trades(
+                status=TradeStatus.CLOSED,
+                exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
+            )
+            closed_wins = sum(
+                1
+                for trade in closed_trades
+                if float(trade.get("realized_pnl") or 0.0) > 0
+            )
+            win_rate = (closed_wins / len(closed_trades)) if closed_trades else 0.0
+        except Exception:
+            win_rate = 0.0
 
         return {
             "invested": total_invested,
             "open_pnl": total_open_pnl,
+            "open_pnl_5d_change": open_pnl_5d_change,
+            "equity": 100000.0 + total_open_pnl,
+            "win_rate": win_rate,
             "count": len(active_trades),
+            "last_updated": self.get_latest_signal_date(),
         }
 
     def get_closed_summary(

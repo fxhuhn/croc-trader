@@ -524,3 +524,61 @@ def view_broker_dashboard() -> str:
         discrepancies=discrepancies,
         active_trades=active_trades,
     )
+
+
+@views_bp.route("/concept2-test", methods=["GET"])
+def view_concept2_test() -> str:
+    """Displays test mockup for Concept 2 with real live data."""
+    service = _get_trade_view_service()
+
+    active_trades = service.get_trades(status=TradeStatus.ACTIVE)
+    service.attach_sparklines(active_trades)
+    summary_metrics = service.get_portfolio_summary(active_trades)
+
+    strategy_stats = {
+        "Croc Setup": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Dip Buyer": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Turnover": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Two Percent": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "NDX Momentum": {"count": 0, "pnl": 0.0, "invested": 0.0},
+    }
+
+    croc_group = [
+        Strategies.CrocSetup,
+        Strategies.HoldTarget,
+        Strategies.SplitTarget,
+        "croc",
+    ]
+    turnover_group = [
+        Strategies.TurnOverTiming,
+        Strategies.TurnOverTiming_05,
+        Strategies.TurnOverTiming_10,
+    ]
+
+    for trade in active_trades:
+        strategy_key = service.resolve_strategy(trade)
+        if strategy_key in croc_group:
+            label = "Croc Setup"
+        elif strategy_key == Strategies.DipBuyer:
+            label = "Dip Buyer"
+        elif strategy_key in turnover_group:
+            label = "Turnover"
+        elif strategy_key == Strategies.TwoPercent:
+            label = "Two Percent"
+        elif strategy_key == Strategies.NDXMomentum:
+            label = "NDX Momentum"
+        else:
+            label = str(trade.get("strategy", "Unknown"))
+
+        if label not in strategy_stats:
+            strategy_stats[label] = {"count": 0, "pnl": 0.0, "invested": 0.0}
+
+        strategy_stats[label]["count"] += 1
+        strategy_stats[label]["pnl"] += float(trade.get("unrealized_pnl", 0.0) or 0.0)
+
+    return render_template(
+        "concept2_test.html",
+        summary=summary_metrics,
+        active_trades=active_trades,
+        strategy_stats=strategy_stats,
+    )

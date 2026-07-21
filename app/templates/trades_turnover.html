@@ -89,15 +89,17 @@
                                     <span class="text-slate-500 font-medium text-xs">Candle</span>
                                     <span class="text-slate-700 font-bold text-xs">
                                         {% if variant_metrics.green_candle_count == 0 %}
-                                        <span class="inline-flex items-center gap-1 text-rose-500">
+                                        <span class="inline-flex items-center gap-0 text-slate-300">
+                                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
                                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
                                         </span>
                                         {% elif variant_metrics.green_candle_count == 1 %}
-                                        <span class="inline-flex items-center gap-1 text-emerald-500">
-                                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
+                                        <span class="inline-flex items-center gap-0">
+                                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current text-emerald-500"></i>
+                                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current text-slate-300"></i>
                                         </span>
                                         {% else %}
-                                        <span class="inline-flex items-center gap-0.5 text-emerald-500">
+                                        <span class="inline-flex items-center gap-0 text-emerald-500">
                                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
                                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
                                         </span>
@@ -223,17 +225,19 @@
                     </div>
 
                     <!-- 7. Target (Green Candle count) -->
-                    <div class="text-right tabular-nums text-emerald-600/80 font-medium whitespace-nowrap flex items-center justify-end gap-1">
+                    <div class="text-right tabular-nums font-medium whitespace-nowrap flex items-center justify-end gap-1">
                         {% if variant_metrics.green_candle_count == 0 %}
-                        <span class="inline-flex items-center gap-1 text-rose-500">
+                        <span class="inline-flex items-center gap-0 text-slate-300">
+                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
                         </span>
                         {% elif variant_metrics.green_candle_count == 1 %}
-                        <span class="inline-flex items-center gap-1 text-emerald-500">
-                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+                        <span class="inline-flex items-center gap-0">
+                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current text-emerald-500 inline-block"></i>
+                            <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current text-slate-300 inline-block"></i>
                         </span>
                         {% else %}
-                        <span class="inline-flex items-center gap-0.5 text-emerald-500">
+                        <span class="inline-flex items-center gap-0 text-emerald-500">
                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
                         </span>

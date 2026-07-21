@@ -1,61 +1,51 @@
 {% extends "base.html" %}
 
-{% block title %}Mobile Portfolio View{% endblock %}
+{% block title %}Portfolio Trades Overview{% endblock %}
 {% block body_class %}bg-slate-100 md:bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
 
+{% set active_page = 'trades' %}
+
 {% block content %}
-{% from "macros/navigation.html" import render_header %}
+{% from "macros/navigation.html" import render_header with context %}
+{% from "macros/cards.html" import dashboard_kpis %}
+
+{% set strategy_endpoints = {
+    'Croc Setup': '/trades/croc',
+    'Dip Buyer': '/trades/dip-buyer',
+    'Turnover': '/trades/turnover',
+    'Two Percent': '/trades/twopercent',
+    'NDX Momentum': '/trades/ndx-momentum'
+} %}
 
 <!-- Header -->
-{{ render_header("Portfolio", "trades", show_switcher=False) }}
+{{ render_header("Portfolio", "trades", show_switcher=False, active_tab='trades') }}
 
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-20 md:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
     <!-- KPI Cards -->
-    {% from "macros/cards.html" import dashboard_kpis %}
     {{ dashboard_kpis(summary, active_trades|length) }}
 
     <!-- Strategies Overview -->
     <section class="mb-4 md:mb-12 mt-2 md:mt-0">
-        <h2
-            class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
             <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Strategies
         </h2>
 
         <div class="flex flex-col gap-3 md:gap-4 md:grid md:grid-cols-2 lg:grid-cols-3">
-            {% for strat_name, stat in strategy_stats.items() %}
-            <div
-                class="bg-white rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm p-4 md:p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-1 md:gap-4 hover:shadow-md transition-shadow relative">
-                <div class="flex flex-col w-full md:w-auto">
-                    <div class="flex justify-between md:flex-col items-center md:items-start w-full">
-                        <span class="text-sm md:text-lg font-bold text-slate-900">{{ strat_name }}</span>
-                        <!-- Mobile active positions, hidden on desktop here, shown below -->
-                        <span
-                            class="md:hidden text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full">{{
-                            stat.count }} Active</span>
-                    </div>
+            {% for strategy_name, strategy_statistic in strategy_stats.items() %}
+            <div class="bg-white rounded-2xl md:rounded-3xl border border-slate-200 shadow-sm p-4 md:p-6 flex justify-between items-center gap-4 hover:shadow-md transition-shadow relative">
+                <div class="flex flex-col items-start">
+                    <span class="text-sm md:text-lg font-bold text-slate-900 leading-tight">{{ strategy_name }}</span>
+                    <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full mt-1.5">{{ strategy_statistic.count }} Active</span>
                 </div>
-                <div class="flex justify-between items-center w-full md:w-auto md:flex-col md:items-end">
-                    <!-- Desktop active positions, hidden on mobile -->
-                    <span
-                        class="hidden md:inline-block text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-full mb-2">{{
-                        stat.count }} Active Position(s)</span>
-                    <div
-                        class="text-base md:text-xl font-black {{ 'text-emerald-500' if stat.pnl >= 0 else 'text-rose-500' }} tabular-nums">
-                        {{ "{:+,.2f}".format(stat.pnl) }}
-                    </div>
+                <div class="text-base md:text-xl font-black {{ 'text-emerald-500' if strategy_statistic.pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                    {{ "{:+,.0f}".format(strategy_statistic.pnl) }}
                 </div>
 
-                {% set endpoint_map = {
-                'Croc Setup': '/trades/croc',
-                'Dip Buyer': '/trades/dip-buyer',
-                'Turnover': '/trades/turnover',
-                'Two Percent': '/trades/twopercent',
-                'NDX Momentum': '/trades/ndx-momentum'
-                } %}
-                <a href="{{ endpoint_map.get(strat_name, '/trades') }}"
-                    class="absolute inset-0 z-10 w-full h-full"><span class="sr-only">Go to {{ strat_name }}</span></a>
+                <a href="{{ strategy_endpoints.get(strategy_name, '/trades') }}" class="absolute inset-0 z-10 w-full h-full">
+                    <span class="sr-only">Go to {{ strategy_name }}</span>
+                </a>
             </div>
             {% endfor %}
         </div>
@@ -63,6 +53,5 @@
 
 </main>
 
-{% set active_page = 'trades' %}
 {% include "partials/mobile_nav.html" with context %}
 {% endblock %}

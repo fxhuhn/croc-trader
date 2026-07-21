@@ -83,10 +83,10 @@
 {% block body_class %}bg-slate-100 md:bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
 
 {% block content %}
-{% from "macros/navigation.html" import render_header %}
+{% from "macros/navigation.html" import render_header with context %}
 
 <!-- Header -->
-{{ render_header("Screener", "screener", show_switcher=False) }}
+{{ render_header("Portfolio", "screener", show_switcher=False, active_tab='screener') }}
 
 <!-- Header Section -->
 <main class="flex-grow pt-4 md:pt-12 pb-20 md:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
