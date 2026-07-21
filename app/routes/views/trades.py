@@ -125,7 +125,7 @@ def view_trades_croc() -> str:
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
-    summary_metrics = service.get_portfolio_summary(active)
+    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
 
     index_stats = service.get_index_stats(closed)
@@ -206,7 +206,7 @@ def view_trades_dip_buyer() -> str:
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
-    summary_metrics = service.get_portfolio_summary(active)
+    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
 
     index_stats = service.get_index_stats(closed)
@@ -266,7 +266,7 @@ def view_trades_turnover() -> str:
     active_groups = service.group_trades_by_symbol(active)
 
     # Stats
-    summary_metrics = service.get_portfolio_summary(active)
+    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
 
     # Aggregations
@@ -346,7 +346,7 @@ def view_trades_ndx_momentum() -> str:
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
-    summary_metrics = service.get_portfolio_summary(active)
+    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
     history_groups = service.group_trades_history(closed)
 
@@ -382,7 +382,7 @@ def view_trades_twopercent() -> str:
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
-    summary_metrics = service.get_portfolio_summary(active)
+    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
 
     active_groups = service.group_trades_by_symbol(active)

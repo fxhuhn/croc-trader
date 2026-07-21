@@ -86,7 +86,7 @@
 
 {% macro dashboard_kpis(summary, active_count, show_currency=false) %}
 <section class="mb-8 mt-2 md:mt-0 space-y-3 md:space-y-6">
-    <!-- Row 1: Open PnL & Equity -->
+    <!-- Row 1: Open PnL & Win Rate -->
     <div class="grid grid-cols-2 gap-3 md:gap-6">
         <!-- Open PnL Hero Card -->
         <article
@@ -111,40 +111,44 @@
                 class="w-7 h-7 shrink-0 {{ 'text-emerald-100' if summary.open_pnl >= 0 else 'hidden' }}"></i>
         </article>
 
-        <!-- Equity Card -->
+        <!-- Win Rate Card (In place of Equity) -->
         <article
             class="bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex items-start justify-between gap-2">
             <div class="flex flex-col items-start">
                 <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
-                    Equity
+                    Win Rate
                 </div>
                 <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
-                    {{ "{:,.0f}".format(summary.equity|default(summary.invested + summary.open_pnl)) }}{% if show_currency %}&nbsp;${% endif %}
+                    {% if summary.win_rate is defined and summary.win_rate is not none %}
+                        {% if summary.win_rate <= 1.0 %}
+                            {{ "{:.1%}".format(summary.win_rate) }}
+                        {% else %}
+                            {{ "{:.1f}%".format(summary.win_rate) }}
+                        {% endif %}
+                    {% else %}
+                        0.0%
+                    {% endif %}
                 </div>
             </div>
             <div class="flex md:hidden w-8 h-8 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
-                <i data-lucide="landmark" aria-hidden="true" class="w-4 h-4"></i>
+                <i data-lucide="trophy" aria-hidden="true" class="w-4 h-4"></i>
             </div>
         </article>
     </div>
 
-    <!-- Row 2: Win Rate, Invested, Active -->
+    <!-- Row 2: Profit Factor, Invested, SQN -->
     <div class="grid grid-cols-3 gap-2 sm:gap-3 md:gap-6">
-        <!-- Win Rate -->
+        <!-- Profit Factor (In place of old Win Rate position) -->
         <article
             class="bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-3 md:p-6 shadow-sm flex flex-col justify-center items-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
-                Win Rate
+                Profit Factor
             </div>
             <div class="text-base md:text-2xl font-black text-slate-900 leading-none tabular-nums">
-                {% if summary.win_rate is defined and summary.win_rate is not none %}
-                    {% if summary.win_rate <= 1.0 %}
-                        {{ "{:.1%}".format(summary.win_rate) }}
-                    {% else %}
-                        {{ "{:.1f}%".format(summary.win_rate) }}
-                    {% endif %}
+                {% if summary.profit_factor is defined and summary.profit_factor is not none %}
+                    {{ "{:.2f}".format(summary.profit_factor) }}
                 {% else %}
-                    0.0%
+                    0.00
                 {% endif %}
             </div>
         </article>
@@ -160,14 +164,18 @@
             </div>
         </article>
 
-        <!-- Active -->
+        <!-- SQN (In place of old Active position) -->
         <article
             class="bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-3 md:p-6 shadow-sm flex flex-col justify-center items-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
-                Active
+                SQN
             </div>
             <div class="text-base md:text-2xl font-black text-slate-900 leading-none tabular-nums">
-                {{ active_count }}
+                {% if summary.sqn is defined and summary.sqn is not none %}
+                    {{ "{:.2f}".format(summary.sqn) }}
+                {% else %}
+                    0.00
+                {% endif %}
             </div>
         </article>
     </div>

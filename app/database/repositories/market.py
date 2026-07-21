@@ -94,6 +94,21 @@ class MarketRepository(BaseRepository):
         return [row["symbol"] for row in rows]
 
     # --- Data Access Logic (Single Value) ---
+    def get_latest_updated_at(self) -> str | None:
+        """Fetches the latest updated_at timestamp from market_prices in stocks.db."""
+        val = self.fetch_value(
+            "SELECT updated_at FROM market_prices WHERE updated_at IS NOT NULL ORDER BY updated_at DESC LIMIT 1"
+        )
+        if val:
+            raw_ts = str(val).strip()
+            parts = raw_ts.replace("T", " ").split(" ")
+            if len(parts) >= 2:
+                date_part = parts[0]
+                time_part = parts[1].split(".")[0][:5]
+                return f"{date_part} {time_part}"
+            return parts[0]
+        return None
+
     def get_latest_price(self, symbol: str) -> float | None:
         return self.fetch_value(
             "SELECT close FROM market_prices WHERE symbol = ? AND timeframe = '1D' ORDER BY date DESC LIMIT 1",

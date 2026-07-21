@@ -17,6 +17,7 @@ from ...const import (
 from ...database.repositories.broker import BrokerRepository
 from ...database.repositories.market import MarketRepository
 from ...database.repositories.trade import TradeRepository
+from ...tools import metrics
 
 # Import TradeData from types to avoid duplication definition (if possible), or keep TradeViewData as extended
 # The user asked to avoid duplication with app/types.py.
@@ -622,7 +623,15 @@ class TradeViewService:
         return total_5d_change
 
     def get_latest_signal_date(self) -> str | None:
-        """Fetches the latest timestamp date from signals.db."""
+        """Fetches the latest updated_at timestamp from market_prices in stocks.db."""
+        if self.market_repository:
+            try:
+                latest_market_ts = self.market_repository.get_latest_updated_at()
+                if latest_market_ts:
+                    return latest_market_ts
+            except Exception as err:
+                logger.debug("Failed to query market_prices updated_at: %s", err)
+
         try:
             row = self.trade_repository.fetch_one(
                 "SELECT timestamp FROM croc WHERE timestamp IS NOT NULL AND timestamp != '' ORDER BY timestamp DESC LIMIT 1"
@@ -636,7 +645,7 @@ class TradeViewService:
                     return f"{date_part} {time_part}"
                 return parts[0]
         except Exception as err:
-            logger.debug("Failed to query market_prices timestamp: %s", err)
+            logger.debug("Failed to query croc timestamp: %s", err)
 
         try:
             row = self.trade_repository.fetch_one(
@@ -659,6 +668,7 @@ class TradeViewService:
         self,
         active_trades: list[TradeViewData],
         reference_date: pd.Timestamp | None = None,
+        closed_trades: list[TradeViewData] | None = None,
     ) -> dict[str, float | int | str | None]:
         """Calculates summary metrics for active trades."""
         total_invested = sum(
@@ -670,18 +680,48 @@ class TradeViewService:
         )
 
         try:
-            closed_trades = self.get_trades(
-                status=TradeStatus.CLOSED,
-                exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
+            if closed_trades is None:
+                closed_trades = self.get_trades(
+                    status=TradeStatus.CLOSED,
+                    exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
+                )
+            pnl_series = pd.Series(
+                [float(t.get("realized_pnl") or 0.0) for t in closed_trades]
             )
-            closed_wins = sum(
-                1
-                for trade in closed_trades
-                if float(trade.get("realized_pnl") or 0.0) > 0
+            win_rate = (
+                metrics.calculate_win_rate(pnl_series) if not pnl_series.empty else 0.0
             )
-            win_rate = (closed_wins / len(closed_trades)) if closed_trades else 0.0
-        except Exception:
+            profit_factor = (
+                metrics.calculate_profit_factor(pnl_series)
+                if not pnl_series.empty
+                else 0.0
+            )
+
+            r_list: list[float] = []
+            for trade in closed_trades:
+                pnl = float(trade.get("realized_pnl") or 0.0)
+                entry = float(trade.get("entry_price") or 0.0)
+                size = float(trade.get("initial_size") or 0.0)
+                stop = float(
+                    trade.get("current_stop_loss") or trade.get("stop_loss") or 0.0
+                )
+                if entry > 0 and stop > 0 and entry != stop:
+                    risk = abs(entry - stop) * size
+                elif entry > 0 and size > 0:
+                    risk = entry * size * 0.05
+                else:
+                    risk = 1.0
+                r_list.append(pnl / risk if risk > 0 else 0.0)
+
+            sqn = metrics.calculate_sqn(pd.Series(r_list)) if len(r_list) >= 2 else 0.0
+        except Exception as err:
+            logger.debug(
+                "Failed to calculate closed trade metrics for portfolio summary: %s",
+                err,
+            )
             win_rate = 0.0
+            profit_factor = 0.0
+            sqn = 0.0
 
         return {
             "invested": total_invested,
@@ -689,6 +729,8 @@ class TradeViewService:
             "open_pnl_5d_change": open_pnl_5d_change,
             "equity": 100000.0 + total_open_pnl,
             "win_rate": win_rate,
+            "profit_factor": profit_factor,
+            "sqn": sqn,
             "count": len(active_trades),
             "last_updated": self.get_latest_signal_date(),
         }
