@@ -623,7 +623,20 @@ class TradeViewService:
         return total_5d_change
 
     def get_latest_signal_date(self) -> str | None:
-        """Fetches the latest updated_at timestamp from market_prices in stocks.db."""
+        """Fetches the latest updated_at timestamp from the trades table in signals.db."""
+        if self.trade_repository:
+            try:
+                latest_ts = self.trade_repository.get_latest_updated_at()
+                if latest_ts:
+                    parts = latest_ts.replace("T", " ").split(" ")
+                    if len(parts) >= 2:
+                        date_part = parts[0]
+                        time_part = parts[1].split(".")[0][:5]
+                        return f"{date_part} {time_part}"
+                    return parts[0]
+            except Exception as err:
+                logger.debug("Failed to query trades updated_at: %s", err)
+
         if self.market_repository:
             try:
                 latest_market_ts = self.market_repository.get_latest_updated_at()
@@ -646,21 +659,6 @@ class TradeViewService:
                 return parts[0]
         except Exception as err:
             logger.debug("Failed to query croc timestamp: %s", err)
-
-        try:
-            row = self.trade_repository.fetch_one(
-                "SELECT created_at FROM trades WHERE created_at IS NOT NULL ORDER BY created_at DESC LIMIT 1"
-            )
-            if row and row[0]:
-                raw_ts = str(row[0]).strip()
-                parts = raw_ts.replace("T", " ").split(" ")
-                if len(parts) >= 2:
-                    date_part = parts[0]
-                    time_part = parts[1].split(".")[0][:5]
-                    return f"{date_part} {time_part}"
-                return parts[0]
-        except Exception as err:
-            logger.debug("Failed to query trades timestamp: %s", err)
 
         return None
 

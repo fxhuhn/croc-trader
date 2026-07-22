@@ -475,3 +475,12 @@ class TradeRepository(BaseRepository):
         """
         row = self.fetch_one(sql, (symbol, wildcard_strat, date, date))
         return row is not None
+
+    def get_latest_updated_at(self) -> str | None:
+        """Fetches the latest updated_at timestamp from trades in signals.db."""
+        row = self.fetch_one(
+            "SELECT updated_at FROM trades WHERE updated_at IS NOT NULL AND updated_at != '' ORDER BY updated_at DESC LIMIT 1"
+        )
+        if row and row[0]:
+            return str(row[0]).strip()
+        return None
