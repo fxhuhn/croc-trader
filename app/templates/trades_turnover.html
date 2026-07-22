@@ -211,10 +211,10 @@
                     <!-- 5. Entry (sub-rows for multiple strategy variants) -->
                     <div class="flex flex-col items-end gap-0.5 text-xs text-slate-500 font-medium tabular-nums whitespace-nowrap">
                         {% if variant_metrics.half_percent_variant %}
-                        <div class="whitespace-nowrap">Entry 0.5: {{ "{:,.2f}".format(variant_metrics.half_percent_variant.entry_price|float) }}</div>
+                        <div class="whitespace-nowrap">0.5: {{ "{:,.2f}".format(variant_metrics.half_percent_variant.entry_price|float) }}</div>
                         {% endif %}
                         {% if variant_metrics.one_percent_variant %}
-                        <div class="whitespace-nowrap">Entry 1.0: {{ "{:,.2f}".format(variant_metrics.one_percent_variant.entry_price|float) }}</div>
+                        <div class="whitespace-nowrap">1.0: {{ "{:,.2f}".format(variant_metrics.one_percent_variant.entry_price|float) }}</div>
                         {% endif %}
                     </div>
 
