@@ -62,6 +62,12 @@
                    data-tab
                    {% if current_tab == 'analytics' %}aria-current="page" data-active{% endif %}
                    class="py-2 text-sm transition-colors {{ 'font-bold text-slate-900 border-b-2 border-slate-900' if current_tab == 'analytics' else 'text-slate-500 hover:text-slate-900 font-medium' }}">Analytics</a>
+
+                <!-- 4. Broker Link -->
+                <a href="/broker"
+                   data-tab
+                   {% if current_tab == 'broker' %}aria-current="page" data-active{% endif %}
+                   class="py-2 text-sm transition-colors {{ 'font-bold text-slate-900 border-b-2 border-slate-900' if current_tab == 'broker' else 'text-slate-500 hover:text-slate-900 font-medium' }}">Broker</a>
             </div>
         </div>
 
