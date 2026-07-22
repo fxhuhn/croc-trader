@@ -11,7 +11,7 @@ render_pnl_cell, render_row_subline, render_history_table, render_section_header
 
 {% block content %}
 <!-- Header -->
-{{ render_header(self.page_title()|trim, self.page_key()|trim) }}
+{{ render_header(self.page_title()|trim, self.page_key()|trim, show_switcher=False) }}
 
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
