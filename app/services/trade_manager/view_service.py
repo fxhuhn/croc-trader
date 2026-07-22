@@ -600,7 +600,7 @@ class TradeViewService:
                 total_5d_change += trade["unrealized_pnl"]
                 continue
 
-            past_row = rows.iloc[-6] if len(rows) >= 6 else rows.iloc[0]
+            past_row = rows.iloc[-2] if len(rows) >= 2 else rows.iloc[0]
             past_date_str = str(past_row["date"]).split("T")[0].split(" ")[0]
             past_price = float(past_row["close"])
 

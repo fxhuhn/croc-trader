@@ -17,6 +17,18 @@
 </article>
 {% endmacro %}
 
+{% macro segmented_arc_gauge(active_idx, active_color="#4f46e5") %}
+<svg class="w-32 h-20 shrink-0" viewBox="0 0 80 44" fill="none" xmlns="http://www.w3.org/2000/svg">
+    {% set inactive_color = "#e2e8f0" %}
+    <path d="M 14.00 36.00 A 26 26 0 0 1 16.44 25.01" stroke="{{ active_color if active_idx == 0 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 0 else '4' }}" stroke-linecap="round" />
+    <path d="M 17.71 22.61 A 26 26 0 0 1 25.46 14.45" stroke="{{ active_color if active_idx == 1 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 1 else '4' }}" stroke-linecap="round" />
+    <path d="M 27.79 13.04 A 26 26 0 0 1 38.64 10.04" stroke="{{ active_color if active_idx == 2 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 2 else '4' }}" stroke-linecap="round" />
+    <path d="M 41.36 10.04 A 26 26 0 0 1 52.21 13.04" stroke="{{ active_color if active_idx == 3 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 3 else '4' }}" stroke-linecap="round" />
+    <path d="M 54.54 14.45 A 26 26 0 0 1 62.29 22.61" stroke="{{ active_color if active_idx == 4 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 4 else '4' }}" stroke-linecap="round" />
+    <path d="M 63.56 25.01 A 26 26 0 0 1 66.00 36.00" stroke="{{ active_color if active_idx == 5 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 5 else '4' }}" stroke-linecap="round" />
+</svg>
+{% endmacro %}
+
 {% macro screener_card(symbol, badge_text, entry_price, entry_label="Entry", show_price=true) %}
 <div role="button" tabindex="0" class="bg-white rounded-2xl p-3.5 border border-slate-100 shadow-soft cursor-pointer transition-all active:scale-[0.99] active:bg-slate-50"
     onclick="toggleCard(this)">
@@ -149,20 +161,27 @@
         {% set pf_val = (summary.profit_factor|float) if (summary.profit_factor is defined and summary.profit_factor is not none) else 0.0 %}
         {% set pf_label = "Unprofitable" if pf_val < 1.0 else ("Weak" if pf_val < 1.25 else ("Moderate" if pf_val < 1.5 else ("Good" if pf_val < 2.0 else ("Very Good" if pf_val < 3.0 else "Excellent")))) %}
         {% set pf_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if pf_val < 1.0 else ("bg-amber-50 text-amber-600 border-amber-200/60" if pf_val < 1.25 else ("bg-slate-100 text-slate-700 border-slate-200" if pf_val < 1.5 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if pf_val < 2.0 else ("bg-teal-50 text-teal-600 border-teal-200/60" if pf_val < 3.0 else "bg-indigo-50 text-indigo-600 border-indigo-200/60")))) %}
+        {% set pf_idx = 0 if pf_val < 1.0 else (1 if pf_val < 1.25 else (2 if pf_val < 1.5 else (3 if pf_val < 2.0 else (4 if pf_val < 3.0 else 5)))) %}
+        {% set pf_color = "#e11d48" if pf_val < 1.0 else ("#d97706" if pf_val < 1.25 else ("#475569" if pf_val < 1.5 else ("#059669" if pf_val < 2.0 else ("#0d9488" if pf_val < 3.0 else "#4f46e5")))) %}
         <article
-            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-col items-start justify-start">
-            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
-                Profit Factor
+            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-row items-center justify-between">
+            <div class="flex flex-col items-start justify-start">
+                <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                    Profit Factor
+                </div>
+                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                    {% if summary.profit_factor is defined and summary.profit_factor is not none %}
+                        {{ "{:.2f}".format(summary.profit_factor) }}
+                    {% else %}
+                        0.00
+                    {% endif %}
+                </div>
+                <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ pf_cls }}">
+                    <span>{{ pf_label }}</span>
+                </div>
             </div>
-            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
-                {% if summary.profit_factor is defined and summary.profit_factor is not none %}
-                    {{ "{:.2f}".format(summary.profit_factor) }}
-                {% else %}
-                    0.00
-                {% endif %}
-            </div>
-            <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ pf_cls }}">
-                <span>{{ pf_label }}</span>
+            <div class="shrink-0 flex items-center justify-center pl-2">
+                {{ segmented_arc_gauge(pf_idx, pf_color) }}
             </div>
         </article>
 
@@ -170,20 +189,27 @@
         {% set sqn_val = (summary.sqn|float) if (summary.sqn is defined and summary.sqn is not none) else 0.0 %}
         {% set sqn_label = "Poor" if sqn_val < 1.6 else ("Average" if sqn_val < 2.0 else ("Good" if sqn_val < 2.5 else ("Very Good" if sqn_val < 3.0 else ("Excellent" if sqn_val < 5.0 else "Holy Grail")))) %}
         {% set sqn_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if sqn_val < 1.6 else ("bg-amber-50 text-amber-600 border-amber-200/60" if sqn_val < 2.0 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if sqn_val < 2.5 else ("bg-teal-50 text-teal-600 border-teal-200/60" if sqn_val < 3.0 else ("bg-indigo-50 text-indigo-600 border-indigo-200/60" if sqn_val < 5.0 else "bg-purple-50 text-purple-600 border-purple-200/60")))) %}
+        {% set sqn_idx = 0 if sqn_val < 1.6 else (1 if sqn_val < 2.0 else (2 if sqn_val < 2.5 else (3 if sqn_val < 3.0 else (4 if sqn_val < 5.0 else 5)))) %}
+        {% set sqn_color = "#e11d48" if sqn_val < 1.6 else ("#d97706" if sqn_val < 2.0 else ("#059669" if sqn_val < 2.5 else ("#0d9488" if sqn_val < 3.0 else ("#4f46e5" if sqn_val < 5.0 else "#9333ea")))) %}
         <article
-            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-col items-start justify-start">
-            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
-                SQN
+            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-row items-center justify-between">
+            <div class="flex flex-col items-start justify-start">
+                <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                    SQN
+                </div>
+                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                    {% if summary.sqn is defined and summary.sqn is not none %}
+                        {{ "{:.2f}".format(summary.sqn) }}
+                    {% else %}
+                        0.00
+                    {% endif %}
+                </div>
+                <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ sqn_cls }}">
+                    <span>{{ sqn_label }}</span>
+                </div>
             </div>
-            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
-                {% if summary.sqn is defined and summary.sqn is not none %}
-                    {{ "{:.2f}".format(summary.sqn) }}
-                {% else %}
-                    0.00
-                {% endif %}
-            </div>
-            <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ sqn_cls }}">
-                <span>{{ sqn_label }}</span>
+            <div class="shrink-0 flex items-center justify-center pl-2">
+                {{ segmented_arc_gauge(sqn_idx, sqn_color) }}
             </div>
         </article>
     </div>

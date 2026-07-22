@@ -124,9 +124,9 @@ def test_get_portfolio_summary_5d_change() -> None:
         [trade_aapl, trade_msft], reference_date=reference_date
     )
 
-    # AAPL 5D change: past_price at 6th row from end is 102.0. current_price is 115.0 -> (115 - 102) * 10 = +130.0
-    # MSFT entered 2026-07-18 > 2026-07-10 -> 5D change is unrealized_pnl = +25.0
-    # Expected total_open_pnl_5d_change = 130.0 + 25.0 = 155.0
+    # AAPL 1D change (previous trading day 2026-07-17 close 110.0 to current 115.0): (115 - 110) * 10 = +50.0
+    # MSFT entered 2026-07-18 > past date 2026-07-10 -> 1D change is unrealized_pnl = +25.0
+    # Expected total_open_pnl_5d_change = 50.0 + 25.0 = 75.0
     assert summary["open_pnl"] == 225.0
-    assert summary["open_pnl_5d_change"] == 155.0
+    assert summary["open_pnl_5d_change"] == 75.0
     assert summary["count"] == 2
