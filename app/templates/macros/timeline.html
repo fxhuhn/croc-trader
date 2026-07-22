@@ -50,11 +50,12 @@
 {% set upper_role = combined_role | upper %}
 
 {% set display_order_type =
-    combined_role if 'TARGET' in upper_role else
+    'Entry' if (action_name == 'BUY' or upper_role == 'ENTRY' or bracket_role_val | upper == 'ENTRY') else
+    (combined_role if 'TARGET' in upper_role else
     (('Target ' ~ combined_role[2:]) if upper_role in ['TP1', 'TP2', 'TP3', 'TP4'] else
     ('Target' if upper_role in ['LMT', 'TP'] else
     ('Stop Loss' if upper_role in ['STP', 'STOP', 'STOP LOSS', 'STOP_LOSS'] else
-    combined_role))) %}
+    combined_role)))) %}
 
 <div class="relative {% if is_cancelled %}opacity-60{% elif is_child %}opacity-85{% endif %}">
     {% if is_first %}
