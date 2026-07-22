@@ -1,4 +1,3 @@
-import json
 import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
@@ -181,20 +180,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         leaders_symbols: set[str] = set()
 
         for trade in all_strategy_trades:
-            context_data = trade.get("signal_context")
-            date_value = None
-            if context_data:
-                try:
-                    if isinstance(context_data, dict):
-                        date_value = context_data.get("date")
-                    else:
-                        date_value = json.loads(context_data).get("date")
-                except (json.JSONDecodeError, TypeError) as parse_error:
-                    logger.warning(
-                        "Failed to parse signal_context for trade %s: %s",
-                        trade.get("id"),
-                        parse_error,
-                    )
+            date_value = BaseTradeStrategy._get_context_value(trade, "date")
             date_str = str(date_value) if date_value else "0000-00-00"
             symbol_str = str(trade.get("symbol", ""))
             if not symbol_str:

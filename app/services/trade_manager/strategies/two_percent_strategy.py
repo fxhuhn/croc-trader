@@ -9,7 +9,7 @@ from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
 from ....types import ExitReason, TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy
+from .abstract import BaseTradeStrategy, HolidayCheckerProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,14 @@ class TwoPercentStrategy(BaseTradeStrategy):
     name = Strategies.TwoPercent
     REWARD_TARGET_MULTIPLIER = 1.02
 
-    def __init__(self) -> None:
-        """Initializes the strategy with holiday checking support."""
-        self.holiday_checker = MarketHolidayChecker()
+    def __init__(self, holiday_checker: HolidayCheckerProtocol | None = None) -> None:
+        """Initializes the strategy with optional holiday checking support.
+
+        Args:
+            holiday_checker: Optional holiday checking protocol instance.
+        """
+        super().__init__()
+        self.holiday_checker = holiday_checker or MarketHolidayChecker()
 
     def _calculate_target_price(self, entry_price: Decimal) -> Decimal:
         """Calculates exact 2% take profit target using Decimal precision and banker's rounding."""

@@ -34,7 +34,7 @@ class BaseTradeStrategy(ABC):
     def _is_end_of_trading_week(
         self,
         current_date: pd.Timestamp,
-        holiday_checker: HolidayCheckerProtocol | object,
+        holiday_checker: HolidayCheckerProtocol,
     ) -> bool:
         """Checks if today is the last trading day of the week.
 
@@ -63,7 +63,7 @@ class BaseTradeStrategy(ABC):
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        holiday_checker: HolidayCheckerProtocol | object,
+        holiday_checker: HolidayCheckerProtocol,
     ) -> Order | None:
         """Generates a weekly time stop (MOC) exit order if the next trading day is the end of the week.
 
@@ -355,36 +355,23 @@ class BaseTradeStrategy(ABC):
                 return None
         return None
 
+    @staticmethod
     def _get_context_value(
-        self, trade: TradeData, key: str
+        trade: TradeData | dict[str, object], key: str
     ) -> str | float | int | bool | None:
         """Extracts a single value from the JSON signal_context field.
 
         Handles both pre-parsed dict and raw JSON string formats
         since the repository layer may or may not have parsed the context.
         """
-        try:
-            context_data = trade.get("signal_context")
-            if not context_data:
-                return None
+        context = BaseTradeStrategy._get_full_context(trade)
+        value = context.get(key)
+        if isinstance(value, (str, float, int, bool)) or value is None:
+            return value
+        return str(value)
 
-            # If already a dict, use it directly (Repository might have parsed it)
-            if isinstance(context_data, dict):
-                return context_data.get(key)
-
-            # Otherwise parse from JSON string
-            context = json.loads(context_data)
-            return context.get(key)
-        except (json.JSONDecodeError, TypeError) as error:
-            logger.warning(
-                "Failed to parse signal_context for trade %s (key: %s): %s",
-                trade.get("id"),
-                key,
-                error,
-            )
-            return None
-
-    def _get_full_context(self, trade: TradeData) -> dict[str, object]:
+    @staticmethod
+    def _get_full_context(trade: TradeData | dict[str, object]) -> dict[str, object]:
         """Single authoritative parser for the full signal_context dictionary.
 
         This is the DRY replacement for all per-strategy context parsers.

@@ -10,7 +10,7 @@ from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
 from ....types import ExitReason, TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy
+from .abstract import BaseTradeStrategy, HolidayCheckerProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -40,19 +40,21 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
     DEFAULT_SLIPPAGE: float = 0.0
     """Default slippage applied to executions."""
 
-    def __init__(self, strategy_name: str | None = None) -> None:
-        """Initializes the strategy, optionally overriding the default name.
-
-        Instantiates the holiday checker once to avoid per-call allocation
-        on every manage_active_trade invocation.
+    def __init__(
+        self,
+        strategy_name: str | None = None,
+        holiday_checker: HolidayCheckerProtocol | None = None,
+    ) -> None:
+        """Initializes the strategy, optionally overriding the default name or holiday checker.
 
         Args:
             strategy_name: Optional override for the strategy registry key.
+            holiday_checker: Optional holiday checking protocol instance.
         """
         super().__init__()
         if strategy_name:
             self.name = strategy_name
-        self._holiday_checker = MarketHolidayChecker()
+        self._holiday_checker = holiday_checker or MarketHolidayChecker()
 
     def _is_green_candle(self, open_price: float, close_price: float) -> bool:
         """Determines if a candle is green (Close > Open).
