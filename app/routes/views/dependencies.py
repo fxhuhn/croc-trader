@@ -24,10 +24,13 @@ def _get_database_path(name: str = "signals") -> Path:
         name: The key of the database path within the app configuration.
 
     Returns:
-        Path: Resolved absolute path to the database.
+        Path: Resolved absolute path to the database (or :memory: for in-memory DBs).
     """
     configuration = current_app.config["APP_CONFIG"]
-    return Path(configuration.get_db_path(name)).resolve()
+    db_path = configuration.get_db_path(name)
+    if db_path == ":memory:":
+        return Path(":memory:")
+    return Path(db_path).resolve()
 
 
 def _get_signal_repository() -> SignalRepository:
