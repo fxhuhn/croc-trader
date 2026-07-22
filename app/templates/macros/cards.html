@@ -85,12 +85,11 @@
 {% endmacro %}
 
 {% macro dashboard_kpis(summary, active_count, show_currency=false) %}
-<section class="mb-8 mt-2 md:mt-0 space-y-3 md:space-y-6">
-    <!-- Row 1: Open PnL & Win Rate -->
-    <div class="grid grid-cols-2 gap-3 md:gap-6">
-        <!-- Open PnL Hero Card -->
+<section class="mb-8 mt-2 md:mt-0">
+    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 md:gap-6">
+        <!-- Open PnL Hero Card (Full Width on Mobile, 3 Cols on Desktop) -->
         <article
-            class="{{ 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30' if summary.open_pnl >= 0 else 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30' }} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative">
+            class="col-span-2 md:col-span-3 {{ 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30' if summary.open_pnl >= 0 else 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30' }} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative">
             <div class="flex flex-col items-start">
                 <div class="{{ 'text-emerald-50/80' if summary.open_pnl >= 0 else 'text-rose-100/80' }} text-xs uppercase font-bold tracking-wider mb-1">
                     Open PnL
@@ -111,9 +110,9 @@
                 class="w-7 h-7 shrink-0 {{ 'text-emerald-100' if summary.open_pnl >= 0 else 'hidden' }}"></i>
         </article>
 
-        <!-- Win Rate Card (In place of Equity) -->
+        <!-- Win Rate Card (1 Col on Mobile [Line 2 Left], 3 Cols on Desktop) -->
         <article
-            class="bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex items-start justify-between gap-2">
+            class="col-span-1 md:col-span-3 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex items-start justify-between gap-2">
             <div class="flex flex-col items-start">
                 <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                     Win Rate
@@ -134,17 +133,25 @@
                 <i data-lucide="trophy" aria-hidden="true" class="w-4 h-4"></i>
             </div>
         </article>
-    </div>
 
-    <!-- Row 2: Profit Factor, Invested, SQN -->
-    <div class="grid grid-cols-3 gap-2 sm:gap-3 md:gap-6">
-        <!-- Profit Factor (In place of old Win Rate position) -->
+        <!-- Invested Card (1 Col on Mobile [Line 2 Right], 2 Cols on Desktop) -->
         <article
-            class="bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-3 md:p-6 shadow-sm flex flex-col justify-center items-start">
+            class="col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col justify-center items-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Invested
+            </div>
+            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                {{ "{:,.0f}".format(summary.invested) }}{% if show_currency %}&nbsp;${% endif %}
+            </div>
+        </article>
+
+        <!-- Profit Factor Card (Hidden on Mobile, 2 Cols on Desktop) -->
+        <article
+            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-col justify-center items-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 Profit Factor
             </div>
-            <div class="text-base md:text-2xl font-black text-slate-900 leading-none tabular-nums">
+            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
                 {% if summary.profit_factor is defined and summary.profit_factor is not none %}
                     {{ "{:.2f}".format(summary.profit_factor) }}
                 {% else %}
@@ -153,24 +160,13 @@
             </div>
         </article>
 
-        <!-- Invested -->
+        <!-- SQN Card (Hidden on Mobile, 2 Cols on Desktop) -->
         <article
-            class="bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-3 md:p-6 shadow-sm flex flex-col justify-center items-start">
-            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
-                Invested
-            </div>
-            <div class="text-base md:text-2xl font-black text-slate-900 leading-none tabular-nums">
-                {{ "{:,.0f}".format(summary.invested) }}{% if show_currency %}&nbsp;${% endif %}
-            </div>
-        </article>
-
-        <!-- SQN (In place of old Active position) -->
-        <article
-            class="bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-3 md:p-6 shadow-sm flex flex-col justify-center items-start">
+            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-col justify-center items-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 SQN
             </div>
-            <div class="text-base md:text-2xl font-black text-slate-900 leading-none tabular-nums">
+            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
                 {% if summary.sqn is defined and summary.sqn is not none %}
                     {{ "{:.2f}".format(summary.sqn) }}
                 {% else %}
