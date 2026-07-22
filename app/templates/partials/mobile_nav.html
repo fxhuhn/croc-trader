@@ -1,13 +1,13 @@
 <!-- Mobile Bottom Navigation — Liquid Glass Nav -->
-<nav aria-label="Mobile Navigation" class="md:hidden fixed z-50 left-5 right-5" style="bottom: calc(1.25rem + env(safe-area-inset-bottom));">
+<nav aria-label="Mobile Navigation" class="md:hidden fixed z-50 left-3 right-3 sm:left-5 sm:right-5" style="bottom: calc(1rem + env(safe-area-inset-bottom));">
     <div id="liquid-glass-navbar"
-         class="relative h-[68px] flex items-center justify-around px-2 rounded-[32px]
+         class="relative h-[58px] flex items-center justify-around px-1 rounded-[28px]
                 bg-white/60 backdrop-blur-xl backdrop-saturate-150
-                shadow-[0_20px_40px_-14px_rgba(15,23,42,0.28),inset_0_1.5px_2px_rgba(255,255,255,0.9),inset_0_-1.5px_2px_rgba(15,23,42,0.05)]">
+                shadow-[0_16px_36px_-12px_rgba(15,23,42,0.25),inset_0_1.5px_2px_rgba(255,255,255,0.9),inset_0_-1.5px_2px_rgba(15,23,42,0.05)]">
 
         <!-- Sliding capsule -->
         <div id="sliding-capsule"
-             class="absolute top-[6px] bottom-[6px] rounded-[24px]
+             class="absolute top-[4px] bottom-[4px] rounded-[22px]
                     bg-white/80 shadow-[0_3px_10px_rgba(15,23,42,0.10),inset_0_1px_1px_rgba(255,255,255,0.9)]
                     pointer-events-none opacity-0">
         </div>
@@ -16,22 +16,29 @@
            data-tab
            {% if active_page == 'screener' %}aria-current="page" data-active{% endif %}
            class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'screener' else 'text-slate-500' }}">
-            <i data-lucide="search-check" class="w-6 h-6"></i>
-            <span class="text-xs font-medium mt-1">Screener</span>
+            <i data-lucide="search-check" class="w-5 h-5"></i>
+            <span class="text-[11px] font-medium tracking-tight mt-0.5">Screener</span>
         </a>
         <a href="{{ '/trades/' ~ strategy_slug if strategy_slug else '/trades' }}"
            data-tab
            {% if active_page == 'trades' %}aria-current="page" data-active{% endif %}
            class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'trades' else 'text-slate-500' }}">
-            <i data-lucide="wallet" class="w-6 h-6"></i>
-            <span class="text-xs font-medium mt-1">Trades</span>
+            <i data-lucide="wallet" class="w-5 h-5"></i>
+            <span class="text-[11px] font-medium tracking-tight mt-0.5">Trades</span>
         </a>
         <a href="/analytics"
            data-tab
            {% if active_page == 'analytics' %}aria-current="page" data-active{% endif %}
            class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'analytics' else 'text-slate-500' }}">
-            <i data-lucide="pie-chart" class="w-6 h-6"></i>
-            <span class="text-xs font-medium mt-1">Analytics</span>
+            <i data-lucide="pie-chart" class="w-5 h-5"></i>
+            <span class="text-[11px] font-medium tracking-tight mt-0.5">Analytics</span>
+        </a>
+        <a href="/broker"
+           data-tab
+           {% if active_page == 'broker' %}aria-current="page" data-active{% endif %}
+           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'broker' else 'text-slate-500' }}">
+            <i data-lucide="folder-sync" class="w-5 h-5"></i>
+            <span class="text-[11px] font-medium tracking-tight mt-0.5">Broker</span>
         </a>
     </div>
 </nav>

@@ -13,7 +13,7 @@
     <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
         <!-- Table Header -->
         <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
-            <div class="col-span-5">Symbol & Strategy</div>
+            <div class="col-span-5">Symbol</div>
             <div class="col-span-3 text-right">Quantity</div>
             <div class="col-span-4 text-right pr-6">Open PnL</div>
         </div>
@@ -28,11 +28,6 @@
         {% set variant_metrics.green_candle_count = variant.green_candle_count|default(0) %}
         {% endfor %}
 
-        {% set active_signals_parts = [] %}
-        {% if variant_metrics.half_percent_variant %}{% set _ = active_signals_parts.append('0.5') %}{% endif %}
-        {% if variant_metrics.one_percent_variant %}{% set _ = active_signals_parts.append('1.0') %}{% endif %}
-        {% set active_signals_subline = active_signals_parts | join(' • ') %}
-
         <div class="group-linkable">
             <!-- Trigger Row -->
             <button type="button" id="trigger-turnover-{{ loop.index }}"
@@ -43,7 +38,7 @@
                     <!-- Col 1–5: Symbol & Subline -->
                     <div class="col-span-5">
                         <span class="text-sm font-bold text-slate-900 leading-none">{{ group.symbol }}</span>
-                        {{ render_row_subline(active_signals_subline ~ ' • ' ~ variant_metrics.max_days ~ 'd') }}
+                        {{ render_row_subline(variant_metrics.max_days ~ 'd') }}
                     </div>
                     <!-- Col 6–8: Quantity -->
                     <div class="col-span-3 text-right">
