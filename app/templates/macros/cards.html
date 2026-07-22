@@ -136,7 +136,7 @@
 
         <!-- Invested Card (1 Col on Mobile [Line 2 Right], 2 Cols on Desktop) -->
         <article
-            class="col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col justify-center items-start">
+            class="col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 Invested
             </div>
@@ -146,8 +146,11 @@
         </article>
 
         <!-- Profit Factor Card (Hidden on Mobile, 2 Cols on Desktop) -->
+        {% set pf_val = (summary.profit_factor|float) if (summary.profit_factor is defined and summary.profit_factor is not none) else 0.0 %}
+        {% set pf_label = "Unprofitable" if pf_val < 1.0 else ("Weak" if pf_val < 1.25 else ("Moderate" if pf_val < 1.5 else ("Good" if pf_val < 2.0 else ("Very Good" if pf_val < 3.0 else "Excellent")))) %}
+        {% set pf_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if pf_val < 1.0 else ("bg-amber-50 text-amber-600 border-amber-200/60" if pf_val < 1.25 else ("bg-slate-100 text-slate-700 border-slate-200" if pf_val < 1.5 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if pf_val < 2.0 else ("bg-teal-50 text-teal-600 border-teal-200/60" if pf_val < 3.0 else "bg-indigo-50 text-indigo-600 border-indigo-200/60")))) %}
         <article
-            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-col justify-center items-start">
+            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-col items-start justify-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 Profit Factor
             </div>
@@ -158,11 +161,17 @@
                     0.00
                 {% endif %}
             </div>
+            <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ pf_cls }}">
+                <span>{{ pf_label }}</span>
+            </div>
         </article>
 
         <!-- SQN Card (Hidden on Mobile, 2 Cols on Desktop) -->
+        {% set sqn_val = (summary.sqn|float) if (summary.sqn is defined and summary.sqn is not none) else 0.0 %}
+        {% set sqn_label = "Poor" if sqn_val < 1.6 else ("Average" if sqn_val < 2.0 else ("Good" if sqn_val < 2.5 else ("Very Good" if sqn_val < 3.0 else ("Excellent" if sqn_val < 5.0 else "Holy Grail")))) %}
+        {% set sqn_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if sqn_val < 1.6 else ("bg-amber-50 text-amber-600 border-amber-200/60" if sqn_val < 2.0 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if sqn_val < 2.5 else ("bg-teal-50 text-teal-600 border-teal-200/60" if sqn_val < 3.0 else ("bg-indigo-50 text-indigo-600 border-indigo-200/60" if sqn_val < 5.0 else "bg-purple-50 text-purple-600 border-purple-200/60")))) %}
         <article
-            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-col justify-center items-start">
+            class="hidden md:flex col-span-1 md:col-span-2 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-col items-start justify-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 SQN
             </div>
@@ -172,6 +181,9 @@
                 {% else %}
                     0.00
                 {% endif %}
+            </div>
+            <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ sqn_cls }}">
+                <span>{{ sqn_label }}</span>
             </div>
         </article>
     </div>
