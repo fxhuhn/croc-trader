@@ -125,6 +125,7 @@ class NDXMomentumScreener(BaseStrategy):
         """Performs the momentum analysis without creating trades.
 
         This method is used both by run() and by the API for status reporting.
+        Follows the Step-down rule by delegating data loading and calculation.
         """
         if not analysis_date:
             analysis_date = datetime.now().strftime("%Y-%m-%d")
@@ -139,7 +140,28 @@ class NDXMomentumScreener(BaseStrategy):
                 "is_rebalance_day": False,
             }
 
-        # 1. Fetch Universe (NDX)
+        load_result = self._load_analysis_market_data(
+            target_date, analysis_date, force_run
+        )
+        if isinstance(load_result, dict):
+            return load_result
+
+        pivoted_data, effective_date, nasdaq_100_symbols = load_result
+        return self._compute_analysis_payload(
+            pivoted_data,
+            effective_date,
+            analysis_date,
+            is_rebalance_day,
+            nasdaq_100_symbols,
+        )
+
+    def _load_analysis_market_data(
+        self,
+        target_date: pd.Timestamp,
+        analysis_date: str,
+        force_run: bool,
+    ) -> tuple[dict[str, pd.DataFrame], pd.Timestamp, list[str]] | NDXAnalysisResult:
+        """Fetches and validates universe market data for the target date."""
         exchange_symbol_provider = ExchangeSymbol()
         nasdaq_100_symbols = exchange_symbol_provider.nasdaq_100
         if not nasdaq_100_symbols:
@@ -173,9 +195,17 @@ class NDXMomentumScreener(BaseStrategy):
         if isinstance(effective_date_result, dict):
             return effective_date_result
 
-        effective_date = effective_date_result
+        return pivoted_data, effective_date_result, nasdaq_100_symbols
 
-        # 2. Calculation Pipeline
+    def _compute_analysis_payload(
+        self,
+        pivoted_data: dict[str, pd.DataFrame],
+        effective_date: pd.Timestamp,
+        analysis_date: str,
+        is_rebalance_day: bool,
+        nasdaq_100_symbols: list[str],
+    ) -> NDXAnalysisResult:
+        """Executes indicator scoring and builds the final analysis result payload."""
         qqq_close_series = pivoted_data["close"]["QQQ"]
         current_qqq_price = qqq_close_series.at[effective_date]
         index_moving_average = qqq_close_series.loc[:effective_date].tail(200).mean()

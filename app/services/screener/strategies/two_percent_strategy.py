@@ -271,7 +271,7 @@ class TwoPercentStrategy(BaseStrategy):
             entry=entry,
             stop_loss=0.0,
             target=0.0,
-            context=dict(context),  # type: ignore
+            context=dict(context),  # type: ignore[arg-type] — TypedDict dictionary conversion for repository context contract
         )
 
     def _send_signal_report(self, date_str: str, close: float, entry: float) -> None:

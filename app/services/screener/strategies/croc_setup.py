@@ -1,13 +1,16 @@
 import json
 import logging
+import re
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 import pandas as pd
 import yaml
+
+MAX_RANKING_CONFIG_SIZE_BYTES: Final[int] = 1_048_576  # 1 MB guard (SEC-01)
 
 from ....config import settings
 from ....const import Strategies
@@ -142,7 +145,7 @@ class PriceData:
         return self.high - self.low
 
     @classmethod
-    def from_row(cls, row: dict[str, Any]) -> "PriceData | None":
+    def from_row(cls, row: dict[str, object]) -> "PriceData | None":
         try:
             return cls(
                 high=float(row.get("high") or 0.0),
@@ -173,13 +176,11 @@ class CrocSetupStrategy(BaseStrategy):
         self.ranking_rules = self._load_config()
         logger.info("🐊 %s initialized. Rules: %d", self.name, len(self.ranking_rules))
 
-    _MAX_CONFIG_FILE_SIZE_BYTES: Final[int] = 1_048_576  # 1 MB guard (SEC-01)
-
-    def _load_config(self) -> list[dict[str, Any]]:
+    def _load_config(self) -> list[dict[str, object]]:
         if not self.config_path.exists():
             logger.error("Ranking config missing: %s", self.config_path)
             return []
-        if self.config_path.stat().st_size > self._MAX_CONFIG_FILE_SIZE_BYTES:
+        if self.config_path.stat().st_size > MAX_RANKING_CONFIG_SIZE_BYTES:
             raise RuntimeError(
                 f"Ranking config exceeds safe size limit — possible YAML anchor bomb: {self.config_path}"
             )
@@ -568,8 +569,6 @@ class CrocSetupStrategy(BaseStrategy):
             stop = prices.high - prices.risk_range
 
         exit_name = str(match.get("Exit", "unknown")).lower().strip()
-
-        import re
 
         match_tp = re.search(r"tp(\d+)", exit_name)
         tp_level = int(match_tp.group(1)) if match_tp else 1

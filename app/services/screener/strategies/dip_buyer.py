@@ -138,7 +138,8 @@ class DipBuyerStrategy(BaseStrategy):
             target_symbols = list(set(specific_symbols) & valid_universe)
             if not target_symbols:
                 logger.warning(
-                    f"[{self.name}] No valid symbols found in request (must be in indices)."
+                    "[%s] No valid symbols found in request (must be in indices).",
+                    self.name,
                 )
                 return 0
         else:
