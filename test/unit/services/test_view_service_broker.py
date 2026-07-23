@@ -46,7 +46,7 @@ def test_get_broker_summary_calculation() -> None:
     assert summary["all"]["pnl"] == 50.0
     assert summary["all"]["fees"] == 6.0
     assert summary["all"]["winrate"] == "50.0%"
-    assert summary["all"]["pnlText"] == "+50.00"
+    assert summary["all"]["pnlText"] == "+50"
 
     assert summary["DipBuyer"]["pnl"] == 100.0
     assert summary["DipBuyer"]["winrate"] == "100.0%"

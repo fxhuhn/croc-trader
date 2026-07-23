@@ -972,7 +972,7 @@ class TradeViewService:
         metrics = {
             strat: {
                 "pnl": 0.0,
-                "pnlText": "0.00",
+                "pnlText": "0",
                 "winrate": "0.0%",
                 "slippage": "0.00",
                 "fees": 0.0,
@@ -1017,9 +1017,9 @@ class TradeViewService:
 
             pnl_val = strat_metrics["pnl"]
             if pnl_val > 0:
-                strat_metrics["pnlText"] = f"+{pnl_val:,.2f}"
+                strat_metrics["pnlText"] = f"+{pnl_val:,.0f}"
             else:
-                strat_metrics["pnlText"] = f"{pnl_val:,.2f}"
+                strat_metrics["pnlText"] = f"{pnl_val:,.0f}"
 
             if total_count > 0:
                 winrate_val = (strat_metrics["win_count"] / total_count) * 100
@@ -1027,9 +1027,9 @@ class TradeViewService:
 
                 avg_slippage = strat_metrics["slippage_sum"] / total_count
                 if avg_slippage > 0:
-                    strat_metrics["slippage"] = f"+{avg_slippage:.3f}"
+                    strat_metrics["slippage"] = f"+{avg_slippage:.2f}"
                 else:
-                    strat_metrics["slippage"] = f"{avg_slippage:.3f}"
+                    strat_metrics["slippage"] = f"{avg_slippage:.2f}"
             else:
                 strat_metrics["winrate"] = "0.0%"
                 strat_metrics["slippage"] = "0.00"

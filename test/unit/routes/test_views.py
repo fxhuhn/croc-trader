@@ -468,7 +468,7 @@ def test_view_broker_dashboard_renders_dom_elements_and_headers(
         mock_service_instance = mock_broker_service.return_value
         default_metric = {
             "pnl": 0.0,
-            "pnlText": "0.00",
+            "pnlText": "0",
             "winrate": "0.0%",
             "slippage": "0.00",
             "fees": 0.0,
