@@ -20,12 +20,19 @@
 {% macro segmented_arc_gauge(active_idx, active_color="#4f46e5") %}
 <svg class="w-32 h-20 shrink-0" viewBox="0 0 80 44" fill="none" xmlns="http://www.w3.org/2000/svg">
     {% set inactive_color = "#e2e8f0" %}
-    <path d="M 14.00 36.00 A 26 26 0 0 1 16.44 25.01" stroke="{{ active_color if active_idx == 0 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 0 else '4' }}" stroke-linecap="round" />
-    <path d="M 17.71 22.61 A 26 26 0 0 1 25.46 14.45" stroke="{{ active_color if active_idx == 1 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 1 else '4' }}" stroke-linecap="round" />
-    <path d="M 27.79 13.04 A 26 26 0 0 1 38.64 10.04" stroke="{{ active_color if active_idx == 2 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 2 else '4' }}" stroke-linecap="round" />
-    <path d="M 41.36 10.04 A 26 26 0 0 1 52.21 13.04" stroke="{{ active_color if active_idx == 3 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 3 else '4' }}" stroke-linecap="round" />
-    <path d="M 54.54 14.45 A 26 26 0 0 1 62.29 22.61" stroke="{{ active_color if active_idx == 4 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 4 else '4' }}" stroke-linecap="round" />
-    <path d="M 63.56 25.01 A 26 26 0 0 1 66.00 36.00" stroke="{{ active_color if active_idx == 5 else inactive_color }}" stroke-width="{{ '5.5' if active_idx == 5 else '4' }}" stroke-linecap="round" />
+    {% set segments_path = [
+        "M 14.19 32.83 A 26 26 0 0 1 16.07 25.84",
+        "M 19.24 20.35 A 26 26 0 0 1 24.35 15.24",
+        "M 29.84 12.07 A 26 26 0 0 1 36.83 10.19",
+        "M 43.17 10.19 A 26 26 0 0 1 50.16 12.07",
+        "M 55.65 15.24 A 26 26 0 0 1 60.76 20.35",
+        "M 63.93 25.84 A 26 26 0 0 1 65.81 32.83"
+    ] %}
+    {% for path_d in segments_path %}
+        {% set seg_idx = loop.index0 %}
+        {% set is_active = (seg_idx == active_idx) %}
+        <path d="{{ path_d }}" stroke="{{ active_color if is_active else inactive_color }}" stroke-width="{{ '5.5' if is_active else '4' }}" stroke-linecap="round" />
+    {% endfor %}
 </svg>
 {% endmacro %}
 
@@ -140,9 +147,6 @@
                         0.0%
                     {% endif %}
                 </div>
-            </div>
-            <div class="flex md:hidden w-8 h-8 rounded-xl bg-slate-50 items-center justify-center text-indigo-500 shrink-0">
-                <i data-lucide="trophy" aria-hidden="true" class="w-4 h-4"></i>
             </div>
         </article>
 

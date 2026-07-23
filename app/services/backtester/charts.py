@@ -42,7 +42,7 @@ def _generate_minimal_gauge(
     track_color = COLOR_TRACK
     gap_size = (
         maximum_value - minimum_value
-    ) * 0.008  # 0.8% gap for refined visibility
+    ) * 0.018  # 1.8% gap for clear segment separation
 
     current_start = minimum_value
     sorted_thresholds = sorted(thresholds) if thresholds else []
