@@ -37,7 +37,7 @@ graph TD
 
     subgraph Setup ["Einstiegs-Phase (CREATED)"]
     Status -- CREATED --> DayCheck{Genau Tag 1?}
-    DayCheck -- Ja --> LimitCheck{Low <= Limit?}
+    DayCheck -- Ja --> LimitCheck["Low <= Limit?"]
     LimitCheck -- Ja --> Buy[Kauf / Aktivierung]
     DayCheck -- Nein --> Inval[Setup verfällt]
     LimitCheck -- Nein --> Inval

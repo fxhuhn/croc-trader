@@ -39,7 +39,7 @@ You must maintain a **State Table** at the top of every response to track progre
 **Action:**
 1.  Analyze the user's request.
 2.  Instruct the **Architect** to generate the Python backend solution.
-3.  **Constraint:** Ensure strict adherence to `python_coding_instructions.md` (No Asyncio, No Pydantic, No Abbreviations, Type Hints).
+3.  **Constraint:** Ensure strict adherence to `python.md` (No Pydantic, No Abbreviations, Type Hints).
 4.  **Output:** Python Source Code (Backend).
 
 ### STAGE 2: DEFENSE MATRIX (Parallel Execution)

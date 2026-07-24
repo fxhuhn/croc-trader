@@ -34,7 +34,7 @@ graph TD
     RegimeCheck -- Nein --> Reject[Setup ablehnen]
     RegimeCheck -- Ja --> DupCheck{Bereits aktiv?}
     DupCheck -- Ja --> Reject
-    DupCheck -- Nein --> TimeWait{Tag >= 1?}
+    DupCheck -- Nein --> TimeWait["Tag >= 1?"]
     TimeWait -- Nein --> Wait[Warten]
     TimeWait -- Ja --> Buy[Kauf / Market Open]
     end

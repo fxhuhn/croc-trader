@@ -31,7 +31,7 @@ graph TD
 
     DayCheck -- "Tag 1 (Mo)" --> HolCheck{Feiertag?}
     HolCheck -- Ja --> DayCheck
-    HolCheck -- Nein --> FillCheck{Low <= Limit?}
+    HolCheck -- Nein --> FillCheck["Low <= Limit?"]
     DayCheck -- "Tag 2 (Di)" --> PreHol{War Mo Feiertag?}
         PreHol -- Ja --> FillCheck
         PreHol -- Nein --> Inval[Setup verfällt]
@@ -41,9 +41,9 @@ graph TD
         end
 
         subgraph Management ["Management-Phase (ACTIVE)"]
-        Status -- ACTIVE --> AgeCheck{Tag >= Entry + 1?}
+        Status -- ACTIVE --> AgeCheck["Tag >= Entry + 1?"]
 
-        AgeCheck -- Ja --> TPCheck{High >= Target?}
+        AgeCheck -- Ja --> TPCheck["High >= Target?"]
         TPCheck -- Ja --> ExitTP[Verkauf / Take Profit]
         TPCheck -- Nein --> TimeCheck
 

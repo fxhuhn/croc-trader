@@ -10,7 +10,7 @@
 * **Avoid Variables**: Do **NOT** use `${workspaceFolder}/.venv/bin/python` because VS Code's Python extension can fail to resolve `${workspaceFolder}` depending on the version or environment.
 
 ## Strategy & Constant References
-* **Use Strategies Enum**: When checking or filtering trading strategies in the codebase, always use the system-wide canonical `Strategies` enum members from [app/const.py](file:///Users/produktmanagement/Python/github/croc-trader_2/app/const.py). Do **NOT** hardcode raw strings (e.g., `"hold_target"`, `"split_target"`, `"DipBuyer"`, or `"TwoPercent"`) in strategy comparisons. Leverage the fact that `Strategies` is a `StrEnum` which compares equal to its raw string representation.
+* **Use Strategies Enum**: When checking or filtering trading strategies in the codebase, always use the system-wide canonical `Strategies` enum members from [app/const.py](file:///Users/produktmanagement/Python/github/croc-trader/app/const.py). Do **NOT** hardcode raw strings (e.g., `"hold_target"`, `"split_target"`, `"DipBuyer"`, or `"TwoPercent"`) in strategy comparisons. Leverage the fact that `Strategies` is a `StrEnum` which compares equal to its raw string representation.
 
 ## Runtime & Environment Configurations
 * **Always inspect `settings.yaml` at the repository root** before connecting to, launching, or testing local services (such as web servers, webhooks, or database paths).

@@ -63,7 +63,7 @@ graph TD
     
     IDEM_CHECK -- "Yes" --> SKIP
     
-    IDEM_CHECK -- "No" --> SEQ_CHECK{"green_candle_count >= 2?""}
+    IDEM_CHECK -- "No" --> SEQ_CHECK["green_candle_count >= 2?"]
     
     %% Exit Option 1: Green Sequence
     SEQ_CHECK -- "Yes" --> EXIT_G[Close Trade @ OPEN <br/>Reason: GREEN_SEQUENCE]
