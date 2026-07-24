@@ -28,12 +28,13 @@ conversation, you must re-read these documents at the start of each new task.
 You **MUST** inspect and read the relevant `.agents/skills/<skill>/SKILL.md` file
 whenever a task involves:
 
-| Domain                              | Skill(s)                                         |
-|-------------------------------------|--------------------------------------------------|
-| Data Ingestion & Quality            | `data-ingestion`                                 |
-| Strategy & Signal Generation        | `strategy-screener`                              |
+| Domain                              | Skill(s) / Rule(s)                                |
+|-------------------------------------|---------------------------------------------------|
+| Data Ingestion & Quality            | `data-ingestion`                                  |
+| Strategy & Signal Generation        | `strategy-screener`                               |
 | Python Architecture & Code Quality  | `python-craftsman` / `python-auditor` / `python-creator` |
-| Presentation & UI                   | `flask-ui` / `python-designer`                   |
+| Presentation & UI                   | `flask-ui` / `python-designer`                    |
+| API Design & Endpoints              | `rules/api.md`                                    |
 
 ### Step 3 — Analysis & Implementation
 

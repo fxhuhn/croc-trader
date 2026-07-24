@@ -361,6 +361,45 @@ def analyze_ndx_momentum() -> Response:
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
+@api_blueprint.route("/screener/tgim", methods=["POST"])
+@api_blueprint.route("/api/screener/tgim", methods=["POST"])
+@require_ip_whitelist
+def analyze_tgim() -> Response:
+    """Returns analysis and screening candidates for TGIM strategy.
+
+    Returns:
+        Response: JSON with TGIM signal status.
+    """
+    try:
+        analysis_date = request.args.get("date")
+        days = request.args.get("days", default=0, type=int)
+
+        screener_engine = current_app.extensions.get("screener_engine")
+        if not screener_engine:
+            return jsonify(
+                {"status": "error", "message": "Engine not initialized"}
+            ), 503
+
+        strategy = screener_engine.get_strategy(Strategies.TGIM)
+        if not strategy:
+            return jsonify(
+                {"status": "error", "message": "TGIM strategy not found"}
+            ), 404
+
+        candidates_count = strategy.run(days=days, analysis_date=analysis_date)
+        return jsonify(
+            {
+                "status": "success",
+                "strategy": "tgim",
+                "symbol": "SPY",
+                "signals_found": candidates_count,
+            }
+        ), 200
+    except Exception as error:
+        logger.exception("Error analyzing TGIM: %s", error)
+        return jsonify({"status": "error", "message": str(error)}), 500
+
+
 @api_blueprint.route("/orders/generate", methods=["POST"])
 @require_ip_whitelist
 def trigger_orders() -> Response:
@@ -385,17 +424,26 @@ def trigger_orders() -> Response:
 
 
 @api_blueprint.route("/trades/backfill", methods=["POST"])
+@api_blueprint.route("/api/trades/backfill", methods=["POST"])
 @require_ip_whitelist
 def trigger_trades_backfill() -> Response:
     """
     Triggers a backfill or retry of trade processing.
+    If strategy=tgim parameter is specified, runs TGIM backfill.
 
     Returns:
         Response: JSON confirmation.
     """
+    data = request.get_json(silent=True) or {}
+    strategy = (request.args.get("strategy") or data.get("strategy") or "").lower()
+
+    if strategy in ("tgim", "thank_god_its_monday"):
+        return backfill_tgim_trades()
+
     trade_manager = current_app.extensions.get("trade_manager")
     if not trade_manager:
         return jsonify({"status": "error", "message": "TradeManager missing"}), 500
+
     try:
         trade_manager.run_daily_process()
         return jsonify(
@@ -411,6 +459,8 @@ def trigger_trades_backfill() -> Response:
 
 @api_blueprint.route("/trades/backfill/tgim", methods=["POST"])
 @api_blueprint.route("/backfill/tgim", methods=["POST"])
+@api_blueprint.route("/api/trades/backfill/tgim", methods=["POST"])
+@api_blueprint.route("/api/backfill/tgim", methods=["POST"])
 @require_ip_whitelist
 def backfill_tgim_trades() -> Response:
     """Executes historical backfill simulation for TGIM strategy trades.
