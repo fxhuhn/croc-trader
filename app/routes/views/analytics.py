@@ -124,6 +124,7 @@ def view_analytics_dashboard() -> str:
         ],
         "Two Percent": [Strategies.TwoPercent],
         "NDX Momentum": [Strategies.NDXMomentum],
+        "TGIM": [Strategies.TGIM],
     }
 
     # Map colors to match the exact hex codes configured in the template
@@ -133,6 +134,7 @@ def view_analytics_dashboard() -> str:
         "Turnover": "#f59e0b",  # Amber-500
         "Two Percent": "#a855f7",  # Purple-500
         "NDX Momentum": "#f43f5e",  # Rose-500
+        "TGIM": "#0284c7",  # Sky-600
     }
 
     for name, filters in strategy_groups.items():

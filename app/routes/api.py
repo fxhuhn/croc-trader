@@ -409,6 +409,52 @@ def trigger_trades_backfill() -> Response:
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
+@api_blueprint.route("/trades/backfill/tgim", methods=["POST"])
+@api_blueprint.route("/backfill/tgim", methods=["POST"])
+@require_ip_whitelist
+def backfill_tgim_trades() -> Response:
+    """Executes historical backfill simulation for TGIM strategy trades.
+
+    Returns:
+        Response: JSON containing backfill summary metrics and trades list.
+    """
+    from ..services.tgim_backfill import run_tgim_backfill
+    from .views.dependencies import cache
+
+    data = request.get_json(silent=True) or {}
+    start_date = data.get("start_date") or request.args.get("start_date", "2026-01-01")
+    end_date = data.get("end_date") or request.args.get("end_date")
+    budget = float(data.get("budget") or request.args.get("budget", 10000.0))
+    clear_existing = data.get("clear_existing", True)
+    if isinstance(clear_existing, str):
+        clear_existing = clear_existing.lower() not in ("false", "0", "no")
+
+    configuration = current_app.config.get("APP_CONFIG")
+    if not configuration:
+        return jsonify({"status": "error", "message": "Configuration missing"}), 500
+
+    stocks_session = DatabaseSession(str(configuration.get_path("stocks")))
+    signals_session = DatabaseSession(str(configuration.get_path("signals")))
+
+    try:
+        result = run_tgim_backfill(
+            stocks_session=stocks_session,
+            signals_session=signals_session,
+            start_date=start_date,
+            end_date=end_date,
+            budget=budget,
+            clear_existing=clear_existing,
+        )
+        try:
+            cache.clear()
+        except Exception as cache_err:
+            logger.debug("Cache clear skipped: %s", cache_err)
+        return jsonify({"status": "success", "result": result})
+    except Exception as error:
+        logger.error("TGIM trades backfill failed: %s", error)
+        return jsonify({"status": "error", "message": str(error)}), 500
+
+
 # --- MARKET DATA ---
 
 

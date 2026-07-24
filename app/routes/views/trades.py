@@ -38,6 +38,7 @@ def view_trades_overview() -> str:
         "Turnover": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "Two Percent": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "NDX Momentum": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "TGIM": {"count": 0, "pnl": 0.0, "invested": 0.0},
     }
 
     croc_group = [
@@ -67,6 +68,8 @@ def view_trades_overview() -> str:
             label = "Two Percent"
         elif strategy_key == Strategies.NDXMomentum:
             label = "NDX Momentum"
+        elif strategy_key == Strategies.TGIM:
+            label = "TGIM"
         else:
             label = str(trade.get("strategy", "Unknown"))
 
@@ -390,6 +393,42 @@ def view_trades_twopercent() -> str:
 
     return render_template(
         "trades_twopercent.html",
+        active_trades=active,
+        active_groups=active_groups,
+        closed_trades=closed,
+        history_groups=history_groups,
+        summary=summary_metrics,
+        closed_summary=closed_summary,
+        index_stats={},
+    )
+
+
+@views_bp.route("/trades/tgim", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
+def view_trades_tgim() -> str:
+    """Displays the TGIM trade history and active positions.
+
+    Returns:
+        str: Rendered HTML template with TGIM trades.
+    """
+    limit = request.args.get("limit", 100, type=int)
+    service = _get_trade_view_service()
+
+    active = service.get_trades(strategies=Strategies.TGIM, status=TradeStatus.ACTIVE)
+    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
+
+    closed = service.get_trades(strategies=Strategies.TGIM, status=TradeStatus.CLOSED)
+    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
+
+    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
+    closed_summary = service.get_closed_summary(closed)
+
+    active_groups = service.group_trades_by_symbol(active)
+    history_groups = service.group_trades_history(closed)
+
+    return render_template(
+        "trades_tgim.html",
         active_trades=active,
         active_groups=active_groups,
         closed_trades=closed,

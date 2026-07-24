@@ -474,14 +474,12 @@ progress_current=none, progress_max=none) %}
                         {% if show_signal and clean_sig %}
                             {% set _ = subline_parts.append(clean_sig) %}
                         {% endif %}
-                        {% set date_val = trade.entry_date or trade.display_entry %}
-                        {% if date_val %}
-                            {% set date_str = date_val ~ (' (' ~ trade.days_held ~ 'd)' if trade.days_held else '') %}
-                            {% set _ = subline_parts.append(date_str) %}
-                        {% elif trade.days_held %}
+                        {% if trade.days_held %}
                             {% set _ = subline_parts.append(trade.days_held ~ 'd') %}
                         {% endif %}
+                        {% if subline_parts %}
                         {{ render_row_subline(subline_parts | join(' • ')) }}
+                        {% endif %}
                     </div>
                     <!-- Col 6–8: Quantity -->
                     <div class="col-span-3 text-right">

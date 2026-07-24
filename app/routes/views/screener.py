@@ -52,6 +52,9 @@ def _get_strategy_overview(
     count_ndx_momentum = len(
         signals_repository.get_trade_candidates(Strategies.NDXMomentum, limit=100)
     )
+    count_tgim = len(
+        signals_repository.get_trade_candidates(Strategies.TGIM, limit=100)
+    )
 
     return [
         {
@@ -95,6 +98,14 @@ def _get_strategy_overview(
             "icon": "zap",
             "count": count_ndx_momentum,
             "is_active": count_ndx_momentum > 0,
+        },
+        {
+            "id": "tgim",
+            "name": "TGIM",
+            "desc": "Thank God It's Monday Mean-Reversion Setup für SPY.",
+            "icon": "calendar",
+            "count": count_tgim,
+            "is_active": count_tgim > 0,
         },
     ]
 
@@ -180,3 +191,16 @@ def view_screener_ndx_momentum() -> str:
     service = _get_screener_view_service()
     results = service.get_candidates(Strategies.NDXMomentum, limit=limit)
     return render_template("screener_ndx_momentum.html", results=results)
+
+
+@views_bp.route("/screener/tgim", methods=["GET"])
+def view_screener_tgim() -> str:
+    """Displays the TGIM screener with current candidates.
+
+    Returns:
+        str: Rendered HTML template with TGIM candidates list.
+    """
+    limit = request.args.get("limit", 50, type=int)
+    service = _get_screener_view_service()
+    results = service.get_candidates(Strategies.TGIM, limit=limit)
+    return render_template("screener_tgim.html", results=results)

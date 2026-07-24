@@ -24,6 +24,7 @@ from .strategies.abstract import BaseTradeStrategy
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.hold_target import HoldTargetStrategy
 from .strategies.ndx_momentum import NDXMomentumTradeStrategy
+from .strategies.tgim import TGIMTradeStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
 from .strategies.two_percent_strategy import TwoPercentStrategy
 
@@ -44,6 +45,7 @@ _SINGLE_POSITION_STRATEGIES: frozenset[Strategies] = frozenset(
         Strategies.HoldTarget,
         Strategies.SplitTarget,
         Strategies.DipBuyer,
+        Strategies.TGIM,
     }
 )
 
@@ -102,6 +104,7 @@ class TradeManager:
             Strategies.SplitTarget: HoldTargetStrategy(),  # Fallback for old trades
             Strategies.TwoPercent: TwoPercentStrategy(),
             Strategies.NDXMomentum: NDXMomentumTradeStrategy(),
+            Strategies.TGIM: TGIMTradeStrategy(),
         }
 
         logger.info(

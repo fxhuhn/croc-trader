@@ -37,6 +37,7 @@ from .ranking_verification import verify_ranking_system
 from .screener.strategies.croc_setup import CrocSetupStrategy
 from .screener.strategies.dip_buyer import DipBuyerStrategy
 from .screener.strategies.ndx_momentum import NDXMomentumScreener
+from .screener.strategies.tgim import TGIMStrategy
 from .screener.strategies.turnover_timing import TurnoverTimingStrategy
 from .screener.strategies.two_percent_strategy import TwoPercentStrategy
 
@@ -138,6 +139,11 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
         NDXMomentumScreener(
             trade_repository=trade_repository,
             market_data_provider=md_provider,
+            telegram_bot=telegram,
+        ),
+        TGIMStrategy(
+            trade_repository=trade_repository,
+            data_provider=md_provider,
             telegram_bot=telegram,
         ),
     ]

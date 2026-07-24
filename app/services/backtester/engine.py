@@ -14,10 +14,14 @@ from ...services.portfolio.manager import PortfolioManager
 
 # Strategies
 from ...services.screener.strategies.dip_buyer import DipBuyerStrategy
+from ...services.screener.strategies.tgim import TGIMStrategy
 from ...services.screener.strategies.turnover_timing import TurnoverTimingStrategy
 from ...services.screener.strategies.two_percent_strategy import TwoPercentStrategy
 from ...services.trade_manager.strategies.dip_buyer import (
     DipBuyerStrategy as TradeManagerDipBuyer,
+)
+from ...services.trade_manager.strategies.tgim import (
+    TGIMTradeStrategy as TradeManagerTGIM,
 )
 from ...services.trade_manager.strategies.turnover_timing import (
     TurnoverTimingStrategy as TradeManagerTurnover,
@@ -81,6 +85,9 @@ class BacktestEngine:
             TwoPercentStrategy(
                 trade_repository=self.trade_repository, data_provider=self.market
             ),
+            TGIMStrategy(
+                trade_repository=self.trade_repository, data_provider=self.market
+            ),
         ]
 
         self.trade_managers = {
@@ -93,6 +100,7 @@ class BacktestEngine:
                 strategy_name=Strategies.TurnOverTiming_05
             ),
             Strategies.TwoPercent: TradeManagerTwoPercent(),
+            Strategies.TGIM: TradeManagerTGIM(),
         }
 
         self.market_dates: list[pd.Timestamp] = []

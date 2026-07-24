@@ -23,8 +23,15 @@ class Strategies(StrEnum):
     # NDX Momentum
     NDXMomentum = "ndx_momentum"
 
+    # TGIM Strategy
+    TGIM = "tgim"
+
 
 STRATEGY_ALIASES = {
+    # TGIM
+    "tgim": Strategies.TGIM,
+    "tgim_strategy": Strategies.TGIM,
+    "thank_god_its_monday": Strategies.TGIM,
     # DipBuyer
     "dipbuyer": Strategies.DipBuyer,
     "dip_buyer": Strategies.DipBuyer,
