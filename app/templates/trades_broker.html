@@ -68,34 +68,35 @@
         <!-- KPI Row -->
         <div id="data-containers" class="space-y-6 md:space-y-8 transition-opacity duration-200 ease-in-out">
             <section class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6" id="kpi-grid">
-                <!-- Net PnL -->
+                <!-- Net PnL (TWS) -->
                 {% set pnl_all = metrics.all.pnl %}
-                {% set pnl_card_bg = "col-span-2 md:col-span-1 bg-gradient-to-r from-emerald-500 to-teal-500
-                shadow-emerald-200/50 border-emerald-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm
-                p-4 md:p-6 border md:border-slate-200" if pnl_all >= 0 else "col-span-2 md:col-span-1 bg-gradient-to-r
-                from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30 md:bg-none md:bg-white rounded-2xl
-                shadow-lg md:shadow-sm p-4 md:p-6 border md:border-slate-200" %}
-                {% set pnl_val_cls = "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1
-                md:mb-0 md:order-last md:!text-emerald-500 tabular-nums" if pnl_all >= 0 else "text-3xl md:text-2xl
-                font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-rose-500
-                tabular-nums" %}
-                {% set pnl_icon = "trending-up" if pnl_all >= 0 else "trending-down" %}
-                {% set pnl_lbl_cls = "text-emerald-50/80 md:text-slate-500 text-xs font-bold uppercase tracking-wider
-                md:mb-1" if pnl_all >= 0 else "text-rose-100/80 md:text-slate-500 text-xs font-bold uppercase
-                tracking-wider md:mb-1" %}
-
-                {% call render_kpi_card("Net PnL (TWS)", metrics.all.pnlText, pnl_icon, value_classes=pnl_val_cls,
-                bg_classes=pnl_card_bg, label_classes=pnl_lbl_cls, card_id="kpi-pnl-card", value_id="kpi-pnl",
-                icon_id="kpi-pnl-icon-desktop") %}
-                <i data-lucide="trending-up" class="w-5 h-5 text-emerald-100 {% if pnl_all < 0 %}hidden{% endif %}"
-                    id="kpi-pnl-icon-up-mobile"></i>
-                <i data-lucide="trending-down" class="w-5 h-5 text-rose-100 {% if pnl_all >= 0 %}hidden{% endif %}"
-                    id="kpi-pnl-icon-down-mobile"></i>
-                {% endcall %}
+                <article id="kpi-pnl-card"
+                    class="col-span-2 md:col-span-1 {{ 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30' if pnl_all >= 0 else 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30' }} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative">
+                    <div class="flex flex-col items-start">
+                        <div id="kpi-pnl-label" class="{{ 'text-emerald-50/80' if pnl_all >= 0 else 'text-rose-100/80' }} text-xs uppercase font-bold tracking-wider mb-1">
+                            Net PnL (TWS)
+                        </div>
+                        <div class="text-2xl md:text-3xl font-black text-white leading-none mb-1 tabular-nums">
+                            <span id="kpi-pnl">{{ metrics.all.pnlText }}</span>&nbsp;$
+                        </div>
+                    </div>
+                    <i data-lucide="trending-down" aria-hidden="true" id="kpi-pnl-icon-down"
+                        class="w-7 h-7 shrink-0 {{ 'hidden' if pnl_all >= 0 else 'text-rose-200' }}"></i>
+                    <i data-lucide="trending-up" aria-hidden="true" id="kpi-pnl-icon-up"
+                        class="w-7 h-7 shrink-0 {{ 'text-emerald-100' if pnl_all >= 0 else 'hidden' }}"></i>
+                </article>
 
                 <!-- Win Rate -->
-                {{ render_kpi_card("Win Rate", metrics.all.winrate, "percent", value_classes="text-lg md:text-2xl
-                font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last", value_id="kpi-winrate") }}
+                <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex items-start justify-between gap-2">
+                    <div class="flex flex-col items-start">
+                        <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                            Win Rate
+                        </div>
+                        <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums" id="kpi-winrate">
+                            {{ metrics.all.winrate }}
+                        </div>
+                    </div>
+                </article>
 
                 <!-- Slippage -->
                 {{ render_kpi_card("Slippage", metrics.all.slippage, "git-compare", value_classes="text-lg md:text-2xl
@@ -829,39 +830,44 @@
     const strategyMetrics = {
         all: {
             pnl: {{ metrics.all.pnl }},
-    pnlText: "{{ metrics.all.pnlText }}",
-        winrate: "{{ metrics.all.winrate }}",
+            pnlText: "{{ metrics.all.pnlText }}",
+            winrate: "{{ metrics.all.winrate }}",
             slippage: "{{ metrics.all.slippage }}",
-                fees: "{{ '{:,.2f}'.format(metrics.all.fees) }}"
+            fees: "{{ '{:,.2f}'.format(metrics.all.fees) }}",
+            totalCount: {{ metrics.all.total_count }}
         },
-    DipBuyer: {
-        pnl: {{ metrics.DipBuyer.pnl }},
-        pnlText: "{{ metrics.DipBuyer.pnlText }}",
-        winrate: "{{ metrics.DipBuyer.winrate }}",
-        slippage: "{{ metrics.DipBuyer.slippage }}",
-        fees: "{{ '{:,.2f}'.format(metrics.DipBuyer.fees) }}"
-    },
-    TurnoverTiming: {
-        pnl: {{ metrics.TurnoverTiming.pnl }},
-        pnlText: "{{ metrics.TurnoverTiming.pnlText }}",
-        winrate: "{{ metrics.TurnoverTiming.winrate }}",
-        slippage: "{{ metrics.TurnoverTiming.slippage }}",
-        fees: "{{ '{:,.2f}'.format(metrics.TurnoverTiming.fees) }}"
-    },
-    TwoPercent: {
-        pnl: {{ metrics.TwoPercent.pnl }},
-        pnlText: "{{ metrics.TwoPercent.pnlText }}",
-        winrate: "{{ metrics.TwoPercent.winrate }}",
-        slippage: "{{ metrics.TwoPercent.slippage }}",
-        fees: "{{ '{:,.2f}'.format(metrics.TwoPercent.fees) }}"
-    },
-    NDXMomentum: {
-        pnl: {{ metrics.NDXMomentum.pnl }},
-        pnlText: "{{ metrics.NDXMomentum.pnlText }}",
-        winrate: "{{ metrics.NDXMomentum.winrate }}",
-        slippage: "{{ metrics.NDXMomentum.slippage }}",
-        fees: "{{ '{:,.2f}'.format(metrics.NDXMomentum.fees) }}"
-    }
+        DipBuyer: {
+            pnl: {{ metrics.DipBuyer.pnl }},
+            pnlText: "{{ metrics.DipBuyer.pnlText }}",
+            winrate: "{{ metrics.DipBuyer.winrate }}",
+            slippage: "{{ metrics.DipBuyer.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.DipBuyer.fees) }}",
+            totalCount: {{ metrics.DipBuyer.total_count }}
+        },
+        TurnoverTiming: {
+            pnl: {{ metrics.TurnoverTiming.pnl }},
+            pnlText: "{{ metrics.TurnoverTiming.pnlText }}",
+            winrate: "{{ metrics.TurnoverTiming.winrate }}",
+            slippage: "{{ metrics.TurnoverTiming.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.TurnoverTiming.fees) }}",
+            totalCount: {{ metrics.TurnoverTiming.total_count }}
+        },
+        TwoPercent: {
+            pnl: {{ metrics.TwoPercent.pnl }},
+            pnlText: "{{ metrics.TwoPercent.pnlText }}",
+            winrate: "{{ metrics.TwoPercent.winrate }}",
+            slippage: "{{ metrics.TwoPercent.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.TwoPercent.fees) }}",
+            totalCount: {{ metrics.TwoPercent.total_count }}
+        },
+        NDXMomentum: {
+            pnl: {{ metrics.NDXMomentum.pnl }},
+            pnlText: "{{ metrics.NDXMomentum.pnlText }}",
+            winrate: "{{ metrics.NDXMomentum.winrate }}",
+            slippage: "{{ metrics.NDXMomentum.slippage }}",
+            fees: "{{ '{:,.2f}'.format(metrics.NDXMomentum.fees) }}",
+            totalCount: {{ metrics.NDXMomentum.total_count }}
+        }
     };
 
     // Switch Tabs Script
@@ -902,28 +908,24 @@
 
             // Render Net PnL value
             const pnlEl = document.getElementById('kpi-pnl');
-            pnlEl.innerText = metrics.pnlText;
+            if (pnlEl) pnlEl.innerText = metrics.pnlText;
 
             // Adjust card styling dynamically
             const pnlCard = document.getElementById('kpi-pnl-card');
-            const upIconMobile = document.getElementById('kpi-pnl-icon-up-mobile');
-            const downIconMobile = document.getElementById('kpi-pnl-icon-down-mobile');
-            const pnlIconDesktop = document.getElementById('kpi-pnl-icon-desktop');
+            const pnlLabel = document.getElementById('kpi-pnl-label');
+            const upIcon = document.getElementById('kpi-pnl-icon-up');
+            const downIcon = document.getElementById('kpi-pnl-icon-down');
 
             if (metrics.pnl >= 0) {
-                pnlCard.className = "col-span-2 md:col-span-1 bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200";
-                pnlEl.className = "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-emerald-500 tabular-nums";
-
-                if (upIconMobile) upIconMobile.classList.remove('hidden');
-                if (downIconMobile) downIconMobile.classList.add('hidden');
-                if (pnlIconDesktop) pnlIconDesktop.setAttribute('data-lucide', 'trending-up');
+                if (pnlCard) pnlCard.className = "col-span-2 md:col-span-1 bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30 rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative";
+                if (pnlLabel) pnlLabel.className = "text-emerald-50/80 text-xs uppercase font-bold tracking-wider mb-1";
+                if (upIcon) upIcon.classList.remove('hidden');
+                if (downIcon) downIcon.classList.add('hidden');
             } else {
-                pnlCard.className = "col-span-2 md:col-span-1 bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30 md:bg-none md:bg-white rounded-2xl shadow-lg md:shadow-sm p-4 md:p-6 flex md:items-center justify-between md:justify-start gap-4 border md:border-slate-200";
-                pnlEl.className = "text-3xl md:text-2xl font-black text-white md:text-slate-900 leading-none mb-1 md:mb-0 md:order-last md:!text-rose-500 tabular-nums";
-
-                if (downIconMobile) downIconMobile.classList.remove('hidden');
-                if (upIconMobile) upIconMobile.classList.add('hidden');
-                if (pnlIconDesktop) pnlIconDesktop.setAttribute('data-lucide', 'trending-down');
+                if (pnlCard) pnlCard.className = "col-span-2 md:col-span-1 bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30 rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative";
+                if (pnlLabel) pnlLabel.className = "text-rose-100/80 text-xs uppercase font-bold tracking-wider mb-1";
+                if (downIcon) downIcon.classList.remove('hidden');
+                if (upIcon) upIcon.classList.add('hidden');
             }
 
             // Re-render icons
