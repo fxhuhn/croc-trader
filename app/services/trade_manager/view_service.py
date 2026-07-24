@@ -645,21 +645,6 @@ class TradeViewService:
             except Exception as err:
                 logger.debug("Failed to query market_prices updated_at: %s", err)
 
-        try:
-            row = self.trade_repository.fetch_one(
-                "SELECT timestamp FROM croc WHERE timestamp IS NOT NULL AND timestamp != '' ORDER BY timestamp DESC LIMIT 1"
-            )
-            if row and row[0]:
-                raw_ts = str(row[0]).strip()
-                parts = raw_ts.replace("T", " ").split(" ")
-                if len(parts) >= 2:
-                    date_part = parts[0]
-                    time_part = parts[1].split(".")[0][:5]
-                    return f"{date_part} {time_part}"
-                return parts[0]
-        except Exception as err:
-            logger.debug("Failed to query croc timestamp: %s", err)
-
         return None
 
     def get_portfolio_summary(
