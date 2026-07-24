@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 from collections.abc import Callable
 from functools import wraps
@@ -12,14 +13,19 @@ R = TypeVar("R", bound=Response | object)
 
 
 def _is_ip_whitelisted(client_ip: str, whitelist: list[str] | tuple[str, ...]) -> bool:
-    """
-    Checks if a given IP is whitelisted.
+    """Checks if a given IP address matches any whitelist entry or wildcard pattern.
 
     Supports:
-    - Exact IP matches (e.g., "127.0.0.1")
-    - Wildcard ranges (e.g., "172.16.x.x" or "10.0.*.*")
+    - Exact IP matches (e.g. "127.0.0.1")
+    - Wildcards in any segment (e.g. "172.16.x.x", "10.0.*.*", "8.*.8.8", "172.16.X.X")
     """
     if not whitelist:
+        return False
+
+    try:
+        ipaddress.ip_address(client_ip)
+    except ValueError:
+        logger.warning("Invalid IP address format: %s", client_ip)
         return False
 
     client_segments = client_ip.split(".")
@@ -49,16 +55,24 @@ def _is_ip_whitelisted(client_ip: str, whitelist: list[str] | tuple[str, ...]) -
 def require_ip_whitelist[**P, R: Response | object](
     func: Callable[P, R],
 ) -> Callable[P, Response | R]:
-    """
-    Decorator to restrict access to whitelisted IP addresses.
+    """Decorator to restrict access to whitelisted IP addresses.
 
     Checks the client IP against the whitelist defined in the application
-    configuration. Supports proxy-aware IP detection via X-Forwarded-For.
+    configuration. Relies on WSGI environment remote address.
     """
 
     @wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Response | R:
-        configuration = current_app.config["APP_CONFIG"]
+        configuration = current_app.config.get("APP_CONFIG")
+
+        if not configuration:
+            logger.error("❌ SECURITY: APP_CONFIG missing! Denying access.")
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Security Configuration Error",
+                }
+            ), 500
 
         try:
             security_configuration = configuration.app.security
@@ -73,15 +87,14 @@ def require_ip_whitelist[**P, R: Response | object](
                 }
             ), 500
 
-        # Proxy-Aware IP Detection:
-        # Relies on ProxyFix middleware to securely populate remote_addr
         client_ip = request.remote_addr or "0.0.0.0"  # nosec B104
 
         if not _is_ip_whitelisted(client_ip, whitelist):
             if mode == "block":
                 logger.warning(
-                    f"🛡️ SECURITY: Unauthorized IP blocked: {client_ip} "
-                    f"(Remote: {request.remote_addr})"
+                    "🛡️ SECURITY: Unauthorized IP blocked: %s (Remote: %s)",
+                    client_ip,
+                    request.remote_addr,
                 )
                 return jsonify(
                     {
@@ -91,8 +104,9 @@ def require_ip_whitelist[**P, R: Response | object](
                 ), 403
 
             logger.warning(
-                f"⚠️ SECURITY: Unauthorized IP warning: {client_ip} "
-                f"(Remote: {request.remote_addr}) (Allowing in non-blocking mode)"
+                "⚠️ SECURITY: Unauthorized IP warning: %s (Remote: %s)",
+                client_ip,
+                request.remote_addr,
             )
 
         return func(*args, **kwargs)

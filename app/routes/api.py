@@ -8,11 +8,11 @@ from flask import Blueprint, Response, current_app, jsonify, request
 from ..const import Strategies
 from ..database.repositories.signal import SignalRepository
 from ..database.session import DatabaseSession
+from ..services import tgim_backfill
 from ..services.market.quality import MarketQualityService
 from ..services.market.updater import MarketDataUpdater
-
-# Import from the separate security.py
 from .security import require_ip_whitelist
+from .views.dependencies import cache
 
 logger = logging.getLogger(__name__)
 api_blueprint = Blueprint("api", __name__)
@@ -32,13 +32,36 @@ class WebhookPayload(TypedDict, total=False):
     price: float
 
 
+def _parse_boolean_parameter(
+    value: str | bool | None, default_value: bool = True
+) -> bool:
+    """Parses incoming query parameters into booleans using guard clauses."""
+    if value is None:
+        return default_value
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() not in ("false", "0", "no")
+
+
+def _extract_symbol_from_request() -> str | None:
+    """Extracts target symbol from query parameters or JSON body."""
+    symbol = request.args.get("symbol")
+    if symbol:
+        return str(symbol).strip().upper()
+
+    data = request.get_json(force=True, silent=True)
+    if data and isinstance(data, dict) and data.get("symbol"):
+        return str(data["symbol"]).strip().upper()
+
+    return None
+
+
 # --- STANDARD ROUTES ---
 
 
 @api_blueprint.route("/health", methods=["GET"])
 def health_check() -> Response:
-    """
-    Simple health check endpoint.
+    """Simple health check endpoint.
 
     Returns:
         Response: JSON status OK.
@@ -49,8 +72,7 @@ def health_check() -> Response:
 @api_blueprint.route("/", methods=["GET"])
 @require_ip_whitelist
 def root_check() -> Response:
-    """
-    Authenticated root check endpoint.
+    """Authenticated root check endpoint.
 
     Returns:
         Response: JSON status OK.
@@ -64,14 +86,12 @@ def root_check() -> Response:
 @api_blueprint.route("/webhook", methods=["POST"])
 @require_ip_whitelist
 def ingest_webhook() -> Response:
-    """
-    Ingests signal webhooks and persists them to the signal database.
+    """Ingests signal webhooks and persists them to the signal database.
 
     Returns:
         Response: JSON success with signal ID or error message.
     """
     try:
-        # Use silent=True to avoid crash on empty body, force=True if content-type missing
         payload: WebhookPayload | None = request.get_json(silent=True, force=True)
 
         if not payload:
@@ -79,7 +99,6 @@ def ingest_webhook() -> Response:
             logger.warning("⚠️ Malformed Webhook Data: %s", raw_data)
             return jsonify({"status": "error", "message": "Invalid JSON"}), 400
 
-        # Mandatory Field Validation
         symbol = payload.get("symbol") or payload.get("ticker")
         if not symbol:
             logger.warning(
@@ -102,8 +121,6 @@ def ingest_webhook() -> Response:
         session = DatabaseSession(str(database_path))
         repository = SignalRepository(session)
 
-        # Mapping dict to satisfy SignalRepository.save_signal which expects dict[str, Any]
-        # but we use WebhookPayload for internal type safety.
         signal_id = repository.save_signal(dict(payload))
 
         logger.info("✅ Webhook saved: %s -> ID %s", symbol, signal_id)
@@ -113,7 +130,10 @@ def ingest_webhook() -> Response:
     except Exception as error:
         error_identifier = str(uuid.uuid4())[:8]
         logger.error(
-            f"Webhook processing error [{error_identifier}]: {error}", exc_info=True
+            "Webhook processing error [%s]: %s",
+            error_identifier,
+            error,
+            exc_info=True,
         )
         return jsonify(
             {
@@ -130,8 +150,7 @@ def ingest_webhook() -> Response:
 @api_blueprint.route("/screener/run", methods=["POST"])
 @require_ip_whitelist
 def trigger_screener() -> Response:
-    """
-    Triggers a manual run of all active screeners.
+    """Triggers a manual run of all active screeners.
 
     Returns:
         Response: JSON status success with statistics.
@@ -162,20 +181,13 @@ def trigger_screener() -> Response:
 @api_blueprint.route("/screener/dip-buyer", methods=["POST"])
 @require_ip_whitelist
 def analyze_dip_buyer() -> Response:
-    """
-    Detailed debugging for DipBuyer strategy on a single symbol.
+    """Detailed debugging for DipBuyer strategy on a single symbol.
 
     Returns:
         Response: JSON analysis result or error.
     """
     try:
-        symbol = request.args.get("symbol")
-
-        if not symbol:
-            data = request.get_json(force=True, silent=True)
-            if data and isinstance(data, dict):
-                symbol = data.get("symbol")
-
+        symbol = _extract_symbol_from_request()
         if not symbol:
             return jsonify(
                 {
@@ -213,25 +225,15 @@ def analyze_dip_buyer() -> Response:
 @api_blueprint.route("/screener/turnover", methods=["POST"])
 @require_ip_whitelist
 def analyze_turnover() -> Response:
-    """
-    Detailed debugging for TurnoverTiming strategy on a single symbol.
+    """Detailed debugging for TurnoverTiming strategy on a single symbol.
 
     Returns:
         Response: JSON analysis result or error.
     """
     try:
-        symbol = request.args.get("symbol")
-
-        if not symbol:
-            data = request.get_json(force=True, silent=True)
-            if data and isinstance(data, dict):
-                symbol = data.get("symbol")
-
+        symbol = _extract_symbol_from_request()
         if not symbol:
             return jsonify({"status": "error", "message": "Symbol required"}), 400
-
-        # FORCE UPPERCASE
-        clean_symbol = str(symbol).upper().strip()
 
         screener_engine = current_app.extensions.get("screener_engine")
         if not screener_engine:
@@ -251,7 +253,7 @@ def analyze_turnover() -> Response:
                 }
             ), 404
 
-        analysis_result = strategy.analyze_single_symbol(clean_symbol)
+        analysis_result = strategy.analyze_single_symbol(symbol)
         return jsonify(analysis_result), 200
 
     except Exception as error:
@@ -262,8 +264,7 @@ def analyze_turnover() -> Response:
 @api_blueprint.route("/screener/croc", methods=["POST"])
 @require_ip_whitelist
 def analyze_croc() -> Response:
-    """
-    Returns the full list of recommended signals for CrocSetup.
+    """Returns the full list of recommended signals for CrocSetup.
 
     Returns:
         Response: JSON analysis result or error.
@@ -311,8 +312,7 @@ def analyze_croc() -> Response:
 @api_blueprint.route("/screener/ndx-momentum", methods=["POST"])
 @require_ip_whitelist
 def analyze_ndx_momentum() -> Response:
-    """
-    Returns the current market regime and top momentum leaders for NDX.
+    """Returns the current market regime and top momentum leaders for NDX.
 
     Returns:
         Response: JSON with regime status and top symbols.
@@ -339,7 +339,6 @@ def analyze_ndx_momentum() -> Response:
                 }
             ), 404
 
-        # Call the new calculation method (Forced for API status check)
         analysis = strategy.calculate_analysis(
             analysis_date=analysis_date, force_run=True
         )
@@ -403,8 +402,7 @@ def analyze_tgim() -> Response:
 @api_blueprint.route("/orders/generate", methods=["POST"])
 @require_ip_whitelist
 def trigger_orders() -> Response:
-    """
-    Triggers the daily order generation process.
+    """Triggers the daily order generation process.
 
     Returns:
         Response: JSON status with generated file path.
@@ -427,8 +425,8 @@ def trigger_orders() -> Response:
 @api_blueprint.route("/api/trades/backfill", methods=["POST"])
 @require_ip_whitelist
 def trigger_trades_backfill() -> Response:
-    """
-    Triggers a backfill or retry of trade processing.
+    """Triggers a backfill or retry of trade processing.
+
     If strategy=tgim parameter is specified, runs TGIM backfill.
 
     Returns:
@@ -467,21 +465,13 @@ def backfill_tgim_trades() -> Response:
     Returns:
         Response: JSON containing backfill summary metrics and trades list.
     """
-    from ..services.tgim_backfill import run_tgim_backfill
-    from .views.dependencies import cache
-
     start_date = (
         request.args.get("start_date") or request.args.get("start") or "2026-01-01"
     )
     end_date = request.args.get("end_date") or request.args.get("end")
     budget = float(request.args.get("budget") or 10000.0)
     raw_clear = request.args.get("clear_existing") or request.args.get("clear")
-    if raw_clear is None:
-        clear_existing = True
-    elif isinstance(raw_clear, bool):
-        clear_existing = raw_clear
-    else:
-        clear_existing = str(raw_clear).lower() not in ("false", "0", "no")
+    clear_existing = _parse_boolean_parameter(raw_clear, default_value=True)
 
     configuration = current_app.config.get("APP_CONFIG")
     if not configuration:
@@ -491,7 +481,7 @@ def backfill_tgim_trades() -> Response:
     signals_session = DatabaseSession(str(configuration.get_path("signals")))
 
     try:
-        result = run_tgim_backfill(
+        result = tgim_backfill.run_tgim_backfill(
             stocks_session=stocks_session,
             signals_session=signals_session,
             start_date=start_date,
@@ -515,8 +505,7 @@ def backfill_tgim_trades() -> Response:
 @api_blueprint.route("/market/sync", methods=["POST"])
 @require_ip_whitelist
 def sync_market_data() -> Response:
-    """
-    Triggers background market data synchronization.
+    """Triggers background market data synchronization.
 
     Returns:
         Response: JSON status accepted.
@@ -550,8 +539,7 @@ def sync_market_data() -> Response:
 @api_blueprint.route("/market/reload", methods=["POST"])
 @require_ip_whitelist
 def reload_market_data() -> Response:
-    """
-    Triggers a full manual reload of market data in the background.
+    """Triggers a full manual reload of market data in the background.
 
     Returns:
         Response: JSON status queued.
