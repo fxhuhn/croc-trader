@@ -36,10 +36,10 @@
 
 ## 3. Parameter Resolution Standard
 
-- **Dual Payload Support**: `POST` endpoints MUST accept parameters supplied via **JSON Body** (`request.get_json(silent=True)`) AND **URL Query Parameters** (`request.args`).
-- **Resolution Precedence**:
-  1. URL Query Parameter (`request.args`)
-  2. JSON Body Field (`request.get_json()`)
+- **Exclusive URL Query Parameters**: API endpoints MUST extract parameters EXCLUSIVELY from **URL Query Parameters** (`request.args`). JSON body payloads (`request.get_json()`) are FORBIDDEN for API configuration parameters.
+- **Resolution Flow**:
+  1. Primary Query Parameter (`request.args.get("start_date")`)
+  2. Alias Query Parameter (`request.args.get("start")`)
   3. Predefined Fallback Default
 - **Parameter Aliasing**: Support both full names and common abbreviations (e.g., `start_date` / `start`, `end_date` / `end`, `clear_existing` / `clear`).
 

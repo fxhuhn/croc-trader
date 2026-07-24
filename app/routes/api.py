@@ -434,8 +434,7 @@ def trigger_trades_backfill() -> Response:
     Returns:
         Response: JSON confirmation.
     """
-    data = request.get_json(silent=True) or {}
-    strategy = (request.args.get("strategy") or data.get("strategy") or "").lower()
+    strategy = (request.args.get("strategy") or "").lower()
 
     if strategy in ("tgim", "thank_god_its_monday"):
         return backfill_tgim_trades()
@@ -471,27 +470,12 @@ def backfill_tgim_trades() -> Response:
     from ..services.tgim_backfill import run_tgim_backfill
     from .views.dependencies import cache
 
-    data = request.get_json(silent=True) or {}
     start_date = (
-        request.args.get("start_date")
-        or request.args.get("start")
-        or data.get("start_date")
-        or data.get("start")
-        or "2026-01-01"
+        request.args.get("start_date") or request.args.get("start") or "2026-01-01"
     )
-    end_date = (
-        request.args.get("end_date")
-        or request.args.get("end")
-        or data.get("end_date")
-        or data.get("end")
-    )
-    budget = float(request.args.get("budget") or data.get("budget") or 10000.0)
-    raw_clear = (
-        request.args.get("clear_existing")
-        or request.args.get("clear")
-        or data.get("clear_existing")
-        or data.get("clear")
-    )
+    end_date = request.args.get("end_date") or request.args.get("end")
+    budget = float(request.args.get("budget") or 10000.0)
+    raw_clear = request.args.get("clear_existing") or request.args.get("clear")
     if raw_clear is None:
         clear_existing = True
     elif isinstance(raw_clear, bool):

@@ -25,7 +25,7 @@ def app() -> Flask:
 @patch("app.routes.api.require_ip_whitelist", lambda f: f)
 @patch("app.services.tgim_backfill.run_tgim_backfill")
 def test_tgim_backfill_api_success(mock_run_backfill: MagicMock, app: Flask) -> None:
-    """Tests POST /api/trades/backfill/tgim executes successfully with JSON body."""
+    """Tests POST /api/trades/backfill/tgim executes successfully with query parameters."""
     mock_run_backfill.return_value = {
         "start_date": "2026-01-01",
         "end_date": "2026-07-24",
@@ -39,8 +39,7 @@ def test_tgim_backfill_api_success(mock_run_backfill: MagicMock, app: Flask) -> 
 
     client = app.test_client()
     response = client.post(
-        "/api/trades/backfill/tgim",
-        json={"start_date": "2026-01-01", "budget": 10000.0},
+        "/api/trades/backfill/tgim?start_date=2026-01-01&budget=10000.0"
     )
 
     assert response.status_code == 200
@@ -53,7 +52,7 @@ def test_tgim_backfill_api_success(mock_run_backfill: MagicMock, app: Flask) -> 
 @patch("app.routes.api.require_ip_whitelist", lambda f: f)
 @patch("app.services.tgim_backfill.run_tgim_backfill")
 def test_tgim_backfill_api_url_params(mock_run_backfill: MagicMock, app: Flask) -> None:
-    """Tests POST /api/trades/backfill/tgim with URL query parameters."""
+    """Tests POST /api/trades/backfill/tgim with short URL query parameters."""
     mock_run_backfill.return_value = {
         "start_date": "2026-01-01",
         "end_date": "2026-07-24",
