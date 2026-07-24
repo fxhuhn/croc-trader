@@ -1,0 +1,29 @@
+{% extends "trades_base.html" %}
+
+{% block page_title %}TGIM{% endblock %}
+{% block page_key %}tgim{% endblock %}
+{% block show_history_signal %}false{% endblock %}
+
+{% block active_trades %}
+{% if active_trades %}
+<section class="mb-8 md:mb-12">
+    {{ render_section_header("Active Positions", icon="zap") }}
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+        {% for trade in active_trades %}
+        {% call cards.trade_card(
+            symbol=trade.symbol,
+            strategy_name="TGIM",
+            entry_date=trade.entry_date,
+            entry_price=trade.entry_price,
+            current_price=trade.current_price,
+            unrealized_pnl=trade.unrealized_pnl,
+            pnl_percent=trade.pnl_percent,
+            size=trade.current_size
+        ) %}
+        {% endcall %}
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}

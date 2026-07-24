@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}TGIM Signale{% endblock %}
+
+{% block body_class %}bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
+
+{% block content %}
+{% from "macros/navigation.html" import render_header %}
+{% import "macros/cards.html" as cards %}
+{{ render_header("TGIM", "tgim", show_switcher=False, active_tab="screener") }}
+
+<!-- MAIN CONTENT -->
+<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+
+    <!-- Signals Section (Cards) -->
+    <section class="mb-12">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+            {% for row in results %}
+            {% call cards.screener_card(row.symbol, "SPY", row.context.get('entry_price', 0), "MOC Close") %}
+            <div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
+                <!-- Left Column -->
+                <div class="flex flex-col">
+                    <div class="flex justify-between py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium">Datum</span>
+                        <span class="font-bold text-slate-800">{{ row.display_date }}</span>
+                    </div>
+                </div>
+                <!-- Right Column -->
+                <div class="flex flex-col">
+                    <div class="flex justify-between py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium">Close</span>
+                        <span class="font-bold text-slate-600 font-mono">
+                            {% if row.context.get('setup_close') %}
+                            {{ "{:,.2f}".format(row.context.get('setup_close')|float) }}
+                            {% else %}-{% endif %}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Button (Chart) -->
+            {{ cards.tradingview_btn(row.symbol) }}
+            {% endcall %}
+            {% else %}
+            {{ cards.empty_state() }}
+            {% endfor %}
+        </div>
+        <div class="mt-4 px-2 py-2 text-xs text-slate-600 font-medium tracking-wide text-center">
+            Montags-Setup für SPY (Close &lt; min(Close[1], Close[2]))
+        </div>
+    </section>
+
+</main>
+
+{% set active_page = 'screener' %}
+{% include "partials/mobile_nav.html" with context %}
+{% endblock %}

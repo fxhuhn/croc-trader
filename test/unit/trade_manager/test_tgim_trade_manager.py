@@ -1,0 +1,144 @@
+"""Unit tests for the TGIM trade manager execution strategy."""
+
+import pandas as pd
+import pytest
+
+from app.services.trade_manager.strategies.tgim import TGIMTradeStrategy
+from app.types import ExitReason, TradeStatus
+
+
+@pytest.fixture
+def trade_strategy() -> TGIMTradeStrategy:
+    """Fixture providing a TGIMTradeStrategy instance."""
+    return TGIMTradeStrategy()
+
+
+def test_tgim_check_entry_activates_on_monday_close(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests that check_entry activates a CREATED trade at Monday MOC."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.CREATED.value,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+        "budget": 10000.0,
+    }
+    candle = pd.Series(
+        {
+            "date": "2026-07-20",
+            "open": 502.0,
+            "high": 505.0,
+            "low": 498.0,
+            "close": 500.0,
+        }
+    )
+    df_history = pd.DataFrame([candle])
+
+    transition = trade_strategy.check_entry(trade, candle, df_history)
+
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.ACTIVE.value
+    assert transition.updates["entry_price"] == 500.0
+
+
+def test_tgim_c1exit_on_tuesday_close(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests c1exit on Tuesday when Tuesday Close > Monday Close."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.ACTIVE.value,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+        "budget": 10000.0,
+    }
+    monday_candle = {"date": pd.Timestamp("2026-07-20"), "close": 500.0}
+    tuesday_candle = pd.Series(
+        {
+            "date": pd.Timestamp("2026-07-21"),
+            "open": 501.0,
+            "high": 506.0,
+            "low": 500.0,
+            "close": 504.0,
+        }
+    )
+
+    df_history = pd.DataFrame([monday_candle, tuesday_candle])
+
+    transition = trade_strategy.manage_active_trade(trade, df_history)
+
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.CLOSED.value
+    assert transition.updates["exit_reason"] == ExitReason.TAKE_PROFIT.value
+    assert transition.updates["exit_price"] == 504.0
+
+
+def test_tgim_holds_on_tuesday_when_close_lower(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests trade is held on Tuesday when Tuesday Close <= Monday Close."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.ACTIVE.value,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+        "budget": 10000.0,
+    }
+    monday_candle = {"date": pd.Timestamp("2026-07-20"), "close": 500.0}
+    tuesday_candle = pd.Series(
+        {
+            "date": pd.Timestamp("2026-07-21"),
+            "open": 499.0,
+            "high": 500.0,
+            "low": 495.0,
+            "close": 497.0,
+        }
+    )
+
+    df_history = pd.DataFrame([monday_candle, tuesday_candle])
+
+    transition = trade_strategy.manage_active_trade(trade, df_history)
+
+    assert transition is None
+
+
+def test_tgim_time_exit_on_wednesday_close_if_c1exit_false(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests TE (Time Exit) on Wednesday when Wednesday Close <= Tuesday Close."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.ACTIVE.value,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+        "budget": 10000.0,
+    }
+    monday_candle = {"date": pd.Timestamp("2026-07-20"), "close": 500.0}
+    tuesday_candle = {"date": pd.Timestamp("2026-07-21"), "close": 497.0}
+    wednesday_candle = pd.Series(
+        {
+            "date": pd.Timestamp("2026-07-22"),
+            "open": 497.0,
+            "high": 498.0,
+            "low": 494.0,
+            "close": 495.0,
+        }
+    )
+
+    df_history = pd.DataFrame([monday_candle, tuesday_candle, wednesday_candle])
+
+    transition = trade_strategy.manage_active_trade(trade, df_history)
+
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.CLOSED.value
+    assert transition.updates["exit_reason"] == ExitReason.TIME_STOP.value
+    assert transition.updates["exit_price"] == 495.0
