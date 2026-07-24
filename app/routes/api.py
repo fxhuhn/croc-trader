@@ -422,12 +422,32 @@ def backfill_tgim_trades() -> Response:
     from .views.dependencies import cache
 
     data = request.get_json(silent=True) or {}
-    start_date = data.get("start_date") or request.args.get("start_date", "2026-01-01")
-    end_date = data.get("end_date") or request.args.get("end_date")
-    budget = float(data.get("budget") or request.args.get("budget", 10000.0))
-    clear_existing = data.get("clear_existing", True)
-    if isinstance(clear_existing, str):
-        clear_existing = clear_existing.lower() not in ("false", "0", "no")
+    start_date = (
+        request.args.get("start_date")
+        or request.args.get("start")
+        or data.get("start_date")
+        or data.get("start")
+        or "2026-01-01"
+    )
+    end_date = (
+        request.args.get("end_date")
+        or request.args.get("end")
+        or data.get("end_date")
+        or data.get("end")
+    )
+    budget = float(request.args.get("budget") or data.get("budget") or 10000.0)
+    raw_clear = (
+        request.args.get("clear_existing")
+        or request.args.get("clear")
+        or data.get("clear_existing")
+        or data.get("clear")
+    )
+    if raw_clear is None:
+        clear_existing = True
+    elif isinstance(raw_clear, bool):
+        clear_existing = raw_clear
+    else:
+        clear_existing = str(raw_clear).lower() not in ("false", "0", "no")
 
     configuration = current_app.config.get("APP_CONFIG")
     if not configuration:
