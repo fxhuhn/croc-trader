@@ -1,4 +1,4 @@
-# filename: test_analytics_robustness.py
+import math
 import sqlite3
 from pathlib import Path
 
@@ -93,7 +93,7 @@ def test_analytics_division_by_zero_protection(database_paths: tuple[str, str]) 
     # Assert
     assert metrics.total_trades == 2
     assert metrics.win_rate == 1.0
-    assert metrics.profit_factor == 999.0
+    assert math.isinf(metrics.profit_factor)
     assert not np.isnan(metrics.kelly_criterion)
 
 

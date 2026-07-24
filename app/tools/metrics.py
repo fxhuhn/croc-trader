@@ -5,6 +5,8 @@ trading metrics using pandas and numpy. It follows the Functional Core
 principle, ensuring referential transparency and ease of testing.
 """
 
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -47,13 +49,13 @@ def calculate_profit_factor(trades_pnl: pd.Series) -> float:
         trades_pnl: Series of realized profit and loss per trade.
 
     Returns:
-        float: Profit factor (returns 999.0 if no losses).
+        float: Profit factor (returns math.inf if no losses).
     """
     gross_profit = trades_pnl[trades_pnl > EPSILON].sum()
     gross_loss = abs(trades_pnl[trades_pnl < -EPSILON].sum())
 
     if gross_loss < EPSILON:
-        return 999.0 if gross_profit > EPSILON else 0.0
+        return math.inf if gross_profit > EPSILON else 0.0
 
     return float(gross_profit / gross_loss)
 
@@ -100,7 +102,7 @@ def calculate_risk_reward_ratio(trades_pnl: pd.Series) -> float:
         return 0.0
 
     if losing_trades.empty:
-        return 999.0  # Return infinity representation if there are no losses
+        return math.inf  # Return infinity representation if there are no losses
 
     average_win = winning_trades.mean()
     average_loss = abs(losing_trades.mean())

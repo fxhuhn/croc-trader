@@ -173,7 +173,7 @@
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Profit Factor</span>
                                 <span class="font-bold text-slate-800">
-                                    {% if strategy.metrics.profit_factor == 999.0 %}
+                                    {% if strategy.metrics.profit_factor > 900 %}
                                         &infin;
                                     {% else %}
                                         {{ "{:.2f}".format(strategy.metrics.profit_factor) }}

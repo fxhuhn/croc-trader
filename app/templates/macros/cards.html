@@ -175,7 +175,11 @@
                 </div>
                 <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
                     {% if summary.profit_factor is defined and summary.profit_factor is not none %}
-                        {{ "{:.2f}".format(summary.profit_factor) }}
+                        {% if (summary.profit_factor|float) > 900 %}
+                            &infin;
+                        {% else %}
+                            {{ "{:.2f}".format(summary.profit_factor) }}
+                        {% endif %}
                     {% else %}
                         0.00
                     {% endif %}

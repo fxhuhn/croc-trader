@@ -1,4 +1,5 @@
 import logging
+import math
 import warnings
 from dataclasses import dataclass
 from typing import Any
@@ -745,7 +746,7 @@ class MonteCarloSimulator:
             reward_to_risk = (
                 np.mean(winning_returns) / abs(np.mean(losing_returns))
                 if len(losing_returns) > 0
-                else 999.0
+                else math.inf
             )
 
             f_star = metrics.calculate_kelly_criterion(win_probability, reward_to_risk)

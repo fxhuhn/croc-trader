@@ -1,3 +1,5 @@
+import math
+
 import pandas as pd
 import pytest
 
@@ -18,16 +20,19 @@ def test_calculate_win_rate_basic():
 
 
 def test_calculate_win_rate_empty():
-    """Tests win rate with empty input."""
+    """Tests win rate calculation for an empty series."""
+    # Arrange
+    net_pnl = pd.Series([], dtype=float)
+
     # Act
-    win_rate = metrics.calculate_win_rate(pd.Series(dtype=float))
+    win_rate = metrics.calculate_win_rate(net_pnl)
 
     # Assert
     assert win_rate == 0.0
 
 
-def test_calculate_profit_factor_basic():
-    """Tests profit factor calculation."""
+def test_calculate_profit_factor():
+    """Tests profit factor calculation for normal trades."""
     # Arrange
     net_pnl = pd.Series([100.0, -50.0, 200.0, -100.0])
 
@@ -35,7 +40,7 @@ def test_calculate_profit_factor_basic():
     profit_factor = metrics.calculate_profit_factor(net_pnl)
 
     # Assert
-    # Gross Profit = 300, Gross Loss = 150. PF = 2.0
+    # Gross Profit = 300, Gross Loss = 150 -> 300 / 150 = 2.0
     assert profit_factor == pytest.approx(2.0)
 
 
@@ -48,7 +53,7 @@ def test_calculate_profit_factor_no_losses():
     profit_factor = metrics.calculate_profit_factor(net_pnl)
 
     # Assert
-    assert profit_factor == 999.0
+    assert math.isinf(profit_factor)
 
 
 def test_calculate_max_drawdown():
