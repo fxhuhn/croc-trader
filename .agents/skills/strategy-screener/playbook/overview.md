@@ -51,10 +51,12 @@ To prevent rounding issues, pricing, and volume inconsistencies:
 
 ## 4. Strategy Index
 
+- [Bounce Bandit Playbook (BOUNCE_BANDIT)](bounce_bandit.md)
+- [Bridge Scout Playbook (BRIDGE_SCOUT)](bridge_scout.md)
 - [Dip Buyer Playbook](dip_buyer.md)
 - [NDX Momentum Playbook](ndx_momentum.md)
 - [TGIM Playbook](tgim.md)
 - [Turnover Timing Playbook](turnover_timing.md)
 - [Two Percent Playbook](two_percent.md)
-- [Bridge Scout Playbook (BRIDGE_SCOUT)](bridge_scout.md)
+
 
