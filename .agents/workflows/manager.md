@@ -111,6 +111,7 @@ graph TD
     style Approval fill:#f9f,stroke:#333,stroke-width:4px
     style Designer fill:#bbf,stroke:#333,stroke-width:2px
     style Release fill:#9f9,stroke:#333,stroke-width:2px
+```
 
 ---
 Format Requirement: Return only repository-relative paths, direct code diffs, or structured markdown tables. No generic text summaries.

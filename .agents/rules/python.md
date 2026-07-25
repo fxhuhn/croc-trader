@@ -34,7 +34,7 @@ Every code decision must be evaluated against these four quality dimensions, in 
 ## 1. General Philosophy
 
 - **Modern Python:** Use Python 3.12+ syntax exclusively.
-- **Asynchronous Design:** The system runs fully in `asyncio` mode.
+- **Synchronous Design:** The system runs as a synchronous EOD batch pipeline. Do NOT use `asyncio` or `async def`.
 - **Standard Library First:** Minimize 3rd party dependencies. Do NOT use `pydantic`.
 - **Functional Core, Imperative Shell:** See Section 8 for detailed rules.
 - **The Step-down Rule:** Organize code like a newspaper article. High-level orchestrator functions must appear first, followed by lower-level implementation details and helper functions.
@@ -153,7 +153,7 @@ Validate preconditions at system boundaries (API inputs, config loading, databas
 
 ```python
 # Imperative Shell: Validate at the boundary
-async def load_strategy_configuration(config_path: Path) -> StrategyConfig:
+def load_strategy_configuration(config_path: Path) -> StrategyConfig:
     """Loads and validates strategy configuration from disk."""
     raw_config = _read_toml_file(config_path)
 
@@ -264,14 +264,14 @@ def determine_rebalancing_actions(
 # IMPERATIVE SHELL — I/O, orchestration
 # ═══════════════════════════════════════
 
-async def run_daily_rebalancing(database_path: Path) -> None:
+def run_daily_rebalancing(database_path: Path) -> None:
     """
     Shell: Loads data, calls the Functional Core, persists results.
 
     All side effects are concentrated here.
     """
-    positions = await load_positions_from_database(database_path)
-    allocation = await fetch_target_allocation()
+    positions = load_positions_from_database(database_path)
+    allocation = fetch_target_allocation()
     portfolio_value = sum(p.market_value for p in positions)
 
     # ← Call into the Functional Core (pure)
@@ -279,7 +279,7 @@ async def run_daily_rebalancing(database_path: Path) -> None:
         positions, allocation, portfolio_value
     )
 
-    await persist_rebalancing_decisions(database_path, decisions)
+    persist_rebalancing_decisions(database_path, decisions)
     logger.info("Rebalancing completed: %d decisions", len(decisions))
 ```
 
