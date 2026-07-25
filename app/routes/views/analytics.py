@@ -126,6 +126,7 @@ def view_analytics_dashboard() -> str:
         "NDX Momentum": [Strategies.NDXMomentum],
         "TGIM": [Strategies.TGIM],
         "Bridge Scout": [Strategies.BridgeScout, "bridge_scout"],
+        "Bounce Bandit": [Strategies.BounceBandit, "bounce_bandit"],
     }
 
     # Map colors to match the exact hex codes configured in the template
@@ -137,6 +138,7 @@ def view_analytics_dashboard() -> str:
         "NDX Momentum": "#f43f5e",  # Rose-500
         "TGIM": "#0284c7",  # Sky-600
         "Bridge Scout": "#0ea5e9",  # Sky-500
+        "Bounce Bandit": "#8b5cf6",  # Violet-500
     }
 
     for name, filters in strategy_groups.items():

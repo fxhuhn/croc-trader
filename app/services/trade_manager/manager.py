@@ -21,6 +21,7 @@ from ...tools.trading_calendar import get_last_completed_trading_day
 from ...types import TradeStatus
 from .order_export import write_csv_orders_file
 from .strategies.abstract import BaseTradeStrategy
+from .strategies.bounce_bandit import BounceBanditTradeStrategy
 from .strategies.bridge_scout import BridgeScoutTradeStrategy
 from .strategies.dip_buyer import DipBuyerStrategy
 from .strategies.hold_target import HoldTargetStrategy
@@ -48,6 +49,7 @@ _SINGLE_POSITION_STRATEGIES: frozenset[Strategies] = frozenset(
         Strategies.DipBuyer,
         Strategies.TGIM,
         Strategies.BridgeScout,
+        Strategies.BounceBandit,
     }
 )
 
@@ -108,6 +110,7 @@ class TradeManager:
             Strategies.NDXMomentum: NDXMomentumTradeStrategy(),
             Strategies.TGIM: TGIMTradeStrategy(),
             Strategies.BridgeScout: BridgeScoutTradeStrategy(),
+            Strategies.BounceBandit: BounceBanditTradeStrategy(),
         }
 
         logger.info(

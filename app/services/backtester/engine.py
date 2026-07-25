@@ -11,12 +11,14 @@ from ...const import STRATEGY_ALIASES, Strategies
 from ...database.repositories.market_data_provider import MarketDataProvider
 from ...database.repositories.trade import TradeRepository
 from ...services.portfolio.manager import PortfolioManager
-
-# Strategies
+from ...services.screener.strategies.bounce_bandit import BounceBanditStrategy
 from ...services.screener.strategies.dip_buyer import DipBuyerStrategy
 from ...services.screener.strategies.tgim import TGIMStrategy
 from ...services.screener.strategies.turnover_timing import TurnoverTimingStrategy
 from ...services.screener.strategies.two_percent_strategy import TwoPercentStrategy
+from ...services.trade_manager.strategies.bounce_bandit import (
+    BounceBanditTradeStrategy as TradeManagerBounceBandit,
+)
 from ...services.trade_manager.strategies.dip_buyer import (
     DipBuyerStrategy as TradeManagerDipBuyer,
 )
@@ -88,6 +90,9 @@ class BacktestEngine:
             TGIMStrategy(
                 trade_repository=self.trade_repository, data_provider=self.market
             ),
+            BounceBanditStrategy(
+                trade_repository=self.trade_repository, data_provider=self.market
+            ),
         ]
 
         self.trade_managers = {
@@ -101,6 +106,7 @@ class BacktestEngine:
             ),
             Strategies.TwoPercent: TradeManagerTwoPercent(),
             Strategies.TGIM: TradeManagerTGIM(),
+            Strategies.BounceBandit: TradeManagerBounceBandit(),
         }
 
         self.market_dates: list[pd.Timestamp] = []

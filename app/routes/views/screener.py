@@ -58,6 +58,9 @@ def _get_strategy_overview(
     count_bridge_scout = len(
         signals_repository.get_trade_candidates(Strategies.BridgeScout, limit=100)
     )
+    count_bounce_bandit = len(
+        signals_repository.get_trade_candidates(Strategies.BounceBandit, limit=100)
+    )
 
     return [
         {
@@ -117,6 +120,14 @@ def _get_strategy_overview(
             "icon": "compass",
             "count": count_bridge_scout,
             "is_active": count_bridge_scout > 0,
+        },
+        {
+            "id": "bounce-bandit",
+            "name": "Bounce Bandit",
+            "desc": "Mean-Reversion Pullback Setup für QQQ.",
+            "icon": "zap",
+            "count": count_bounce_bandit,
+            "is_active": count_bounce_bandit > 0,
         },
     ]
 
@@ -228,3 +239,17 @@ def view_screener_bridge_scout() -> str:
     service = _get_screener_view_service()
     results = service.get_candidates(Strategies.BridgeScout, limit=limit)
     return render_template("screener_bridge_scout.html", results=results)
+
+
+@views_bp.route("/screener/bounce-bandit", methods=["GET"])
+@views_bp.route("/screener/bounce_bandit", methods=["GET"])
+def view_screener_bounce_bandit() -> str:
+    """Displays the Bounce Bandit screener with current candidates.
+
+    Returns:
+        str: Rendered HTML template with Bounce Bandit candidates list.
+    """
+    limit = request.args.get("limit", 50, type=int)
+    service = _get_screener_view_service()
+    results = service.get_candidates(Strategies.BounceBandit, limit=limit)
+    return render_template("screener_bounce_bandit.html", results=results)

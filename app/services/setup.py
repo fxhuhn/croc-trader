@@ -34,6 +34,7 @@ from ..tools.market_holidays import MarketHolidayChecker
 from .ranking_verification import verify_ranking_system
 
 # Strategies
+from .screener.strategies.bounce_bandit import BounceBanditStrategy
 from .screener.strategies.bridge_scout import BridgeScoutStrategy
 from .screener.strategies.croc_setup import CrocSetupStrategy
 from .screener.strategies.dip_buyer import DipBuyerStrategy
@@ -152,6 +153,11 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
             data_provider=md_provider,
             telegram_bot=telegram,
             holiday_checker=holiday_checker,
+        ),
+        BounceBanditStrategy(
+            trade_repository=trade_repository,
+            data_provider=md_provider,
+            telegram_bot=telegram,
         ),
     ]
 

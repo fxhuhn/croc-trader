@@ -29,8 +29,16 @@ class Strategies(StrEnum):
     # Bridge Scout Strategy
     BridgeScout = "bridge_scout"
 
+    # Bounce Bandit Strategy
+    BounceBandit = "bounce_bandit"
+
 
 STRATEGY_ALIASES = {
+    # Bounce Bandit
+    "bounce_bandit": Strategies.BounceBandit,
+    "bouncebandit": Strategies.BounceBandit,
+    "bounce bandit": Strategies.BounceBandit,
+    "qqq_meanrev": Strategies.BounceBandit,
     # Bridge Scout
     "bridge_scout": Strategies.BridgeScout,
     "bridgescout": Strategies.BridgeScout,
