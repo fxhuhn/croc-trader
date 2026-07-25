@@ -10,11 +10,12 @@
   - **Lowest Close Condition**: `Close < min(Close[1], Close[2])` (Monday's close must be strictly lower than both Friday's close and Thursday's close).
   - **Duplicate Check**: Prevents signal duplication by checking if an active setup or trade for `SPY` and the signal date already exists in `signals.db`.
 - **Signal Triggers & Order Types:**
-  - **Entry Order Type**: Market On Close (MOC) on Monday close.
+  - **Entry Order Type**: Market On Close (MOC) on Monday close. (Executed as `order_type="MKT"` at the setup session closing price).
   - **Stop-Loss**: None (`0.0`).
   - **Take-Profit / Exit Logic**: Evaluated at `ThisClose` in strict priority order (`select`):
-    1. `c1exit`: Exit MOC if today's Close is higher than yesterday's Close (`Close > Close[1]`).
-    2. `TE` (Time Exit): Exit MOC if held for $\ge \text{bars\_p}$ bars (default $\text{bars\_p} = 2$, i.e. Wednesday close).
+    1. `c1exit`: Exit Market On Close (MOC) if today's Close is higher than yesterday's Close (`Close > Close[1]`).
+    2. `TE` (Time Exit): Exit Market On Close (MOC) if held for $\ge \text{bars\_p}$ bars (default $\text{bars\_p} = 2$, i.e. Wednesday close).
+  - **MOC Execution Mapping**: In the execution layer, MOC orders are specified as `order_type="MKT"` with execution scheduled at market close.
 - **Position Sizing & Risk Management:**
   - Standard **Budget-Based Fallback**: Calculated using standard portfolio allocation without a stop loss ($\text{size} = \lfloor \text{budget} / P_{\text{fill}} \rfloor$), configured via `portfolio.strategies.tgim.budget`.
 - **Configurable Parameters:**

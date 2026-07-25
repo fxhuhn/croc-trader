@@ -17,8 +17,10 @@
   - **IBS Filter**: Internal Bar Strength (IBS) must be $< 0.2$ (meaning: $\frac{\text{close} - \text{low}}{\text{high} - \text{low}} < 0.2$).
 - **Signal Triggers:**
   - **Entry Price Limit**: `Close - ATR` (calculated at setup close).
-  - **Stop-Loss**: None (`0.0`).
+  - **Stop-Loss**: None (`0.0`). No stop-loss is used in this strategy.
   - **Take-Profit**: `Entry + (0.8 * ATR)`.
+- **Position Sizing & Risk Management:**
+  - Standard **Budget-Based Fallback**: Since no stop-loss is set (`SL = 0.0`), position sizing follows budget allocation ($\text{size} = \lfloor \text{budget} / P_{\text{fill}} \rfloor$), configured via `portfolio.strategies.dip_buyer.budget`.
 - **Order Generation Rules:**
   - **Entry order type**: Limit (LMT) order placed at entry price.
   - **Lifespan**: Good-Till-Date (GTD) expiring at the end of the next trading day. Setup is invalidated if not filled on Day 1.
