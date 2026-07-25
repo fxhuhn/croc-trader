@@ -383,6 +383,65 @@
 
 
 
+{% macro trade_card(symbol, strategy_name, entry_date, entry_price, current_price, unrealized_pnl=0.0, pnl_percent=none, size=0) %}
+<div class="bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 border border-slate-200 shadow-sm flex flex-col justify-between gap-4">
+    <!-- Header: Symbol & Strategy Badge -->
+    <div class="flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <span class="font-black text-xl md:text-2xl text-slate-900 leading-none">{{ symbol }}</span>
+            <span class="bg-indigo-50 text-indigo-600 text-xs font-bold uppercase px-2 py-0.5 rounded-md border border-indigo-100/50">
+                {{ strategy_name }}
+            </span>
+        </div>
+        <a href="https://www.tradingview.com/chart/?symbol={{ symbol }}" target="_blank" rel="noopener noreferrer" class="text-slate-400 hover:text-indigo-600 transition-colors" title="View on TradingView">
+            <i data-lucide="chart-candlestick" class="w-5 h-5"></i>
+        </a>
+    </div>
+
+    <!-- PnL Hero Block -->
+    <div class="flex justify-between items-baseline py-2 border-y border-slate-100">
+        <div class="text-xs uppercase font-bold text-slate-400 tracking-wider">Unrealized PnL</div>
+        <div class="text-right">
+            <div class="text-lg md:text-xl font-bold {{ 'text-emerald-500' if (unrealized_pnl|float) >= 0 else 'text-rose-500' }} tabular-nums">
+                {{ "{:+,.2f}".format(unrealized_pnl|float) }}
+            </div>
+            {% if pnl_percent is defined and pnl_percent is not none and pnl_percent != '' %}
+            <div class="text-xs font-medium text-slate-400 tabular-nums">
+                {{ "{:+.2f}".format(pnl_percent|float) }}%
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Details Grid -->
+    <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+        <div class="flex justify-between border-b border-slate-100 pb-1">
+            <span class="text-slate-500 font-medium">Entry Date</span>
+            <span class="font-bold text-slate-700 tabular-nums">{{ entry_date or '-' }}</span>
+        </div>
+        <div class="flex justify-between border-b border-slate-100 pb-1">
+            <span class="text-slate-500 font-medium">Position Size</span>
+            <span class="font-bold text-slate-700 tabular-nums">{{ size|int if size else '-' }}</span>
+        </div>
+        <div class="flex justify-between pt-1">
+            <span class="text-slate-500 font-medium">Entry Price</span>
+            <span class="font-mono font-bold text-slate-700 tabular-nums">{{ "{:,.2f}".format(entry_price|float) if entry_price else '-' }}</span>
+        </div>
+        <div class="flex justify-between pt-1">
+            <span class="text-slate-500 font-medium">Current Price</span>
+            <span class="font-mono font-bold text-slate-700 tabular-nums">{{ "{:,.2f}".format(current_price|float) if current_price else '-' }}</span>
+        </div>
+    </div>
+
+    {% if caller is defined %}
+    <div class="mt-2 pt-2 border-t border-slate-100">
+        {{ caller() }}
+    </div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+
 {% macro trade_accordion_card(symbol, badges=[], pnl_value=0.0, pnl_percentage=none, show_currency=false,
 progress_current=none, progress_max=none) %}
 <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">

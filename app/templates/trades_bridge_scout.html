@@ -1,7 +1,7 @@
 {% extends "trades_base.html" %}
 
-{% block page_title %}TGIM{% endblock %}
-{% block page_key %}tgim{% endblock %}
+{% block page_title %}Bridge Scout{% endblock %}
+{% block page_key %}bridge_scout{% endblock %}
 {% block show_history_signal %}false{% endblock %}
 
 {% block active_trades %}
@@ -13,7 +13,7 @@
         {% for trade in active_trades %}
         {% call cards.trade_card(
             symbol=trade.symbol,
-            strategy_name="TGIM",
+            strategy_name="Bridge Scout",
             entry_date=trade.entry_date,
             entry_price=trade.entry_price,
             current_price=trade.current_price,

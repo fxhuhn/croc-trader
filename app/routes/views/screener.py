@@ -55,6 +55,9 @@ def _get_strategy_overview(
     count_tgim = len(
         signals_repository.get_trade_candidates(Strategies.TGIM, limit=100)
     )
+    count_bridge_scout = len(
+        signals_repository.get_trade_candidates(Strategies.BridgeScout, limit=100)
+    )
 
     return [
         {
@@ -106,6 +109,14 @@ def _get_strategy_overview(
             "icon": "calendar",
             "count": count_tgim,
             "is_active": count_tgim > 0,
+        },
+        {
+            "id": "bridge-scout",
+            "name": "Bridge Scout",
+            "desc": "End-of-Month Mean-Reversion Setup für QQQ.",
+            "icon": "compass",
+            "count": count_bridge_scout,
+            "is_active": count_bridge_scout > 0,
         },
     ]
 
@@ -204,3 +215,16 @@ def view_screener_tgim() -> str:
     service = _get_screener_view_service()
     results = service.get_candidates(Strategies.TGIM, limit=limit)
     return render_template("screener_tgim.html", results=results)
+
+
+@views_bp.route("/screener/bridge-scout", methods=["GET"])
+def view_screener_bridge_scout() -> str:
+    """Displays the Bridge Scout screener with current candidates.
+
+    Returns:
+        str: Rendered HTML template with Bridge Scout candidates list.
+    """
+    limit = request.args.get("limit", 50, type=int)
+    service = _get_screener_view_service()
+    results = service.get_candidates(Strategies.BridgeScout, limit=limit)
+    return render_template("screener_bridge_scout.html", results=results)

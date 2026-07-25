@@ -8,7 +8,7 @@ from flask import Blueprint, Response, current_app, jsonify, request
 from ..const import Strategies
 from ..database.repositories.signal import SignalRepository
 from ..database.session import DatabaseSession
-from ..services import tgim_backfill
+from ..services import bridge_scout_backfill, tgim_backfill
 from ..services.market.quality import MarketQualityService
 from ..services.market.updater import MarketDataUpdater
 from .security import require_ip_whitelist
@@ -399,6 +399,45 @@ def analyze_tgim() -> Response:
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
+@api_blueprint.route("/screener/bridge-scout", methods=["POST"])
+@api_blueprint.route("/api/screener/bridge-scout", methods=["POST"])
+@require_ip_whitelist
+def analyze_bridge_scout() -> Response:
+    """Returns analysis and screening candidates for Bridge Scout strategy.
+
+    Returns:
+        Response: JSON with Bridge Scout signal status.
+    """
+    try:
+        analysis_date = request.args.get("date")
+        days = request.args.get("days", default=0, type=int)
+
+        screener_engine = current_app.extensions.get("screener_engine")
+        if not screener_engine:
+            return jsonify(
+                {"status": "error", "message": "Engine not initialized"}
+            ), 503
+
+        strategy = screener_engine.get_strategy(Strategies.BridgeScout)
+        if not strategy:
+            return jsonify(
+                {"status": "error", "message": "Bridge Scout strategy not found"}
+            ), 404
+
+        candidates_count = strategy.run(days=days, analysis_date=analysis_date)
+        return jsonify(
+            {
+                "status": "success",
+                "strategy": "bridge_scout",
+                "symbol": "QQQ",
+                "signals_found": candidates_count,
+            }
+        ), 200
+    except Exception as error:
+        logger.exception("Error analyzing Bridge Scout: %s", error)
+        return jsonify({"status": "error", "message": str(error)}), 500
+
+
 @api_blueprint.route("/orders/generate", methods=["POST"])
 @require_ip_whitelist
 def trigger_orders() -> Response:
@@ -427,7 +466,7 @@ def trigger_orders() -> Response:
 def trigger_trades_backfill() -> Response:
     """Triggers a backfill or retry of trade processing.
 
-    If strategy=tgim parameter is specified, runs TGIM backfill.
+    If strategy=tgim or strategy=bridge_scout parameter is specified, runs corresponding backfill.
 
     Returns:
         Response: JSON confirmation.
@@ -436,6 +475,8 @@ def trigger_trades_backfill() -> Response:
 
     if strategy in ("tgim", "thank_god_its_monday"):
         return backfill_tgim_trades()
+    if strategy in ("bridge_scout", "bridgescout", "bridge scout", "qqq_eom"):
+        return backfill_bridge_scout_trades()
 
     trade_manager = current_app.extensions.get("trade_manager")
     if not trade_manager:
@@ -496,6 +537,51 @@ def backfill_tgim_trades() -> Response:
         return jsonify({"status": "success", "result": result})
     except Exception as error:
         logger.error("TGIM trades backfill failed: %s", error)
+        return jsonify({"status": "error", "message": str(error)}), 500
+
+
+@api_blueprint.route("/trades/backfill/bridge-scout", methods=["POST"])
+@api_blueprint.route("/backfill/bridge-scout", methods=["POST"])
+@api_blueprint.route("/api/trades/backfill/bridge-scout", methods=["POST"])
+@api_blueprint.route("/api/backfill/bridge-scout", methods=["POST"])
+@require_ip_whitelist
+def backfill_bridge_scout_trades() -> Response:
+    """Executes historical backfill simulation for Bridge Scout strategy trades.
+
+    Returns:
+        Response: JSON containing backfill summary metrics and trades list.
+    """
+    start_date = (
+        request.args.get("start_date") or request.args.get("start") or "2025-01-01"
+    )
+    end_date = request.args.get("end_date") or request.args.get("end")
+    budget = float(request.args.get("budget") or 10000.0)
+    raw_clear = request.args.get("clear_existing") or request.args.get("clear")
+    clear_existing = _parse_boolean_parameter(raw_clear, default_value=True)
+
+    configuration = current_app.config.get("APP_CONFIG")
+    if not configuration:
+        return jsonify({"status": "error", "message": "Configuration missing"}), 500
+
+    stocks_session = DatabaseSession(str(configuration.get_path("stocks")))
+    signals_session = DatabaseSession(str(configuration.get_path("signals")))
+
+    try:
+        result = bridge_scout_backfill.run_bridge_scout_backfill(
+            stocks_session=stocks_session,
+            signals_session=signals_session,
+            start_date=start_date,
+            end_date=end_date,
+            budget=budget,
+            clear_existing=clear_existing,
+        )
+        try:
+            cache.clear()
+        except Exception as cache_err:
+            logger.debug("Cache clear skipped: %s", cache_err)
+        return jsonify({"status": "success", "result": result})
+    except Exception as error:
+        logger.error("Bridge Scout trades backfill failed: %s", error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 

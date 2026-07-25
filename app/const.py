@@ -26,8 +26,16 @@ class Strategies(StrEnum):
     # TGIM Strategy
     TGIM = "tgim"
 
+    # Bridge Scout Strategy
+    BridgeScout = "bridge_scout"
+
 
 STRATEGY_ALIASES = {
+    # Bridge Scout
+    "bridge_scout": Strategies.BridgeScout,
+    "bridgescout": Strategies.BridgeScout,
+    "bridge scout": Strategies.BridgeScout,
+    "qqq_eom": Strategies.BridgeScout,
     # TGIM
     "tgim": Strategies.TGIM,
     "tgim_strategy": Strategies.TGIM,
