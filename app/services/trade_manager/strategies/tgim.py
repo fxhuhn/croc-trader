@@ -157,9 +157,8 @@ class TGIMTradeStrategy(BaseTradeStrategy):
 
         entry_date = pd.Timestamp(entry_date_string).date()
 
-        history_from_entry = dataframe_history[
-            dataframe_history["date"].dt.date >= entry_date
-        ]
+        dates = pd.to_datetime(dataframe_history["date"]).dt.date
+        history_from_entry = dataframe_history[dates >= entry_date]
 
         bars_held = len(history_from_entry) - 1
 

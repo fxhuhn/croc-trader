@@ -30,7 +30,7 @@ class TGIMStrategyContext(TypedDict, total=False):
     thursday_close: float
     day: str
     target_symbol: str
-    bars_p: int
+    max_holding_bars: int
     source: str
 
 
@@ -49,7 +49,7 @@ class TGIMStrategy(BaseStrategy[int]):
 
     STRATEGY_IDENTIFIER = Strategies.TGIM
     TARGET_SYMBOL = "SPY"
-    DEFAULT_BARS_P = 2
+    DEFAULT_MAX_HOLDING_BARS = 2
     DEFAULT_LOOKBACK_PERIOD = 30
 
     def __init__(
@@ -105,9 +105,6 @@ class TGIMStrategy(BaseStrategy[int]):
             friday_close = float(friday_candle["close"])
             thursday_close = float(price_history.iloc[-3]["close"])
             threshold_price = min(friday_close, thursday_close)
-            setup_date_str = str(
-                pd.Timestamp(friday_candle["date"]).strftime("%Y-%m-%d")
-            )
 
             if not (current_close < threshold_price):
                 logger.debug(
@@ -118,17 +115,17 @@ class TGIMStrategy(BaseStrategy[int]):
                     thursday_close,
                 )
                 return 0
-            entry_price = current_close
+            setup_close = current_close
         else:
             # Pre-market / pre-close screening: Monday candle is not in DB yet.
             # Use latest available candles (Friday and Thursday).
             friday_close = float(latest_candle["close"])
             thursday_close = float(price_history.iloc[-2]["close"])
             threshold_price = min(friday_close, thursday_close)
-            entry_price = threshold_price
-            setup_date_str = str(
-                pd.Timestamp(latest_candle["date"]).strftime("%Y-%m-%d")
-            )
+            setup_close = threshold_price
+
+        # entry_price is the strategy reference price (threshold_price) per entry-price semantics
+        entry_price = threshold_price
 
         if self.trade_repository.exists(
             self.TARGET_SYMBOL, self.STRATEGY_IDENTIFIER, target_date_str
@@ -142,14 +139,14 @@ class TGIMStrategy(BaseStrategy[int]):
 
         context: TGIMStrategyContext = {
             "date": target_date_str,
-            "setup_date": setup_date_str,
-            "setup_close": entry_price,
+            "setup_date": target_date_str,
+            "setup_close": setup_close,
             "threshold_price": threshold_price,
             "friday_close": friday_close,
             "thursday_close": thursday_close,
             "day": "Monday",
             "target_symbol": self.TARGET_SYMBOL,
-            "bars_p": self.DEFAULT_BARS_P,
+            "max_holding_bars": self.DEFAULT_MAX_HOLDING_BARS,
             "source": "ScreenerEngine",
         }
 

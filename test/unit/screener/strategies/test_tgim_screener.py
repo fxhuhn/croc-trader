@@ -94,7 +94,12 @@ def test_tgim_generates_signal_on_valid_monday_setup(
     call_kwargs = mock_trade_repo.create_trade.call_args.kwargs
     assert call_kwargs["symbol"] == "SPY"
     assert call_kwargs["strategy"] == Strategies.TGIM.value
-    assert call_kwargs["entry"] == 490.0
+    assert call_kwargs["entry"] == 495.0  # threshold_price = min(495.0, 500.0)
+    context = call_kwargs["context"]
+    assert context["setup_close"] == 490.0  # Monday close
+    assert context["threshold_price"] == 495.0
+    assert context["setup_date"] == "2026-07-20"
+    assert context["max_holding_bars"] == 2
 
 
 def test_tgim_fails_if_monday_close_is_not_lowest(
