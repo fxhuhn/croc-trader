@@ -27,12 +27,12 @@
 
 ```mermaid
 graph TD
-    Start((Start)) --> Status{Status?}
+    Start((Start)) --> Status{"Status?"}
 
     subgraph Setup ["Einstiegs-Filter (CREATED)"]
-    Status -- CREATED --> RegimeCheck{QQQ BULL?}
+    Status -- CREATED --> RegimeCheck{"QQQ BULL?"}
     RegimeCheck -- Nein --> Reject[Setup ablehnen]
-    RegimeCheck -- Ja --> DupCheck{Bereits aktiv?}
+    RegimeCheck -- Ja --> DupCheck{"Bereits aktiv?"}
     DupCheck -- Ja --> Reject
     DupCheck -- Nein --> TimeWait["Tag >= 1?"]
     TimeWait -- Nein --> Wait[Warten]
@@ -40,10 +40,10 @@ graph TD
     end
 
     subgraph Rebalance ["Monatliches Rebalancing (ACTIVE)"]
-    Status -- ACTIVE --> MonthCheck{Monatswechsel?}
+    Status -- ACTIVE --> MonthCheck{"Monatswechsel?"}
     MonthCheck -- Nein --> Hold[Position halten]
 
-    MonthCheck -- Ja --> LeaderCheck{Noch in Leaders?}
+    MonthCheck -- Ja --> LeaderCheck{"Noch in Leaders?"}
     LeaderCheck -- Ja --> Hold
     LeaderCheck -- Nein --> Exit[Verkauf / Rebalance Exit]
     end

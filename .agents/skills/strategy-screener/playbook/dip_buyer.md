@@ -35,18 +35,18 @@
 
 ```mermaid
 graph TD
-    Start((Start)) --> Status{Status?}
+    Start((Start)) --> Status{"Status?"}
 
     subgraph Setup ["Einstiegs-Phase (CREATED)"]
-    Status -- CREATED --> DayCheck{Genau Tag 1?}
+    Status -- CREATED --> DayCheck{"Genau Tag 1?"}
     DayCheck -- Ja --> LimitCheck["Low <= Limit?"]
-    LimitCheck -- Ja --> Buy[Kauf / Aktivierung]
     DayCheck -- Nein --> Inval[Setup verfällt]
     LimitCheck -- Nein --> Inval
+    LimitCheck -- Ja --> Buy[Kauf / Aktivierung]
     end
 
     subgraph Management ["Management-Phase (ACTIVE)"]
-    Status -- ACTIVE --> ExitCheck{Exit Bedingung?}
+    Status -- ACTIVE --> ExitCheck{"Exit Bedingung?"}
     ExitCheck -- "Keine" --> Hold[Halten / Warten]
     ExitCheck -- "High >= Target" --> ExitTarget[Target Hit]
     ExitCheck -- "Close > Prev High" --> ExitLOC[LOC Hit]

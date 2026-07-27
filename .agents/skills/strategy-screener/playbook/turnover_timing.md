@@ -42,7 +42,7 @@ graph TD
     %% Start
     START([Start Strategy Iteration]) --> DB_READ[Read Trades from Database]
     
-    DB_READ --> STATUS_CHECK{Trade Status?}
+    DB_READ --> STATUS_CHECK{"Trade Status?"}
 
     %% Path A: New Trades (CREATED)
     STATUS_CHECK -- "CREATED" --> D1_CHECK["Evaluation Day 1 <br/>after signal?"]
@@ -51,15 +51,15 @@ graph TD
     
     D1_CHECK -- "Yes" --> LIMIT_CHECK["Daily Low <= Entry Price?"]
     
-    LIMIT_CHECK -- "No" --> EXPIRE[Mark as REJECTED / EXPIRED]
     EXPIRE --> DB_WRITE_EXP[Save to Database]
     
+    LIMIT_CHECK -- "No" --> EXPIRE
     LIMIT_CHECK -- "Yes" --> ACTIVATE[Mark as ACTIVE <br/>Set Fill @ min Open, Entry]
     ACTIVATE --> INIT_STATE[Initialize green_candle_count <br/>based on candle color]
     INIT_STATE --> DB_WRITE_ACT[Save to Database]
 
     %% Path B: Active Trades (ACTIVE)
-    STATUS_CHECK -- "ACTIVE" --> IDEM_CHECK{Already processed <br/>today?}
+    STATUS_CHECK -- "ACTIVE" --> IDEM_CHECK{"Already processed <br/>today?"}
     
     IDEM_CHECK -- "Yes" --> SKIP
     
@@ -71,7 +71,7 @@ graph TD
     
     %% Management Path
     SEQ_CHECK -- "No" --> UPDATE_COUNT[Update green_candle_count <br/>based on current candle]
-    UPDATE_COUNT --> TIME_CHECK{Is End of Week <br/>Friday/Holiday?}
+    UPDATE_COUNT --> TIME_CHECK{"Is End of Week <br/>Friday/Holiday?"}
     
     %% Exit Option 2: Time Stop
     TIME_CHECK -- "Yes" --> EXIT_T[Close Trade @ CLOSE <br/>Reason: TIME_STOP]

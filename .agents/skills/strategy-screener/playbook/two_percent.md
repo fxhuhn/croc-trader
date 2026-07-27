@@ -24,15 +24,15 @@
 
 ```mermaid
 graph TD
-    Start((Start)) --> Status{Status?}
+    Start((Start)) --> Status{"Status?"}
 
     subgraph Setup ["Einstiegs-Phase (CREATED)"]
-    Status -- CREATED --> DayCheck{Welcher Tag?}
+    Status -- CREATED --> DayCheck{"Welcher Tag?"}
 
-    DayCheck -- "Tag 1 (Mo)" --> HolCheck{Feiertag?}
+    DayCheck -- "Tag 1 (Mo)" --> HolCheck{"Feiertag?"}
     HolCheck -- Ja --> DayCheck
     HolCheck -- Nein --> FillCheck["Low <= Limit?"]
-    DayCheck -- "Tag 2 (Di)" --> PreHol{War Mo Feiertag?}
+    DayCheck -- "Tag 2 (Di)" --> PreHol{"War Mo Feiertag?"}
         PreHol -- Ja --> FillCheck
         PreHol -- Nein --> Inval[Setup verfällt]
 
@@ -47,7 +47,7 @@ graph TD
         TPCheck -- Ja --> ExitTP[Verkauf / Take Profit]
         TPCheck -- Nein --> TimeCheck
 
-        AgeCheck -- Nein --> TimeCheck{Wochenende erreicht?}
+        AgeCheck -- Nein --> TimeCheck{"Wochenende erreicht?"}
 
         TimeCheck -- "Fr (oder Do-Holiday)" --> ExitTime[Verkauf / Time Stop]
         TimeCheck -- Nein --> Hold[Position halten]

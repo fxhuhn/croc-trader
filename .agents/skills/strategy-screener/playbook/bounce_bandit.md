@@ -35,7 +35,7 @@
 
 ```mermaid
 graph TD
-    Start((Start)) --> Status{Status?}
+    Start((Start)) --> Status{"Status?"}
 
     subgraph Setup ["Einstiegs-Phase (CREATED)"]
         Status -- CREATED --> RegimeCheck{"Close > SMA_200 AND ATR_10/Close < 2.5%?"}

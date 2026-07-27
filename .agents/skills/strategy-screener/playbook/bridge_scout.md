@@ -31,22 +31,22 @@
 
 ```mermaid
 graph TD
-    Start((Start)) --> Status{Status?}
+    Start((Start)) --> Status{"Status?"}
 
     subgraph Setup ["Einstiegs-Phase (CREATED)"]
-        Status -- CREATED --> WindowCheck{Im Monatsend-Fenster?<br/>(inkl. Holiday Check)}
+        Status -- CREATED --> WindowCheck{"Im Monatsend-Fenster?<br/>(inkl. Holiday Check)"}
         WindowCheck -- Nein --> Inval[Setup entfällt]
         WindowCheck -- Ja --> RSIFilter["Is RSI(2) < 40?"]
         RSIFilter -- Nein --> Inval
         RSIFilter -- Ja --> ATRFilter["Is ATR(10)/Close < 3.5%?"]
         ATRFilter -- Nein --> Inval
-        ATRFilter -- Ja --> PosCheck{Bereits Position/Setup aktiv?<br/>(MaxPositions = 1)}
+        ATRFilter -- Ja --> PosCheck{"Bereits Position/Setup aktiv?<br/>(MaxPositions = 1)"}
         PosCheck -- Ja --> Inval
         PosCheck -- Nein --> Buy[Kauf QQQ per MOC am Setup-Tag]
     end
 
     subgraph Management ["Management-Phase (ACTIVE)"]
-        Status -- ACTIVE --> MonthCheck{Neuer Kalendermonat?<br/>(ExitRule)}
+        Status -- ACTIVE --> MonthCheck{"Neuer Kalendermonat?<br/>(ExitRule)"}
         MonthCheck -- Ja --> ExitMOC[Exit per MOC am 1. Handelstag]
         MonthCheck -- Nein --> Hold[Position halten]
     end
