@@ -118,19 +118,24 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         active_symbols: set[str] | None = None,
     ) -> TradeTransition | None:
-        """Activates entry on Monday close (Bar 0)."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-        if entry_price <= 0:
+        """Activates entry on Monday close (Bar 0) if Monday Close < threshold."""
+        threshold_price = float(trade.get("entry_price") or 0.0)
+        if threshold_price <= 0:
             return None
 
+        current_close = float(candle["close"])
         date_string = str(candle["date"])
 
-        return self._execute_activation(
-            trade,
-            entry_price,
-            "Monday MOC Entry",
-            date_string,
-        )
+        # Check if Monday close meets the setup condition (at or below threshold)
+        if current_close <= threshold_price:
+            return self._execute_activation(
+                trade,
+                current_close,
+                "Monday MOC Entry",
+                date_string,
+            )
+
+        return None
 
     @override
     def _do_manage_active_trade(
