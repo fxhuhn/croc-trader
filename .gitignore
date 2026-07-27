@@ -37,7 +37,9 @@ signal.sh
 
 # Agenten & Skills
 brain/
-.agent/skills/strategy-screener/playbook/*
+.agents/skills/strategy-screener/playbook/*
+!.agents/skills/strategy-screener/playbook/template.md
+
 
 # Nur temporäre Skripte ignorieren (wichtige Skripte bleiben in Git)
 scripts/one_off/
