@@ -51,3 +51,11 @@ A task is considered to "touch the codebase" if it involves ANY of:
 - Answering questions about how the system works
 - Analyzing log files that reference application components
 - Debugging runtime behavior
+
+## Ambiguity & Clarification Rule (Strict)
+
+> [!IMPORTANT]
+> **No Unverified Assumptions**: Whenever a task, requirement, specification, edge case, or design decision contains ambiguity or is underspecified, you **MUST ALWAYS** ask the user for explicit clarification before making assumptions or executing code/file modifications.
+> - Never guess user intent or independently invent unstated business logic/behavior.
+> - Ask precise, targeted questions to resolve ambiguities before proceeding with implementation.
+
