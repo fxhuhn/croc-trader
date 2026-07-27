@@ -1,7 +1,8 @@
 # Strict Workspace Boundary Protocol
 
 * You are strictly locked into the current working directory from which you were invoked.
-* Never assume, hardcode, or switch to paths belonging to other repositories (e.g., do not mix TradeManager and croc-trader_2).
+* **ZERO EXTERNAL REPOSITORY ACCESS:** Never inspect, read, write, or execute binaries/scripts from external or neighboring repositories (e.g., `github/TradeManager`, `croc-trader_2`, or any path outside the current workspace root).
+* **STRICT COMMAND SCOPING:** Commands passed to `run_command` MUST NOT search or execute outside the workspace. Never run global search commands such as `find /` or `find ~`. All commands must target relative paths within `./` or `.venv/`.
 * All file operations (read, write, list) and shell commands MUST use repository-relative paths starting from the current workspace root.
 * Dynamically detect the current repository name using `git rev-parse --show-toplevel` if context confusion occurs.
 

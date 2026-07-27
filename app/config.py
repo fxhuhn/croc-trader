@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -349,7 +350,7 @@ class ConfigManager:
                 raise RuntimeError(
                     "❌ SECURITY: FLASK_SECRET_KEY is not set in a production environment!"
                 )
-            secret_key = "dev-fallback-key"  # nosec B105
+            secret_key = secrets.token_hex(32)
 
         return EnvConfig(
             APP_ENV=app_env,
