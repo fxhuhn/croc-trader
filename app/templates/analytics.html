@@ -24,10 +24,10 @@
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
     <!-- Section 1: KPI Grid -->
-    <section class="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 mb-8 mt-2 md:mt-0">
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-8 mt-2 md:mt-0">
         {% set pnl = summary.net_pnl | default(0) %}
         <article
-            class="{{ 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30' if pnl >= 0 else 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30' }} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative">
+            class="col-span-2 md:col-span-1 {{ 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30' if pnl >= 0 else 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30' }} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative">
             <div class="flex flex-col items-start">
                 <div class="{{ 'text-emerald-50/80' if pnl >= 0 else 'text-rose-100/80' }} text-xs uppercase font-bold tracking-wider mb-1">
                     Net PnL
@@ -44,7 +44,7 @@
 
         <!-- Win Rate Card -->
         <article
-            class="bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex items-start justify-between gap-2">
+            class="hidden md:flex col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex items-start justify-between gap-2">
             <div class="flex flex-col items-start">
                 <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                     Win Rate
@@ -64,9 +64,9 @@
         </article>
         
         {% set drawdown_value = "{:.1%}".format(summary.max_drawdown | default(0)) %}
-        {{ render_kpi_card("Max Drawdown", drawdown_value, "alert-triangle", "text-rose-500") }}
+        {{ render_kpi_card("Max Drawdown", drawdown_value, "alert-triangle", "text-rose-500", bg_classes="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm") }}
         
-        {{ render_kpi_card("Total Trades", summary.total_trades | default(0), "layers") }}
+        {{ render_kpi_card("Total Trades", summary.total_trades | default(0), "layers", bg_classes="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm") }}
     </section>
 
     <!-- Section 2: Weekly Trend (Chart) -->
