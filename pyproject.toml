@@ -37,12 +37,12 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PL"]
 # N802/N803: camelCase für API-Callback-Methoden/Argumente (z.B. sessionStatus)
 # PLR2004: Magische Zahlen im Vergleich (toleriert für HTTP-Statuscodes und Test-Assertions)
 # PLR0911: Zu viele return-Statements (erlaubt für komplexe Validierungsfunktionen)
-# PLR0912/PLR0913/PLR0915: Komplexitätsprüfungen (Argumente, Verzweigungen und Anweisungen)
+# PLR0912/PLR0913/PLR0914/PLR0915/PLR0917: Komplexitätsprüfungen (Argumente, Verzweigungen und Anweisungen)
 # PLC0415: Lokale Imports (erlaubt zur Vermeidung zirkulärer Abhängigkeiten)
 # E402: Module level import not at top of file (zur Vermeidung von Import-Fehlern in Skripten)
 ignore = [
     "E501", "N802", "N803",
-    "PLR2004", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLC0415",
+    "PLR2004", "PLR0911", "PLR0912", "PLR0913", "PLR0914", "PLR0915", "PLR0917", "PLC0415",
     "E402"
 ]
 

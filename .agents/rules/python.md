@@ -49,6 +49,11 @@ Every code decision must be evaluated against these four quality dimensions, in 
 - **Data Exchange:**
     - Use **`@dataclass(frozen=True)`** for immutable internal business objects to ensure immutability.
     - Use **`TypedDict`** for dictionary-based data structures (e.g., config files, JSON parsing, API responses).
+- **Function Parameter Limits & New Code Standards:**
+    - **Max 5 Positional Parameters (PLR0917):** New functions or methods MUST NOT exceed 5 positional arguments.
+    - **Encapsulation:** When new code requires more than 5 arguments, bundle parameters into an immutable `@dataclass(frozen=True)` or a `TypedDict`.
+    - **Keyword-Only Parameters:** Use keyword-only syntax (`*`) when parameters cannot be grouped into a DataClass to ensure caller clarity.
+    - **Legacy Code Policy:** Do NOT refactor working legacy function signatures solely to fix parameter count lint warnings unless explicitly requested by the user. All NEW functions and refactored modules must strictly comply.
 - **Modern Syntax:**
     - Use `list[str]` instead of `List[str]`.
     - Use `str | int` instead of `Union[str, int]`.
