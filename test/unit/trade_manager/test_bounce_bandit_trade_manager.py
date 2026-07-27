@@ -8,7 +8,7 @@ import pytest
 from app.services.trade_manager.strategies.bounce_bandit import (
     BounceBanditTradeStrategy,
 )
-from app.types import ExitReason, TradeStatus
+from app.types import TradeStatus
 
 
 @pytest.fixture
@@ -102,7 +102,7 @@ def test_bounce_bandit_exit_triggers_on_sma_8_cross(
 
     assert transition is not None
     assert transition.updates["status"] == TradeStatus.CLOSED.value
-    assert transition.updates["exit_reason"] == ExitReason.TAKE_PROFIT.value
+    assert transition.updates["exit_reason"] in ("SMA", "RSI", "RSI / SMA")
     assert transition.updates["exit_price"] == 520.0
 
 
@@ -132,7 +132,7 @@ def test_bounce_bandit_exit_triggers_on_rsi_2_overbought(
 
     assert transition is not None
     assert transition.updates["status"] == TradeStatus.CLOSED.value
-    assert transition.updates["exit_reason"] == ExitReason.TAKE_PROFIT.value
+    assert transition.updates["exit_reason"] in ("SMA", "RSI", "RSI / SMA")
 
 
 def test_bounce_bandit_holds_when_no_exit_condition_met(

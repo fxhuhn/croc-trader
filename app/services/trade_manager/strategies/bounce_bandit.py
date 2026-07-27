@@ -21,7 +21,7 @@ import pandas as pd
 from ....const import Strategies
 from ....models import Order, TradeParams
 from ....tools.indicators import calculate_rsi, calculate_sma
-from ....types import ExitReason, TradeData
+from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy
 
@@ -187,7 +187,14 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         rsi_exit = current_rsi_2 > self.RSI_EXIT_THRESHOLD
 
         if sma_exit or rsi_exit:
-            reason_text = f"Bounce Bandit MOC Exit (SMA_8={current_sma_8:.2f}, RSI_2={current_rsi_2:.2f})"
+            if rsi_exit and sma_exit:
+                exit_reason = "RSI / SMA"
+            elif rsi_exit:
+                exit_reason = "RSI"
+            else:
+                exit_reason = "SMA"
+
+            reason_text = f"Bounce Bandit MOC Exit: {exit_reason} (SMA_8={current_sma_8:.2f}, RSI_2={current_rsi_2:.2f})"
             logger.info(
                 "Closing Bounce Bandit trade ID %s on %s: %s",
                 trade.get("id"),
@@ -197,7 +204,7 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
             return self._close_trade(
                 trade,
                 current_close,
-                ExitReason.TAKE_PROFIT,
+                exit_reason,
                 date_string,
             )
 
