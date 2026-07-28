@@ -32,15 +32,43 @@
                     </div>
                 </div>
 
-                <!-- Right Column: Entry & Exit Trigger -->
+                <!-- Right Column: Entry, Indicators & Exit Trigger -->
                 <div class="flex flex-col">
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">Entry</span>
                         <span class="tabular-nums text-slate-700 font-bold text-xs">{{ "{:,.2f}".format(trade.entry_price|float) }}</span>
                     </div>
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs text-indigo-600">Exit Rule</span>
-                        <span class="tabular-nums text-indigo-600 font-bold text-xs">Close &gt; SMA(8) / RSI(2) &gt; 75</span>
+                        <span class="text-slate-500 font-medium text-xs">SMA(8)</span>
+                        <span class="tabular-nums text-slate-700 font-bold text-xs">
+                            {% if trade.context and trade.context.get('sma_8') is not none %}
+                            {{ "{:,.2f}".format(trade.context.get('sma_8')|float) }}
+                            {% else %}-{% endif %}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium text-xs">RSI(2)</span>
+                        <span class="tabular-nums text-amber-600 font-bold text-xs">
+                            {% if trade.context and trade.context.get('rsi_2') is not none %}
+                            {{ "{:,.2f}".format(trade.context.get('rsi_2')|float) }}
+                            {% else %}-{% endif %}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium text-xs text-indigo-600">Target</span>
+                        <span class="tabular-nums text-indigo-600 font-bold text-xs">
+                            {% if trade.context and trade.context.get('target') is not none %}
+                            &gt; {{ "{:,.2f}".format(trade.context.get('target')|float) }}
+                            {% elif trade.context and trade.context.get('target_price') is not none %}
+                            &gt; {{ "{:,.2f}".format(trade.context.get('target_price')|float) }}
+                            {% elif trade.context and trade.context.get('required_exit_price') is not none %}
+                            &gt; {{ "{:,.2f}".format(trade.context.get('required_exit_price')|float) }}
+                            {% else %}-{% endif %}
+                        </span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium text-xs text-slate-400">Exit Rule</span>
+                        <span class="tabular-nums text-slate-400 font-medium text-xs">Close &gt; SMA(8) / RSI(2) &gt; 75</span>
                     </div>
                 </div>
             </div>
@@ -103,8 +131,17 @@
                     </div>
 
                     <!-- 7. Exit Condition -->
-                    <div class="text-right text-xs text-indigo-600 font-medium whitespace-nowrap">
-                        Close &gt; SMA(8) | RSI(2) &gt; 75
+                    <div class="text-right text-xs whitespace-nowrap flex flex-col items-end">
+                        <span class="text-indigo-600 font-bold">
+                            {% if trade.context and trade.context.get('target') is not none %}
+                            Target &gt; {{ "{:,.2f}".format(trade.context.get('target')|float) }}
+                            {% elif trade.context and trade.context.get('target_price') is not none %}
+                            Target &gt; {{ "{:,.2f}".format(trade.context.get('target_price')|float) }}
+                            {% elif trade.context and trade.context.get('required_exit_price') is not none %}
+                            Target &gt; {{ "{:,.2f}".format(trade.context.get('required_exit_price')|float) }}
+                            {% else %}Close &gt; SMA(8) | RSI(2) &gt; 75{% endif %}
+                        </span>
+                        <span class="text-slate-400 text-[10px]">Close &gt; SMA(8) | RSI(2) &gt; 75</span>
                     </div>
 
                     <!-- 8. Open PnL -->

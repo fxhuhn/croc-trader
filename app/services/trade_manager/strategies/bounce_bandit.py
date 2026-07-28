@@ -64,6 +64,57 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         )
 
     @override
+    def get_daily_updates(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+    ) -> dict[str, object]:
+        """Calculates daily indicator values (SMA_8, RSI_2) and required exit target prices to persist in signal_context."""
+        if dataframe_history.empty or len(dataframe_history) < self.EXIT_SMA_LEN:
+            return {}
+
+        close_series = dataframe_history["close"].astype(float)
+        sma_8_series = calculate_sma(close_series, self.EXIT_SMA_LEN)
+        rsi_2_series = calculate_rsi(close_series, 2)
+
+        if sma_8_series.empty or rsi_2_series.empty:
+            return {}
+
+        current_sma_8 = float(sma_8_series.iloc[-1])
+        current_rsi_2 = float(rsi_2_series.iloc[-1])
+
+        # Calculate required Close price for MOC Exit on current trading session
+        # 1. SMA Exit: Close > SMA_8 requires Close > SMA_7 of the preceding 7 closes
+        last_7_closes = close_series.iloc[-7:]
+        required_sma_exit = float(last_7_closes.mean()) + 0.01
+
+        # 2. RSI(2) Exit: RSI_2 > 75 requires RS > 3
+        delta = close_series.diff()
+        gain = (delta.where(delta > 0, 0)).fillna(0)
+        loss = (-delta.where(delta < 0, 0)).fillna(0)
+        avg_gain_series = gain.ewm(alpha=0.5, adjust=False).mean()
+        avg_loss_series = loss.ewm(alpha=0.5, adjust=False).mean()
+
+        last_avg_gain = float(avg_gain_series.iloc[-1])
+        last_avg_loss = float(avg_loss_series.iloc[-1])
+        last_close = float(close_series.iloc[-1])
+
+        required_delta_rsi = max(0.0, (3.0 * last_avg_loss) - last_avg_gain)
+        required_rsi_exit = last_close + required_delta_rsi + 0.01
+
+        # Combined minimum required exit price (earliest trigger target)
+        target_price = min(required_sma_exit, required_rsi_exit)
+
+        return {
+            "sma_8": round(current_sma_8, 2),
+            "rsi_2": round(current_rsi_2, 2),
+            "target": round(target_price, 2),
+            "target_price": round(target_price, 2),
+            "required_sma_exit": round(required_sma_exit, 2),
+            "required_rsi_exit": round(required_rsi_exit, 2),
+        }
+
+    @override
     def _generate_entry_order(
         self,
         trade: TradeData,

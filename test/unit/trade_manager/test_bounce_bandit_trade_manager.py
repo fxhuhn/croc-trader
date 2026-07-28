@@ -160,3 +160,39 @@ def test_bounce_bandit_holds_when_no_exit_condition_met(
     transition = trade_strategy.manage_active_trade(trade, df_history)
 
     assert transition is None
+
+
+def test_bounce_bandit_get_daily_updates_returns_sma_8_and_rsi_2(
+    trade_strategy: BounceBanditTradeStrategy,
+) -> None:
+    """Tests that get_daily_updates calculates and returns sma_8 and rsi_2."""
+    trade = {
+        "id": 1,
+        "symbol": "QQQ",
+        "strategy": "bounce_bandit",
+        "status": TradeStatus.ACTIVE.value,
+        "entry_price": 500.0,
+    }
+    prices = [520.0, 518.0, 515.0, 512.0, 510.0, 508.0, 506.0, 504.0, 502.0, 500.0]
+    dates = pd.date_range("2026-07-10", periods=10, freq="B")
+
+    records = [
+        {"date": d, "open": p, "high": p + 2, "low": p - 2, "close": p}
+        for d, p in zip(dates, prices, strict=True)
+    ]
+    df_history = pd.DataFrame(records)
+
+    updates = trade_strategy.get_daily_updates(trade, df_history)
+
+    assert "sma_8" in updates
+    assert "rsi_2" in updates
+    assert "target" in updates
+    assert "target_price" in updates
+    assert "required_sma_exit" in updates
+    assert "required_rsi_exit" in updates
+    assert isinstance(updates["sma_8"], float)
+    assert isinstance(updates["rsi_2"], float)
+    assert isinstance(updates["target"], float)
+    assert updates["target"] <= max(
+        updates["required_sma_exit"], updates["required_rsi_exit"]
+    )
