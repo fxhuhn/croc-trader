@@ -32,6 +32,37 @@ The **Screener** (`app/services/screener/`) is responsible for identifying trade
 | **Duplikat-Check** | Prevent duplicate signals for same symbol/date/strategy |
 | **Telegram: Signal erkannt** | Send notification with setup details (see Telegram section) |
 
+---
+
+## Standardized `signal_context` Specification & Conventions
+
+All strategy screeners must adhere to the following strict conventions for `signal_context`:
+
+### 1. Mandatory Core Fields (Minimum Requirements)
+Every `signal_context` dictionary **MUST** contain at minimum:
+- `date`: ISO date string of the setup candle (`"YYYY-MM-DD"`).
+- `setup_close`: Closing price of the asset on the setup day (`float`).
+- `source`: Processing engine identifier (`"screener"` or `"ScreenerEngine"`).
+
+### 2. Indicator Period Naming Conventions
+- **Mandatory Underscore Before Period Numbers**: All technical indicator context keys **MUST** use an underscore preceding period lengths to ensure consistency across strategies:
+  - ✅ `rsi_2`, `rsi_14` (Forbidden: `rsi2`, `rsi14`)
+  - ✅ `atr_10`, `atr_14`, `atr_pct` (Forbidden: `atr10`)
+  - ✅ `sma_200`, `sma_50` (Forbidden: `sma200`)
+  - ✅ `roc_21`, `ema_20`
+
+### 3. Binding Mermaid Flowchart Styling Standard
+All strategy decision flowcharts in `.agents/skills/strategy-screener/playbook/*.md` **MUST** follow this exact 4-category status-based color scheme, holding loop notation, and legend subgraph:
+
+| Status Category | Hex Fill | Hex Stroke | Font Color | Meaning |
+|:---|:---|:---|:---|:---|
+| **Neutral** | `#f1f5f9` *(Slate 100)* | `#475569` *(Slate 600)* | `#0f172a` | Neutral / no event / waiting / holding position (`S4`, `T5`) |
+| **Active** | `#e6f1fb` *(Blue 100)* | `#185fa5` *(Blue 700)* | `#0f172a` | Active / in progress / trade activation (`T1`) |
+| **Success** | `#dcfce7` *(Emerald 100)* | `#166534` *(Emerald 800)* | `#0f172a` | Successfully completed signal generation (`S6` / `S7`) |
+| **Exit / Error** | `#fee2e2` *(Red 100)* | `#991b1b` *(Red 800)* | `#0f172a` | Position closed / error / rejected (`T3`, `T4`) |
+
+Every flowchart **MUST** include the standard `subgraph Legende [" "]` and holding return loop `T5 -.->|"nächster Handelstag"| T2`.
+
 **The Screener must NEVER:**
 - Write execution sizes, order IDs, or broker state details
 - Activate or close trades (status transitions)

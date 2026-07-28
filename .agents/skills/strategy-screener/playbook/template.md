@@ -17,12 +17,13 @@ Dieses Template definiert die Struktur und Checklisten für jede neue Strategie.
 
 Der Screener muss folgende Felder im Context liefern:
 
-| Feld | Pflicht | Beschreibung |
-|:---|:---:|:---|
-| `date` | ✅ | ISO-Datum des Setups (YYYY-MM-DD) |
-| `setup_close` | ✅ | Closing-Preis zum Setup-Zeitpunkt |
-| `source` | ✅ | Immer `"ScreenerEngine"` oder `"screener"` |
-| *Strategie-spezifische Indikatoren* | ✅ | z.B. `sma_200`, `rsi_2`, `atr_10`, `momentum_score` |
+| Feld | Pflicht | Erfassungszeitpunkt | Beschreibung |
+|:---|:---:|:---|:---|
+| `date` | ✅ | Screener (Phase 1) | ISO-Datum des Setups (`YYYY-MM-DD`) |
+| `setup_close` | ✅ | Screener (Phase 1) | Closing-Preis zum Setup-Zeitpunkt |
+| `source` | ✅ | Screener (Phase 1) | Immer `"ScreenerEngine"` oder `"screener"` |
+| *Indikatoren (Unterstrich-Regel)* | ✅ | Screener (Phase 1) | z.B. `sma_200`, `rsi_2`, `atr_10`, `momentum_score` |
+| *Dynamische Laufzeit-Metriken* | ❌ | Trade Manager (Phase 2) | z.B. `green_candle_count`, `target_exit_sma` |
 
 ### 3. Entry-Price Typ bestimmen
 
@@ -152,10 +153,28 @@ graph TD
         T2 --> T4{"Exit-Bedingung?"}
         T4 -- Ja --> T5["Trade schließen (CLOSED)"]
         T4 -- Nein --> T6["Position halten"]
+        T6 -.->|"nächster Handelstag"| T4
     end
 
     S4 -.-> T1
 
-    style Screener fill:#f0f9ff,stroke:#0284c7
-    style TradeManager fill:#fdf2f8,stroke:#be185d
+    subgraph Legende [" "]
+        L1["Neutral"]
+        L2["Aktiv"]
+        L3["Erfolg"]
+        L4["Exit / Fehler"]
+    end
+
+    style Screener fill:#f0f9ff,stroke:#0284c7,color:#0f172a
+    style TradeManager fill:#fdf2f8,stroke:#be185d,color:#0f172a
+    style S4 fill:#dcfce7,stroke:#166534,color:#0f172a
+    style T2 fill:#e6f1fb,stroke:#185fa5,color:#0f172a
+    style T5 fill:#fee2e2,stroke:#991b1b,color:#0f172a
+    style S5 fill:#f1f5f9,stroke:#475569,color:#0f172a
+    style T3 fill:#f1f5f9,stroke:#475569,color:#0f172a
+    style T6 fill:#f1f5f9,stroke:#475569,color:#0f172a
+    style L1 fill:#f1f5f9,stroke:#475569,color:#0f172a
+    style L2 fill:#e6f1fb,stroke:#185fa5,color:#0f172a
+    style L3 fill:#dcfce7,stroke:#166534,color:#0f172a
+    style L4 fill:#fee2e2,stroke:#991b1b,color:#0f172a
 ```
