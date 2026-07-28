@@ -66,6 +66,39 @@ def calculate_rsi(series: pd.Series, window: int = 14) -> pd.Series:
     return rsi
 
 
+def calculate_max_close_for_rsi(
+    close_series: pd.Series, window: int = 2, rsi_target: float = 40.0
+) -> float:
+    """Calculates the maximum Close price required today for RSI(window) <= rsi_target.
+
+    Uses Wilder's EWM smoothing matching calculate_rsi. The close_series parameter
+    must contain price history up to yesterday (t-1).
+    """
+    if len(close_series) < window + 1:
+        return float("nan")
+
+    delta = close_series.diff()
+    gain = (delta.where(delta > 0, 0)).fillna(0)
+    loss = (-delta.where(delta < 0, 0)).fillna(0)
+
+    avg_gain_series = gain.ewm(alpha=1 / window, adjust=False).mean()
+    avg_loss_series = loss.ewm(alpha=1 / window, adjust=False).mean()
+
+    ag_prev = float(avg_gain_series.iloc[-1])
+    al_prev = float(avg_loss_series.iloc[-1])
+    close_prev = float(close_series.iloc[-1])
+
+    rs_target = rsi_target / (100.0 - rsi_target)
+    rsi_decay = (
+        (100.0 * ag_prev / (ag_prev + al_prev)) if (ag_prev + al_prev) > 0 else 50.0
+    )
+
+    if rsi_decay >= rsi_target:
+        return close_prev + al_prev - ag_prev * (100.0 / rsi_target - 1.0)
+
+    return close_prev + rs_target * al_prev - ag_prev
+
+
 def calculate_ema(series: pd.Series, window: int) -> pd.Series:
     """Calculates the Exponential Moving Average (EMA)."""
     return series.ewm(span=window, adjust=False).mean()

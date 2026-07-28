@@ -14,7 +14,11 @@ import pandas as pd
 from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
-from ....tools.indicators import calculate_atr, calculate_rsi
+from ....tools.indicators import (
+    calculate_atr,
+    calculate_max_close_for_rsi,
+    calculate_rsi,
+)
 from ....tools.market_holidays import MarketHolidayChecker
 from ....types import TradeStatus
 from ...telegram import TelegramBot
@@ -28,9 +32,9 @@ class BridgeScoutStrategyContext(TypedDict):
 
     date: str
     setup_close: float
-    rsi2: float
+    rsi_2: float
     atr_pct: float
-    target_symbol: str
+    req_close_rsi40: float
     source: str
 
 
@@ -221,12 +225,18 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             )
             return 0
 
+        req_close_rsi40 = calculate_max_close_for_rsi(
+            close_series.iloc[:-1],
+            window=2,
+            rsi_target=self.DEFAULT_RSI_THRESHOLD,
+        )
+
         context: BridgeScoutStrategyContext = {
             "date": target_date_str,
             "setup_close": current_close,
-            "rsi2": round(current_rsi, 2),
+            "rsi_2": round(current_rsi, 2),
             "atr_pct": round(atr_pct, 2),
-            "target_symbol": self.TARGET_SYMBOL,
+            "req_close_rsi40": round(req_close_rsi40, 2),
             "source": "ScreenerEngine",
         }
 
