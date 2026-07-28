@@ -191,6 +191,54 @@ class PortfolioAllocator:
                 reason=f"NDXMomentum Budget ({budget_decimal})",
             )
 
-        # 6. Default / Fallback
+        # 6. TGIM Strategy (Fixed Budget)
+        if strategy_enum == Strategies.TGIM:
+            budget_decimal = Decimal(
+                str(self.portfolio_config.get_budget(strategy_enum.value))
+            )
+            size = int(budget_decimal / entry_price_decimal)
+            if size < 1:
+                return AllocationResult(0, 0.0, 0.0, "Price > Budget")
+
+            return AllocationResult(
+                size=size,
+                budget_used=float(budget_decimal),
+                risk_amount=0.0,
+                reason=f"TGIM Budget ({budget_decimal})",
+            )
+
+        # 7. Bridge Scout Strategy (Fixed Budget)
+        if strategy_enum == Strategies.BridgeScout:
+            budget_decimal = Decimal(
+                str(self.portfolio_config.get_budget(strategy_enum.value))
+            )
+            size = int(budget_decimal / entry_price_decimal)
+            if size < 1:
+                return AllocationResult(0, 0.0, 0.0, "Price > Budget")
+
+            return AllocationResult(
+                size=size,
+                budget_used=float(budget_decimal),
+                risk_amount=0.0,
+                reason=f"BridgeScout Budget ({budget_decimal})",
+            )
+
+        # 8. Bounce Bandit Strategy (Fixed Budget)
+        if strategy_enum == Strategies.BounceBandit:
+            budget_decimal = Decimal(
+                str(self.portfolio_config.get_budget(strategy_enum.value))
+            )
+            size = int(budget_decimal / entry_price_decimal)
+            if size < 1:
+                return AllocationResult(0, 0.0, 0.0, "Price > Budget")
+
+            return AllocationResult(
+                size=size,
+                budget_used=float(budget_decimal),
+                risk_amount=0.0,
+                reason=f"BounceBandit Budget ({budget_decimal})",
+            )
+
+        # 9. Default / Fallback
         logger.warning("[%s] Unhandled Strategy Enum: %s", symbol, strategy_enum)
         return AllocationResult(0, 0.0, 0.0, "Unhandled Strategy")

@@ -118,6 +118,18 @@ class PortfolioConfig:
     ndx_momentum: PortfolioStrategyConfig = field(
         default_factory=lambda: PortfolioStrategyConfig(budget=10000.0)
     )
+    tgim: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(budget=10000.0)
+    )
+    bridge_scout: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(budget=10000.0)
+    )
+    bounce_bandit: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(budget=10000.0)
+    )
+    croc_setup: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(risk_amount=100.0)
+    )
     hold_target: PortfolioStrategyConfig = field(
         default_factory=lambda: PortfolioStrategyConfig(risk_amount=100.0)
     )
@@ -127,16 +139,24 @@ class PortfolioConfig:
 
     def get_budget(self, strategy_key: str) -> float:
         """Returns the budget for a strategy. 0.0 if not budget-based."""
-        normalized_key = strategy_key.replace(".", "_")
+        normalized_key = strategy_key.replace(".", "_").lower()
         if normalized_key.startswith("turnover_timing"):
             normalized_key = "turnover_timing"
-        config = getattr(self, normalized_key, None)
+        from .const import STRATEGY_ALIASES
+
+        canonical = STRATEGY_ALIASES.get(normalized_key)
+        target_name = canonical.value if hasattr(canonical, "value") else normalized_key
+        config = getattr(self, str(target_name), None)
         return config.budget if config else 0.0
 
     def get_risk_amount(self, strategy_key: str) -> float:
         """Returns the risk amount for a strategy. 0.0 if not risk-based."""
-        normalized_key = strategy_key.replace(".", "_")
-        config = getattr(self, normalized_key, None)
+        normalized_key = strategy_key.replace(".", "_").lower()
+        from .const import STRATEGY_ALIASES
+
+        canonical = STRATEGY_ALIASES.get(normalized_key)
+        target_name = canonical.value if hasattr(canonical, "value") else normalized_key
+        config = getattr(self, str(target_name), None)
         return config.risk_amount if config else 0.0
 
 
@@ -274,6 +294,10 @@ class AppConfig:
                 ),
                 two_percent=get_strat_config("two_percent", default_budget=2000.0),
                 ndx_momentum=get_strat_config("ndx_momentum", default_budget=10000.0),
+                tgim=get_strat_config("tgim", default_budget=10000.0),
+                bridge_scout=get_strat_config("bridge_scout", default_budget=10000.0),
+                bounce_bandit=get_strat_config("bounce_bandit", default_budget=10000.0),
+                croc_setup=get_strat_config("croc_setup", default_risk=100.0),
                 hold_target=get_strat_config("hold_target", default_risk=100.0),
                 split_target=get_strat_config("split_target", default_risk=100.0),
             )

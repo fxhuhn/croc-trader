@@ -85,6 +85,39 @@ def allocator():
             0,
             "Risk/Share > Risk Amount",
         ),
+        # Happy Path: TGIM (Budget 10000)
+        (
+            {"strategy": "TGIM", "entry_price": 500.0, "symbol": "QQQ"},
+            20,  # 10000 / 500 = 20
+            "Budget",
+        ),
+        (
+            {"strategy": "tgim", "entry_price": 500.0, "symbol": "QQQ"},
+            20,
+            "Budget",
+        ),
+        # Happy Path: BridgeScout (Budget 10000)
+        (
+            {"strategy": "BridgeScout", "entry_price": 500.0, "symbol": "QQQ"},
+            20,
+            "Budget",
+        ),
+        (
+            {"strategy": "bridge_scout", "entry_price": 500.0, "symbol": "QQQ"},
+            20,
+            "Budget",
+        ),
+        # Happy Path: BounceBandit (Budget 10000)
+        (
+            {"strategy": "BounceBandit", "entry_price": 500.0, "symbol": "QQQ"},
+            20,
+            "Budget",
+        ),
+        (
+            {"strategy": "bounce_bandit", "entry_price": 500.0, "symbol": "QQQ"},
+            20,
+            "Budget",
+        ),
         # Unknown Strategy
         (
             {"strategy": "RandomStrat", "entry_price": 100.0, "symbol": "TEST"},
@@ -214,3 +247,29 @@ def test_manager_handles_allocation_failure_gracefully(manager, mock_repo):
     # Assert
     assert count == 0
     mock_repo.update_trade.assert_not_called()
+
+
+def test_portfolio_config_strategy_budgets():
+    from app.config import AppConfig, PortfolioConfig
+
+    config = PortfolioConfig()
+    assert config.get_budget("tgim") == 10000.0
+    assert config.get_budget("bounce_bandit") == 10000.0
+    assert config.get_budget("bridge_scout") == 10000.0
+    assert config.get_budget("ndx_momentum") == 10000.0
+    assert config.get_budget("dip_buyer") == 2500.0
+
+    # Test YAML dict deserialization
+    raw_data = {
+        "portfolio": {
+            "strategies": {
+                "tgim": {"budget": 12000.0},
+                "bounce_bandit": {"budget": 15000.0},
+                "bridge_scout": {"budget": 11000.0},
+            }
+        }
+    }
+    app_cfg = AppConfig.from_dict(raw_data)
+    assert app_cfg.portfolio.get_budget("tgim") == 12000.0
+    assert app_cfg.portfolio.get_budget("bounce_bandit") == 15000.0
+    assert app_cfg.portfolio.get_budget("bridge_scout") == 11000.0
