@@ -54,14 +54,14 @@ Every `signal_context` dictionary **MUST** contain at minimum:
 ### 3. Binding Mermaid Flowchart Styling Standard
 All strategy decision flowcharts in `.agents/skills/strategy-screener/playbook/*.md` **MUST** follow this exact 4-category status-based color scheme, holding loop notation, and legend subgraph:
 
-| Status Category | Hex Fill | Hex Stroke | Font Color | Meaning |
+| Status Category | Hex Fill | Hex Stroke | Font Color | Meaning & Node Label Standard |
 |:---|:---|:---|:---|:---|
-| **Neutral** | `#f1f5f9` *(Slate 100)* | `#475569` *(Slate 600)* | `#0f172a` | Neutral / no event / waiting / holding position (`S4`, `T5`) |
-| **Active** | `#e6f1fb` *(Blue 100)* | `#185fa5` *(Blue 700)* | `#0f172a` | Active / in progress / trade activation (`T1`) |
-| **Success** | `#dcfce7` *(Emerald 100)* | `#166534` *(Emerald 800)* | `#0f172a` | Successfully completed signal generation (`S6` / `S7`) |
-| **Exit / Error** | `#fee2e2` *(Red 100)* | `#991b1b` *(Red 800)* | `#0f172a` | Position closed / error / rejected (`T3`, `T4`) |
+| **Neutral** | `#f1f5f9` *(Slate 100)* | `#475569` *(Slate 600)* | `#0f172a` | Neutral / no event / waiting / holding position (`S4`, `Position halten (ACTIVE)`) |
+| **Active** | `#e6f1fb` *(Blue 100)* | `#185fa5` *(Blue 700)* | `#0f172a` | Active / in progress / trade activation (`(CREATED → ACTIVE)`) |
+| **Success** | `#dcfce7` *(Emerald 100)* | `#166534` *(Emerald 800)* | `#0f172a` | Successfully completed signal generation (`Signal schreiben (CREATED)`) |
+| **Exit / Error** | `#fee2e2` *(Red 100)* | `#991b1b` *(Red 800)* | `#0f172a` | Position closed / exit (`(ACTIVE → CLOSED)`) |
 
-Every flowchart **MUST** include the standard `subgraph Legende [" "]` and holding return loop `T5 -.->|"nächster Handelstag"| T2`.
+Every flowchart **MUST** include explicit status transition labels (`CREATED → ACTIVE`, `ACTIVE → CLOSED`), the standard `subgraph Legende [" "]`, and holding return loop `T5 -.->|"nächster Handelstag"| T2`.
 
 **The Screener must NEVER:**
 - Write execution sizes, order IDs, or broker state details

@@ -148,11 +148,11 @@ graph TD
     end
 
     subgraph TradeManager ["Phase 2: Ausführung (Trade Manager)"]
-        T1{"Entry-Bedingung erfüllt?"} -- Ja --> T2["Aktivierung (ACTIVE)"]
+        T1{"Entry-Bedingung erfüllt?"} -- Ja --> T2["Aktivierung\n(CREATED → ACTIVE)"]
         T1 -- Nein --> T3["Ablehnung / Verfall"]
         T2 --> T4{"Exit-Bedingung?"}
-        T4 -- Ja --> T5["Trade schließen (CLOSED)"]
-        T4 -- Nein --> T6["Position halten"]
+        T4 -- Ja --> T5["Trade schließen\n(ACTIVE → CLOSED)"]
+        T4 -- Nein --> T6["Position halten\n(ACTIVE)"]
         T6 -.->|"nächster Handelstag"| T4
     end
 
