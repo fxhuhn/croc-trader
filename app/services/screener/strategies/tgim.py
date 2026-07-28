@@ -6,6 +6,8 @@ lower than both Friday's close and Thursday's close.
 
 import datetime
 import logging
+from dataclasses import dataclass
+from decimal import Decimal
 from typing import TypedDict, override
 
 import pandas as pd
@@ -17,6 +19,17 @@ from ...telegram import TelegramBot
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TGIMSetupResult:
+    """Immutable result of pure TGIM setup evaluation."""
+
+    is_signal: bool
+    setup_close: Decimal
+    threshold_price: Decimal
+    friday_close: Decimal
+    thursday_close: Decimal
 
 
 class TGIMStrategyContext(TypedDict, total=False):
@@ -31,6 +44,27 @@ class TGIMStrategyContext(TypedDict, total=False):
     day: str
     max_holding_bars: int
     source: str
+
+
+def evaluate_tgim_setup(
+    current_close: Decimal,
+    friday_close: Decimal,
+    thursday_close: Decimal,
+) -> TGIMSetupResult:
+    """Pure calculation: Evaluates TGIM setup condition without side effects.
+
+    Setup Condition: Monday Close < min(Friday Close, Thursday Close).
+    """
+    threshold_price = min(friday_close, thursday_close)
+    is_signal = current_close < threshold_price
+
+    return TGIMSetupResult(
+        is_signal=is_signal,
+        setup_close=current_close,
+        threshold_price=threshold_price,
+        friday_close=friday_close,
+        thursday_close=thursday_close,
+    )
 
 
 class TGIMStrategy(BaseStrategy[int]):
@@ -99,32 +133,39 @@ class TGIMStrategy(BaseStrategy[int]):
             # Monday candle is present in history (post-market or historical backtest)
             if len(price_history) < 3:
                 return 0
-            current_close = float(latest_candle["close"])
-            friday_candle = price_history.iloc[-2]
-            friday_close = float(friday_candle["close"])
-            thursday_close = float(price_history.iloc[-3]["close"])
-            threshold_price = min(friday_close, thursday_close)
+            current_close = Decimal(str(latest_candle["close"]))
+            friday_close = Decimal(str(price_history.iloc[-2]["close"]))
+            thursday_close = Decimal(str(price_history.iloc[-3]["close"]))
 
-            if not (current_close < threshold_price):
+            setup_result = evaluate_tgim_setup(
+                current_close=current_close,
+                friday_close=friday_close,
+                thursday_close=thursday_close,
+            )
+
+            if not setup_result.is_signal:
                 logger.debug(
-                    "TGIM setup condition failed for SPY on %s: close=%.2f not < min(%.2f, %.2f).",
+                    "TGIM setup condition failed for SPY on %s: close=%s not < min(%s, %s).",
                     target_date_str,
                     current_close,
                     friday_close,
                     thursday_close,
                 )
                 return 0
-            setup_close = current_close
         else:
             # Pre-market / pre-close screening: Monday candle is not in DB yet.
-            # Use latest available candles (Friday and Thursday).
-            friday_close = float(latest_candle["close"])
-            thursday_close = float(price_history.iloc[-2]["close"])
+            friday_close = Decimal(str(latest_candle["close"]))
+            thursday_close = Decimal(str(price_history.iloc[-2]["close"]))
             threshold_price = min(friday_close, thursday_close)
-            setup_close = threshold_price
+            setup_result = TGIMSetupResult(
+                is_signal=True,
+                setup_close=threshold_price,
+                threshold_price=threshold_price,
+                friday_close=friday_close,
+                thursday_close=thursday_close,
+            )
 
-        # entry_price is the strategy reference price (threshold_price) per entry-price semantics
-        entry_price = threshold_price
+        entry_price = float(setup_result.threshold_price)
 
         if self.trade_repository.exists(
             self.TARGET_SYMBOL, self.STRATEGY_IDENTIFIER, target_date_str
@@ -139,10 +180,10 @@ class TGIMStrategy(BaseStrategy[int]):
         context: TGIMStrategyContext = {
             "date": target_date_str,
             "setup_date": target_date_str,
-            "setup_close": setup_close,
-            "threshold_price": threshold_price,
-            "friday_close": friday_close,
-            "thursday_close": thursday_close,
+            "setup_close": float(setup_result.setup_close),
+            "threshold_price": float(setup_result.threshold_price),
+            "friday_close": float(setup_result.friday_close),
+            "thursday_close": float(setup_result.thursday_close),
             "day": "Monday",
             "max_holding_bars": self.DEFAULT_MAX_HOLDING_BARS,
             "source": "ScreenerEngine",
@@ -172,5 +213,5 @@ class TGIMStrategy(BaseStrategy[int]):
         """Resolves the target analysis date as a datetime.date object."""
         if analysis_date:
             return datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
-        target_datetime = datetime.datetime.now() - datetime.timedelta(days=days)
-        return target_datetime.date()
+        reference_date = datetime.date.today()
+        return reference_date - datetime.timedelta(days=days)

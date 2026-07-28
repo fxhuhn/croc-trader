@@ -1,10 +1,80 @@
 """Unit tests for the TGIM trade manager execution strategy."""
 
+from decimal import Decimal
+
 import pandas as pd
 import pytest
 
-from app.services.trade_manager.strategies.tgim import TGIMTradeStrategy
+from app.services.trade_manager.strategies.tgim import (
+    TGIMTradeStrategy,
+    calculate_tgim_position_quantity,
+    evaluate_tgim_exit,
+)
 from app.types import ExitReason, TradeStatus
+
+# =====================================================================
+# Functional Core Unit Tests
+# =====================================================================
+
+
+def test_evaluate_tgim_exit_bar1_take_profit() -> None:
+    """Tests evaluate_tgim_exit triggers TAKE_PROFIT on Bar 1 if current > previous."""
+    reason = evaluate_tgim_exit(
+        bars_held=1,
+        current_close=Decimal("504.0"),
+        previous_close=Decimal("500.0"),
+    )
+    assert reason == ExitReason.TAKE_PROFIT
+
+
+def test_evaluate_tgim_exit_bar1_hold() -> None:
+    """Tests evaluate_tgim_exit returns None on Bar 1 if current <= previous."""
+    reason = evaluate_tgim_exit(
+        bars_held=1,
+        current_close=Decimal("497.0"),
+        previous_close=Decimal("500.0"),
+    )
+    assert reason is None
+
+
+def test_evaluate_tgim_exit_bar2_take_profit() -> None:
+    """Tests evaluate_tgim_exit triggers TAKE_PROFIT on Bar 2 if current > previous."""
+    reason = evaluate_tgim_exit(
+        bars_held=2,
+        current_close=Decimal("499.0"),
+        previous_close=Decimal("497.0"),
+    )
+    assert reason == ExitReason.TAKE_PROFIT
+
+
+def test_evaluate_tgim_exit_bar2_time_stop() -> None:
+    """Tests evaluate_tgim_exit triggers TIME_STOP on Bar 2 if current <= previous."""
+    reason = evaluate_tgim_exit(
+        bars_held=2,
+        current_close=Decimal("495.0"),
+        previous_close=Decimal("497.0"),
+    )
+    assert reason == ExitReason.TIME_STOP
+
+
+def test_calculate_tgim_position_quantity_valid() -> None:
+    """Tests calculate_tgim_position_quantity floors share calculation cleanly."""
+    qty = calculate_tgim_position_quantity(
+        allocated_budget=Decimal("10000.0"),
+        entry_price=Decimal("495.0"),
+    )
+    assert qty == 20  # 10000 / 495 = 20.2020 -> 20 shares
+
+
+def test_calculate_tgim_position_quantity_invalid() -> None:
+    """Tests calculate_tgim_position_quantity handles zero or negative values."""
+    assert calculate_tgim_position_quantity(Decimal("0.0"), Decimal("495.0")) == 0
+    assert calculate_tgim_position_quantity(Decimal("10000.0"), Decimal("0.0")) == 0
+
+
+# =====================================================================
+# Imperative Shell Integration Tests
+# =====================================================================
 
 
 @pytest.fixture

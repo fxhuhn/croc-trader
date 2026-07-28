@@ -1,5 +1,6 @@
 """Unit tests for the TGIM screener strategy."""
 
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -8,7 +9,73 @@ import pytest
 from app.const import Strategies
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.trade import TradeRepository
-from app.services.screener.strategies.tgim import TGIMStrategy
+from app.services.screener.strategies.tgim import TGIMStrategy, evaluate_tgim_setup
+
+# =====================================================================
+# Functional Core Unit Tests
+# =====================================================================
+
+
+def test_evaluate_tgim_setup_valid_signal() -> None:
+    """Tests evaluate_tgim_setup returns is_signal=True when current < min(friday, thursday)."""
+    result = evaluate_tgim_setup(
+        current_close=Decimal("490.0"),
+        friday_close=Decimal("495.0"),
+        thursday_close=Decimal("500.0"),
+    )
+    assert result.is_signal is True
+    assert result.setup_close == Decimal("490.0")
+    assert result.threshold_price == Decimal("495.0")
+    assert result.friday_close == Decimal("495.0")
+    assert result.thursday_close == Decimal("500.0")
+
+
+def test_evaluate_tgim_setup_equal_threshold_no_signal() -> None:
+    """Tests evaluate_tgim_setup returns is_signal=False when current == threshold (strict inequality required)."""
+    result = evaluate_tgim_setup(
+        current_close=Decimal("495.0"),
+        friday_close=Decimal("495.0"),
+        thursday_close=Decimal("500.0"),
+    )
+    assert result.is_signal is False
+    assert result.threshold_price == Decimal("495.0")
+
+
+def test_evaluate_tgim_setup_higher_close_no_signal() -> None:
+    """Tests evaluate_tgim_setup returns is_signal=False when current > threshold."""
+    result = evaluate_tgim_setup(
+        current_close=Decimal("498.0"),
+        friday_close=Decimal("495.0"),
+        thursday_close=Decimal("500.0"),
+    )
+    assert result.is_signal is False
+
+
+def test_evaluate_tgim_setup_thursday_lower_than_friday() -> None:
+    """Tests setup correctly uses Thursday as threshold when Thursday < Friday."""
+    result = evaluate_tgim_setup(
+        current_close=Decimal("485.0"),
+        friday_close=Decimal("500.0"),
+        thursday_close=Decimal("490.0"),
+    )
+    assert result.is_signal is True
+    assert result.threshold_price == Decimal("490.0")
+
+
+def test_evaluate_tgim_setup_equal_friday_and_thursday() -> None:
+    """Tests setup threshold calculation when Friday close equals Thursday close."""
+    result = evaluate_tgim_setup(
+        current_close=Decimal("490.0"),
+        friday_close=Decimal("495.0"),
+        thursday_close=Decimal("495.0"),
+    )
+    assert result.is_signal is True
+    assert result.threshold_price == Decimal("495.0")
+
+
+# =====================================================================
+# Imperative Shell Integration Tests
+# =====================================================================
 
 
 @pytest.fixture

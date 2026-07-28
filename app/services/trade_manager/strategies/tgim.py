@@ -5,13 +5,13 @@ Execution Rules:
    - Market On Close (MOC) on Monday close (Bar 0).
    - Position size calculated from portfolio budget allocation.
 2. Exits (ACTIVE -> CLOSED):
-   - Bar 1 (Tuesday): c1exit if Tuesday Close > Monday Close (MOC exit, ExitReason.TAKE_PROFIT).
-   - Bar 2 (Wednesday): c1exit if Wednesday Close > Tuesday Close (MOC exit, ExitReason.TAKE_PROFIT),
-     otherwise TE (Time Exit) at Wednesday Close (MOC exit, ExitReason.TIME_STOP).
+   - Bar 1 (Tuesday): Exit if Tuesday Close > Monday Close (MOC exit, ExitReason.TAKE_PROFIT).
+   - Bar 2 (Wednesday): Exit if Wednesday Close > Tuesday Close (MOC exit, ExitReason.TAKE_PROFIT),
+     otherwise Time Exit at Wednesday Close (MOC exit, ExitReason.TIME_STOP).
 """
 
 import logging
-from decimal import Decimal
+from decimal import ROUND_FLOOR, Decimal
 from typing import final, override
 
 import pandas as pd
@@ -25,6 +25,42 @@ from .abstract import BaseTradeStrategy
 logger = logging.getLogger(__name__)
 
 
+def evaluate_tgim_exit(
+    bars_held: int,
+    current_close: Decimal,
+    previous_close: Decimal,
+) -> ExitReason | None:
+    """Pure calculation: Evaluates TGIM exit logic without side effects.
+
+    - Bar 1 (Tuesday): Take profit if current_close > previous_close.
+    - Bar 2 (Wednesday): Take profit if current_close > previous_close, else Time Stop exit.
+    """
+    if bars_held < 1:
+        return None
+
+    if current_close > previous_close:
+        return ExitReason.TAKE_PROFIT
+
+    if bars_held >= 2:
+        return ExitReason.TIME_STOP
+
+    return None
+
+
+def calculate_tgim_position_quantity(
+    allocated_budget: Decimal,
+    entry_price: Decimal,
+) -> int:
+    """Calculates integer share quantity using strict Decimal floor rounding."""
+    if entry_price <= Decimal("0") or allocated_budget <= Decimal("0"):
+        return 0
+
+    raw_quantity = (allocated_budget / entry_price).quantize(
+        Decimal("1"), rounding=ROUND_FLOOR
+    )
+    return int(raw_quantity)
+
+
 @final
 class TGIMTradeStrategy(BaseTradeStrategy):
     """Manages execution and exit lifecycle for the 'TGIM' strategy.
@@ -32,8 +68,8 @@ class TGIMTradeStrategy(BaseTradeStrategy):
     Rules:
     1. Entry: MOC entry executed on Monday setup close.
     2. Exits:
-       - Bar 1 (Tuesday): c1exit if Tuesday Close > Monday Close.
-       - Bar 2 (Wednesday): c1exit if Wednesday Close > Tuesday Close,
+       - Bar 1 (Tuesday): Exit if Tuesday Close > Monday Close.
+       - Bar 2 (Wednesday): Exit if Wednesday Close > Tuesday Close,
          otherwise Time Exit (TE) at Wednesday Close.
     """
 
@@ -68,20 +104,20 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         reference_date: str | None = None,
     ) -> Order | None:
         """Generates MOC entry order for CREATED trades."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-        trade_budget = self._get_strategy_budget(trade, budget)
+        entry_price_val = trade.get("entry_price") or 0.0
+        trade_budget_val = self._get_strategy_budget(trade, budget)
 
-        if entry_price <= 0 or trade_budget <= 0:
-            return None
+        entry_price = Decimal(str(entry_price_val))
+        trade_budget = Decimal(str(trade_budget_val))
 
-        quantity = int(trade_budget / entry_price)
+        quantity = calculate_tgim_position_quantity(trade_budget, entry_price)
         if quantity < 1:
             return None
 
         return self._create_entry_order(
             symbol=trade["symbol"],
             quantity=quantity,
-            entry_price=Decimal(str(entry_price)),
+            entry_price=entry_price,
             order_type="MKT",
         )
 
@@ -100,12 +136,12 @@ class TGIMTradeStrategy(BaseTradeStrategy):
             return None
 
         last_candle = dataframe_history.iloc[-1]
-        close_price = float(last_candle["close"])
+        close_price = Decimal(str(last_candle["close"]))
 
         return self._create_exit_order(
             symbol=trade["symbol"],
             quantity=quantity,
-            price=Decimal(str(close_price)),
+            price=close_price,
             order_type="MKT",
             time_in_force="DAY",
         )
@@ -118,19 +154,18 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         active_symbols: set[str] | None = None,
     ) -> TradeTransition | None:
-        """Activates entry on Monday close (Bar 0) if Monday Close < threshold."""
-        threshold_price = float(trade.get("entry_price") or 0.0)
-        if threshold_price <= 0:
+        """Activates entry on Monday close (Bar 0) if Monday Close <= threshold."""
+        threshold_price = Decimal(str(trade.get("entry_price") or 0.0))
+        if threshold_price <= Decimal("0"):
             return None
 
-        current_close = float(candle["close"])
+        current_close = Decimal(str(candle["close"]))
         date_string = str(candle["date"])
 
-        # Check if Monday close meets the setup condition (at or below threshold)
         if current_close <= threshold_price:
             return self._execute_activation(
                 trade,
-                current_close,
+                float(current_close),
                 "Monday MOC Entry",
                 date_string,
             )
@@ -148,40 +183,36 @@ class TGIMTradeStrategy(BaseTradeStrategy):
     ) -> TradeTransition | None:
         """Manages Exits for TGIM:
 
-        - Bar 1 (Tuesday): Exit if Close > Monday Close (c1exit).
-        - Bar 2 (Wednesday): Exit if Close > Tuesday Close (c1exit) OR Time Exit (TE).
+        - Bar 1 (Tuesday): Exit if Close > Monday Close (ExitReason.TAKE_PROFIT).
+        - Bar 2 (Wednesday): Exit if Close > Tuesday Close (ExitReason.TAKE_PROFIT) OR Time Exit (ExitReason.TIME_STOP).
         """
         entry_date_string = trade.get("entry_date")
         if not entry_date_string or dataframe_history.empty:
             return None
 
         entry_date = pd.Timestamp(entry_date_string).date()
-
         dates = pd.to_datetime(dataframe_history["date"]).dt.date
         history_from_entry = dataframe_history[dates >= entry_date]
 
         bars_held = len(history_from_entry) - 1
-
         if bars_held < 1:
             return None
 
-        current_close = float(current_candle["close"])
+        current_close = Decimal(str(current_candle["close"]))
         prev_candle = dataframe_history.iloc[-2]
-        prev_close = float(prev_candle["close"])
+        prev_close = Decimal(str(prev_candle["close"]))
 
-        if current_close > prev_close:
+        exit_reason = evaluate_tgim_exit(
+            bars_held=bars_held,
+            current_close=current_close,
+            previous_close=prev_close,
+        )
+
+        if exit_reason is not None:
             return self._close_trade(
                 trade,
-                current_close,
-                ExitReason.TAKE_PROFIT,
-                date_string,
-            )
-
-        if bars_held >= 2:
-            return self._close_trade(
-                trade,
-                current_close,
-                ExitReason.TIME_STOP,
+                float(current_close),
+                exit_reason,
                 date_string,
             )
 
