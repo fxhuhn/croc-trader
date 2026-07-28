@@ -37,7 +37,6 @@ class BounceBanditStrategyContext(TypedDict):
     rsi_2: float
     prev_close_1: float
     prev_close_2: float
-    target_symbol: str
     source: str
 
 
@@ -179,7 +178,6 @@ class BounceBanditStrategy(BaseStrategy[int]):
             "rsi_2": round(current_rsi_2, 2),
             "prev_close_1": prev_close_1,
             "prev_close_2": prev_close_2,
-            "target_symbol": self.TARGET_SYMBOL,
             "source": "ScreenerEngine",
         }
 

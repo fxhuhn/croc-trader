@@ -29,7 +29,6 @@ class TGIMStrategyContext(TypedDict, total=False):
     friday_close: float
     thursday_close: float
     day: str
-    target_symbol: str
     max_holding_bars: int
     source: str
 
@@ -145,7 +144,6 @@ class TGIMStrategy(BaseStrategy[int]):
             "friday_close": friday_close,
             "thursday_close": thursday_close,
             "day": "Monday",
-            "target_symbol": self.TARGET_SYMBOL,
             "max_holding_bars": self.DEFAULT_MAX_HOLDING_BARS,
             "source": "ScreenerEngine",
         }
