@@ -174,6 +174,109 @@ class SymbolOverride(TypedDict, total=False):
 # ---------------------------------------------------------
 
 
+def _parse_database_config(db_data: dict[str, Any]) -> DatabaseConfig:
+    """Parses database configuration with default merge logic."""
+    if not db_data:
+        return DatabaseConfig()
+
+    loaded_files = db_data.get("files", {})
+    merged_files = DEFAULT_DB_FILES.copy()
+    merged_files.update(loaded_files)
+    db_data["files"] = merged_files
+
+    loaded_folders = db_data.get("folders", {})
+    merged_folders = DEFAULT_DB_FOLDERS.copy()
+    merged_folders.update(loaded_folders)
+    db_data["folders"] = merged_folders
+
+    return DatabaseConfig(**db_data)
+
+
+def _parse_portfolio_config(portfolio_data: dict[str, Any]) -> PortfolioConfig:
+    """Parses portfolio strategy budgets from raw dictionary."""
+    if not portfolio_data or "strategies" not in portfolio_data:
+        return PortfolioConfig()
+
+    strategies_data = portfolio_data["strategies"]
+    strat_configs: dict[str, PortfolioStrategyConfig] = {}
+
+    if isinstance(strategies_data, dict):
+        for strat_name, strat_val in strategies_data.items():
+            if isinstance(strat_val, dict):
+                strat_configs[strat_name] = PortfolioStrategyConfig(
+                    budget=float(strat_val.get("budget") or 0.0),
+                    risk_amount=float(strat_val.get("risk_amount") or 0.0),
+                )
+    elif isinstance(strategies_data, list):
+        for entry in strategies_data:
+            if isinstance(entry, dict):
+                for strat_name, strat_val in entry.items():
+                    budget_val = 0.0
+                    risk_val = 0.0
+                    if isinstance(strat_val, list):
+                        for prop in strat_val:
+                            if isinstance(prop, dict):
+                                if "quantity" in prop:
+                                    budget_val = float(prop["quantity"])
+                                elif "budget" in prop:
+                                    budget_val = float(prop["budget"])
+                                elif "risk_amount" in prop:
+                                    risk_val = float(prop["risk_amount"])
+                    elif isinstance(strat_val, dict):
+                        budget_val = float(
+                            strat_val.get("budget") or strat_val.get("quantity") or 0.0
+                        )
+                        risk_val = float(strat_val.get("risk_amount") or 0.0)
+                    strat_configs[strat_name] = PortfolioStrategyConfig(
+                        budget=budget_val,
+                        risk_amount=risk_val,
+                    )
+
+    def get_strat_config(
+        name: str, default_budget: float = 0.0, default_risk: float = 0.0
+    ) -> PortfolioStrategyConfig:
+        if name in strat_configs:
+            return strat_configs[name]
+        return PortfolioStrategyConfig(budget=default_budget, risk_amount=default_risk)
+
+    return PortfolioConfig(
+        dip_buyer=get_strat_config("dip_buyer", default_budget=2500.0),
+        turnover_timing=get_strat_config("turnover_timing", default_budget=2500.0),
+        two_percent=get_strat_config("two_percent", default_budget=2000.0),
+        ndx_momentum=get_strat_config("ndx_momentum", default_budget=10000.0),
+        tgim=get_strat_config("tgim", default_budget=10000.0),
+        bridge_scout=get_strat_config("bridge_scout", default_budget=10000.0),
+        bounce_bandit=get_strat_config("bounce_bandit", default_budget=10000.0),
+        croc_setup=get_strat_config("croc_setup", default_risk=100.0),
+        hold_target=get_strat_config("hold_target", default_risk=100.0),
+        split_target=get_strat_config("split_target", default_risk=100.0),
+    )
+
+
+def _parse_order_overrides(
+    order_overrides_data: dict[str, Any],
+) -> dict[str, SymbolOverride]:
+    """Parses symbol override definitions."""
+    order_overrides: dict[str, SymbolOverride] = {}
+    if not isinstance(order_overrides_data, dict):
+        return order_overrides
+
+    for symbol, override in order_overrides_data.items():
+        if isinstance(override, dict):
+            override_typed: SymbolOverride = {}
+            if "target_symbol" in override:
+                override_typed["target_symbol"] = str(override["target_symbol"])
+            if "sec_type" in override:
+                override_typed["sec_type"] = str(override["sec_type"])
+            if "exchange" in override:
+                override_typed["exchange"] = str(override["exchange"])
+            if "currency" in override:
+                override_typed["currency"] = str(override["currency"])
+            order_overrides[str(symbol)] = override_typed
+
+    return order_overrides
+
+
 @dataclass
 class AppConfig:
     """Top-level application configuration combining all subsections."""
@@ -193,27 +296,8 @@ class AppConfig:
 
         Performs smart-merging to fill in missing keys from older config files.
         """
-        # 1. Database config with merge logic
-        db_data = data.get("database", {})
-        if db_data:
-            # Files merging: start from defaults, override with loaded values.
-            # Existing paths are preserved while new keys are added automatically.
-            loaded_files = db_data.get("files", {})
-            merged_files = DEFAULT_DB_FILES.copy()
-            merged_files.update(loaded_files)
-            db_data["files"] = merged_files
+        db_config = _parse_database_config(data.get("database", {}))
 
-            # Folders merging
-            loaded_folders = db_data.get("folders", {})
-            merged_folders = DEFAULT_DB_FOLDERS.copy()
-            merged_folders.update(loaded_folders)
-            db_data["folders"] = merged_folders
-
-            db_config = DatabaseConfig(**db_data)
-        else:
-            db_config = DatabaseConfig()
-
-        # 2. Remaining configs
         web_data = data.get("webserver", {})
         web_config = WebserverConfig(**web_data) if web_data else WebserverConfig()
 
@@ -228,7 +312,6 @@ class AppConfig:
         )
 
         security_data = data.get("security", {})
-        # Convert list whitelist to tuple for frozen SecurityConfig
         if security_data and "whitelist" in security_data:
             security_data["whitelist"] = tuple(security_data["whitelist"])
         security_config = (
@@ -240,85 +323,8 @@ class AppConfig:
             TelegramConfig(**telegram_data) if telegram_data else TelegramConfig()
         )
 
-        portfolio_data = data.get("portfolio", {})
-        if portfolio_data and "strategies" in portfolio_data:
-            strategies_data = portfolio_data["strategies"]
-            strat_configs = {}
-            if isinstance(strategies_data, dict):
-                for strat_name, strat_val in strategies_data.items():
-                    if isinstance(strat_val, dict):
-                        strat_configs[strat_name] = PortfolioStrategyConfig(
-                            budget=float(strat_val.get("budget") or 0.0),
-                            risk_amount=float(strat_val.get("risk_amount") or 0.0),
-                        )
-            elif isinstance(strategies_data, list):
-                for entry in strategies_data:
-                    if isinstance(entry, dict):
-                        for strat_name, strat_val in entry.items():
-                            budget_val = 0.0
-                            risk_val = 0.0
-                            if isinstance(strat_val, list):
-                                for prop in strat_val:
-                                    if isinstance(prop, dict):
-                                        if "quantity" in prop:
-                                            budget_val = float(prop["quantity"])
-                                        elif "budget" in prop:
-                                            budget_val = float(prop["budget"])
-                                        elif "risk_amount" in prop:
-                                            risk_val = float(prop["risk_amount"])
-                            elif isinstance(strat_val, dict):
-                                budget_val = float(
-                                    strat_val.get("budget")
-                                    or strat_val.get("quantity")
-                                    or 0.0
-                                )
-                                risk_val = float(strat_val.get("risk_amount") or 0.0)
-                            strat_configs[strat_name] = PortfolioStrategyConfig(
-                                budget=budget_val,
-                                risk_amount=risk_val,
-                            )
-
-            def get_strat_config(
-                name: str, default_budget: float = 0.0, default_risk: float = 0.0
-            ) -> PortfolioStrategyConfig:
-                if name in strat_configs:
-                    return strat_configs[name]
-                return PortfolioStrategyConfig(
-                    budget=default_budget, risk_amount=default_risk
-                )
-
-            portfolio_config = PortfolioConfig(
-                dip_buyer=get_strat_config("dip_buyer", default_budget=2500.0),
-                turnover_timing=get_strat_config(
-                    "turnover_timing", default_budget=2500.0
-                ),
-                two_percent=get_strat_config("two_percent", default_budget=2000.0),
-                ndx_momentum=get_strat_config("ndx_momentum", default_budget=10000.0),
-                tgim=get_strat_config("tgim", default_budget=10000.0),
-                bridge_scout=get_strat_config("bridge_scout", default_budget=10000.0),
-                bounce_bandit=get_strat_config("bounce_bandit", default_budget=10000.0),
-                croc_setup=get_strat_config("croc_setup", default_risk=100.0),
-                hold_target=get_strat_config("hold_target", default_risk=100.0),
-                split_target=get_strat_config("split_target", default_risk=100.0),
-            )
-        else:
-            portfolio_config = PortfolioConfig()
-
-        order_overrides_data = data.get("order_overrides", {})
-        order_overrides: dict[str, SymbolOverride] = {}
-        if isinstance(order_overrides_data, dict):
-            for sym, override in order_overrides_data.items():
-                if isinstance(override, dict):
-                    override_typed: SymbolOverride = {}
-                    if "target_symbol" in override:
-                        override_typed["target_symbol"] = str(override["target_symbol"])
-                    if "sec_type" in override:
-                        override_typed["sec_type"] = str(override["sec_type"])
-                    if "exchange" in override:
-                        override_typed["exchange"] = str(override["exchange"])
-                    if "currency" in override:
-                        override_typed["currency"] = str(override["currency"])
-                    order_overrides[str(sym)] = override_typed
+        portfolio_config = _parse_portfolio_config(data.get("portfolio", {}))
+        order_overrides = _parse_order_overrides(data.get("order_overrides", {}))
 
         return cls(
             database=db_config,
@@ -349,7 +355,7 @@ class EnvConfig:
 
 
 class ConfigManager:
-    def __init__(self):
+    def __init__(self) -> None:
         # Expose the base directory for path resolution
         self.BASE_DIR = BASE_DIR
 
@@ -408,9 +414,12 @@ class ConfigManager:
             logger.info("Creating default config: %s", CONFIG_FILE)
             default_config = AppConfig()
 
-            def dataclass_to_dict(obj):
+            def dataclass_to_dict(obj: object) -> object:
                 if hasattr(obj, "__dataclass_fields__"):
-                    return {k: dataclass_to_dict(v) for k, v in obj.__dict__.items()}
+                    return {
+                        k: dataclass_to_dict(v)
+                        for k, v in getattr(obj, "__dict__", {}).items()
+                    }
                 if isinstance(obj, list | tuple):
                     return [dataclass_to_dict(v) for v in obj]
                 if isinstance(obj, dict):
@@ -418,19 +427,21 @@ class ConfigManager:
                 return obj
 
             try:
-                with open(CONFIG_FILE, "w") as f:
-                    yaml.dump(dataclass_to_dict(default_config), f, sort_keys=False)
+                with open(CONFIG_FILE, "w") as config_file:
+                    yaml.dump(
+                        dataclass_to_dict(default_config), config_file, sort_keys=False
+                    )
             except Exception as error:
                 logger.error("Could not write config: %s", error)
 
             return default_config
 
         try:
-            with open(CONFIG_FILE) as f:
-                data = yaml.safe_load(f) or {}
+            with open(CONFIG_FILE) as config_file:
+                data = yaml.safe_load(config_file) or {}
                 return AppConfig.from_dict(data)
-        except Exception as e:
-            logger.error("Failed to load config: %s", e)
+        except Exception as error:
+            logger.error("Failed to load config: %s", error)
             sys.exit(1)
 
     def get_path(self, key: str) -> Path:
