@@ -72,10 +72,12 @@ def test_trades_backfill(client, app):
 
 
 def test_market_sync(client):
+    import threading
+
     with (
         patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
         patch("app.routes.api.MarketDataUpdater") as mock_updater_class,
-        patch("app.routes.api.MarketQualityService"),
+        patch("app.routes.api.MarketQualityService") as mock_quality_class,
         patch("app.routes.api.Thread") as mock_thread_class,
     ):
         response = client.post(
@@ -84,19 +86,36 @@ def test_market_sync(client):
         assert response.status_code == 202
         assert response.json["status"] == "accepted"
 
-        # Verify thread was created and target function executes without context manager error
+        # Verify thread target executes in an isolated thread without application context errors
         target_fn = mock_thread_class.call_args.kwargs.get("target")
-        target_fn()
+        thread_error = None
+
+        def run_in_thread() -> None:
+            nonlocal thread_error
+            try:
+                target_fn()
+            except Exception as exc:
+                thread_error = exc
+
+        worker = threading.Thread(target=run_in_thread)
+        worker.start()
+        worker.join(timeout=5)
+
+        assert thread_error is None
         mock_updater_class.return_value.run_update.assert_called_once_with(
             full_reload=False
         )
+        mock_quality_class.return_value.perform_gap_check.assert_called_once()
+        mock_quality_class.return_value.check_last_trading_day_completeness.assert_called_once()
 
 
 def test_market_reload(client):
+    import threading
+
     with (
         patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
         patch("app.routes.api.MarketDataUpdater") as mock_updater_class,
-        patch("app.routes.api.MarketQualityService"),
+        patch("app.routes.api.MarketQualityService") as mock_quality_class,
         patch("app.routes.api.Thread") as mock_thread_class,
     ):
         response = client.post(
@@ -105,9 +124,24 @@ def test_market_reload(client):
         assert response.status_code == 200
         assert response.json["status"] == "queued"
 
-        # Verify thread target executes without context manager error
+        # Verify thread target executes in an isolated thread without application context errors
         target_fn = mock_thread_class.call_args.kwargs.get("target")
-        target_fn()
+        thread_error = None
+
+        def run_in_thread() -> None:
+            nonlocal thread_error
+            try:
+                target_fn()
+            except Exception as exc:
+                thread_error = exc
+
+        worker = threading.Thread(target=run_in_thread)
+        worker.start()
+        worker.join(timeout=5)
+
+        assert thread_error is None
         mock_updater_class.return_value.run_update.assert_called_once_with(
             full_reload=True
         )
+        mock_quality_class.return_value.perform_gap_check.assert_called_once()
+        mock_quality_class.return_value.check_last_trading_day_completeness.assert_called_once()

@@ -555,21 +555,25 @@ def sync_market_data() -> Response:
 
     database_path = configuration.get_db_path("stocks")
     signals_database_path = configuration.get_db_path("signals")
+    telegram_bot = current_app.extensions.get("telegram")
+    app = current_app._get_current_object()
 
     def _execute_sync_task() -> None:
         """Background task for market synchronization."""
-        try:
-            market_session = DatabaseSession(str(database_path))
-            signals_session = DatabaseSession(str(signals_database_path))
-            updater = MarketDataUpdater(market_session, signals_session)
-            updater.run_update(full_reload=should_full_sync)
+        with app.app_context():
+            try:
+                market_session = DatabaseSession(str(database_path))
+                signals_session = DatabaseSession(str(signals_database_path))
+                updater = MarketDataUpdater(market_session, signals_session)
+                updater.run_update(full_reload=should_full_sync)
 
-            telegram_bot = current_app.extensions.get("telegram")
-            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
-            quality_service.perform_gap_check()
-            quality_service.check_last_trading_day_completeness()
-        except (RuntimeError, ValueError) as sync_error:
-            logger.error("Market Sync Task Error: %s", sync_error)
+                quality_service = MarketQualityService(
+                    updater, telegram_bot=telegram_bot
+                )
+                quality_service.perform_gap_check()
+                quality_service.check_last_trading_day_completeness()
+            except (RuntimeError, ValueError) as sync_error:
+                logger.error("Market Sync Task Error: %s", sync_error)
 
     Thread(target=_execute_sync_task, daemon=True).start()
     return jsonify({"status": "accepted", "message": "Sync started"}), 202
@@ -590,21 +594,25 @@ def reload_market_data() -> Response:
     database_path = configuration.get_db_path("stocks")
     signals_database_path = configuration.get_db_path("signals")
     telegram_bot = current_app.extensions.get("telegram")
+    app = current_app._get_current_object()
 
     def _execute_reload_task() -> None:
         """Background task for full market reload."""
-        try:
-            logger.info("Manual full reload via API started...")
-            market_session = DatabaseSession(str(database_path))
-            signals_session = DatabaseSession(str(signals_database_path))
-            updater = MarketDataUpdater(market_session, signals_session)
-            updater.run_update(full_reload=True)
+        with app.app_context():
+            try:
+                logger.info("Manual full reload via API started...")
+                market_session = DatabaseSession(str(database_path))
+                signals_session = DatabaseSession(str(signals_database_path))
+                updater = MarketDataUpdater(market_session, signals_session)
+                updater.run_update(full_reload=True)
 
-            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
-            quality_service.perform_gap_check()
-            quality_service.check_last_trading_day_completeness()
-        except (RuntimeError, ValueError) as reload_error:
-            logger.error("Market Reload Task Error: %s", reload_error)
+                quality_service = MarketQualityService(
+                    updater, telegram_bot=telegram_bot
+                )
+                quality_service.perform_gap_check()
+                quality_service.check_last_trading_day_completeness()
+            except (RuntimeError, ValueError) as reload_error:
+                logger.error("Market Reload Task Error: %s", reload_error)
 
     Thread(target=_execute_reload_task, daemon=True).start()
     return jsonify({"status": "queued", "message": "Full reload triggered"}), 200

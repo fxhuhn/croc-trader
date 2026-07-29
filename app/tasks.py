@@ -61,9 +61,9 @@ def run_market_data_update(
     try:
         if telegram_bot is None:
             try:
-                from flask import current_app
+                from flask import current_app, has_app_context
 
-                if current_app:
+                if has_app_context():
                     telegram_bot = current_app.extensions.get("telegram")
             except Exception:
                 telegram_bot = None
