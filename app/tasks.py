@@ -4,10 +4,12 @@ from pathlib import Path
 
 from flask import Flask
 
+from .config import ConfigManager
 from .database.session import DatabaseSession
 from .extensions import cache
 from .services.market.quality import MarketQualityService
 from .services.market.updater import MarketDataUpdater
+from .services.telegram import TelegramBot
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +32,10 @@ def run_daily_strategy_check(app):
 
 
 def _clear_and_prewarm_cache(app):
-    """
-    Clears the Flask-Caching cache and preemptively fetches the /trades routes
-    to ensure the first user request is instantaneous.
-    Runs ONLY in production (debug=False).
+    """Clears the Flask-Caching cache and preemptively fetches the /trades routes
+
+    to ensure the first user request is instantaneous. Runs ONLY in production
+    (debug=False).
     """
     if app.debug:
         logger.info("Skipping cache pre-warming in debug mode.")
@@ -83,10 +85,37 @@ def run_cache_prewarm(app):
         logger.error("Cache pre-warming error: %s", e)
 
 
-def run_market_data_update(db_path: Path):
+def run_market_data_update(
+    db_path: Path, telegram_bot: TelegramBot | None = None
+) -> None:
     """Downloads market data (daily)."""
     logger.info("⏰ Scheduler: Starting market data update...")
     try:
+        # Resolve TelegramBot if not passed directly
+        if telegram_bot is None:
+            try:
+                from flask import current_app
+
+                if current_app:
+                    telegram_bot = current_app.extensions.get("telegram")
+            except Exception:
+                telegram_bot = None
+
+        if telegram_bot is None:
+            try:
+                config_manager = ConfigManager()
+                telegram_config = config_manager.app.telegram
+                telegram_bot = TelegramBot(
+                    token=telegram_config.token,
+                    chat_id=telegram_config.chat_id,
+                    enabled=telegram_config.enabled,
+                )
+            except Exception as config_error:
+                logger.debug(
+                    "Could not initialize TelegramBot from ConfigManager: %s",
+                    config_error,
+                )
+
         # Session Factory for Stocks
         session_factory = DatabaseSession(str(db_path))
 
@@ -102,8 +131,9 @@ def run_market_data_update(db_path: Path):
         updater.run_update(full_reload=False)
 
         # 3. Quality & Gap Check
-        quality = MarketQualityService(updater)
+        quality = MarketQualityService(updater, telegram_bot=telegram_bot)
         quality.perform_gap_check()
+        quality.check_last_trading_day_completeness()
 
     except Exception as e:
         logger.error("Market data update error: %s", e, exc_info=True)

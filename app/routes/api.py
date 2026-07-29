@@ -723,8 +723,10 @@ def sync_market_data() -> Response:
             updater = MarketDataUpdater(market_session, signals_session)
             updater.run_update(full_reload=should_full_sync)
 
-            quality_service = MarketQualityService(updater)
+            telegram_bot = current_app.extensions.get("telegram")
+            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
             quality_service.perform_gap_check()
+            quality_service.check_last_trading_day_completeness()
         except (RuntimeError, ValueError) as sync_error:
             logger.error("Market Sync Task Error: %s", sync_error)
 
@@ -746,6 +748,7 @@ def reload_market_data() -> Response:
 
     database_path = configuration.get_db_path("stocks")
     signals_database_path = configuration.get_db_path("signals")
+    telegram_bot = current_app.extensions.get("telegram")
 
     def _execute_reload_task() -> None:
         """Background task for full market reload."""
@@ -756,6 +759,10 @@ def reload_market_data() -> Response:
 
             updater = MarketDataUpdater(market_session, signals_session)
             updater.run_update(full_reload=True)
+
+            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
+            quality_service.perform_gap_check()
+            quality_service.check_last_trading_day_completeness()
         except (RuntimeError, ValueError) as reload_error:
             logger.error("Market Reload Task Error: %s", reload_error)
 
