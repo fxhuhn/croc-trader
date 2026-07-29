@@ -1,3 +1,5 @@
+"""REST API routes and webhook ingestion handlers."""
+
 import logging
 import uuid
 from threading import Thread
@@ -8,7 +10,7 @@ from flask import Blueprint, Response, current_app, jsonify, request
 from ..const import Strategies
 from ..database.repositories.signal import SignalRepository
 from ..database.session import DatabaseSession
-from ..services import bounce_bandit_backfill, bridge_scout_backfill, tgim_backfill
+from ..services.backfill_engine import run_strategy_backfill
 from ..services.market.quality import MarketQualityService
 from ..services.market.updater import MarketDataUpdater
 from .security import require_ip_whitelist
@@ -56,6 +58,14 @@ def _extract_symbol_from_request() -> str | None:
     return None
 
 
+def _extract_webhook_symbol(payload: WebhookPayload) -> str | None:
+    """Extracts ticker symbol from a webhook payload dictionary."""
+    symbol = payload.get("symbol") or payload.get("ticker")
+    if symbol:
+        return str(symbol).strip().upper()
+    return None
+
+
 # --- STANDARD ROUTES ---
 
 
@@ -99,7 +109,7 @@ def ingest_webhook() -> Response:
             logger.warning("⚠️ Malformed Webhook Data: %s", raw_data)
             return jsonify({"status": "error", "message": "Invalid JSON"}), 400
 
-        symbol = payload.get("symbol") or payload.get("ticker")
+        symbol = _extract_webhook_symbol(payload)
         if not symbol:
             logger.warning(
                 "⚠️ Webhook rejected: Missing 'symbol' in payload %s", payload
@@ -118,10 +128,9 @@ def ingest_webhook() -> Response:
             else "instance/signals.db"
         )
 
-        session = DatabaseSession(str(database_path))
-        repository = SignalRepository(session)
-
-        signal_id = repository.save_signal(dict(payload))
+        with DatabaseSession(str(database_path)) as session:
+            repository = SignalRepository(session)
+            signal_id = repository.save_signal(dict(payload))
 
         logger.info("✅ Webhook saved: %s -> ID %s", symbol, signal_id)
 
@@ -176,6 +185,70 @@ def trigger_screener() -> Response:
     except Exception as error:
         logger.exception("Error during screener run: %s", error)
         return jsonify({"error": str(error)}), 500
+
+
+@api_blueprint.route("/screener/run/<strategy_name>", methods=["POST"])
+@require_ip_whitelist
+def run_strategy_screener(strategy_name: str) -> Response:
+    """Executes screening for a specific strategy by strategy_name parameter.
+
+    Args:
+        strategy_name: Name of the strategy (e.g., 'tgim', 'bridge-scout', 'bounce-bandit').
+
+    Returns:
+        Response: JSON with signal status.
+    """
+    try:
+        analysis_date = request.args.get("date")
+        days = request.args.get("days", default=0, type=int)
+        canonical_name = strategy_name.lower().replace("-", "_")
+
+        screener_engine = current_app.extensions.get("screener_engine")
+        if not screener_engine:
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Engine not initialized",
+                }
+            ), 503
+
+        strategy_enum = None
+        for item in Strategies:
+            if (
+                item.value.lower().replace("-", "_") == canonical_name
+                or item.name.lower() == canonical_name
+            ):
+                strategy_enum = item
+                break
+
+        if not strategy_enum:
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": f"Strategy '{strategy_name}' not found",
+                }
+            ), 404
+
+        strategy = screener_engine.get_strategy(strategy_enum)
+        if not strategy:
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": f"Strategy '{strategy_name}' not initialized in engine",
+                }
+            ), 404
+
+        candidates_count = strategy.run(days=days, analysis_date=analysis_date)
+        return jsonify(
+            {
+                "status": "success",
+                "strategy": canonical_name,
+                "signals_found": candidates_count,
+            }
+        ), 200
+    except Exception as error:
+        logger.exception("Error analyzing strategy '%s': %s", strategy_name, error)
+        return jsonify({"status": "error", "message": str(error)}), 500
 
 
 @api_blueprint.route("/screener/dip-buyer", methods=["POST"])
@@ -360,143 +433,6 @@ def analyze_ndx_momentum() -> Response:
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
-@api_blueprint.route("/screener/tgim", methods=["POST"])
-@api_blueprint.route("/api/screener/tgim", methods=["POST"])
-@require_ip_whitelist
-def analyze_tgim() -> Response:
-    """Returns analysis and screening candidates for TGIM strategy.
-
-    Returns:
-        Response: JSON with TGIM signal status.
-    """
-    try:
-        analysis_date = request.args.get("date")
-        days = request.args.get("days", default=0, type=int)
-
-        screener_engine = current_app.extensions.get("screener_engine")
-        if not screener_engine:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Engine not initialized",
-                }
-            ), 503
-
-        strategy = screener_engine.get_strategy(Strategies.TGIM)
-        if not strategy:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "TGIM strategy not found",
-                }
-            ), 404
-
-        candidates_count = strategy.run(days=days, analysis_date=analysis_date)
-        return jsonify(
-            {
-                "status": "success",
-                "strategy": "tgim",
-                "symbol": "SPY",
-                "signals_found": candidates_count,
-            }
-        ), 200
-    except Exception as error:
-        logger.exception("Error analyzing TGIM: %s", error)
-        return jsonify({"status": "error", "message": str(error)}), 500
-
-
-@api_blueprint.route("/screener/bridge-scout", methods=["POST"])
-@api_blueprint.route("/api/screener/bridge-scout", methods=["POST"])
-@require_ip_whitelist
-def analyze_bridge_scout() -> Response:
-    """Returns analysis and screening candidates for Bridge Scout strategy.
-
-    Returns:
-        Response: JSON with Bridge Scout signal status.
-    """
-    try:
-        analysis_date = request.args.get("date")
-        days = request.args.get("days", default=0, type=int)
-
-        screener_engine = current_app.extensions.get("screener_engine")
-        if not screener_engine:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Engine not initialized",
-                }
-            ), 503
-
-        strategy = screener_engine.get_strategy(Strategies.BridgeScout)
-        if not strategy:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Bridge Scout strategy not found",
-                }
-            ), 404
-
-        candidates_count = strategy.run(days=days, analysis_date=analysis_date)
-        return jsonify(
-            {
-                "status": "success",
-                "strategy": "bridge_scout",
-                "symbol": "QQQ",
-                "signals_found": candidates_count,
-            }
-        ), 200
-    except Exception as error:
-        logger.exception("Error analyzing Bridge Scout: %s", error)
-        return jsonify({"status": "error", "message": str(error)}), 500
-
-
-@api_blueprint.route("/screener/bounce-bandit", methods=["POST"])
-@api_blueprint.route("/api/screener/bounce-bandit", methods=["POST"])
-@api_blueprint.route("/screener/bounce_bandit", methods=["POST"])
-@api_blueprint.route("/api/screener/bounce_bandit", methods=["POST"])
-@require_ip_whitelist
-def analyze_bounce_bandit() -> Response:
-    """Returns analysis and screening candidates for Bounce Bandit strategy.
-
-    Returns:
-        Response: JSON with Bounce Bandit signal status.
-    """
-    try:
-        analysis_date = request.args.get("date")
-        days = request.args.get("days", default=0, type=int)
-
-        screener_engine = current_app.extensions.get("screener_engine")
-        if not screener_engine:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Engine not initialized",
-                }
-            ), 503
-
-        strategy = screener_engine.get_strategy(Strategies.BounceBandit)
-        if not strategy:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Bounce Bandit strategy not found",
-                }
-            ), 404
-
-        candidates_count = strategy.run(days=days, analysis_date=analysis_date)
-        return jsonify(
-            {
-                "status": "success",
-                "strategy": "bounce_bandit",
-                "symbol": "QQQ",
-                "signals_found": candidates_count,
-            }
-        ), 200
-    except Exception as error:
-        logger.exception("Error analyzing Bounce Bandit: %s", error)
-        return jsonify({"status": "error", "message": str(error)}), 500
-
-
 @api_blueprint.route("/orders/generate", methods=["POST"])
 @require_ip_whitelist
 def trigger_orders() -> Response:
@@ -519,25 +455,23 @@ def trigger_orders() -> Response:
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
+# --- TRADES & BACKFILL ---
+
+
 @api_blueprint.route("/trades/backfill", methods=["POST"])
-@api_blueprint.route("/api/trades/backfill", methods=["POST"])
 @require_ip_whitelist
 def trigger_trades_backfill() -> Response:
     """Triggers a backfill or retry of trade processing.
 
-    If strategy=tgim or strategy=bridge_scout parameter is specified, runs corresponding backfill.
+    If strategy query parameter is specified, runs backfill for that strategy.
 
     Returns:
         Response: JSON confirmation.
     """
     strategy = (request.args.get("strategy") or "").lower()
 
-    if strategy in ("tgim", "thank_god_its_monday"):
-        return backfill_tgim_trades()
-    if strategy in ("bridge_scout", "bridgescout", "bridge scout", "qqq_eom"):
-        return backfill_bridge_scout_trades()
-    if strategy in ("bounce_bandit", "bouncebandit", "bounce bandit", "qqq_meanrev"):
-        return backfill_bounce_bandit_trades()
+    if strategy:
+        return execute_strategy_backfill(strategy)
 
     trade_manager = current_app.extensions.get("trade_manager")
     if not trade_manager:
@@ -556,62 +490,18 @@ def trigger_trades_backfill() -> Response:
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
-@api_blueprint.route("/trades/backfill/tgim", methods=["POST"])
-@api_blueprint.route("/backfill/tgim", methods=["POST"])
-@api_blueprint.route("/api/trades/backfill/tgim", methods=["POST"])
-@api_blueprint.route("/api/backfill/tgim", methods=["POST"])
+@api_blueprint.route("/trades/backfill/<strategy_name>", methods=["POST"])
 @require_ip_whitelist
-def backfill_tgim_trades() -> Response:
-    """Executes historical backfill simulation for TGIM strategy trades.
+def execute_strategy_backfill(strategy_name: str) -> Response:
+    """Executes historical backfill simulation for a given strategy_name.
+
+    Args:
+        strategy_name: Identifier of strategy (e.g. 'tgim', 'bridge_scout', 'bounce_bandit').
 
     Returns:
         Response: JSON containing backfill summary metrics and trades list.
     """
-    start_date = (
-        request.args.get("start_date") or request.args.get("start") or "2026-01-01"
-    )
-    end_date = request.args.get("end_date") or request.args.get("end")
-    budget = float(request.args.get("budget") or 10000.0)
-    raw_clear = request.args.get("clear_existing") or request.args.get("clear")
-    clear_existing = _parse_boolean_parameter(raw_clear, default_value=True)
-
-    configuration = current_app.config.get("APP_CONFIG")
-    if not configuration:
-        return jsonify({"status": "error", "message": "Configuration missing"}), 500
-
-    stocks_session = DatabaseSession(str(configuration.get_path("stocks")))
-    signals_session = DatabaseSession(str(configuration.get_path("signals")))
-
-    try:
-        result = tgim_backfill.run_tgim_backfill(
-            stocks_session=stocks_session,
-            signals_session=signals_session,
-            start_date=start_date,
-            end_date=end_date,
-            budget=budget,
-            clear_existing=clear_existing,
-        )
-        try:
-            cache.clear()
-        except Exception as cache_err:
-            logger.debug("Cache clear skipped: %s", cache_err)
-        return jsonify({"status": "success", "result": result})
-    except Exception as error:
-        logger.error("TGIM trades backfill failed: %s", error)
-        return jsonify({"status": "error", "message": str(error)}), 500
-
-
-@api_blueprint.route("/trades/backfill/bridge-scout", methods=["POST"])
-@api_blueprint.route("/backfill/bridge-scout", methods=["POST"])
-@api_blueprint.route("/api/trades/backfill/bridge-scout", methods=["POST"])
-@api_blueprint.route("/api/backfill/bridge-scout", methods=["POST"])
-@require_ip_whitelist
-def backfill_bridge_scout_trades() -> Response:
-    """Executes historical backfill simulation for Bridge Scout strategy trades.
-
-    Returns:
-        Response: JSON containing backfill summary metrics and trades list.
-    """
+    canonical_strategy = strategy_name.lower().replace("-", "_")
     start_date = (
         request.args.get("start_date") or request.args.get("start") or "2025-01-01"
     )
@@ -628,9 +518,10 @@ def backfill_bridge_scout_trades() -> Response:
     signals_session = DatabaseSession(str(configuration.get_path("signals")))
 
     try:
-        result = bridge_scout_backfill.run_bridge_scout_backfill(
+        result = run_strategy_backfill(
             stocks_session=stocks_session,
             signals_session=signals_session,
+            strategy_name=canonical_strategy,
             start_date=start_date,
             end_date=end_date,
             budget=budget,
@@ -642,56 +533,7 @@ def backfill_bridge_scout_trades() -> Response:
             logger.debug("Cache clear skipped: %s", cache_err)
         return jsonify({"status": "success", "result": result})
     except Exception as error:
-        logger.error("Bridge Scout trades backfill failed: %s", error)
-        return jsonify({"status": "error", "message": str(error)}), 500
-
-
-@api_blueprint.route("/trades/backfill/bounce-bandit", methods=["POST"])
-@api_blueprint.route("/backfill/bounce-bandit", methods=["POST"])
-@api_blueprint.route("/api/trades/backfill/bounce-bandit", methods=["POST"])
-@api_blueprint.route("/api/backfill/bounce-bandit", methods=["POST"])
-@api_blueprint.route("/trades/backfill/bounce_bandit", methods=["POST"])
-@api_blueprint.route("/backfill/bounce_bandit", methods=["POST"])
-@api_blueprint.route("/api/trades/backfill/bounce_bandit", methods=["POST"])
-@api_blueprint.route("/api/backfill/bounce_bandit", methods=["POST"])
-@require_ip_whitelist
-def backfill_bounce_bandit_trades() -> Response:
-    """Executes historical backfill simulation for Bounce Bandit strategy trades.
-
-    Returns:
-        Response: JSON containing backfill summary metrics and trades list.
-    """
-    start_date = (
-        request.args.get("start_date") or request.args.get("start") or "2025-01-01"
-    )
-    end_date = request.args.get("end_date") or request.args.get("end")
-    budget = float(request.args.get("budget") or 10000.0)
-    raw_clear = request.args.get("clear_existing") or request.args.get("clear")
-    clear_existing = _parse_boolean_parameter(raw_clear, default_value=True)
-
-    configuration = current_app.config.get("APP_CONFIG")
-    if not configuration:
-        return jsonify({"status": "error", "message": "Configuration missing"}), 500
-
-    stocks_session = DatabaseSession(str(configuration.get_path("stocks")))
-    signals_session = DatabaseSession(str(configuration.get_path("signals")))
-
-    try:
-        result = bounce_bandit_backfill.run_bounce_bandit_backfill(
-            stocks_session=stocks_session,
-            signals_session=signals_session,
-            start_date=start_date,
-            end_date=end_date,
-            budget=budget,
-            clear_existing=clear_existing,
-        )
-        try:
-            cache.clear()
-        except Exception as cache_err:
-            logger.debug("Cache clear skipped: %s", cache_err)
-        return jsonify({"status": "success", "result": result})
-    except Exception as error:
-        logger.error("Bounce Bandit trades backfill failed: %s", error)
+        logger.error("Strategy '%s' backfill failed: %s", strategy_name, error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -717,16 +559,19 @@ def sync_market_data() -> Response:
     def _execute_sync_task() -> None:
         """Background task for market synchronization."""
         try:
-            market_session = DatabaseSession(str(database_path))
-            signals_session = DatabaseSession(str(signals_database_path))
+            with (
+                DatabaseSession(str(database_path)) as market_session,
+                DatabaseSession(str(signals_database_path)) as signals_session,
+            ):
+                updater = MarketDataUpdater(market_session, signals_session)
+                updater.run_update(full_reload=should_full_sync)
 
-            updater = MarketDataUpdater(market_session, signals_session)
-            updater.run_update(full_reload=should_full_sync)
-
-            telegram_bot = current_app.extensions.get("telegram")
-            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
-            quality_service.perform_gap_check()
-            quality_service.check_last_trading_day_completeness()
+                telegram_bot = current_app.extensions.get("telegram")
+                quality_service = MarketQualityService(
+                    updater, telegram_bot=telegram_bot
+                )
+                quality_service.perform_gap_check()
+                quality_service.check_last_trading_day_completeness()
         except (RuntimeError, ValueError) as sync_error:
             logger.error("Market Sync Task Error: %s", sync_error)
 
@@ -754,15 +599,18 @@ def reload_market_data() -> Response:
         """Background task for full market reload."""
         try:
             logger.info("Manual full reload via API started...")
-            market_session = DatabaseSession(str(database_path))
-            signals_session = DatabaseSession(str(signals_database_path))
+            with (
+                DatabaseSession(str(database_path)) as market_session,
+                DatabaseSession(str(signals_database_path)) as signals_session,
+            ):
+                updater = MarketDataUpdater(market_session, signals_session)
+                updater.run_update(full_reload=True)
 
-            updater = MarketDataUpdater(market_session, signals_session)
-            updater.run_update(full_reload=True)
-
-            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
-            quality_service.perform_gap_check()
-            quality_service.check_last_trading_day_completeness()
+                quality_service = MarketQualityService(
+                    updater, telegram_bot=telegram_bot
+                )
+                quality_service.perform_gap_check()
+                quality_service.check_last_trading_day_completeness()
         except (RuntimeError, ValueError) as reload_error:
             logger.error("Market Reload Task Error: %s", reload_error)
 

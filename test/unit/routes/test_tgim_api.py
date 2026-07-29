@@ -23,7 +23,7 @@ def app() -> Flask:
 
 
 @patch("app.routes.api.require_ip_whitelist", lambda f: f)
-@patch("app.services.tgim_backfill.run_tgim_backfill")
+@patch("app.routes.api.run_strategy_backfill")
 def test_tgim_backfill_api_success(mock_run_backfill: MagicMock, app: Flask) -> None:
     """Tests POST /api/trades/backfill/tgim executes successfully with query parameters."""
     mock_run_backfill.return_value = {
@@ -50,7 +50,7 @@ def test_tgim_backfill_api_success(mock_run_backfill: MagicMock, app: Flask) -> 
 
 
 @patch("app.routes.api.require_ip_whitelist", lambda f: f)
-@patch("app.services.tgim_backfill.run_tgim_backfill")
+@patch("app.routes.api.run_strategy_backfill")
 def test_tgim_backfill_api_url_params(mock_run_backfill: MagicMock, app: Flask) -> None:
     """Tests POST /api/trades/backfill/tgim with short URL query parameters."""
     mock_run_backfill.return_value = {
@@ -77,7 +77,7 @@ def test_tgim_backfill_api_url_params(mock_run_backfill: MagicMock, app: Flask) 
 
 
 @patch("app.routes.api.require_ip_whitelist", lambda f: f)
-@patch("app.services.tgim_backfill.run_tgim_backfill")
+@patch("app.routes.api.run_strategy_backfill")
 def test_tgim_backfill_api_generic_route(
     mock_run_backfill: MagicMock, app: Flask
 ) -> None:
