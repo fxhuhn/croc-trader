@@ -5,9 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# tzdata für Zeitzone, curl für Healthcheck
+# git für git-basierte pip-Pipelines (tvdatafeed), tzdata für Zeitzone, curl für Healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    git \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
