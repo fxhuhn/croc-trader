@@ -68,19 +68,31 @@ class MarketRepository(BaseRepository):
             (symbol,),
         )
 
+    def clear_ignored_symbols(self) -> None:
+        """Clears all symbols from the ignored symbols blacklist."""
+        self.execute("DELETE FROM ignored_symbols")
+
     def get_all_known_symbols(self) -> list[str]:
         rows = self.fetch_all("SELECT DISTINCT symbol FROM market_prices")
         return [row["symbol"] for row in rows]
 
     def get_outdated_symbols(
-        self, reference_date: str, provider: str = "yahoo"
+        self, reference_date: str, provider: str | None = None
     ) -> list[str]:
-        sql = """
-            SELECT symbol FROM market_prices
-            WHERE provider = ? AND symbol NOT IN (SELECT symbol FROM ignored_symbols)
-            GROUP BY symbol HAVING MAX(date) < ?
-        """
-        rows = self.fetch_all(sql, (provider, reference_date))
+        if provider:
+            sql = """
+                SELECT symbol FROM market_prices
+                WHERE provider = ? AND symbol NOT IN (SELECT symbol FROM ignored_symbols)
+                GROUP BY symbol HAVING MAX(date) < ?
+            """
+            rows = self.fetch_all(sql, (provider, reference_date))
+        else:
+            sql = """
+                SELECT symbol FROM market_prices
+                WHERE symbol NOT IN (SELECT symbol FROM ignored_symbols)
+                GROUP BY symbol HAVING MAX(date) < ?
+            """
+            rows = self.fetch_all(sql, (reference_date,))
         return [row["symbol"] for row in rows]
 
     def get_symbols_with_missing_history(self, cutoff_date: str) -> list[str]:
@@ -110,23 +122,38 @@ class MarketRepository(BaseRepository):
         return None
 
     def get_latest_price(self, symbol: str) -> float | None:
-        return self.fetch_value(
-            "SELECT close FROM market_prices WHERE symbol = ? AND timeframe = '1D' ORDER BY date DESC LIMIT 1",
-            (symbol,),
-        )
+        sql = """
+            WITH ranked AS (
+                SELECT close,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY symbol, date
+                           ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                       ) as rank_idx,
+                       date
+                FROM market_prices
+                WHERE symbol = ? AND timeframe = '1D'
+            )
+            SELECT close FROM ranked WHERE rank_idx = 1 ORDER BY date DESC LIMIT 1
+        """
+        return self.fetch_value(sql, (symbol,))
 
     def get_trading_days_count(
         self, symbol: str, start_date: str, end_date: str
     ) -> int:
         start_date_string = str(start_date).split(" ")[0]
         end_date_string = str(end_date).split(" ")[0]
-        sql = "SELECT COUNT(*) FROM market_prices WHERE symbol = ? AND date >= ? AND date <= ? AND timeframe = '1D'"
+        sql = "SELECT COUNT(DISTINCT date) FROM market_prices WHERE symbol = ? AND date >= ? AND date <= ? AND timeframe = '1D'"
         return self.fetch_value(sql, (symbol, start_date_string, end_date_string)) or 0
 
     # --- Helper for Validation ---
     def get_ohlcv(self, symbol: str, date: str) -> dict[str, object] | None:
         """Fetches a single OHLCV record."""
-        sql = "SELECT * FROM market_prices WHERE symbol = ? AND date = ? AND timeframe = '1D'"
+        sql = """
+            SELECT * FROM market_prices
+            WHERE symbol = ? AND date = ? AND timeframe = '1D'
+            ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+            LIMIT 1
+        """
         row = self.fetch_one(sql, (symbol, date))
         return dict(row) if row else None
 
@@ -134,9 +161,18 @@ class MarketRepository(BaseRepository):
     def get_data_for_lookback(self, start_date: str) -> pandas.DataFrame:
         """Loads all data from start_date for pivot operations."""
         sql = """
+            WITH ranked AS (
+                SELECT date, symbol, open, high, low, close, volume,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY symbol, date
+                           ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                       ) as rank_idx
+                FROM market_prices
+                WHERE date >= ? AND timeframe = '1D'
+            )
             SELECT date, symbol, open, high, low, close, volume
-            FROM market_prices
-            WHERE date >= ? AND timeframe = '1D'
+            FROM ranked
+            WHERE rank_idx = 1
             ORDER BY date ASC
         """
         with self.session.connect() as connection:
@@ -148,9 +184,18 @@ class MarketRepository(BaseRepository):
     def get_symbol_history_raw(self, symbol: str, start_date: str) -> pandas.DataFrame:
         """Loads history for a single symbol (IMPORTANT for TradeManager)."""
         sql = """
+            WITH ranked AS (
+                SELECT date, open, high, low, close, volume,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY date
+                           ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                       ) as rank_idx
+                FROM market_prices
+                WHERE symbol = ? AND date >= ? AND timeframe = '1D'
+            )
             SELECT date, open, high, low, close, volume
-            FROM market_prices
-            WHERE symbol = ? AND date >= ? AND timeframe='1D'
+            FROM ranked
+            WHERE rank_idx = 1
             ORDER BY date ASC
         """
         with self.session.connect() as connection:
@@ -167,11 +212,19 @@ class MarketRepository(BaseRepository):
             return pandas.DataFrame()
         placeholders = ",".join("?" for _ in symbols)
         sql = (
-            f"SELECT symbol, date, open, high, low, close, volume "  # nosec B608
-            f"FROM market_prices "
-            f"WHERE symbol IN ({placeholders}) "
-            f"AND date >= ? AND date <= ? AND timeframe='1D' "
-            f"ORDER BY date ASC"
+            "WITH ranked AS ("
+            "    SELECT symbol, date, open, high, low, close, volume, "
+            "           ROW_NUMBER() OVER ( "
+            "               PARTITION BY symbol, date "
+            "               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END "
+            "           ) as rank_idx "
+            "    FROM market_prices "
+            f"   WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ? AND timeframe = '1D'"  # nosec B608
+            ") "
+            "SELECT symbol, date, open, high, low, close, volume "
+            "FROM ranked "
+            "WHERE rank_idx = 1 "
+            "ORDER BY date ASC"
         )
         params = symbols + [start_date, end_date]
         with self.session.connect() as connection:

@@ -35,13 +35,38 @@ class ExchangeMapper:
         except Exception as e:
             logger.error("Failed to load exchange JSON: %s", e)
 
-    def get_exchange(self, symbol: str, default: str | None = None) -> str:
+    DEFAULT_ETF_EXCHANGES: dict[str, str] = {
+        "QQQ": "NASDAQ",
+        "SPY": "AMEX",
+        "DIA": "AMEX",
+        "IWM": "AMEX",
+        "MDY": "AMEX",
+        "XLK": "AMEX",
+        "XLF": "AMEX",
+        "XLE": "AMEX",
+        "XLV": "AMEX",
+        "XLY": "AMEX",
+        "XLP": "AMEX",
+        "XLU": "AMEX",
+        "XLI": "AMEX",
+        "XLB": "AMEX",
+        "XLRE": "AMEX",
+        "XLC": "AMEX",
+    }
+
+    def get_exchange(self, symbol: str, default: str | None = None) -> str | None:
         """Returns the exchange for a symbol, or the default value."""
         # Fallback: auto-load if load() was not called yet
         if not self._mapping:
             self._load_mapping()
 
-        return self._mapping.get(symbol.upper(), default)
+        symbol_upper = symbol.upper()
+        if symbol_upper in self._mapping:
+            return self._mapping[symbol_upper]
+        if symbol_upper in self.DEFAULT_ETF_EXCHANGES:
+            return self.DEFAULT_ETF_EXCHANGES[symbol_upper]
+
+        return default
 
 
 # Global instance (initially empty, populated via load())

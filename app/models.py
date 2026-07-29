@@ -299,6 +299,35 @@ class MarketPrice:
             volume=int(row.get("volume", 0)),
         )
 
+    @classmethod
+    def from_tradingview(cls, symbol: str, row: dict[str, Any]) -> "MarketPrice":
+        """Factory method to create a MarketPrice from a TradingView row dictionary."""
+        close_price = float(row.get("close", 0.0))
+        if close_price < 0:
+            raise ValueError(f"Negative close price for {symbol}")
+
+        date_value = row.get("date") or row.get("datetime")
+        if hasattr(date_value, "strftime"):
+            date_string = date_value.strftime("%Y-%m-%d")
+        else:
+            date_string = (
+                str(date_value)[:10]
+                if date_value
+                else datetime.now().strftime("%Y-%m-%d")
+            )
+
+        return cls(
+            symbol=symbol,
+            date=date_string,
+            open=float(row.get("open", 0.0)),
+            high=float(row.get("high", 0.0)),
+            low=float(row.get("low", 0.0)),
+            close=close_price,
+            volume=int(row.get("volume", 0)),
+            provider="tradingview",
+            timeframe="1D",
+        )
+
     def to_db_row(self) -> tuple:
         """Optimized for executemany (tuple based)."""
         return (

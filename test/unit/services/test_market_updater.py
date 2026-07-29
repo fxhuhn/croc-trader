@@ -5,6 +5,7 @@ import pandas as pd
 from app.database.repositories.market import MarketRepository
 from app.database.session import DatabaseSession
 from app.services.market.provider import YahooDataProvider
+from app.services.market.tv_provider import TradingViewDataProvider
 from app.services.market.updater import MarketDataUpdater
 
 
@@ -38,18 +39,22 @@ def test_market_updater_process_batch_blacklists_failed_symbols_on_full_reload()
     session = MagicMock(spec=DatabaseSession)
     updater = MarketDataUpdater(session)
 
-    # Mock the provider and repository
+    # Mock the provider, tv_provider, and repository
     updater.provider = MagicMock(spec=YahooDataProvider)
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+    updater.tv_provider.fetch_symbol_history.return_value = []
     updater.repo = MagicMock(spec=MarketRepository)
 
     # fetch_batch_raw returns raw_failures = ["PSTG"]
     mock_df = pd.DataFrame()  # Empty, meaning the batch is empty
     updater.provider.fetch_batch_raw.return_value = (mock_df, ["PSTG"])
 
-    updater._process_batch(["AAPL", "PSTG"], "2026-06-01", full_reload=True)
+    updater._process_batch(["PSTG"], "2026-06-01", full_reload=True)
 
     # Verify that PSTG was blacklisted
-    updater.repo.ignore_symbol.assert_called_once_with("PSTG", "No Data (Full Reload)")
+    updater.repo.ignore_symbol.assert_called_once_with(
+        "PSTG", "No Data (Yahoo & TradingView)"
+    )
 
 
 def test_market_updater_process_batch_does_not_blacklist_on_incremental() -> None:
@@ -57,15 +62,17 @@ def test_market_updater_process_batch_does_not_blacklist_on_incremental() -> Non
     session = MagicMock(spec=DatabaseSession)
     updater = MarketDataUpdater(session)
 
-    # Mock the provider and repository
+    # Mock the provider, tv_provider, and repository
     updater.provider = MagicMock(spec=YahooDataProvider)
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+    updater.tv_provider.fetch_symbol_history.return_value = []
     updater.repo = MagicMock(spec=MarketRepository)
 
     # fetch_batch_raw returns raw_failures = ["PSTG"]
     mock_df = pd.DataFrame()
     updater.provider.fetch_batch_raw.return_value = (mock_df, ["PSTG"])
 
-    updater._process_batch(["AAPL", "PSTG"], "2026-06-01", full_reload=False)
+    updater._process_batch(["PSTG"], "2026-06-01", full_reload=False)
 
     # Verify that no symbols were blacklisted
     updater.repo.ignore_symbol.assert_not_called()
@@ -76,8 +83,10 @@ def test_market_updater_process_batch_identifies_empty_data_as_failure() -> None
     session = MagicMock(spec=DatabaseSession)
     updater = MarketDataUpdater(session)
 
-    # Mock the provider and repository
+    # Mock the provider, tv_provider, and repository
     updater.provider = MagicMock(spec=YahooDataProvider)
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+    updater.tv_provider.fetch_symbol_history.return_value = []
     updater.repo = MagicMock(spec=MarketRepository)
 
     # We download AAPL and PSTG. yfinance returns a MultiIndex df.
@@ -106,4 +115,6 @@ def test_market_updater_process_batch_identifies_empty_data_as_failure() -> None
     updater._process_batch(["AAPL", "PSTG"], "2026-06-01", full_reload=True)
 
     # Verify that PSTG was blacklisted because its close column was all NaN
-    updater.repo.ignore_symbol.assert_called_once_with("PSTG", "No Data (Full Reload)")
+    updater.repo.ignore_symbol.assert_called_once_with(
+        "PSTG", "No Data (Yahoo & TradingView)"
+    )

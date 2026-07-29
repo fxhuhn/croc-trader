@@ -103,7 +103,7 @@ def test_market_sync(client):
 
         assert thread_error is None
         mock_updater_class.return_value.run_update.assert_called_once_with(
-            full_reload=False
+            full_reload=False, provider_mode="auto", ignore_today=False
         )
         mock_quality_class.return_value.perform_gap_check.assert_called_once()
         mock_quality_class.return_value.check_last_trading_day_completeness.assert_called_once()
@@ -141,7 +141,28 @@ def test_market_reload(client):
 
         assert thread_error is None
         mock_updater_class.return_value.run_update.assert_called_once_with(
-            full_reload=True
+            full_reload=True, provider_mode="auto", ignore_today=False
         )
         mock_quality_class.return_value.perform_gap_check.assert_called_once()
         mock_quality_class.return_value.check_last_trading_day_completeness.assert_called_once()
+
+
+def test_market_reload_with_custom_provider_and_ignore_today(client):
+    with (
+        patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
+        patch("app.routes.api.MarketDataUpdater") as mock_updater_class,
+        patch("app.routes.api.MarketQualityService"),
+        patch("app.routes.api.Thread") as mock_thread_class,
+    ):
+        response = client.post(
+            "/market/reload?provider=tradingview&ignore_today=true",
+            environ_base={"REMOTE_ADDR": "127.0.0.1"},
+        )
+        assert response.status_code == 200
+
+        target_fn = mock_thread_class.call_args.kwargs.get("target")
+        target_fn()
+
+        mock_updater_class.return_value.run_update.assert_called_once_with(
+            full_reload=True, provider_mode="tradingview", ignore_today=True
+        )

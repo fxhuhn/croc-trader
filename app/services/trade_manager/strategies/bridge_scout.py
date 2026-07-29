@@ -10,6 +10,7 @@ Execution Rules:
    - Market On Close (MOC) exit on that day.
 """
 
+import json
 import logging
 from decimal import Decimal
 from typing import final, override
@@ -121,6 +122,13 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
             return None
 
         date_string = str(candle["date"])
+        try:
+            raw_ctx = trade.get("signal_context")
+            ctx = json.loads(raw_ctx) if isinstance(raw_ctx, str) else (raw_ctx or {})
+            if isinstance(ctx, dict) and ctx.get("date"):
+                date_string = str(ctx["date"])
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
 
         return self._execute_activation(
             trade,

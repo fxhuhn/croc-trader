@@ -540,6 +540,24 @@ def execute_strategy_backfill(strategy_name: str) -> Response:
 # --- MARKET DATA ---
 
 
+def _parse_market_update_params() -> tuple[str, bool]:
+    json_data = request.get_json(silent=True) or {}
+
+    provider_param = request.args.get("provider") or json_data.get("provider") or "auto"
+    provider_mode = str(provider_param).lower()
+
+    raw_ignore = request.args.get("ignore_today")
+    if raw_ignore is None:
+        raw_ignore = json_data.get("ignore_today")
+
+    if isinstance(raw_ignore, bool):
+        ignore_today = raw_ignore
+    else:
+        ignore_today = str(raw_ignore).lower() in ("true", "1", "yes")
+
+    return provider_mode, ignore_today
+
+
 @api_blueprint.route("/market/sync", methods=["POST"])
 @require_ip_whitelist
 def sync_market_data() -> Response:
@@ -549,6 +567,8 @@ def sync_market_data() -> Response:
         Response: JSON status accepted.
     """
     should_full_sync = request.args.get("full", "false").lower() == "true"
+    provider_mode, ignore_today = _parse_market_update_params()
+
     configuration = current_app.config.get("APP_CONFIG")
     if not configuration:
         return jsonify({"status": "error", "message": "Configuration missing"}), 500
@@ -565,7 +585,11 @@ def sync_market_data() -> Response:
                 market_session = DatabaseSession(str(database_path))
                 signals_session = DatabaseSession(str(signals_database_path))
                 updater = MarketDataUpdater(market_session, signals_session)
-                updater.run_update(full_reload=should_full_sync)
+                updater.run_update(
+                    full_reload=should_full_sync,
+                    provider_mode=provider_mode,
+                    ignore_today=ignore_today,
+                )
 
                 quality_service = MarketQualityService(
                     updater, telegram_bot=telegram_bot
@@ -587,6 +611,8 @@ def reload_market_data() -> Response:
     Returns:
         Response: JSON status queued.
     """
+    provider_mode, ignore_today = _parse_market_update_params()
+
     configuration = current_app.config.get("APP_CONFIG")
     if not configuration:
         return jsonify({"status": "error", "message": "Configuration missing"}), 500
@@ -604,7 +630,11 @@ def reload_market_data() -> Response:
                 market_session = DatabaseSession(str(database_path))
                 signals_session = DatabaseSession(str(signals_database_path))
                 updater = MarketDataUpdater(market_session, signals_session)
-                updater.run_update(full_reload=True)
+                updater.run_update(
+                    full_reload=True,
+                    provider_mode=provider_mode,
+                    ignore_today=ignore_today,
+                )
 
                 quality_service = MarketQualityService(
                     updater, telegram_bot=telegram_bot

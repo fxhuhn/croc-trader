@@ -31,15 +31,26 @@ class MarketDataProvider:
         logger.info(
             "[MarketData] Preloading ALL data into memory (Lines: %dd)...", days
         )
-        # Reuse existing logic but store it
-        # We assume universe is all symbols in DB or we fetch all.
         try:
             start_date = (
                 pandas.Timestamp.now() - pandas.Timedelta(days=days)
             ).strftime("%Y-%m-%d")
             with self.session.connect() as connection:
-                # Fetch EVERYTHING
-                query = "SELECT date, symbol, open, high, low, close, volume FROM market_prices WHERE date >= ? AND timeframe='1D' ORDER BY date ASC"
+                query = """
+                    WITH ranked AS (
+                        SELECT date, symbol, open, high, low, close, volume,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY symbol, date
+                                   ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                               ) as rank_idx
+                        FROM market_prices
+                        WHERE date >= ? AND timeframe = '1D'
+                    )
+                    SELECT date, symbol, open, high, low, close, volume
+                    FROM ranked
+                    WHERE rank_idx = 1
+                    ORDER BY date ASC
+                """
                 df = pandas.read_sql_query(query, connection, params=(start_date,))
 
             if not df.empty:
@@ -71,17 +82,22 @@ class MarketDataProvider:
         logger.info("[MarketData] Loading data from DB (Lookback: %dd)...", days)
 
         try:
-            # Use the central session
-            # Yields a configured connection (WAL-mode active)
             with self.session.connect() as connection:
-                # Optimized query on '1D'
                 query = """
+                    WITH ranked AS (
+                        SELECT date, symbol, open, high, low, close, volume,
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY symbol, date
+                                   ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                               ) as rank_idx
+                        FROM market_prices
+                        WHERE date >= ? AND timeframe = '1D'
+                    )
                     SELECT date, symbol, open, high, low, close, volume
-                    FROM market_prices
-                    WHERE date >= ? AND timeframe = '1D'
+                    FROM ranked
+                    WHERE rank_idx = 1
                     ORDER BY date ASC
                 """
-                # Pandas can work directly with the sqlite3 connection object
                 df = pandas.read_sql_query(query, connection, params=(start_date,))
         except Exception as error:
             logger.error("[MarketData] DB Error: %s", error)
@@ -93,7 +109,6 @@ class MarketDataProvider:
 
         result = self._pivot_data(df)
         if len(self._all_daily_data_cache) >= 4:
-            # Evict first element
             first_key = next(iter(self._all_daily_data_cache))
             self._all_daily_data_cache.pop(first_key)
         self._all_daily_data_cache[days] = result
@@ -111,12 +126,11 @@ class MarketDataProvider:
 
         # 1. Try Memory Cache
         if self._in_memory_cache and days <= self._cache_lookback:
-            # Filter the pivoted cache for requested symbols
             filtered = {}
             for col, df in self._in_memory_cache.items():
                 available_cols = [symbol for symbol in symbols if symbol in df.columns]
                 if available_cols:
-                    filtered[col] = df[available_cols]  # Slice columns
+                    filtered[col] = df[available_cols]
                 else:
                     filtered[col] = pandas.DataFrame(index=df.index)
             return filtered
@@ -131,7 +145,7 @@ class MarketDataProvider:
         )
 
         all_dfs = []
-        chunk_size = 500  # Safe limit for SQLite variables
+        chunk_size = 500
 
         try:
             with self.session.connect() as connection:
@@ -139,14 +153,20 @@ class MarketDataProvider:
                     chunk = symbols[i : i + chunk_size]
                     placeholders = ",".join("?" for _ in chunk)
                     query = (
-                        f"SELECT date, symbol, open, high, low, close, volume "  # nosec B608
-                        f"FROM market_prices "
-                        f"WHERE symbol IN ({placeholders}) "
-                        f"AND date >= ? "
-                        f"AND timeframe = '1D' "
-                        f"ORDER BY date ASC"
+                        "WITH ranked AS ("
+                        "    SELECT date, symbol, open, high, low, close, volume, "
+                        "           ROW_NUMBER() OVER ( "
+                        "               PARTITION BY symbol, date "
+                        "               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END "
+                        "           ) as rank_idx "
+                        "    FROM market_prices "
+                        f"   WHERE symbol IN ({placeholders}) AND date >= ? AND timeframe = '1D'"  # nosec B608
+                        ") "
+                        "SELECT date, symbol, open, high, low, close, volume "
+                        "FROM ranked "
+                        "WHERE rank_idx = 1 "
+                        "ORDER BY date ASC"
                     )
-                    # Params: symbols + start_date
                     params = tuple(chunk) + (start_date,)
                     chunk_df = pandas.read_sql_query(query, connection, params=params)
                     if not chunk_df.empty:
@@ -165,16 +185,11 @@ class MarketDataProvider:
 
     def _pivot_data(self, df: pandas.DataFrame) -> MarketDataDict:
         """Helper to pivot raw dataframe into MarketDataDict structure."""
-        # Data type conversion
         df["date"] = pandas.to_datetime(df["date"])
-
-        # Pivot logic for vectorized strategies
-        # Generates a dict with DataFrames (Index=Date, Columns=Symbols)
         pivoted_data = {
             col: df.pivot(index="date", columns="symbol", values=col)
             for col in ["open", "high", "low", "close", "volume"]
         }
-
         return pivoted_data
 
     def clear_cache(self) -> None:
@@ -186,14 +201,10 @@ class MarketDataProvider:
 
     def get_symbol_history(self, symbol: str, days: int = 400) -> pandas.DataFrame:
         """Loads OHLCV history for a symbol without pivot. Uses cache if possible."""
-        # 1. Try Memory Cache
         if self._in_memory_cache and days <= self._cache_lookback:
-            # Reconstruct DataFrame from Pivoted Data
             try:
                 data = {}
-                # Start date filter
                 cutoff = pandas.Timestamp.now() - pandas.Timedelta(days=days)
-
                 has_data = False
                 for col in ["open", "high", "low", "close", "volume"]:
                     if symbol in self._in_memory_cache[col].columns:
@@ -207,20 +218,28 @@ class MarketDataProvider:
                     return df.reset_index()
             except Exception as error:
                 logger.warning("Failed to extract %s from cache: %s", symbol, error)
-                # Fallback to DB
 
-        # Since BaseRepository allows SQL (layer boundary), this is acceptable.
         with self.session.connect() as connection:
-            # end_date not used in query
             start_date = (
                 pandas.Timestamp.now() - pandas.Timedelta(days=days)
             ).strftime("%Y-%m-%d")
 
-            df = pandas.read_sql_query(
-                "SELECT date, open, high, low, close, volume FROM market_prices WHERE symbol = ? AND date >= ? AND timeframe='1D' ORDER BY date ASC",
-                connection,
-                params=(symbol, start_date),
-            )
+            sql = """
+                WITH ranked AS (
+                    SELECT date, open, high, low, close, volume,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY date
+                               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                           ) as rank_idx
+                    FROM market_prices
+                    WHERE symbol = ? AND date >= ? AND timeframe = '1D'
+                )
+                SELECT date, open, high, low, close, volume
+                FROM ranked
+                WHERE rank_idx = 1
+                ORDER BY date ASC
+            """
+            df = pandas.read_sql_query(sql, connection, params=(symbol, start_date))
             if not df.empty:
                 df["date"] = pandas.to_datetime(df["date"])
             return df
@@ -243,8 +262,21 @@ class MarketDataProvider:
             ).strftime("%Y-%m-%d")
 
             placeholders = ",".join("?" for _ in symbols)
-            sql = f"""SELECT symbol, date, open, high, low, close, volume FROM market_prices
-                      WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ? AND timeframe='1D' ORDER BY date ASC"""  # nosec B608
+            sql = (
+                "WITH ranked AS ("
+                "    SELECT symbol, date, open, high, low, close, volume, "
+                "           ROW_NUMBER() OVER ( "
+                "               PARTITION BY symbol, date "
+                "               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END "
+                "           ) as rank_idx "
+                "    FROM market_prices "
+                f"   WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ? AND timeframe = '1D'"  # nosec B608
+                ") "
+                "SELECT symbol, date, open, high, low, close, volume "
+                "FROM ranked "
+                "WHERE rank_idx = 1 "
+                "ORDER BY date ASC"
+            )
 
             df = pandas.read_sql(
                 sql, connection, params=symbols + [start_date, end_date]

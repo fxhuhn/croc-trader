@@ -17,3 +17,5 @@ rich==14.2.0
 tabulate==0.9.0
 tqdm==4.67.1
 yfinance==1.4.0
+tvdatafeed @ git+https://github.com/rongardF/tvdatafeed.git
+

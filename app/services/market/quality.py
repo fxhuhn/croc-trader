@@ -48,7 +48,7 @@ class MarketQualityService:
         thresh_history = (datetime.now() - timedelta(days=300)).strftime("%Y-%m-%d")
 
         try:
-            outdated = self.repo.get_outdated_symbols(thresh_recency)
+            outdated = self.repo.get_outdated_symbols(thresh_recency, provider=None)
             shallow = self.repo.get_symbols_with_missing_history(thresh_history)
 
             # Combine unique symbols needing repair
@@ -112,7 +112,9 @@ class MarketQualityService:
         )
         target_date_string = last_completed_trading_day.strftime("%Y-%m-%d")
 
-        outdated_symbols = set(self.repo.get_outdated_symbols(target_date_string))
+        outdated_symbols = set(
+            self.repo.get_outdated_symbols(target_date_string, provider=None)
+        )
         all_symbols = set(self.repo.get_all_known_symbols())
 
         if not all_symbols:
