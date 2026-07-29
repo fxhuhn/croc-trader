@@ -1,6 +1,8 @@
 import logging
 from typing import TypedDict
 
+import pandas as pd
+
 from ...database.repositories.market_data_provider import MarketDataProvider
 from ...database.repositories.signal import SignalRepository
 from ...database.repositories.trade import TradeRepository
@@ -81,20 +83,37 @@ class ScreenerEngine:
         results: dict[str, int] = {}
         global_analysis_date: str | None = None
 
-        # Reset cache and sync date for fresh runs
-        if days == 0:
-            self.data_provider.clear_cache()
-            global_analysis_date = self.data_provider.get_latest_date()
-
-            if global_analysis_date:
-                logger.info(
-                    "[ScreenerEngine] Global Analysis Date detected: %s",
-                    global_analysis_date,
-                )
+        latest_date_str = self.data_provider.get_latest_date()
+        if latest_date_str:
+            if days == 0:
+                self.data_provider.clear_cache()
+                global_analysis_date = latest_date_str
             else:
-                logger.warning(
-                    "[ScreenerEngine] Could not detect global date from market data."
+                start_search_date = (
+                    pd.Timestamp(latest_date_str) - pd.Timedelta(days=days * 5)
+                ).strftime("%Y-%m-%d")
+                available_trading_dates = self.data_provider.get_available_dates(
+                    start_date=start_search_date,
+                    end_date=latest_date_str,
                 )
+                if len(available_trading_dates) > days:
+                    global_analysis_date = available_trading_dates[-1 - days].strftime(
+                        "%Y-%m-%d"
+                    )
+                else:
+                    global_analysis_date = (
+                        pd.Timestamp(latest_date_str) - pd.Timedelta(days=days)
+                    ).strftime("%Y-%m-%d")
+
+            logger.info(
+                "[ScreenerEngine] Global Analysis Date resolved: %s (days=%d)",
+                global_analysis_date,
+                days,
+            )
+        else:
+            logger.warning(
+                "[ScreenerEngine] Could not detect global date from market data."
+            )
 
         for strategy in self.active_strategies:
             if strategy_filter and strategy.name != strategy_filter:

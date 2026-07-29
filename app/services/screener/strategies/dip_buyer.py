@@ -155,7 +155,9 @@ class DipBuyerStrategy(BaseStrategy):
             return 0
 
         # 4. Resolve Date
-        target_date = self._resolve_target_date(market_data["close"], analysis_date)
+        target_date = self._resolve_target_date(
+            market_data["close"], analysis_date, days
+        )
         if target_date is None:
             return 0
 
@@ -163,10 +165,20 @@ class DipBuyerStrategy(BaseStrategy):
         return self._execute_screening_pipeline(market_data, target_date)
 
     def _resolve_target_date(
-        self, closes: pd.DataFrame, analysis_date: str | None
+        self, closes: pd.DataFrame, analysis_date: str | None, days: int = 0
     ) -> pd.Timestamp | None:
         """Resolves the correct analysis date based on data availability."""
         if not analysis_date:
+            if days > 0 and len(closes.index) > days:
+                target_date = closes.index[-1 - days]
+                logger.info(
+                    "[%s] Analysis Date derived from days=%d offset: %s",
+                    self.name,
+                    days,
+                    target_date.date(),
+                )
+                return target_date
+
             last_date = closes.index[-1]
             logger.info(
                 "[%s] Analysis Date not provided. Using last DB date: %s",
