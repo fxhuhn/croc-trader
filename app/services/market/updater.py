@@ -275,7 +275,9 @@ class MarketDataUpdater:
                     total_symbols,
                 )
 
-            records = self.tv_provider.fetch_symbol_history(symbol, n_bars=n_bars)
+            records = self.tv_provider.fetch_symbol_history(
+                symbol, number_of_bars=n_bars
+            )
             if not records:
                 if full_reload:
                     self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")

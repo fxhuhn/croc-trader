@@ -64,7 +64,7 @@ def test_tv_provider_fetch_symbol_history_success(mock_mapper):
     provider = TradingViewDataProvider()
     provider._tv = mock_tv_instance
 
-    records = provider.fetch_symbol_history("BRK-B", n_bars=10)
+    records = provider.fetch_symbol_history("BRK-B", number_of_bars=10)
 
     # Check that tv_symbol was passed as BRK.B
     mock_tv_instance.get_hist.assert_called_once()
@@ -114,7 +114,7 @@ def test_tv_provider_multi_bar_date_preservation(mock_mapper):
     provider = TradingViewDataProvider()
     provider._tv = mock_tv_instance
 
-    records = provider.fetch_symbol_history("AAPL", n_bars=3)
+    records = provider.fetch_symbol_history("AAPL", number_of_bars=3)
     prices = [MarketPrice.from_tradingview("AAPL", r) for r in records]
 
     parsed_dates = [p.date for p in prices]
