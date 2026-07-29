@@ -209,7 +209,10 @@ class BridgeScoutStrategy(BaseStrategy[int]):
 
         # Strict single position check (MaxPositions = 1)
         active_or_created = self.trade_repository.get_by_status(
-            [TradeStatus.CREATED, TradeStatus.ACTIVE]
+            [
+                TradeStatus.CREATED,
+                TradeStatus.ACTIVE,
+            ]
         )
         if any(
             t.get("symbol") == self.TARGET_SYMBOL

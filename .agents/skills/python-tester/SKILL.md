@@ -77,25 +77,29 @@ from unittest.mock import patch
 import pandas as pd
 from src.metrics import calculate_daily_return
 
+
 def test_calculate_daily_return_raises_error_on_mismatched_index() -> None:
     """Verifies that non-aligned timeseries raise a Critical Validation Error."""
     # Arrange
     prices = pd.Series([100.0, 101.0], index=[1, 2])
-    volume = pd.Series([1000], index=[1]) # Missing index 2
+    volume = pd.Series([1000], index=[1])  # Missing index 2
 
     # Act & Assert
     with pytest.raises(ValueError, match="Index mismatch"):
         calculate_daily_return(prices, volume)
 
+
 @pytest.mark.parametrize(
     "input_value, expected",
     [
         (0.0, 0.0),
-        (-100.0, -0.5), # Testing negative price handling
-        (1e-9, 0.0),    # Testing precision underflow
-    ]
+        (-100.0, -0.5),  # Testing negative price handling
+        (1e-9, 0.0),  # Testing precision underflow
+    ],
 )
-def test_normalization_handles_extreme_values(input_value: float, expected: float) -> None:
+def test_normalization_handles_extreme_values(
+    input_value: float, expected: float
+) -> None:
     """Ensures extreme data poisoning does not crash the normalization logic."""
     # Arrange
     # ...

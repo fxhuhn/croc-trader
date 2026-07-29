@@ -53,7 +53,11 @@ def test_check_entry_limit_hit_inherits_setup_green_state(strategy, mock_trade_r
         "symbol": "AAPL",
         "entry_price": 100.0,
         "signal_context": json.dumps(
-            {"date": "2026-02-13", "setup_candle_green": True, "green_candle_count": 0}
+            {
+                "date": "2026-02-13",
+                "setup_candle_green": True,
+                "green_candle_count": 0,
+            }
         ),
     }
     # Current day: Feb 16th (Monday). Open 99, Low 98 (hits 100), Close 102 (Green).

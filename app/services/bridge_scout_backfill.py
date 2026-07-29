@@ -69,7 +69,10 @@ def run_bridge_scout_backfill(
         active_trades = [
             t
             for t in trade_repository.get_by_status(
-                [TradeStatus.CREATED, TradeStatus.ACTIVE]
+                [
+                    TradeStatus.CREATED,
+                    TradeStatus.ACTIVE,
+                ]
             )
             if "bridge_scout" in str(t.get("strategy")).lower()
         ]

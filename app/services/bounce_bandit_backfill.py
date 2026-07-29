@@ -69,7 +69,10 @@ def run_bounce_bandit_backfill(
         active_trades = [
             t
             for t in trade_repository.get_by_status(
-                [TradeStatus.CREATED, TradeStatus.ACTIVE]
+                [
+                    TradeStatus.CREATED,
+                    TradeStatus.ACTIVE,
+                ]
             )
             if "bounce_bandit" in str(t.get("strategy")).lower()
         ]

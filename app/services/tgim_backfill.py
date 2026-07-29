@@ -69,7 +69,10 @@ def run_tgim_backfill(
         active_trades = [
             t
             for t in trade_repository.get_by_status(
-                [TradeStatus.CREATED, TradeStatus.ACTIVE]
+                [
+                    TradeStatus.CREATED,
+                    TradeStatus.ACTIVE,
+                ]
             )
             if "tgim" in str(t.get("strategy")).lower()
         ]

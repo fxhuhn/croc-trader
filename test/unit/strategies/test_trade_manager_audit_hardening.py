@@ -302,7 +302,10 @@ class TestTurnoverTimingStrategyInitialization:
             "current_size": 10,
             "status": "ACTIVE",
             "signal_context": json.dumps(
-                {"green_candle_count": 0, "date": "2026-01-08"}
+                {
+                    "green_candle_count": 0,
+                    "date": "2026-01-08",
+                }
             ),
         }
 
@@ -704,7 +707,10 @@ class TestTradeManagerDipBuyerDynamicLOCUpdate:
                 "strategy": "dip_buyer",
                 "status": "ACTIVE",
                 "signal_context": json.dumps(
-                    {"date": "2026-06-01", "threshold_loc": 329.52}
+                    {
+                        "date": "2026-06-01",
+                        "threshold_loc": 329.52,
+                    }
                 ),
             }
 

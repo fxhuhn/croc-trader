@@ -106,6 +106,7 @@ def process_trade_signal(signal, portfolio, market_data):
             if portfolio.has_buying_power:
                 execute_trade(signal)
 
+
 # ✅ REQUIRED: Guard clauses with early return
 def process_trade_signal(
     signal: TradeSignal,
@@ -168,6 +169,7 @@ def load_strategy_configuration(config_path: Path) -> StrategyConfig:
         raise ConfigurationError("'lookback_period' must be positive")
 
     return StrategyConfig(**raw_config)
+
 
 # Functional Core: Trusts validated data — no defensive checks
 def calculate_moving_average(
@@ -244,13 +246,16 @@ If a function needs both calculation AND I/O, it is a shell function that delega
 # FUNCTIONAL CORE — Pure, testable
 # ═══════════════════════════════════════
 
+
 @dataclass(frozen=True)
 class RebalanceDecision:
     """Immutable result of a rebalancing calculation."""
+
     ticker_symbol: str
     target_quantity: int
     current_quantity: int
     action: Literal["BUY", "SELL", "HOLD"]
+
 
 def determine_rebalancing_actions(
     current_positions: list[Position],
@@ -265,9 +270,11 @@ def determine_rebalancing_actions(
     """
     ...
 
+
 # ═══════════════════════════════════════
 # IMPERATIVE SHELL — I/O, orchestration
 # ═══════════════════════════════════════
+
 
 def run_daily_rebalancing(database_path: Path) -> None:
     """
@@ -280,9 +287,7 @@ def run_daily_rebalancing(database_path: Path) -> None:
     portfolio_value = sum(p.market_value for p in positions)
 
     # ← Call into the Functional Core (pure)
-    decisions = determine_rebalancing_actions(
-        positions, allocation, portfolio_value
-    )
+    decisions = determine_rebalancing_actions(positions, allocation, portfolio_value)
 
     persist_rebalancing_decisions(database_path, decisions)
     logger.info("Rebalancing completed: %d decisions", len(decisions))
@@ -315,11 +320,14 @@ These thresholds are enforced in code reviews and CI/CD pipelines.
 from dataclasses import dataclass
 import logging
 
+
 @dataclass(frozen=True)
 class TradingStrategyConfiguration:
     """Configuration for technical analysis thresholds."""
+
     trend_window_size: int
     minimum_required_history: int
+
 
 def analyze_market_trends(
     closing_prices: list[float],
@@ -337,9 +345,11 @@ def analyze_market_trends(
 
     return _calculate_trend_thresholds(closing_prices, config.trend_window_size)
 
+
 def _is_history_sufficient(prices: list[float], minimum: int) -> bool:
     """Checks if the provided price list meets the required length."""
     return len(prices) >= minimum
+
 
 def _calculate_trend_thresholds(prices: list[float], window: int) -> list[float]:
     """
@@ -348,7 +358,6 @@ def _calculate_trend_thresholds(prices: list[float], window: int) -> list[float]
     Calculates the threshold values used to identify trend reversals.
     """
     return [
-        sum(prices[i : i + window]) / window
-        for i in range(len(prices) - window + 1)
+        sum(prices[i : i + window]) / window for i in range(len(prices) - window + 1)
     ]
 ```

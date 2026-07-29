@@ -63,6 +63,7 @@ class TradeInstruction:
 ```python
 from typing import Iterator
 
+
 def stream_process_prices(file_path: Path) -> Iterator[PriceRecord]:
     """Yields records one by one to save RAM during EOD batch processing."""
     with file_path.open() as file_handle:

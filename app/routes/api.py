@@ -376,13 +376,19 @@ def analyze_tgim() -> Response:
         screener_engine = current_app.extensions.get("screener_engine")
         if not screener_engine:
             return jsonify(
-                {"status": "error", "message": "Engine not initialized"}
+                {
+                    "status": "error",
+                    "message": "Engine not initialized",
+                }
             ), 503
 
         strategy = screener_engine.get_strategy(Strategies.TGIM)
         if not strategy:
             return jsonify(
-                {"status": "error", "message": "TGIM strategy not found"}
+                {
+                    "status": "error",
+                    "message": "TGIM strategy not found",
+                }
             ), 404
 
         candidates_count = strategy.run(days=days, analysis_date=analysis_date)
@@ -415,13 +421,19 @@ def analyze_bridge_scout() -> Response:
         screener_engine = current_app.extensions.get("screener_engine")
         if not screener_engine:
             return jsonify(
-                {"status": "error", "message": "Engine not initialized"}
+                {
+                    "status": "error",
+                    "message": "Engine not initialized",
+                }
             ), 503
 
         strategy = screener_engine.get_strategy(Strategies.BridgeScout)
         if not strategy:
             return jsonify(
-                {"status": "error", "message": "Bridge Scout strategy not found"}
+                {
+                    "status": "error",
+                    "message": "Bridge Scout strategy not found",
+                }
             ), 404
 
         candidates_count = strategy.run(days=days, analysis_date=analysis_date)
@@ -456,13 +468,19 @@ def analyze_bounce_bandit() -> Response:
         screener_engine = current_app.extensions.get("screener_engine")
         if not screener_engine:
             return jsonify(
-                {"status": "error", "message": "Engine not initialized"}
+                {
+                    "status": "error",
+                    "message": "Engine not initialized",
+                }
             ), 503
 
         strategy = screener_engine.get_strategy(Strategies.BounceBandit)
         if not strategy:
             return jsonify(
-                {"status": "error", "message": "Bounce Bandit strategy not found"}
+                {
+                    "status": "error",
+                    "message": "Bounce Bandit strategy not found",
+                }
             ), 404
 
         candidates_count = strategy.run(days=days, analysis_date=analysis_date)
