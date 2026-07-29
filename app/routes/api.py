@@ -128,9 +128,9 @@ def ingest_webhook() -> Response:
             else "instance/signals.db"
         )
 
-        with DatabaseSession(str(database_path)) as session:
-            repository = SignalRepository(session)
-            signal_id = repository.save_signal(dict(payload))
+        session = DatabaseSession(str(database_path))
+        repository = SignalRepository(session)
+        signal_id = repository.save_signal(dict(payload))
 
         logger.info("✅ Webhook saved: %s -> ID %s", symbol, signal_id)
 
@@ -559,19 +559,15 @@ def sync_market_data() -> Response:
     def _execute_sync_task() -> None:
         """Background task for market synchronization."""
         try:
-            with (
-                DatabaseSession(str(database_path)) as market_session,
-                DatabaseSession(str(signals_database_path)) as signals_session,
-            ):
-                updater = MarketDataUpdater(market_session, signals_session)
-                updater.run_update(full_reload=should_full_sync)
+            market_session = DatabaseSession(str(database_path))
+            signals_session = DatabaseSession(str(signals_database_path))
+            updater = MarketDataUpdater(market_session, signals_session)
+            updater.run_update(full_reload=should_full_sync)
 
-                telegram_bot = current_app.extensions.get("telegram")
-                quality_service = MarketQualityService(
-                    updater, telegram_bot=telegram_bot
-                )
-                quality_service.perform_gap_check()
-                quality_service.check_last_trading_day_completeness()
+            telegram_bot = current_app.extensions.get("telegram")
+            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
+            quality_service.perform_gap_check()
+            quality_service.check_last_trading_day_completeness()
         except (RuntimeError, ValueError) as sync_error:
             logger.error("Market Sync Task Error: %s", sync_error)
 
@@ -599,18 +595,14 @@ def reload_market_data() -> Response:
         """Background task for full market reload."""
         try:
             logger.info("Manual full reload via API started...")
-            with (
-                DatabaseSession(str(database_path)) as market_session,
-                DatabaseSession(str(signals_database_path)) as signals_session,
-            ):
-                updater = MarketDataUpdater(market_session, signals_session)
-                updater.run_update(full_reload=True)
+            market_session = DatabaseSession(str(database_path))
+            signals_session = DatabaseSession(str(signals_database_path))
+            updater = MarketDataUpdater(market_session, signals_session)
+            updater.run_update(full_reload=True)
 
-                quality_service = MarketQualityService(
-                    updater, telegram_bot=telegram_bot
-                )
-                quality_service.perform_gap_check()
-                quality_service.check_last_trading_day_completeness()
+            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
+            quality_service.perform_gap_check()
+            quality_service.check_last_trading_day_completeness()
         except (RuntimeError, ValueError) as reload_error:
             logger.error("Market Reload Task Error: %s", reload_error)
 

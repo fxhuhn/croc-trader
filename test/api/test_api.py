@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.database.session import DatabaseSession
+
 
 @pytest.fixture
 def app():
@@ -34,10 +36,10 @@ def test_health_check(client):
 
 def test_webhook_ingest(client):
     payload = {"symbol": "AAPL", "signal": "LONG"}
-    # Patching both Repo and Session to avoid DB hits
+    # Patching both Repo and Session to avoid DB hits, enforcing exact DatabaseSession spec
     with (
         patch("app.routes.api.SignalRepository") as mock_repo,
-        patch("app.routes.api.DatabaseSession"),
+        patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
     ):
         mock_instance = mock_repo.return_value
         mock_instance.save_signal.return_value = 1
@@ -67,3 +69,45 @@ def test_trades_backfill(client, app):
     )
     assert response.status_code == 200
     mock_tm.run_daily_process.assert_called_once()
+
+
+def test_market_sync(client):
+    with (
+        patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
+        patch("app.routes.api.MarketDataUpdater") as mock_updater_class,
+        patch("app.routes.api.MarketQualityService"),
+        patch("app.routes.api.Thread") as mock_thread_class,
+    ):
+        response = client.post(
+            "/market/sync", environ_base={"REMOTE_ADDR": "127.0.0.1"}
+        )
+        assert response.status_code == 202
+        assert response.json["status"] == "accepted"
+
+        # Verify thread was created and target function executes without context manager error
+        target_fn = mock_thread_class.call_args.kwargs.get("target")
+        target_fn()
+        mock_updater_class.return_value.run_update.assert_called_once_with(
+            full_reload=False
+        )
+
+
+def test_market_reload(client):
+    with (
+        patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
+        patch("app.routes.api.MarketDataUpdater") as mock_updater_class,
+        patch("app.routes.api.MarketQualityService"),
+        patch("app.routes.api.Thread") as mock_thread_class,
+    ):
+        response = client.post(
+            "/market/reload", environ_base={"REMOTE_ADDR": "127.0.0.1"}
+        )
+        assert response.status_code == 200
+        assert response.json["status"] == "queued"
+
+        # Verify thread target executes without context manager error
+        target_fn = mock_thread_class.call_args.kwargs.get("target")
+        target_fn()
+        mock_updater_class.return_value.run_update.assert_called_once_with(
+            full_reload=True
+        )
