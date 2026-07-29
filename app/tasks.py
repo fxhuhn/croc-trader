@@ -14,84 +14,51 @@ from .services.telegram import TelegramBot
 logger = logging.getLogger(__name__)
 
 
-def run_daily_strategy_check(app):
-    """Daily strategy check (screener). Triggered by the scheduler."""
+def run_daily_strategy_check(app: Flask) -> None:
+    """Daily strategy check (screener). Triggered by the scheduler.
+
+    Args:
+        app: The Flask application instance.
+    """
     with app.app_context():
         logger.info("⏰ Scheduler: Starting daily strategy check...")
 
-        screener = app.extensions.get("screener_engine")
+        screener_engine = app.extensions.get("screener_engine")
 
-        if screener:
-            try:
-                # 1. Run screener (scans for signals)
-                screener.run_all(days=0)
-            except Exception as e:
-                logger.error("Screener job error: %s", e)
-        else:
+        if not screener_engine:
             logger.error("Screener Engine not found!")
+            return
+
+        try:
+            screener_engine.run_all(days=0)
+        except Exception as error:
+            logger.error("Screener job error: %s", error)
 
 
-def _clear_and_prewarm_cache(app):
-    """Clears the Flask-Caching cache and preemptively fetches the /trades routes
-
-    to ensure the first user request is instantaneous. Runs ONLY in production
-    (debug=False).
-    """
-    if app.debug:
-        logger.info("Skipping cache pre-warming in debug mode.")
-        return
-
-    with app.app_context():
-        logger.info("🧹 Clearing cache for /trades routes...")
-        cache.clear()
-
-        logger.info("🔥 Starting pre-warming of /trades routes...")
-        with app.test_client() as client:
-            routes = [
-                "/analytics",
-                "/trades",
-                "/trades/croc",
-                "/trades/dip-buyer",
-                "/trades/turnover",
-                "/trades/ndx-momentum",
-                "/trades/twopercent",
-            ]
-            for route in routes:
-                try:
-                    response = client.get(route)
-                    if response.status_code == 200:
-                        logger.info("  ✓ Pre-warmed: %s", route)
-                    else:
-                        logger.warning(
-                            "  ✗ Pre-warm failed for %s: Status %s",
-                            route,
-                            response.status_code,
-                        )
-                except Exception as e:
-                    logger.error("  ✗ Exception during pre-warm of %s: %s", route, e)
-
-        logger.info("✅ Cache pre-warming completed.")
-
-
-def run_cache_prewarm(app):
+def run_cache_prewarm(app: Flask) -> None:
     """Triggered by the scheduler to pre-warm the cache for the day.
 
-    Should run after the TradeManager (which runs at 07:00).
+    Args:
+        app: The Flask application instance.
     """
     logger.info("⏰ Scheduler: Starting Cache Pre-warming...")
     try:
         _clear_and_prewarm_cache(app)
-    except Exception as e:
-        logger.error("Cache pre-warming error: %s", e)
+    except Exception as error:
+        logger.error("Cache pre-warming error: %s", error)
 
 
 def run_market_data_update(
     db_path: Path, telegram_bot: TelegramBot | None = None
 ) -> None:
-    """Downloads market data (daily)."""
+    """Downloads market data (daily).
+
+    Args:
+        db_path: Path to stocks database file.
+        telegram_bot: Optional TelegramBot notification instance.
+    """
     logger.info("⏰ Scheduler: Starting market data update...")
     try:
-        # Resolve TelegramBot if not passed directly
         if telegram_bot is None:
             try:
                 from flask import current_app
@@ -116,102 +83,74 @@ def run_market_data_update(
                     config_error,
                 )
 
-        # Session Factory for Stocks
         session_factory = DatabaseSession(str(db_path))
-
-        # Session Factory for Signals (derived path)
-        # Assuming signals.db is in the same directory as stocks.db
         signals_path = db_path.parent / "signals.db"
         signals_session = DatabaseSession(str(signals_path))
 
-        # 1. Updater Init
         updater = MarketDataUpdater(session_factory, signals_session)
-
-        # 2. Run Update
         updater.run_update(full_reload=False)
 
-        # 3. Quality & Gap Check
-        quality = MarketQualityService(updater, telegram_bot=telegram_bot)
-        quality.perform_gap_check()
-        quality.check_last_trading_day_completeness()
+        quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
+        quality_service.perform_gap_check()
+        quality_service.check_last_trading_day_completeness()
 
-    except Exception as e:
-        logger.error("Market data update error: %s", e, exc_info=True)
+    except Exception as error:
+        logger.error("Market data update error: %s", error, exc_info=True)
 
 
-def run_db_maintenance(db_path: Path):
-    """Database maintenance (Sundays)."""
+def run_db_maintenance(db_path: Path) -> None:
+    """Database maintenance routine (VACUUM & ANALYZE).
+
+    Args:
+        db_path: Path to target database file.
+    """
     logger.info("⏰ Scheduler: Starting DB Maintenance...")
     try:
         session_factory = DatabaseSession(str(db_path))
-        # Use repository or direct database connection
-        with session_factory.connect() as conn:
-            conn.execute("VACUUM")
-            conn.execute("ANALYZE")
+        with session_factory.connect() as database_connection:
+            database_connection.execute("VACUUM")
+            database_connection.execute("ANALYZE")
 
         logger.info("DB maintenance completed.")
-    except Exception as e:
-        logger.error("Maintenance error: %s", e)
+    except Exception as error:
+        logger.error("Maintenance error: %s", error)
 
 
-def run_db_backup(db_path: Path):
-    """Creates a daily backup of the given database.
+def run_db_backup(db_path: Path) -> None:
+    """Creates a daily backup of the database with a 5-file retention policy.
 
-    Retains only the last 5 backups.
-    Uses SQLite VACUUM INTO for safe hot-backups.
+    Args:
+        db_path: Path to database file to back up.
     """
     logger.info("⏰ Scheduler: Starting DB backup for %s...", db_path.name)
 
     try:
-        # 1. Define paths
-        backup_dir = db_path.parent / "backup"
-        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_directory = db_path.parent / "backup"
+        backup_directory.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.now().strftime("%Y-%m-%d")
-        backup_filename = f"{db_path.name}.{timestamp}"
-        backup_file = backup_dir / backup_filename
+        current_date_string = datetime.now().strftime("%Y-%m-%d")
+        backup_file_name = f"{db_path.name}.{current_date_string}"
+        backup_file_path = backup_directory / backup_file_name
 
-        # 2. Create backup (VACUUM INTO)
-        # Use direct connection for VACUUM INTO
-        # Since VACUUM INTO is a SQL statement, we need a connection
+        if backup_file_path.exists():
+            logger.warning("Backup %s already exists. Overwriting...", backup_file_name)
+            backup_file_path.unlink()
+
         session_factory = DatabaseSession(str(db_path))
+        backup_path_string = str(backup_file_path.resolve())
 
-        # Check if backup already exists to avoid error or overwrite
-        if backup_file.exists():
-            logger.warning("Backup %s already exists. Overwriting...", backup_filename)
-            backup_file.unlink()
+        with session_factory.connect() as database_connection:
+            database_connection.execute("VACUUM INTO ?", (backup_path_string,))
 
-        with session_factory.connect() as conn:
-            # SAFETY NOTE: VACUUM INTO does not support parameterized queries
-            # (SQLite limitation). The path is constructed from controlled inputs
-            # (db_path.name + timestamp), not from user input.
-            backup_path_string = str(backup_file.resolve())
-            conn.execute(f"VACUUM INTO '{backup_path_string}'")
+        logger.info("Backup successfully created: %s", backup_file_path)
+        _enforce_backup_retention(backup_directory, db_path.name, max_backups=5)
 
-        logger.info("Backup successfully created: %s", backup_file)
-
-        # 3. Retention policy: keep only the last 5
-        all_backups = sorted(backup_dir.glob(f"{db_path.name}.*"))
-
-        # If more than 5, delete the oldest
-        keep_count = 5
-        if len(all_backups) > keep_count:
-            files_to_delete = all_backups[:-keep_count]
-            for file_to_delete in files_to_delete:
-                try:
-                    file_to_delete.unlink()
-                    logger.info("Old backup deleted: %s", file_to_delete.name)
-                except Exception as delete_error:
-                    logger.error(
-                        "Error deleting %s: %s", file_to_delete.name, delete_error
-                    )
-
-    except Exception as e:
-        logger.error("DB backup error: %s", e, exc_info=True)
+    except Exception as error:
+        logger.error("DB backup error: %s", error, exc_info=True)
 
 
 def run_order_generation(app: Flask) -> None:
-    """Generates the daily order CSV files for created trades.
+    """Generates daily order CSV files for created trades.
 
     Args:
         app: The Flask application instance.
@@ -219,14 +158,99 @@ def run_order_generation(app: Flask) -> None:
     with app.app_context():
         logger.info("⏰ Scheduler: Starting daily order generation...")
         trade_manager = app.extensions.get("trade_manager")
-        if trade_manager:
-            try:
-                order_file_path = trade_manager.generate_daily_orders()
-                if order_file_path:
-                    logger.info("Order generation successful: %s", order_file_path)
-                else:
-                    logger.info("ℹ️ No orders to generate.")
-            except Exception as e:
-                logger.error("Error during order generation: %s", e, exc_info=True)
-        else:
+        if not trade_manager:
             logger.error("TradeManager not found!")
+            return
+
+        try:
+            order_file_path = trade_manager.generate_daily_orders()
+            if order_file_path:
+                logger.info("Order generation successful: %s", order_file_path)
+            else:
+                logger.info("ℹ️ No orders to generate.")
+        except Exception as error:
+            logger.error("Error during order generation: %s", error, exc_info=True)
+
+
+def _clear_and_prewarm_cache(app: Flask) -> None:
+    """Clears Flask-Caching and warms routes in production mode.
+
+    Args:
+        app: The Flask application instance.
+    """
+    if app.debug:
+        logger.info("Skipping cache pre-warming in debug mode.")
+        return
+
+    with app.app_context():
+        logger.info("🧹 Clearing cache for /trades routes...")
+        cache.clear()
+        _prewarm_target_routes(app)
+
+
+def _prewarm_target_routes(app: Flask) -> None:
+    """Executes pre-warm GET requests for registered routes.
+
+    Args:
+        app: Active Flask instance.
+    """
+    target_routes: list[str] = [
+        "/analytics",
+        "/trades",
+        "/trades/croc",
+        "/trades/dip-buyer",
+        "/trades/turnover",
+        "/trades/ndx-momentum",
+        "/trades/twopercent",
+    ]
+
+    logger.info("🔥 Starting pre-warming of /trades routes...")
+    with app.test_client() as test_client:
+        for route_path in target_routes:
+            _warm_single_route(test_client, route_path)
+    logger.info("✅ Cache pre-warming completed.")
+
+
+def _warm_single_route(test_client: object, route_path: str) -> None:
+    """Executes single pre-warm request.
+
+    Args:
+        test_client: Flask test client instance.
+        route_path: Relative route path.
+    """
+    try:
+        response = test_client.get(route_path)  # type: ignore[attr-defined]
+        if response.status_code == 200:
+            logger.info("  ✓ Pre-warmed: %s", route_path)
+            return
+
+        logger.warning(
+            "  ✗ Pre-warm failed for %s: Status %s",
+            route_path,
+            response.status_code,
+        )
+    except Exception as error:
+        logger.error("  ✗ Exception during pre-warm of %s: %s", route_path, error)
+
+
+def _enforce_backup_retention(
+    backup_directory: Path, database_name: str, max_backups: int
+) -> None:
+    """Deletes oldest backup files exceeding the max retention policy.
+
+    Args:
+        backup_directory: Directory path containing backups.
+        database_name: Base name of database.
+        max_backups: Maximum count of recent backups to keep.
+    """
+    all_backups = sorted(backup_directory.glob(f"{database_name}.*"))
+    if len(all_backups) <= max_backups:
+        return
+
+    files_to_delete = all_backups[:-max_backups]
+    for target_file in files_to_delete:
+        try:
+            target_file.unlink()
+            logger.info("Old backup deleted: %s", target_file.name)
+        except Exception as delete_error:
+            logger.error("Error deleting %s: %s", target_file.name, delete_error)
