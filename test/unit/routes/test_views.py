@@ -124,6 +124,9 @@ def test_view_trades_overview_returns_correct_response(
         ("/trades/turnover", b"Turnover"),
         ("/trades/ndx-momentum", b"NDX Momentum"),
         ("/trades/twopercent", b"Two Percent"),
+        ("/trades/tgim", b"TGIM"),
+        ("/trades/bridge-scout", b"Bridge Scout"),
+        ("/trades/bounce-bandit", b"Bounce Bandit"),
     ],
 )
 def test_view_trades_strategy_specific_routes(

@@ -1,3 +1,4 @@
+import pandas as pd
 import pytest
 
 from app.database.repositories.market import MarketRepository
@@ -106,6 +107,26 @@ def test_get_symbol_history_raw_defaults_start_date_when_omitted(
     assert not df.empty
     assert len(df) == 2
     assert df["close"].tolist() == [150.0, 155.0]
+
+
+def test_market_repository_methods_handle_default_parameters_when_omitted(
+    multi_provider_session,
+) -> None:
+    """Verifies that all MarketRepository queries with optional date parameters execute cleanly without positional arg errors."""
+    repo = MarketRepository(multi_provider_session)
+
+    # Act & Assert
+    missing_symbols = repo.get_symbols_with_missing_history()
+    assert isinstance(missing_symbols, list)
+
+    trading_days = repo.get_trading_days_count("AAPL")
+    assert trading_days >= 0
+
+    lookback_df = repo.get_data_for_lookback()
+    assert isinstance(lookback_df, pd.DataFrame)
+
+    batch_df = repo.get_batch_history_raw(["AAPL", "MSFT"])
+    assert isinstance(batch_df, pd.DataFrame)
 
 
 def test_market_data_provider_pivoting_with_fallback(multi_provider_session):

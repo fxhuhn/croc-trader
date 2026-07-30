@@ -4,6 +4,7 @@ Provides database access operations for market_prices and ignored_symbols tables
 """
 
 import logging
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -133,11 +134,13 @@ class MarketRepository(BaseRepository):
             rows = self.fetch_all(sql_query, (reference_date,))
         return [row["symbol"] for row in rows]
 
-    def get_symbols_with_missing_history(self, cutoff_date: str) -> list[str]:
+    def get_symbols_with_missing_history(
+        self, cutoff_date: str = "2020-01-01"
+    ) -> list[str]:
         """Finds symbols whose historical price data starts after the cutoff date.
 
         Args:
-            cutoff_date: Required earliest date string (YYYY-MM-DD).
+            cutoff_date: Required earliest date string (YYYY-MM-DD). Defaults to '2020-01-01'.
 
         Returns:
             List of ticker symbols with insufficient historical depth.
@@ -196,18 +199,23 @@ class MarketRepository(BaseRepository):
         return self.fetch_value(sql_query, (symbol,))
 
     def get_trading_days_count(
-        self, symbol: str, start_date: str, end_date: str
+        self,
+        symbol: str,
+        start_date: str = "2020-01-01",
+        end_date: str | None = None,
     ) -> int:
         """Counts distinct trading days available for a symbol within a date range.
 
         Args:
             symbol: Ticker symbol.
-            start_date: Range start date string.
-            end_date: Range end date string.
+            start_date: Range start date string. Defaults to '2020-01-01'.
+            end_date: Range end date string. Defaults to today's date string.
 
         Returns:
             Count of distinct trading days.
         """
+        if end_date is None:
+            end_date = date.today().strftime("%Y-%m-%d")
         start_date_string = str(start_date).split(" ")[0]
         end_date_string = str(end_date).split(" ")[0]
         sql_query = "SELECT COUNT(DISTINCT date) FROM market_prices WHERE symbol = ? AND date >= ? AND date <= ? AND timeframe = '1D'"
@@ -239,11 +247,11 @@ class MarketRepository(BaseRepository):
 
     # --- Data Access Logic (Bulk / Pandas) ---
 
-    def get_data_for_lookback(self, start_date: str) -> pd.DataFrame:
+    def get_data_for_lookback(self, start_date: str = "2020-01-01") -> pd.DataFrame:
         """Loads all daily price data starting from a given date.
 
         Args:
-            start_date: Start date string (YYYY-MM-DD).
+            start_date: Start date string (YYYY-MM-DD). Defaults to '2020-01-01'.
 
         Returns:
             DataFrame containing ranked daily price records.
@@ -305,18 +313,23 @@ class MarketRepository(BaseRepository):
             return dataframe
 
     def get_batch_history_raw(
-        self, symbols: list[str], start_date: str, end_date: str
+        self,
+        symbols: list[str],
+        start_date: str = "2020-01-01",
+        end_date: str | None = None,
     ) -> pd.DataFrame:
         """Loads price history for multiple symbols within a date range.
 
         Args:
             symbols: List of ticker symbols.
-            start_date: Start date string (YYYY-MM-DD).
-            end_date: End date string (YYYY-MM-DD).
+            start_date: Start date string (YYYY-MM-DD). Defaults to '2020-01-01'.
+            end_date: End date string (YYYY-MM-DD). Defaults to today's date string.
 
         Returns:
             DataFrame containing ranked daily price records for the requested symbols.
         """
+        if end_date is None:
+            end_date = date.today().strftime("%Y-%m-%d")
         if not symbols:
             return pd.DataFrame()
         placeholders = ",".join("?" for _ in symbols)
