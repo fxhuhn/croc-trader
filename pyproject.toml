@@ -45,31 +45,71 @@ ignore = [
     "C901", "E402", "N802", "N803", "PLC0415", "PLR0911", "PLR0912",
     "PLR0913", "PLR0915", "PLR0917", "PLR2004"
 ]
-"scripts/*" = [
-    "C901", "E402", "PLC0415", "PLR0911", "PLR0912", "PLR0913", "PLR0915",
-    "PLR0917", "PLR2004"
-]
 ".agents/*" = ["C901", "PLR0912", "PLR0915"]
-"app/routes/*" = [
-    "C901", "E402", "N802", "N803", "PLC0415", "PLR0911", "PLR0912",
-    "PLR0913", "PLR0915", "PLR0917", "PLR2004"
-]
-"app/services/*" = [
-    "C901", "E402", "N802", "N803", "PLC0415", "PLR0911", "PLR0912",
-    "PLR0913", "PLR0915", "PLR0917", "PLR2004"
-]
-"app/database/*" = [
-    "C901", "E402", "PLC0415", "PLR0911", "PLR0912", "PLR0913", "PLR0915",
-    "PLR0917", "PLR2004"
-]
-"app/tools/*" = [
-    "C901", "E402", "PLC0415", "PLR0911", "PLR0912", "PLR0913", "PLR0915",
-    "PLR0917", "PLR2004"
-]
 "app/config.py" = ["C901", "PLC0415", "PLR0912", "PLR0915", "PLR2004"]
 "app/tasks.py" = ["C901", "PLC0415", "PLR0912", "PLR0915", "PLR2004"]
 "app/__init__.py" = ["E402", "PLC0415", "PLR2004"]
 "vulture_whitelist.py" = ["F401", "E402"]
+# Targeted legacy ruff ignores, verified 2026-07-30
+"app/database/repositories/market.py" = ["PLR2004"]
+"app/database/repositories/signal.py" = ["PLC0415"]
+"app/database/repositories/trade.py" = ["C901", "PLC0415", "PLR0913", "PLR0917"]
+"app/database/session.py" = ["PLC0415"]
+"app/routes/views/analytics.py" = ["C901", "PLR0912", "PLR0915"]
+"app/routes/views/backtest.py" = ["PLC0415", "PLR0913", "PLR0917"]
+"app/routes/views/blueprint.py" = ["PLC0415"]
+"app/routes/views/dependencies.py" = ["PLC0415"]
+"app/routes/views/trades.py" = ["C901"]
+"app/services/backfill_engine.py" = ["C901", "PLR0912", "PLR0913", "PLR0915"]
+"app/services/backtester/analytics.py" = ["C901", "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PLR2004"]
+"app/services/backtester/backtest_results.py" = ["C901", "PLR0913", "PLR0917"]
+"app/services/backtester/charts.py" = ["PLC0415", "PLR0913", "PLR0917", "PLR2004"]
+"app/services/backtester/engine.py" = ["PLR0913", "PLR0917"]
+"app/services/backtester/runner.py" = ["C901", "PLC0415", "PLR0912", "PLR0915", "PLR2004"]
+"app/services/bounce_bandit_backfill.py" = ["PLR0913", "PLR0917"]
+"app/services/bridge_scout_backfill.py" = ["PLR0913", "PLR0917"]
+"app/services/market/updater.py" = ["C901", "PLR0912"]
+"app/services/portfolio/allocator.py" = ["C901", "PLR0911", "PLR0912", "PLR0915"]
+"app/services/portfolio/dynamic_sizing.py" = ["PLR2004"]
+"app/services/portfolio/simulation.py" = ["C901", "PLR0912", "PLR0915"]
+"app/services/screener/engine.py" = ["PLR0913", "PLR0917"]
+"app/services/screener/strategies/bounce_bandit.py" = ["PLR0915"]
+"app/services/screener/strategies/bridge_scout.py" = ["PLR0911", "PLR2004"]
+"app/services/screener/strategies/croc_setup.py" = ["E402", "PLR2004"]
+"app/services/screener/strategies/dip_buyer.py" = ["PLC0415", "PLR0911", "PLR0913", "PLR0917", "PLR2004"]
+"app/services/screener/strategies/ndx_momentum.py" = ["PLR0913", "PLR0917", "PLR2004"]
+"app/services/screener/strategies/tgim.py" = ["PLR2004"]
+"app/services/screener/strategies/turnover_timing.py" = ["PLR0913", "PLR0917", "PLR2004"]
+"app/services/screener/strategies/two_percent_strategy.py" = ["PLR0911", "PLR2004"]
+"app/services/setup.py" = ["PLC0415"]
+"app/services/tgim_backfill.py" = ["PLR0913", "PLR0917"]
+"app/services/trade_manager/manager.py" = ["C901", "PLR0911", "PLR0912"]
+"app/services/trade_manager/strategies/abstract.py" = ["PLR0913", "PLR0917"]
+"app/services/trade_manager/strategies/dip_buyer.py" = ["PLR2004"]
+"app/services/trade_manager/strategies/hold_target.py" = ["PLR0911", "PLR2004"]
+"app/services/trade_manager/strategies/ndx_momentum.py" = ["PLR2004"]
+"app/services/trade_manager/strategies/tgim.py" = ["PLR2004"]
+"app/services/trade_manager/strategies/turnover_timing.py" = ["PLR2004"]
+"app/services/trade_manager/strategies/two_percent_strategy.py" = ["PLR0913", "PLR0917", "PLR2004"]
+"app/services/trade_manager/view_service.py" = ["C901", "PLC0415", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PLR2004"]
+"app/tools/metrics.py" = ["PLR2004"]
+"app/tools/trading_calendar.py" = ["PLR2004"]
+"scripts/analyzer/ml_analysis.py" = ["PLR2004"]
+"scripts/analyzer/src/analyzer.py" = ["PLR2004"]
+"scripts/analyzer/trading_analysis_2.py" = ["PLR0913", "PLR0917"]
+"scripts/debug_croc_fills.py" = ["C901"]
+"scripts/debug_turnover_2026.py" = ["E402", "PLR2004"]
+"scripts/find_unused_ast.py" = ["C901", "PLR0912"]
+"scripts/generate_golden_master.py" = ["PLR0911", "PLR0915", "PLR2004"]
+"scripts/manual_backtest_croc.py" = ["C901", "E402", "PLR0912", "PLR0915", "PLR2004"]
+"scripts/manual_backtest_dip_buyer.py" = ["C901", "E402", "PLR0912", "PLR0915"]
+"scripts/manual_backtest_tgim.py" = ["C901", "PLR0912", "PLR0915"]
+"scripts/manual_backtest_turnover.py" = ["C901", "E402", "PLR0915", "PLR2004"]
+"scripts/manual_croc_screener_test.py" = ["E402", "PLC0415", "PLR0915"]
+"scripts/manual_screener_dip_buyer.py" = ["E402"]
+"scripts/rebuild_signals.py" = ["E402", "PLR2004"]
+"scripts/trading_analysis.py" = ["PLC0415", "PLR0913", "PLR0917", "PLR2004"]
+"scripts/verify_week_turnover.py" = ["C901", "PLC0415", "PLR0912", "PLR0915"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
@@ -102,12 +142,446 @@ pretty = true
 files = ["app"]
 exclude = ["^\\.venv/", "^build/", "^dist/"]
 
-# Legacy code overrides: Verified pre-existing app modules pre-date strict MyPy typing.
-# Newly added or strictly refactored modules must be excluded from this list to enforce strict MyPy checks.
+
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
 module = [
     "app",
-    "app.*",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.config",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.database.repositories.base",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.database.repositories.broker",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.database.repositories.market",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.database.repositories.market_data_provider",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.database.repositories.signal",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.database.repositories.trade",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.mapping",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.models",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.routes.api",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.routes.security",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.routes.views.analytics",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.routes.views.backtest",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.routes.views.dependencies",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.routes.views.screener",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.routes.views.trades",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.backfill_engine",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.backtester.analytics",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.backtester.backtest_results",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.backtester.charts",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.backtester.engine",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.backtester.runner",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.market.provider",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.market.quality",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.market.tv_provider",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.market.updater",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.portfolio.allocator",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.portfolio.dynamic_sizing",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.portfolio.manager",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.portfolio.simulation",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.ranking_verification",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.engine",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.base",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.bounce_bandit",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.bridge_scout",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.croc_setup",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.dip_buyer",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.ndx_momentum",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.tgim",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.turnover_timing",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.strategies.two_percent_strategy",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.screener.view_service",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.setup",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.telegram",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.manager",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.order_export",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.abstract",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.bounce_bandit",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.bridge_scout",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.dip_buyer",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.hold_target",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.ndx_momentum",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.tgim",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.turnover_timing",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.strategies.two_percent_strategy",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.services.trade_manager.view_service",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.tools.indicators",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.tools.market_holidays",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.tools.metrics",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.tools.symbol_exchange",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.tools.symbol_filter",
+]
+ignore_errors = true
+
+# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+[[tool.mypy.overrides]]
+module = [
+    "app.tools.symbol_lists",
 ]
 ignore_errors = true
 

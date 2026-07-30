@@ -58,11 +58,13 @@ Every code decision must be evaluated against these four quality dimensions, in 
     - Use `list[str]` instead of `List[str]`.
     - Use `str | int` instead of `Union[str, int]`.
     - Use `type PriceMap = dict[str, float]` for type aliases.
-- **Controlled `Any`:** Do not use `Any` in domain logic or public internal
-  contracts. At an untyped third-party boundary, `Any` is permitted only in the
-  smallest adapter scope, with an inline justification and immediate validation
-  or conversion to a precise internal type. Do not replace an unknown type with
-  `object` when the value is subsequently used without narrowing.
+- **Controlled `Any`:**
+    - Avoid `Any` in application, domain, and business logic.
+    - Use `Any` only at a verified untyped external boundary when no accurate
+      type, protocol, stub, or `object`-based narrowing is practical.
+    - Contain every use of `Any` locally and document why it is unavoidable.
+    - Narrow or convert the value before it enters domain logic.
+    - Do not use casts or inaccurate types merely to hide an unknown type.
 
 ---
 
@@ -96,6 +98,7 @@ Standard formatting rules:
 Execution commands:
 - `.venv/bin/ruff format --check .`
 - `.venv/bin/ruff check .`
+- `.venv/bin/mypy`
 - `.venv/bin/pytest`
 
 ### 3.3 Prohibited Patterns
@@ -179,11 +182,16 @@ Do not merge modules merely because one contract change affects both.
 When facing a design decision, always choose the option that makes future changes easier. Ask: *"If the requirements change tomorrow, how many files do I need to touch?"* Fewer is better.
 
 ### 4.5 Design by Contract
-The Imperative Shell validates input shape, parsing, external constraints, and
-boundary contracts before data enters the core. The Functional Core may enforce
-domain invariants and reject impossible domain states through deterministic,
-typed errors. Do not duplicate the same validation at both layers without a
-specific reason.
+Validate external representation, structure, and transport constraints at
+system boundaries such as API inputs, configuration loading, file parsing, and
+database reads.
+
+The Functional Core may rely on validated representations, but it must still
+enforce domain invariants that are intrinsic to the business operation or
+required to prevent invalid financial decisions.
+
+Do not duplicate the same validation in multiple layers. Boundary validation
+and domain-invariant validation must have clearly different responsibilities.
 
 ```python
 # Imperative Shell: Validate at the boundary
@@ -236,17 +244,20 @@ def calculate_moving_average(
 
 ### Pandas / Data Processing
 
-- Use Pandas for established repository data-frame pipelines and non-trivial
-  tabular transformations.
-- Do not introduce Pandas for small scalar, record, or sequence operations that
-  are clearer with the standard library.
-- Prefer vectorized transformations for columnar calculations.
-- Do not use `DataFrame.iterrows()` for transformations.
-- Row-wise iteration is permitted only for unavoidable boundary side effects;
-  use `itertuples()` and keep the side-effect operation outside domain logic.
-- Prefer readable method chains. Split a chain when intermediate naming,
-  debugging, or error diagnosis becomes clearer.
-- Avoid hidden mutation and chained assignment.
+- Use Pandas when it is the established repository abstraction or provides a
+  clear benefit for tabular analysis.
+- Prefer vectorized operations for analytical transformations.
+- Row iteration is permitted only when:
+  - processing is inherently sequential,
+  - an imperative external boundary requires record-wise handling,
+  - or no clear and maintainable vectorized solution exists.
+- When row iteration is required, prefer `itertuples()` over `iterrows()`.
+- Prefer method chaining only while the transformation remains easy to read and
+  debug.
+- Use intention-revealing intermediate variables for complex transformations,
+  validation steps, or pipelines with multiple business concepts.
+- Do not convert simple non-tabular structures to DataFrames merely to satisfy
+  a style rule.
 
 ### Database (SQLite)
 - **Usage:** Use standard `sqlite3` library with context managers.
@@ -276,12 +287,17 @@ def calculate_moving_average(
 Separate **pure logic** (deterministic calculations) from **side effects** (I/O, database, network, logging).
 
 ### 8.1 Functional Core (The "Inside")
-- **Deterministic Functions:** The same inputs produce the same result or the
-  same deterministic domain error. Pure core functions do not depend on hidden
-  state, time, I/O, logging, network access, or mutable globals.
+- **Deterministic Domain Logic:** For the same validated inputs, explicit
+  configuration, trading date, and portfolio state, core logic must return the
+  same result.
 - **No Side Effects:** No I/O, no database, no logging, no network calls, no `datetime.now()`.
-- **Immutable Data:** Input and output via `@dataclass(frozen=True)` or primitive types.
-- **Trivially Testable:** Core functions need zero mocks. Test with a simple `assert`.
+- **Immutable Domain Data:** Prefer immutable dataclasses and immutable value
+  objects for domain inputs and outputs. Primitive values, tuples, read-only
+  mappings, and library-specific immutable or effectively immutable structures
+  are also permitted when they express the contract more clearly.
+- **Directly Testable:** Core logic must require no mocks. Tests may use plain
+  assertions, parametrization, fixtures containing immutable values, or
+  property-based checks when already supported by the project.
 
 ### 8.2 Imperative Shell (The "Outside")
 - **All Side Effects Live Here:** Database access, file I/O, API calls, logging.
@@ -349,24 +365,27 @@ def run_daily_rebalancing(database_path: Path) -> None:
 
 ## 9. Measurable Quality Thresholds
 
-These thresholds are enforced in code reviews and CI/CD pipelines.
+Only report a metric as enforced when the named tool and repository
+configuration actually enforce it.
 
 | Dimension | Metric | Threshold | Enforcement |
-|-----------|--------|-----------|-------------|
-| Readability | Cognitive complexity | ≤ 15 per function | Sonar-compatible tool when configured; otherwise audit only |
-| Readability | Maximum indentation | ≤ 3 levels | Audit |
-| Readability | Function size | ≤ 50 logical statements as a review target | Ruff `PLR0915` and audit; not a physical-line guarantee |
-| Maintainability | Static typing | No new MyPy errors in changed code | `mypy` |
-| Maintainability | Branch coverage of changed functional-core logic | ≥ 90%; target 100% for new business branches | `pytest-cov` when installed |
-| Correctness | Cyclomatic complexity | ≤ 10 per function | Ruff `C901` |
-| Correctness | Bare `except` | 0 | Ruff `E722` |
-| Correctness | Unjustified `type: ignore` | 0 | MyPy and audit |
-| Correctness | SQL string interpolation with external values | 0 | Bandit/audit |
-| Changeability | Architecture-boundary violations | 0 new violations | Architecture audit |
+|---|---|---:|---|
+| Readability | Cyclomatic complexity per function | ≤ 10 | Ruff `C901` / McCabe |
+| Readability | Cognitive complexity per function | ≤ 15 | Sonar-compatible tool when configured; otherwise audit only |
+| Readability | Maximum indentation depth | ≤ 3 levels | Audit |
+| Readability | Function length | approximately ≤ 50 logical lines | Audit; not a Ruff-enforced line metric |
+| Maintainability | Function arguments | ≤ 5 | Ruff Pylint rules for enforced scope |
+| Maintainability | Static typing | No new MyPy errors in the effective checked scope | MyPy strict configuration |
+| Maintainability | Functional-core branch coverage | ≥ 90% for materially changed logic | Measured Pytest coverage |
+| Correctness | Bare `except:` clauses | 0 | Ruff `E722` |
+| Correctness | Unjustified `# type: ignore` | 0 | MyPy and audit |
+| Correctness | SQL string interpolation with untrusted values | 0 | Ruff/Bandit where detectable and security audit |
+| Changeability | Architecture-boundary violations | 0 introduced | Architecture audit |
 
-Do not claim that Ruff measures cognitive complexity, physical function line
-count, type-coverage percentage, or dependency depth. A documented target is
-not an automated gate unless the configured tool actually measures it.
+A documented target is not equivalent to an enforced gate.
+
+If a metric cannot be measured with the available configuration, report it as
+`Not measured` and evaluate it only through an explicitly identified audit.
 
 ---
 

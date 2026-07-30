@@ -64,7 +64,9 @@ requirements.
 Design solutions adhering strictly to the Code Standards (per `.agents/rules/python.md`):
 
 * **Style:** Python 3.12+, snake_case, No convenience abbreviations.
-* **Type Safety:** Strict typing (`list[str]`, `str | int`). Controlled `Any`.
+* **Type Safety:** Use strict, specific typing (`list[str]`, `str | int`).
+  Apply the controlled external-boundary `Any` policy from
+  `.agents/rules/python.md`; do not allow `Any` to propagate into domain logic.
 * **Safety:** Define domain-specific exception types only when callers need to distinguish a stable failure category. Do not create one exception class per message or implementation detail.
 * **Docstrings:** Google-style docstrings are mandatory for public production modules, classes, methods, and functions. Private helpers require docstrings only when their purpose, assumptions, or business reasoning are not evident from their name and implementation.
 * **Functional Core / Imperative Shell:** Strictly separate pure calculations from I/O as defined in `.agents/rules/python.md` Section 8.

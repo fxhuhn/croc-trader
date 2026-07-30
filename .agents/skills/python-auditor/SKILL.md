@@ -63,8 +63,13 @@ Evaluate code in **pyramid order**:
 ## AUDIT PROCESS & SCANS
 
 1. **⚡ Correctness Scan**: Verify error handling, SQL safety, boundary conditions, and immutability where an immutable domain contract is required.
-2. **📖 Readability Scan**: Check naming, 30-second rule, cognitive complexity (≤15), indentation depth (≤3), and early returns.
-3. **🔧 Maintainability Scan**: Check type coverage, DRY, SRP, docstrings.
+2. **📖 Readability Scan**: Check naming, the 30-second rule, cyclomatic
+   complexity from Ruff when available, cognitive complexity only when a
+   compatible tool is configured, indentation depth, function length, and
+   appropriate use of early returns.
+3. **🔧 Maintainability Scan**: Check effective MyPy coverage of the changed
+   scope, introduced typing errors, DRY, SRP, public documentation, and whether
+   broad tool exclusions hide changed code.
 4. **🔄 Changeability Scan**: Verify DIP, OCP, orthogonality, and boundary validation.
 
 ---
@@ -76,6 +81,17 @@ Use measured values when the configured tool is available.
 If a metric cannot be measured, label the value `Not measured`. A manual
 estimate may be included only as an explicitly marked estimate and must not be
 presented as a tool result.
+
+Do not use `mypy --strict` as a percentage-based type-coverage metric unless a
+separate configured tool measures that percentage.
+
+Do not claim that Ruff measures cognitive complexity or physical function
+length. Ruff `C901` measures McCabe cyclomatic complexity. Function length and
+cognitive complexity remain audit findings unless dedicated tools are
+configured.
+
+Inspect the effective tool scope. A check that excludes the changed module or
+suppresses all errors for its package does not count as successful validation.
 
 Run Vulture when it is configured and relevant to the current change.
 

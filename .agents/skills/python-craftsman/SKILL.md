@@ -53,6 +53,10 @@ failures from newly introduced failures.
 
 Do not modify unrelated files to make repository-wide checks pass.
 
+Broad directory-level Ruff exclusions do not prove that changed code complies
+with the excluded rules. When a changed file is covered by such an exclusion,
+report which rule families were not effectively enforced.
+
 ### Gate 2: Static Typing — mandatory for typed Python changes
 
 ```bash
@@ -61,6 +65,16 @@ Do not modify unrelated files to make repository-wide checks pass.
 
 Do not report this gate as passed when MyPy globally suppresses errors or when
 the changed modules are excluded. Report the effective checked scope.
+
+A package-wide override such as `app.*` with `ignore_errors = true` means the
+application scope is not statically validated. In that state:
+
+- report the gate as `Not validated`,
+- do not describe MyPy as strict for application code,
+- and identify the suppressing override in the completion report.
+
+A file or module may count as checked only when MyPy analyzes it without an
+`ignore_errors = true` override.
 
 ### Gate 3: Behavior Verification — required for behavior changes
 

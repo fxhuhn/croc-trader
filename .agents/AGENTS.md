@@ -7,25 +7,27 @@
 
 ## Instruction Precedence
 
-### Non-Overridable Governance
+### Non-Overrideable Governance
 
-The following rules are always mandatory and cannot be overridden by a user
-request, lower-priority instruction, skill, local convention, or output-format
-preference:
+The following constraints cannot be overridden by a user request, skill,
+lower-level rule, local convention, or implementation preference:
 
-- workspace and repository boundaries,
-- safety and non-destructive execution,
-- evidence and non-fabrication,
-- truthful reporting of validation results,
-- protection of secrets, production systems, user data, and external services,
-- prohibition against weakening tests merely to obtain a passing result.
+1. Workspace and repository boundaries.
+2. Safety and non-destructive operation.
+3. Evidence and non-fabrication requirements.
+4. Truthful reporting of commands, tests, tools, and validation results.
+5. Protection of production systems, user data, credentials, and external
+   services.
+6. Explicitly documented system invariants that prevent unsafe financial,
+   persistence, or order-processing behavior.
 
-An explicit user request may authorize a normally out-of-scope change such as a
-dependency update, schema change, public-interface change, or architecture
-change. It does not authorize fabricated evidence, unsafe execution, or false
-completion claims.
+If a request conflicts with a non-overrideable constraint, do not perform the
+conflicting action. Report the conflict directly.
 
-When instructions overlap or conflict, apply them in this order:
+### Precedence for Permitted Work
+
+For work that does not conflict with non-overrideable governance, apply
+instructions in this order:
 
 1. Explicit user request
 2. This `.agents/AGENTS.md`
@@ -37,14 +39,10 @@ When instructions overlap or conflict, apply them in this order:
 
 A lower-priority instruction must not override a higher-priority instruction.
 
-The explicit user request defines the desired outcome and may explicitly
-authorize changes to current architecture or contracts. Until such a change is
-explicitly requested, `architecture.md` and `references/architecture.md`
-describe the current authoritative system state.
-
 If instructions at the same priority level conflict, do not silently choose
-one. Resolve the conflict from repository evidence or report it before making
-a behavior-changing modification.
+one. Resolve the conflict from authoritative repository evidence. If the
+conflict affects business behavior, financial behavior, public contracts,
+persistence semantics, or destructive actions, report it before modification.
 
 Output-format instructions must never suppress correctness, safety,
 uncertainty, failed validation, or verification results.
