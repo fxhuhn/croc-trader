@@ -42,7 +42,13 @@ assumption as a test.
 
 ## TESTING PROTOCOL
 
-### STEP 1: TEST BOUNDARY RULES
+### STEP 1: TEST BOUNDARY RULES & TEST LEVELS
+
+- Unit tests verify isolated contracts and deterministic domain behavior.
+- Integration tests verify repository adapters, SQLite transactions, file
+  contracts, and component boundaries with controlled local resources.
+- End-to-end tests are used only when the task changes a complete documented
+  workflow and can run without production or uncontrolled external systems.
 
 - Functional-core unit tests use no mocks.
 - Imperative-shell unit tests isolate external boundaries.
@@ -58,16 +64,32 @@ assumption as a test.
 
 ### STEP 2: COVERAGE & TIME RULES
 
-- Target branch coverage for newly added or materially changed business logic:
-  100% where practical.
-- Minimum branch coverage for changed functional-core logic: 90%.
+- New or materially changed pure business logic should exercise every reachable
+  branch unless a specific branch is demonstrably defensive or unreachable.
+- Changed functional-core logic must achieve at least 90% branch coverage when
+  coverage tooling is available.
+- Any excluded branch requires a documented technical reason; do not add
+  `pragma: no cover` merely to satisfy a threshold.
 - Repository-wide coverage follows the configured project threshold.
 - Never report a coverage percentage unless coverage was actually measured.
 - Coverage does not replace meaningful behavioral assertions.
 - Time-dependent behavior must use an injected clock, standard-library patching,
   or an already declared project dependency. Do not add `freezegun` solely for one test unless explicitly justified and approved.
 
-### STEP 3: CODE STYLE & STRUCTURE
+### STEP 3: EOD DETERMINISM
+
+For scheduling, daily processing, or order generation changes, test as
+applicable:
+
+- repeated execution for the same trading date,
+- duplicate-run protection,
+- stale or missing market data,
+- holiday and timezone boundaries,
+- partial failure and safe retry,
+- atomic output creation,
+- deterministic reruns from the same input snapshot.
+
+### STEP 4: CODE STYLE & STRUCTURE
 
 - Use Arrange-Act-Assert structure where it improves clarity.
 - Do not add comments or docstrings that merely repeat a descriptive test name.

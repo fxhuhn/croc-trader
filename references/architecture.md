@@ -24,6 +24,23 @@ Where existing schemas contain monetary values in `REAL` columns:
 - schema migration must be handled as a separate authorized task,
 - no implicit float-to-money conversion is permitted in domain logic.
 
+New schema fields for authoritative monetary values must not use SQLite `REAL`.
+Use one approved representation consistently:
+
+- integer minor units with an explicit currency and scale, or
+- canonical decimal strings converted to `decimal.Decimal` at the repository
+  boundary.
+
+Existing monetary `REAL` columns are transitional legacy contracts. Reading a
+legacy value must use an explicit conversion policy such as `Decimal(str(value))`;
+this limits additional binary conversion artifacts but does not restore
+precision already lost in storage. Migration of those columns requires a
+separate authorized task.
+
+Quantities may use integer or decimal representations according to the
+instrument contract. Do not classify fractional quantity fields automatically
+as monetary values.
+
 ### 1.1 `signals.db` Schema
 
 #### Table `trades`
@@ -164,17 +181,40 @@ List of blacklisted symbols skipped by downloads and screeners.
 
 ---
 
-## 2. Order CSV Interface Contract
+## 2. EOD Run Contract
 
-### 2.1 Technical Constraints
+Each scheduled workflow identifies at least:
+
+- workflow name,
+- trading date,
+- input data as-of date,
+- configuration version or fingerprint,
+- run identifier,
+- completion status.
+
+For the same workflow and trading date, duplicate execution must be detected or
+made idempotent. A retry must not duplicate durable effects already committed by
+a prior attempt.
+
+---
+
+## 3. Order CSV Interface Contract
+
+### 3.1 Technical Constraints
 - **File Format**: Standard CSV conforming to RFC 4180.
 - **Delimiter**: `,` (Comma).
 - **Encoding**: UTF-8.
 - **Line Ending**: `\n` (LF).
 - **Price Format**: String decimals, rounded to 4 decimal places maximum.
 - **Time Format**: ISO 8601 formatting with explicit UTC offset (e.g. `2026-07-07T13:00:00+02:00`).
+- **Atomic Publication:** Write to a temporary file in the target directory,
+  flush and close it, then atomically rename it to the final filename.
+- **Duplicate Protection:** Re-creating an order file for the same trading date
+  requires deterministic content or an explicit replacement policy.
+- **Partial Files:** Consumers must never read temporary or partially written
+  files.
 
-### 2.2 Column Specifications
+### 3.2 Column Specifications
 
 | Column Name | Data Type | Validation Rules | Description |
 | :--- | :--- | :--- | :--- |
@@ -194,9 +234,9 @@ List of blacklisted symbols skipped by downloads and screeners.
 
 ---
 
-## 3. State Machines & Execution Lifecycles
+## 4. State Machines & Execution Lifecycles
 
-### 3.1 Order Lifecycle States
+### 4.1 Order Lifecycle States
 Orders progress through explicit states:
 
 ```
@@ -223,7 +263,7 @@ Orders progress through explicit states:
 - **Cancelled**: Storniert.
 - **Error**: API rejection, socket disconnect, or execution failure.
 
-### 3.2 Error Resolution Matrix
+### 4.2 Error Resolution Matrix
 
 | Error Code / Event | System State | Action / Recovery |
 | :--- | :--- | :--- |

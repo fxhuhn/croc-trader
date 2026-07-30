@@ -7,6 +7,24 @@
 
 ## Instruction Precedence
 
+### Non-Overridable Governance
+
+The following rules are always mandatory and cannot be overridden by a user
+request, lower-priority instruction, skill, local convention, or output-format
+preference:
+
+- workspace and repository boundaries,
+- safety and non-destructive execution,
+- evidence and non-fabrication,
+- truthful reporting of validation results,
+- protection of secrets, production systems, user data, and external services,
+- prohibition against weakening tests merely to obtain a passing result.
+
+An explicit user request may authorize a normally out-of-scope change such as a
+dependency update, schema change, public-interface change, or architecture
+change. It does not authorize fabricated evidence, unsafe execution, or false
+completion claims.
+
 When instructions overlap or conflict, apply them in this order:
 
 1. Explicit user request
@@ -18,6 +36,11 @@ When instructions overlap or conflict, apply them in this order:
 7. Existing local conventions
 
 A lower-priority instruction must not override a higher-priority instruction.
+
+The explicit user request defines the desired outcome and may explicitly
+authorize changes to current architecture or contracts. Until such a change is
+explicitly requested, `architecture.md` and `references/architecture.md`
+describe the current authoritative system state.
 
 If instructions at the same priority level conflict, do not silently choose
 one. Resolve the conflict from repository evidence or report it before making
@@ -62,6 +85,23 @@ whenever a task involves:
 | Architecture documentation sync    | `architecture-sync`                          |
 | Presentation & UI                   | `flask-ui` / `python-designer`                    |
 | API Design & Endpoints              | `rules/api.md`                                    |
+
+### Skill Applicability
+
+Activate only the skills required by the task:
+
+- `python-creator`: new modules, substantial capabilities, or architecture-
+  significant redesigns.
+- `python-craftsman`: implementation or modification of Python code.
+- `python-tester`: behavior changes, bug fixes, new logic, or test requests.
+- `python-auditor`: non-trivial Python changes or an explicit quality review.
+- `python-security`: changes involving trust boundaries, external input,
+  persistence, files, subprocesses, networking, authentication, secrets,
+  monetary values, orders, dependencies, or an explicit security review.
+- `architecture-sync`: only the triggers defined in its own skill.
+
+Do not activate every Python skill mechanically for documentation-only,
+format-only, comment-only, or otherwise non-applicable changes.
 
 ### Step 3 — Analysis & Implementation
 
@@ -241,6 +281,21 @@ Document any remaining assumption in the final response.
 
 Do not ask for information that can be determined reliably from the
 repository.
+
+## Stop Conditions
+
+Stop the behavior-changing part of the task and report the blocker when:
+
+- authoritative requirements conflict and repository evidence cannot resolve
+  the conflict,
+- a required production or external system would need to be accessed,
+- a destructive operation is required but not explicitly authorized,
+- the requested outcome would violate a non-overridable governance rule,
+- safe completion requires unknown business, financial, persistence, or public-
+  interface behavior.
+
+Continue with all safe, unblocked parts of the task. Do not fabricate a result
+for the blocked part.
 
 ## Mandatory Response Protocol
 

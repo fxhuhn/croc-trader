@@ -15,6 +15,34 @@ data corruption, unauthorized access, and unsafe execution.
 
 ---
 
+## Security Audit Scope
+
+Classify findings as:
+
+- `Introduced`: created by the current change.
+- `Affected`: pre-existing and directly exposed or worsened by the change.
+- `Pre-existing out of scope`: unrelated to the requested change.
+
+Only exploitable `Introduced` and relevant `Affected` findings may block the
+current task. Report unrelated material risks without remediating them.
+
+---
+
+## Severity
+
+- `Critical`: credible path to unauthorized trading, secret compromise,
+  destructive external action, material financial corruption, or remote code
+  execution.
+- `High`: exploitable path to significant data corruption, duplicate orders,
+  persistent integrity loss, or privilege misuse.
+- `Medium`: constrained exploitability or meaningful defense-in-depth failure.
+- `Low`: limited impact, hard-to-exploit weakness, or hygiene issue.
+
+Severity must be based on verified reachability, impact, and existing controls.
+Do not label theoretical or unreachable code as Critical.
+
+---
+
 ## Numeric Precision Policy
 
 Classify numeric data by purpose:
@@ -79,6 +107,8 @@ configured.
 
 Do not report these checks as passed unless they were actually executed.
 
-An unavailable tool must be listed under `Not validated`.
+An unavailable tool must be listed under `Not validated`. Record the exact
+command, checked scope, exit status, and relevant finding count. A clean
+Bandit or dependency-audit result does not prove overall security.
 
 Follow `.agents/AGENTS.md` and `.agents/rules/concise.md`.

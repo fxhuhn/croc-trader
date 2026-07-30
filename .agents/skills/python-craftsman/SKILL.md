@@ -26,59 +26,71 @@ implementation and verification workflow.
 
 ---
 
-## Delegated Review Gates
+## Verification Gates
 
-Before finalizing any task or committing changes, pass the code through the following validation gates **in order**:
+Before reporting an implementation task as complete, apply each gate only when
+its applicability condition is met. A non-applicable gate is recorded as
+`Not applicable`, not as `Passed`.
 
-### 🚀 Gate 1: Formatting & Lint Check
+### Gate 0: Scope and Diff Verification — mandatory for file changes
 
-Ensure 100% compliance with style rules — zero diffs, zero warnings:
+- Inspect the final diff.
+- Remove unrelated formatting, cleanup, debug output, generated files, and
+  scope expansion.
+- Map each meaningful change to the explicit task or a directly affected
+  contract.
+
+### Gate 1: Formatting and Lint — mandatory for Python changes
+
+Run the smallest relevant scope first. Before completion, run repository-wide
+checks only when project policy requires them and distinguish pre-existing
+failures from newly introduced failures.
 
 ```bash
-.venv/bin/ruff format --check .
-.venv/bin/ruff check .
+.venv/bin/ruff format --check <changed-python-paths>
+.venv/bin/ruff check <changed-python-paths>
 ```
 
-Run checks against the smallest relevant scope first. Run repository-wide
-checks before completion when required by project policy.
+Do not modify unrelated files to make repository-wide checks pass.
 
-Do not modify unrelated files solely to make a repository-wide check pass.
-Report pre-existing unrelated failures separately.
+### Gate 2: Static Typing — mandatory for typed Python changes
 
-### 🧪 Gate 2: Behavior Verification
+```bash
+.venv/bin/mypy <changed-python-paths-or-configured-scope>
+```
 
-Use `python-tester` to design or review tests for the changed behavior.
+Do not report this gate as passed when MyPy globally suppresses errors or when
+the changed modules are excluded. Report the effective checked scope.
 
-Run the relevant tests first, followed by the full repository test suite when
-available:
+### Gate 3: Behavior Verification — required for behavior changes
+
+Use `python-tester` for new logic, behavior changes, and defect corrections.
+Run relevant tests first. Run the full suite when available and proportionate.
 
 ```bash
 .venv/bin/pytest <relevant-test-paths>
 .venv/bin/pytest
 ```
 
-Do not report the gate as passed if tests were unavailable, skipped, failed,
-or not executed.
+Coverage is reported only when explicitly measured.
 
-### 🔍 Gate 3: Architecture Audit
+### Gate 4: Architecture and Quality Audit — conditional
 
-Trigger the `python-auditor` skill to run a Quality Pyramid audit (Correctness → Readability → Maintainability → Changeability) on your changes.
+Use `python-auditor` for non-trivial code changes, architecture-sensitive
+changes, or an explicit review request. Documentation-only, comment-only, and
+mechanical formatting changes do not require this gate.
 
-Auditor findings outside the explicit task scope are reported but not automatically remediated. A finding becomes blocking only when it was introduced by the current change, directly affects the requested behavior, violates a mandatory contract in changed code, or makes the requested implementation unsafe.
+### Gate 5: Security and Financial-Integrity Audit — conditional
 
-### 🛡️ Gate 4: Security Audit
+Use `python-security` when the change affects trust boundaries, external input,
+files, paths, subprocesses, network access, persistence, serialization,
+secrets, dependencies, monetary calculations, orders, scheduling, or retry and
+idempotency behavior. Refer to the full security audit vectors defined in `python-security`.
 
-Trigger the `python-security` skill to run an audit for precision loss (Decimal vs float), injection risks, and serialization vulnerabilities.
+### Gate 6: Architecture Documentation Sync — conditional
 
-Security findings outside the explicit task scope are reported but not automatically remediated. A finding becomes blocking only when it was introduced by the current change, directly affects the requested behavior, violates a mandatory contract in changed code, or makes the requested implementation unsafe.
-
-### 🏗️ Gate 5: Architecture Documentation
-
-Trigger `architecture-sync` only when the change affects an
-architecture-relevant public component, module boundary, data flow, external
-interface, database schema, or documented contract.
-
-Do not add every public helper function to `architecture.md`.
+Use `architecture-sync` only for its declared triggers. Do not trigger it for
+small public helpers or implementation details without architectural impact.
 
 ---
 
@@ -90,3 +102,12 @@ If a required tool or delegated skill is unavailable:
 2. Execute only equivalent checks that are actually available.
 3. Report the unavailable gate under `Not validated`.
 4. Do not simulate, invent, or infer successful results.
+
+For each applicable gate, report one status:
+
+- `Passed`: executed successfully and inspected.
+- `Failed`: executed and failed.
+- `Not validated`: required but unavailable or not executable.
+- `Not applicable`: applicability condition was not met.
+
+Never use `Passed` for a delegated review that was not actually performed.

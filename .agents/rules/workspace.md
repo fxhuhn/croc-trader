@@ -25,9 +25,22 @@ and `find`.
 
 * You are strictly locked into the current working directory from which you were invoked.
 * **ZERO EXTERNAL REPOSITORY ACCESS:** Never inspect, read, write, or execute binaries/scripts from external or neighboring repositories (e.g., `github/TradeManager`, `croc-trader_2`, or any path outside the current workspace root).
-* **STRICT COMMAND SCOPING:** Commands passed to `run_command` MUST NOT search or execute outside the workspace. Never run global search commands such as `find /` or `find ~`. All commands must target relative paths within `./` or `.venv/`.
+* **STRICT COMMAND SCOPING:** Commands executed through the available shell or command-execution capability MUST NOT search or execute outside the workspace. Never run global search commands such as `find /` or `find ~`. All commands must target relative paths within `./` or `.venv/`.
 * All file operations (read, write, list) and shell commands MUST use repository-relative paths starting from the current workspace root.
 * Dynamically detect the current repository name using `git rev-parse --show-toplevel` if context confusion occurs.
+
+## Command Safety
+
+- Do not execute destructive commands such as recursive deletion, destructive
+  database operations, forced Git resets, or history rewrites unless explicitly
+  requested and strictly scoped.
+- Do not execute downloaded, generated, or untrusted scripts without inspecting
+  their contents first.
+- Do not use `sudo` or modify system-wide packages or configuration.
+- Do not start persistent background processes unless the task explicitly
+  requires it.
+- Use temporary directories for generated validation artifacts and remove them
+  after use when safe.
 
 ## VS Code Environment Settings
 * **Interpreter Path**: In `.vscode/settings.json`, always configure `"python.defaultInterpreterPath"` as a relative path (`".venv/bin/python"`).

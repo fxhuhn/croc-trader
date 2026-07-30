@@ -55,7 +55,7 @@ graph TD
 ## 2. High-Level Dataflow Topologies
 
 ### 2.1 Market Data Synchronization
-1. **Trigger**: APScheduler runs the updater daily.
+1. **Trigger**: APScheduler runs the updater daily. APScheduler may host the synchronous jobs, but each EOD workflow remains internally synchronous and is configured to prevent overlapping executions.
 2. **Fetch**: `app/services/market/updater.py` pulls historical equity quotes and distributions from yfinance.
 3. **Persist**: Writes to `data/stocks.db` utilizing standard parameterized SQL queries.
 
@@ -79,6 +79,30 @@ graph TD
   layers, or concurrent order-processing flows. External libraries may contain
   asynchronous internals only when encapsulated behind an existing synchronous
   repository interface and required by an approved integration.
+  The `ib_async` integration is isolated behind the existing synchronous broker
+  repository or adapter boundary. Application services and domain logic must not
+  expose awaitable APIs or asynchronous control flow.
+- **Non-Overlapping Daily Runs:** A daily workflow for the same responsibility
+  must not run concurrently. Scheduler configuration and application-level
+  guards must prevent overlapping instances.
+- **Idempotent Trading-Date Processing:** Re-running a job for the same trading
+  date and identical input snapshot must not create duplicate signals, orders,
+  exports, or postings.
+- **Explicit Trading Date and Timezone:** Daily workflows use an explicit
+  timezone and trading date. Business logic must not infer the trading date
+  from an uncontrolled local system clock.
+- **Market-Data Cutoff:** Signal and order generation must verify the expected
+  market-data as-of date and reject or explicitly report stale or incomplete
+  inputs.
+- **Atomic Persistence and Export:** Related state transitions are committed
+  transactionally. Order files are written atomically and must not expose
+  partially written output.
+- **Safe Retry:** A failed run may be retried without duplicating completed
+  effects. Retry behavior must distinguish completed, partial, and unstarted
+  work.
+- **Deterministic Core:** Given the same validated input snapshot,
+  configuration, trading date, and portfolio state, the functional core must
+  produce the same decisions.
 - **Financial and Analytical Precision:**
   - Ledger balances, cash amounts, fees, realized monetary values, settlement
     values, and final order values must use `decimal.Decimal` or an approved

@@ -29,6 +29,22 @@ Classify findings as:
 
 Only `Introduced` and relevant `Affected` findings may block completion.
 
+Apply only rules relevant to the changed code. Do not report a finding merely
+because a preferred pattern was not used when the current design is correct,
+clear, and consistent with repository architecture.
+
+Each finding must contain:
+
+- classification: `Introduced`, `Affected`, or `Pre-existing out of scope`,
+- severity: `Blocking`, `High`, `Medium`, or `Low`,
+- exact file and line or symbol,
+- verified evidence,
+- violated rule or contract,
+- concise remediation direction.
+
+Do not issue a blocking finding for style preference, speculative future risk,
+or an unrelated legacy problem.
+
 ---
 
 ## AUDIT FRAMEWORK: THE QUALITY PYRAMID
@@ -46,7 +62,7 @@ Evaluate code in **pyramid order**:
 
 ## AUDIT PROCESS & SCANS
 
-1. **⚡ Correctness Scan**: Verify error handling, SQL safety, immutability, and boundary conditions.
+1. **⚡ Correctness Scan**: Verify error handling, SQL safety, boundary conditions, and immutability where an immutable domain contract is required.
 2. **📖 Readability Scan**: Check naming, 30-second rule, cognitive complexity (≤15), indentation depth (≤3), and early returns.
 3. **🔧 Maintainability Scan**: Check type coverage, DRY, SRP, docstrings.
 4. **🔄 Changeability Scan**: Verify DIP, OCP, orthogonality, and boundary validation.

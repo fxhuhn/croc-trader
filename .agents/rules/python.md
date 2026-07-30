@@ -58,7 +58,11 @@ Every code decision must be evaluated against these four quality dimensions, in 
     - Use `list[str]` instead of `List[str]`.
     - Use `str | int` instead of `Union[str, int]`.
     - Use `type PriceMap = dict[str, float]` for type aliases.
-- **No `Any`:** Avoid `Any` strictly. Use `object` or specific protocols if unsure.
+- **Controlled `Any`:** Do not use `Any` in domain logic or public internal
+  contracts. At an untyped third-party boundary, `Any` is permitted only in the
+  smallest adapter scope, with an inline justification and immediate validation
+  or conversion to a precise internal type. Do not replace an unknown type with
+  `object` when the value is subsequently used without narrowing.
 
 ---
 
@@ -175,7 +179,11 @@ Do not merge modules merely because one contract change affects both.
 When facing a design decision, always choose the option that makes future changes easier. Ask: *"If the requirements change tomorrow, how many files do I need to touch?"* Fewer is better.
 
 ### 4.5 Design by Contract
-Validate preconditions at system boundaries (API inputs, config loading, database results). The Functional Core (Section 8) assumes valid data — all validation happens in the Imperative Shell before data enters the core.
+The Imperative Shell validates input shape, parsing, external constraints, and
+boundary contracts before data enters the core. The Functional Core may enforce
+domain invariants and reject impossible domain states through deterministic,
+typed errors. Do not duplicate the same validation at both layers without a
+specific reason.
 
 ```python
 # Imperative Shell: Validate at the boundary
@@ -209,12 +217,15 @@ def calculate_moving_average(
 
 - **Strategy:** Distinguish clearly between Critical Errors and Runtime Warnings.
     - **Critical (Raise):** System-level failures (e.g., SQLite DB locked/corrupt). The script must exit.
-    - **Warning (Log & Continue):** Data-level anomalies (e.g., missing price for *one* asset). Log these as `logging.warning`.
+    - **Warning (Log & Continue):** Data-level anomalies (e.g., missing price for *one* asset). Log these as `logger.warning`.
 - **Prohibited:**
     - No bare `except:` clauses.
     - No silent swallowing of errors (`except SomeError: pass`).
     - No `print()` statements. Use `logger`.
-- **Errors should never pass silently** (Zen of Python). Every exception must be either raised, logged, or explicitly re-raised with context.
+- Handle each exception at the layer that can add meaningful context or decide
+  recovery. Log an exception once at the operational boundary; avoid duplicate
+  logging at multiple layers. When translating exceptions, preserve causality
+  with `raise NewError(...) from original_error`.
 
 ---
 
@@ -224,9 +235,18 @@ def calculate_moving_average(
 - **Pathlib Only:** Use `pathlib.Path` for all file system operations. No `os.path`.
 
 ### Pandas / Data Processing
-- **Scope:** Use `pandas` for all tabular data manipulation.
-- **Vectorization:** NEVER loop over DataFrame rows. Use vectorized operations.
-- **Chaining:** Prefer method chaining (`.assign()`, `.query()`) over intermediate variables.
+
+- Use Pandas for established repository data-frame pipelines and non-trivial
+  tabular transformations.
+- Do not introduce Pandas for small scalar, record, or sequence operations that
+  are clearer with the standard library.
+- Prefer vectorized transformations for columnar calculations.
+- Do not use `DataFrame.iterrows()` for transformations.
+- Row-wise iteration is permitted only for unavoidable boundary side effects;
+  use `itertuples()` and keep the side-effect operation outside domain logic.
+- Prefer readable method chains. Split a chain when intermediate naming,
+  debugging, or error diagnosis becomes clearer.
+- Avoid hidden mutation and chained assignment.
 
 ### Database (SQLite)
 - **Usage:** Use standard `sqlite3` library with context managers.
@@ -256,7 +276,9 @@ def calculate_moving_average(
 Separate **pure logic** (deterministic calculations) from **side effects** (I/O, database, network, logging).
 
 ### 8.1 Functional Core (The "Inside")
-- **Pure Functions Only:** Same inputs → always same outputs. No exceptions.
+- **Deterministic Functions:** The same inputs produce the same result or the
+  same deterministic domain error. Pure core functions do not depend on hidden
+  state, time, I/O, logging, network access, or mutable globals.
 - **No Side Effects:** No I/O, no database, no logging, no network calls, no `datetime.now()`.
 - **Immutable Data:** Input and output via `@dataclass(frozen=True)` or primitive types.
 - **Trivially Testable:** Core functions need zero mocks. Test with a simple `assert`.
@@ -274,6 +296,8 @@ If a function needs both calculation AND I/O, it is a shell function that delega
 # FUNCTIONAL CORE — Pure, testable
 # ═══════════════════════════════════════
 
+from decimal import Decimal
+
 
 @dataclass(frozen=True)
 class RebalanceDecision:
@@ -288,7 +312,7 @@ class RebalanceDecision:
 def determine_rebalancing_actions(
     current_positions: list[Position],
     target_allocation: AllocationMap,
-    total_portfolio_value: float,
+    total_portfolio_value: Decimal,
 ) -> list[RebalanceDecision]:
     """
     Pure Function: Same inputs → always same result.
@@ -312,7 +336,7 @@ def run_daily_rebalancing(database_path: Path) -> None:
     """
     positions = load_positions_from_database(database_path)
     allocation = fetch_target_allocation()
-    portfolio_value = sum(p.market_value for p in positions)
+    portfolio_value = Decimal(str(sum(p.market_value for p in positions)))
 
     # ← Call into the Functional Core (pure)
     decisions = determine_rebalancing_actions(positions, allocation, portfolio_value)
@@ -327,18 +351,22 @@ def run_daily_rebalancing(database_path: Path) -> None:
 
 These thresholds are enforced in code reviews and CI/CD pipelines.
 
-| Dimension | Metric | Threshold | Tool |
-|-----------|--------|-----------|------|
-| Readability | Cognitive Complexity / function | ≤ 15 | `ruff` / SonarQube |
-| Readability | Max indentation depth | ≤ 3 levels | Code Review |
-| Readability | Function length | ≤ 50 lines | `ruff` |
-| Maintainability | Type coverage | ≥ 95% | `mypy --strict` |
-| Maintainability | Test coverage (Functional Core) | ≥ 90% | `pytest --cov` |
-| Maintainability | Cyclomatic Complexity / function | ≤ 10 | `radon cc` |
-| Correctness | Bare `except:` clauses | 0 | `ruff` (E722) |
-| Correctness | Untyped `# type: ignore` | 0 | Code Review |
-| Correctness | SQL f-string injection risk | 0 | Code Review |
-| Changeability | Dependency depth (import layers) | ≤ 4 | Architecture Review |
+| Dimension | Metric | Threshold | Enforcement |
+|-----------|--------|-----------|-------------|
+| Readability | Cognitive complexity | ≤ 15 per function | Sonar-compatible tool when configured; otherwise audit only |
+| Readability | Maximum indentation | ≤ 3 levels | Audit |
+| Readability | Function size | ≤ 50 logical statements as a review target | Ruff `PLR0915` and audit; not a physical-line guarantee |
+| Maintainability | Static typing | No new MyPy errors in changed code | `mypy` |
+| Maintainability | Branch coverage of changed functional-core logic | ≥ 90%; target 100% for new business branches | `pytest-cov` when installed |
+| Correctness | Cyclomatic complexity | ≤ 10 per function | Ruff `C901` |
+| Correctness | Bare `except` | 0 | Ruff `E722` |
+| Correctness | Unjustified `type: ignore` | 0 | MyPy and audit |
+| Correctness | SQL string interpolation with external values | 0 | Bandit/audit |
+| Changeability | Architecture-boundary violations | 0 new violations | Architecture audit |
+
+Do not claim that Ruff measures cognitive complexity, physical function line
+count, type-coverage percentage, or dependency depth. A documented target is
+not an automated gate unless the configured tool actually measures it.
 
 ---
 
@@ -347,6 +375,8 @@ These thresholds are enforced in code reviews and CI/CD pipelines.
 ```python
 from dataclasses import dataclass
 import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -359,7 +389,7 @@ class TradingStrategyConfiguration:
 
 def analyze_market_trends(
     closing_prices: list[float],
-    config: TradingStrategyConfiguration,
+    configuration: TradingStrategyConfiguration,
 ) -> list[float]:
     """
     Orchestrates the market trend analysis process.
@@ -367,26 +397,28 @@ def analyze_market_trends(
     This high-level function follows the Step-down Rule by delegating
     the mathematical heavy lifting to specialized pure functions.
     """
-    if not _is_history_sufficient(closing_prices, config.minimum_required_history):
-        logging.warning("Insufficient data for trend analysis.")
+    if not _is_history_sufficient(
+        closing_prices, configuration.minimum_required_history
+    ):
+        logger.warning("Insufficient data for trend analysis.")
         return []
 
-    return _calculate_trend_thresholds(closing_prices, config.trend_window_size)
+    return _calculate_trend_thresholds(closing_prices, configuration.trend_window_size)
 
 
-def _is_history_sufficient(prices: list[float], minimum: int) -> bool:
+def _is_history_sufficient(prices: list[float], minimum_history_length: int) -> bool:
     """Checks if the provided price list meets the required length."""
-    return len(prices) >= minimum
+    return len(prices) >= minimum_history_length
 
 
-def _calculate_trend_thresholds(prices: list[float], window: int) -> list[float]:
+def _calculate_trend_thresholds(prices: list[float], window_size: int) -> list[float]:
     """
     Core mathematical transformation (Functional Core).
 
     Calculates the threshold values used to identify trend reversals.
     """
     return [
-        sum(prices[start_index : start_index + window]) / window
-        for start_index in range(len(prices) - window + 1)
+        sum(prices[start_index : start_index + window_size]) / window_size
+        for start_index in range(len(prices) - window_size + 1)
     ]
 ```

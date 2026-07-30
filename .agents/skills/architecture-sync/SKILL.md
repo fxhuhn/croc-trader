@@ -46,6 +46,9 @@ Update:
 Do not duplicate the same contract in both files unless each document needs a
 different abstraction level.
 
+This skill updates architecture documentation only. It must not modify
+production code to make documentation appear synchronized.
+
 ---
 
 ## Consistency Verification
@@ -56,6 +59,10 @@ A successful exact-name scan does not prove semantic documentation accuracy.
 
 The skill must additionally verify whether changed responsibilities,
 interfaces, dependencies, schemas, or data flows remain correctly documented.
+
+Verify additions, changes, renames, moves, and deletions. Remove stale
+architecture references when an authoritative component or contract is removed.
+Do not leave aliases or obsolete names merely to satisfy the mechanical scan.
 
 To run the mechanical check:
 
