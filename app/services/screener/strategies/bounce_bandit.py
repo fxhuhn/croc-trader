@@ -26,12 +26,17 @@ from .base import BaseStrategy
 logger = logging.getLogger(__name__)
 
 
-class BounceBanditStrategyContext(TypedDict):
+class BounceBanditStrategyContext(TypedDict, total=False):
     """Context data payload for the Bounce Bandit signal."""
 
     date: str
     setup_close: float
     sma_200: float
+    sma_8: float
+    target: float
+    target_price: float
+    required_sma_exit: float
+    required_rsi_exit: float
     atr_10: float
     atr_pct: float
     rsi_2: float
@@ -172,10 +177,34 @@ class BounceBanditStrategy(BaseStrategy[int]):
             )
             return 0
 
+        sma_8_series = calculate_sma(close_series, 8)
+        current_sma_8 = float(sma_8_series.iloc[-1])
+
+        last_7_closes = close_series.iloc[-7:]
+        required_sma_exit = float(last_7_closes.mean()) + 0.01
+
+        delta = close_series.diff()
+        gain = (delta.where(delta > 0, 0)).fillna(0)
+        loss = (-delta.where(delta < 0, 0)).fillna(0)
+        avg_gain_series = gain.ewm(alpha=0.5, adjust=False).mean()
+        avg_loss_series = loss.ewm(alpha=0.5, adjust=False).mean()
+        last_avg_gain = float(avg_gain_series.iloc[-1])
+        last_avg_loss = float(avg_loss_series.iloc[-1])
+        last_close = float(close_series.iloc[-1])
+
+        required_delta_rsi = max(0.0, (3.0 * last_avg_loss) - last_avg_gain)
+        required_rsi_exit = last_close + required_delta_rsi + 0.01
+        target_price = min(required_sma_exit, required_rsi_exit)
+
         context: BounceBanditStrategyContext = {
             "date": target_date_str,
             "setup_close": current_close,
             "sma_200": round(current_sma_200, 2),
+            "sma_8": round(current_sma_8, 2),
+            "target": round(target_price, 2),
+            "target_price": round(target_price, 2),
+            "required_sma_exit": round(required_sma_exit, 2),
+            "required_rsi_exit": round(required_rsi_exit, 2),
             "atr_10": round(current_atr_10, 2),
             "atr_pct": round(current_atr_pct, 2),
             "rsi_2": round(current_rsi_2, 2),

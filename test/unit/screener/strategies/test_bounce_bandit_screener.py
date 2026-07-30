@@ -43,6 +43,8 @@ def test_bounce_bandit_screener_generates_signal_on_valid_setup() -> None:
     kwargs = trade_repository.create_trade.call_args.kwargs
     assert kwargs["symbol"] == "QQQ"
     assert kwargs["strategy"] == Strategies.BounceBandit.value
+    assert "sma_8" in kwargs["context"]
+    assert "target" in kwargs["context"]
 
 
 def test_bounce_bandit_screener_fails_when_below_sma_200() -> None:

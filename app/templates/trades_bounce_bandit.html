@@ -15,9 +15,7 @@
         {% call cards.trade_accordion_card(
             symbol=trade.symbol,
             pnl_value=trade.unrealized_pnl,
-            pnl_percentage=trade.pnl_percentage,
-            progress_current=trade.days_held,
-            progress_max=10
+            pnl_percentage=trade.pnl_percentage
         ) %}
             <div class="grid grid-cols-2 gap-8 items-start">
                 <!-- Left Column: Date & Quantity -->
@@ -48,15 +46,15 @@
                     </div>
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">RSI(2)</span>
-                        <span class="tabular-nums text-amber-600 font-bold text-xs">
+                        <span class="tabular-nums text-slate-700 font-bold text-xs">
                             {% if trade.context and trade.context.get('rsi_2') is not none %}
                             {{ "{:,.2f}".format(trade.context.get('rsi_2')|float) }}
                             {% else %}-{% endif %}
                         </span>
                     </div>
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs text-indigo-600">Target</span>
-                        <span class="tabular-nums text-indigo-600 font-bold text-xs">
+                        <span class="text-slate-500 font-medium text-xs text-emerald-600">LOC Limit</span>
+                        <span class="tabular-nums text-emerald-600 font-bold text-xs">
                             {% if trade.context and trade.context.get('target') is not none %}
                             &gt; {{ "{:,.2f}".format(trade.context.get('target')|float) }}
                             {% elif trade.context and trade.context.get('target_price') is not none %}
@@ -65,10 +63,6 @@
                             &gt; {{ "{:,.2f}".format(trade.context.get('required_exit_price')|float) }}
                             {% else %}-{% endif %}
                         </span>
-                    </div>
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs text-slate-400">Exit Rule</span>
-                        <span class="tabular-nums text-slate-400 font-medium text-xs">Close &gt; SMA(8) / RSI(2) &gt; 75</span>
                     </div>
                 </div>
             </div>
@@ -82,14 +76,13 @@
     <!-- Desktop Grid View -->
     <div class="hidden md:block bg-white md:rounded-3xl md:shadow-sm border border-slate-200 overflow-hidden">
         <!-- Desktop Header -->
-        <div class="grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+        <div class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
             <div>Date</div>
             <div>Symbol</div>
-            <div>Strategy</div>
             <div class="text-right">Quantity</div>
             <div class="text-right">Entry</div>
             <div class="text-right">Last Price</div>
-            <div class="text-right">Exit Condition</div>
+            <div class="text-right">Target</div>
             <div class="text-right">Open PnL</div>
         </div>
 
@@ -97,7 +90,7 @@
         <div class="divide-y divide-slate-100">
             {% for trade in active_trades %}
             <div class="hover:bg-slate-50/50 transition-colors">
-                <div class="grid grid-cols-8 gap-4 px-4 py-3.5 items-center text-sm">
+                <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
                     <!-- 1. Date -->
                     <div class="text-slate-500 tabular-nums whitespace-nowrap">
                         {{ trade.entry_date }} ({{ trade.days_held }}d)
@@ -108,14 +101,7 @@
                         {{ tradingview_link(trade.symbol, is_button=false) }}
                     </div>
 
-                    <!-- 3. Strategy Badge -->
-                    <div class="whitespace-nowrap">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-violet-50 text-violet-600 border border-violet-100 uppercase whitespace-nowrap">
-                            Bounce Bandit
-                        </span>
-                    </div>
-
-                    <!-- 4. Quantity -->
+                    <!-- 3. Quantity -->
                     <div class="text-right tabular-nums text-slate-600 font-medium whitespace-nowrap">
                         {{ trade.current_size|int }}
                     </div>
@@ -130,18 +116,17 @@
                         {{ "{:,.2f}".format(trade.current_price|float) if trade.current_price else '-' }}
                     </div>
 
-                    <!-- 7. Exit Condition -->
+                    <!-- 7. Target -->
                     <div class="text-right text-xs whitespace-nowrap flex flex-col items-end">
-                        <span class="text-indigo-600 font-bold">
+                        <span class="text-emerald-600 font-bold">
                             {% if trade.context and trade.context.get('target') is not none %}
-                            Target &gt; {{ "{:,.2f}".format(trade.context.get('target')|float) }}
+                            LOC &gt; {{ "{:,.2f}".format(trade.context.get('target')|float) }}
                             {% elif trade.context and trade.context.get('target_price') is not none %}
-                            Target &gt; {{ "{:,.2f}".format(trade.context.get('target_price')|float) }}
+                            LOC &gt; {{ "{:,.2f}".format(trade.context.get('target_price')|float) }}
                             {% elif trade.context and trade.context.get('required_exit_price') is not none %}
-                            Target &gt; {{ "{:,.2f}".format(trade.context.get('required_exit_price')|float) }}
-                            {% else %}Close &gt; SMA(8) | RSI(2) &gt; 75{% endif %}
+                            LOC &gt; {{ "{:,.2f}".format(trade.context.get('required_exit_price')|float) }}
+                            {% else %}-{% endif %}
                         </span>
-                        <span class="text-slate-400 text-[10px]">Close &gt; SMA(8) | RSI(2) &gt; 75</span>
                     </div>
 
                     <!-- 8. Open PnL -->
@@ -152,12 +137,6 @@
             </div>
             {% endfor %}
         </div>
-
-        <!-- Table Footer -->
-        {% set total_unrealized_pnl = active_trades | map(attribute='unrealized_pnl') | sum %}
-        {% set count_active = active_trades | length %}
-        {% set avg_unrealized_pnl = (total_unrealized_pnl / count_active) if count_active > 0 else 0.0 %}
-        {{ render_mobile_table_footer("Total Open PnL", total_unrealized_pnl, avg_unrealized_pnl, count_active) }}
     </div>
 </section>
 {% endif %}

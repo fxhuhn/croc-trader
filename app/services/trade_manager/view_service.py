@@ -279,6 +279,20 @@ class TradeViewService:
         if "indices" not in context_dict and "bucket" in context_dict:
             context_dict["indices"] = context_dict["bucket"]
 
+        if self.is_strategy_match(trade, Strategies.BounceBandit):
+            if context_dict.get("sma_8") is None or context_dict.get("target") is None:
+                symbol = str(trade.get("symbol", ""))
+                if symbol:
+                    df_hist = self.market_repository.get_symbol_history_raw(symbol)
+                    if not df_hist.empty and len(df_hist) >= 8:
+                        from .strategies.bounce_bandit import BounceBanditTradeStrategy
+
+                        updates = BounceBanditTradeStrategy().get_daily_updates(
+                            trade, df_hist
+                        )
+                        if updates:
+                            context_dict.update(updates)
+
         display_entry, display_exit, days_held = self._extract_dates_and_holding(trade)
 
         entry_price = float(trade.get("entry_price") or 0.0)
