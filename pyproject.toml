@@ -30,21 +30,31 @@ exclude = [
 # A: flake8-builtins
 # C4: flake8-comprehensions
 # PL: Pylint (Code-Qualität und Warnungen)
-select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PL"]
+# C90: mccabe Komplexität
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PL", "C90"]
 
 # Ignorierte Regeln
 # E501: Zeilenlänge (durch Formatter oder für lange SQL-Queries/Kommentare toleriert)
 # N802/N803: camelCase für API-Callback-Methoden/Argumente (z.B. sessionStatus)
 # PLR2004: Magische Zahlen im Vergleich (toleriert für HTTP-Statuscodes und Test-Assertions)
 # PLR0911: Zu viele return-Statements (erlaubt für komplexe Validierungsfunktionen)
-# PLR0912/PLR0913/PLR0914/PLR0915/PLR0917: Komplexitätsprüfungen (Argumente, Verzweigungen und Anweisungen)
 # PLC0415: Lokale Imports (erlaubt zur Vermeidung zirkulärer Abhängigkeiten)
 # E402: Module level import not at top of file (zur Vermeidung von Import-Fehlern in Skripten)
 ignore = [
     "E501", "N802", "N803",
-    "PLR2004", "PLR0911", "PLR0912", "PLR0913", "PLR0914", "PLR0915", "PLR0917", "PLC0415",
+    "PLR2004", "PLR0911", "PLC0415",
     "E402"
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-branches = 12
+max-locals = 15
+max-returns = 6
+max-statements = 50
 
 [tool.ruff.lint.isort]
 # Festlegen der Sektionen für die Import-Sortierung
@@ -58,8 +68,45 @@ indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
 
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+show_error_codes = true
+pretty = true
+files = ["app", "scripts", "test"]
+exclude = ["^\\.venv/", "^build/", "^dist/"]
+
+# Legacy code overrides: Existing un-refactored modules pre-date strict typing.
+# Override ignore_errors for newly created or strictly refactored modules.
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 90
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]
+
 [tool.vulture]
 paths = ["app", "scripts", "vulture_whitelist.py"]
 exclude = [".venv", "test", "data", "app/templates"]
 min_confidence = 80
 
+[tool.bandit]
+exclude_dirs = [".venv", "test"]
+skips = []

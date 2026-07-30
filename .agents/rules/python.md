@@ -38,7 +38,7 @@ Every code decision must be evaluated against these four quality dimensions, in 
 - **Standard Library First:** Minimize 3rd party dependencies. Do NOT use `pydantic`.
 - **Functional Core, Imperative Shell:** See Section 8 for detailed rules.
 - **The Step-down Rule:** Organize code like a newspaper article. High-level orchestrator functions must appear first, followed by lower-level implementation details and helper functions.
-- **Boy Scout Rule:** If you touch a file, improve it (fix types, formatting).
+- **Scope-Constrained Improvement:** Improve existing code only when the improvement is directly required by the requested change, preserves correctness, satisfies a mandatory rule in changed code, or enables relevant testing. Do not perform unrelated cleanup.
 - **The Art of Omission:** The best code is the code you don't write. The simplest correct solution is the best solution. Do not add abstractions, patterns, or layers "just in case."
 
 ---
@@ -65,24 +65,34 @@ Every code decision must be evaluated against these four quality dimensions, in 
 ## 3. Naming & Code Style (Clean Code Focus)
 
 ### 3.1 Intention-Revealing Names (Strict)
-- **No Abbreviations:** Names must be fully descriptive.
-    - *Bad:* `calc_sma`, `p_list`, `idx`, `dcp`, `data`, `info`, `process`
-    - *Good:* `calculate_simple_moving_average`, `historical_price_list`, `iteration_index`, `daily_closing_price`
-    - *EXCEPT:* `df`, `sma`, `rsi`, `sl`, `tp`, `db`, `atr`, `loc`, `sec_type`, `tif`, `qty`, `exec_id`, `avg`, `pnl`
+- **No Convenience Abbreviations:** Use complete, intention-revealing names.
+- Accepted abbreviations are limited to established technical or financial terms whose expanded form would reduce domain readability, for example: `HTTP`, `URL`, `SQL`, `CSV`, `API`, `RSI`, `ATR`, `SMA`, and `PnL`.
+- Do not use convenience abbreviations such as: `df`, `db`, `cfg`, `conf`, `calc`, `qty`, `avg`, `tmp`, `res`, `idx`, `exec_id`, `sl`, or `tp`.
+- Existing external API field names and third-party callback signatures may retain their required spelling.
 - **Declarative Naming:** Functions should be named after the "What" (the outcome), not just the "How" (the implementation).
 - **The 30-Second Rule:** A developer seeing a function for the first time must understand *what it does and why* within 30 seconds. If not, the name or structure is insufficient.
 
 ### 3.2 Linter Compliance & Formatting (Mandatory Verification)
-Before finalizing any code modification, the developer/agent MUST run and pass:
-1. **Formatting check:** `.venv/bin/ruff format --check .` (Ensure 100% compliance with zero diffs).
-2. **Lint check:** `.venv/bin/ruff check .` (Ensure zero warnings/errors).
-3. **Security check:** Verify no `try_except_pass` (B110) or silent swallowing exists.
-4. **Test check:** `.venv/bin/pytest` (Ensure all tests pass successfully).
+Use repository-defined commands and configuration.
+
+Before reporting success:
+
+1. Verify that the command and tool exist.
+2. Execute the command.
+3. Inspect the exit status and relevant output.
+4. Report failures, unavailable tools, and skipped checks accurately.
+
+Never claim that a documented metric is enforced unless the corresponding tool and configuration actually enforce it.
 
 Standard formatting rules:
 - Line length: 88 characters.
 - Quote style: Double quotes `""`.
 - Sort imports: Standard library > Third party (`pandas`) > Local application.
+
+Execution commands:
+- `.venv/bin/ruff format --check .`
+- `.venv/bin/ruff check .`
+- `.venv/bin/pytest`
 
 ### 3.3 Prohibited Patterns
 - No mutable default arguments (`def func(x=[])`).
@@ -146,10 +156,20 @@ def process_trade_signal(
     - *Relevant Zen:* Explicit is Better than Implicit.
 
 ### 4.2 DRY — Don't Repeat Yourself
-Every piece of knowledge must have a single, unambiguous, authoritative representation within the system. If the same logic, configuration, or constant exists in two places, it is a defect.
+Avoid duplication of stable business knowledge, rules, constants, and behavior.
+
+Do not extract shared code solely because two blocks look similar. Confirm that they represent the same concept and are expected to change for the same reason.
+
+Prefer small local duplication over a premature, misleading, or tightly coupled abstraction.
 
 ### 4.3 Orthogonality
-Modules must be independent: a change in module A must not require a change in module B. If two modules change for the same reason, they are not orthogonal and should be merged or restructured.
+Minimize unnecessary coupling between modules.
+
+A change in one module should affect another module only when a deliberate and explicit contract changes.
+
+Coordinated changes across modules are valid when required by a public interface, schema, domain contract, or architecture boundary.
+
+Do not merge modules merely because one contract change affects both.
 
 ### 4.4 ETC — Easy to Change
 When facing a design decision, always choose the option that makes future changes easier. Ask: *"If the requirements change tomorrow, how many files do I need to touch?"* Fewer is better.
@@ -178,8 +198,8 @@ def calculate_moving_average(
 ) -> list[float]:
     """Pure calculation. Assumes valid inputs (positive lookback, non-empty prices)."""
     return [
-        sum(prices[i : i + lookback_period]) / lookback_period
-        for i in range(len(prices) - lookback_period + 1)
+        sum(prices[start_index : start_index + lookback_period]) / lookback_period
+        for start_index in range(len(prices) - lookback_period + 1)
     ]
 ```
 
@@ -211,6 +231,14 @@ def calculate_moving_average(
 ### Database (SQLite)
 - **Usage:** Use standard `sqlite3` library with context managers.
 - **Safety:** Always use parameterized queries (`?`). SQL injection via f-strings is a **CRITICAL** violation.
+
+### Performance
+- Correctness and readability take priority over speculative optimization.
+- Do not claim a performance improvement without measurement or a clear complexity reduction.
+- Optimize only when required by the task, demonstrated by profiling, or necessary for known EOD data volumes.
+- Avoid unnecessary data copies and quadratic algorithms.
+- Use generators only when streaming behavior provides an actual memory or pipeline benefit.
+- Do not replace readable vectorized Pandas operations with obscure micro-optimizations.
 
 ---
 
@@ -358,6 +386,7 @@ def _calculate_trend_thresholds(prices: list[float], window: int) -> list[float]
     Calculates the threshold values used to identify trend reversals.
     """
     return [
-        sum(prices[i : i + window]) / window for i in range(len(prices) - window + 1)
+        sum(prices[start_index : start_index + window]) / window
+        for start_index in range(len(prices) - window + 1)
     ]
 ```

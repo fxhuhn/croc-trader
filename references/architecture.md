@@ -8,6 +8,22 @@ Detailed technical specifications including exact database schemas, CSV interfac
 
 All tables are maintained in SQLite databases utilizing standard data types.
 
+### Numeric Storage Semantics
+
+SQLite `REAL` fields used for market observations, historical prices,
+indicators, or analytical intermediate values represent floating-point
+analytical data.
+
+SQLite `REAL` must not be treated as the authoritative representation for
+ledger balances, cash amounts, fees, settlements, or final monetary postings.
+
+Where existing schemas contain monetary values in `REAL` columns:
+
+- conversion to `decimal.Decimal` is required at the repository boundary,
+- precision and rounding behavior must be explicit,
+- schema migration must be handled as a separate authorized task,
+- no implicit float-to-money conversion is permitted in domain logic.
+
 ### 1.1 `signals.db` Schema
 
 #### Table `trades`

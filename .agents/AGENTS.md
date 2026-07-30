@@ -5,6 +5,27 @@
 > They apply to ALL tasks: code analysis, debugging, refactoring, implementation,
 > investigation, question-answering about the codebase, and log analysis.
 
+## Instruction Precedence
+
+When instructions overlap or conflict, apply them in this order:
+
+1. Explicit user request
+2. This `.agents/AGENTS.md`
+3. System invariants in `architecture.md`
+4. Technical contracts in `references/architecture.md`
+5. Rules in `.agents/rules/`
+6. Activated skill instructions
+7. Existing local conventions
+
+A lower-priority instruction must not override a higher-priority instruction.
+
+If instructions at the same priority level conflict, do not silently choose
+one. Resolve the conflict from repository evidence or report it before making
+a behavior-changing modification.
+
+Output-format instructions must never suppress correctness, safety,
+uncertainty, failed validation, or verification results.
+
 ## Mandatory 3-Step Execution Sequence
 
 Before performing ANY work that touches, reads, analyzes, or reasons about code
@@ -12,13 +33,14 @@ in this workspace, you **MUST** execute these steps IN ORDER:
 
 ### Step 1 — Architecture Inspection (ALWAYS REQUIRED)
 
-You **MUST** read **BOTH** architecture documents using the `view_file` tool
+You **MUST** read **BOTH** architecture documents using the repository file-reading
+capability available in the active agent environment
 before any other file access or code reasoning:
 
-1. **High-Level System Architecture**: [architecture.md](file:///Users/produktmanagement/Python/github/croc-trader/architecture.md)
-   — Component interactions, sequence diagrams, system boundaries
-2. **Low-Level Reference Specification**: [references/architecture.md](file:///Users/produktmanagement/Python/github/croc-trader/references/architecture.md)
-   — DB schemas, state machines, CSV interfaces, error matrices
+1. **High-Level System Architecture:** `architecture.md`
+   — Component interactions, sequence diagrams, and system boundaries.
+2. **Low-Level Reference Specification:** `references/architecture.md`
+   — Database schemas, state machines, CSV interfaces, and error matrices.
 
 **No shortcuts.** Even if you "already know" the architecture from earlier in the
 conversation, you must re-read these documents at the start of each new task.
@@ -32,7 +54,12 @@ whenever a task involves:
 |-------------------------------------|---------------------------------------------------|
 | Data Ingestion & Quality            | `data-ingestion`                                  |
 | Strategy & Signal Generation        | `strategy-screener`                               |
-| Python Architecture & Code Quality  | `python-craftsman` / `python-auditor` / `python-creator` |
+| Python solution design             | `python-creator`                              |
+| Python implementation              | `python-craftsman`                            |
+| Python behavior verification       | `python-tester`                               |
+| Python architecture and quality    | `python-auditor`                              |
+| Python security and data integrity | `python-security`                             |
+| Architecture documentation sync    | `architecture-sync`                          |
 | Presentation & UI                   | `flask-ui` / `python-designer`                    |
 | API Design & Endpoints              | `rules/api.md`                                    |
 
@@ -52,10 +79,191 @@ A task is considered to "touch the codebase" if it involves ANY of:
 - Analyzing log files that reference application components
 - Debugging runtime behavior
 
-## Ambiguity & Clarification Rule (Strict)
+## Task Scope and Change Discipline — MANDATORY
 
-> [!IMPORTANT]
-> **No Unverified Assumptions**: Whenever a task, requirement, specification, edge case, or design decision contains ambiguity or is underspecified, you **MUST ALWAYS** ask the user for explicit clarification before making assumptions or executing code/file modifications.
-> - Never guess user intent or independently invent unstated business logic/behavior.
-> - Ask precise, targeted questions to resolve ambiguities before proceeding with implementation.
+The explicit user request defines the complete task boundary.
 
+### Primary Obligation
+
+Perform only the work required to satisfy the explicit request completely
+and correctly.
+
+Do not initiate additional work merely because it appears useful, related,
+cleaner, more modern, or technically desirable.
+
+### Scope Determination
+
+Before modifying files, determine:
+
+1. The requested outcome.
+2. The externally observable behavior allowed to change.
+3. The behavior that must remain unchanged.
+4. The minimum files, symbols, tests, and documentation required.
+5. The validation necessary to demonstrate correctness.
+
+Do not create a broader implementation plan than the task requires.
+
+### Minimal Complete Change
+
+Use the smallest complete change set that:
+
+- satisfies the explicit request,
+- preserves unrelated behavior,
+- complies with repository architecture and mandatory rules,
+- includes directly relevant tests,
+- keeps directly affected contracts and documentation accurate.
+
+“Smallest” does not mean incomplete or fragile. Required tests, migrations,
+validation, and directly affected documentation are part of a complete change.
+
+### Prohibited Unrequested Work
+
+Unless directly required by the task, do not:
+
+- add features,
+- fix unrelated defects,
+- refactor unrelated code,
+- rename unrelated symbols,
+- reformat unrelated files or blocks,
+- reorganize modules or directories,
+- replace working architecture,
+- introduce speculative abstractions or design patterns,
+- optimize unrelated code,
+- add, remove, or update dependencies,
+- modify build, deployment, editor, or continuous-integration configuration,
+- modify database schemas or public interfaces,
+- update unrelated documentation,
+- delete code merely because it appears unused,
+- weaken, delete, or skip tests to make an implementation pass.
+
+### Incidental Findings
+
+Unrelated defects, security risks, architectural issues, duplication, dead
+code, or improvement opportunities must not be changed automatically.
+
+Report a material incidental finding separately as out of scope.
+
+An incidental issue may be changed without additional authorization only
+when it directly prevents safe or correct completion of the requested task.
+The final report must identify and justify this exception.
+
+### Touched-Code Rule
+
+Do not apply a general “leave every touched file better than before” rule.
+
+Improve existing code only when the improvement is:
+
+- necessary for the requested change,
+- necessary to preserve correctness,
+- necessary to comply with a mandatory rule in the changed code,
+- or required to make the changed behavior testable.
+
+Do not use a requested change as justification for unrelated cleanup.
+
+### Scope Expansion
+
+Expand the initially identified change scope only when repository evidence
+shows that:
+
+1. The requested behavior cannot otherwise be implemented correctly.
+2. A directly affected public contract requires coordinated updates.
+3. A directly affected schema, migration, test, or architecture document
+   must remain synchronized.
+4. A discovered security or data-integrity issue makes the requested
+   implementation unsafe.
+
+Do not expand scope based on speculation or possible future requirements.
+
+### Evidence and Non-Fabrication
+
+Never invent or assume:
+
+- files,
+- modules,
+- symbols,
+- interfaces,
+- configuration values,
+- dependencies,
+- database structures,
+- expected behavior,
+- business rules,
+- command output,
+- test results,
+- tool results,
+- runtime behavior.
+
+Before relying on an existing project element, inspect its authoritative
+repository source.
+
+Clearly distinguish:
+
+- verified facts,
+- evidence-based inferences,
+- explicit assumptions,
+- unresolved uncertainties.
+
+Never report a validation step as passed unless it was actually executed
+and its result was inspected.
+
+A skipped, unavailable, failed, or unexecuted check must not be reported as
+successful.
+
+### Final Scope Verification
+
+Before completing a modification task:
+
+1. Inspect the final diff.
+2. Map every changed file and meaningful change to the explicit request.
+3. Remove accidental formatting, cleanup, debugging, and unrelated changes.
+4. Confirm that unrelated public behavior did not change.
+5. Confirm that tests were not weakened.
+6. Confirm that every completion claim is supported by actual evidence.
+
+If a change cannot be mapped to the request, required validation, or a
+directly affected contract, remove it.
+
+## Ambiguity and Clarification
+
+Never invent user intent, business rules, financial behavior, public
+contracts, persistence semantics, or externally observable behavior.
+
+Resolve uncertainty in this order:
+
+1. Inspect the task, source code, tests, configuration, architecture, and
+   existing contracts.
+2. Use an evidence-based implementation inference only when it affects an
+   internal, low-risk technical detail and preserves observable behavior.
+3. Ask for clarification before deciding ambiguous business behavior,
+   financial rules, public interfaces, schema semantics, destructive actions,
+   or externally observable behavior.
+
+Document any remaining assumption in the final response.
+
+Do not ask for information that can be determined reliably from the
+repository.
+
+## Mandatory Response Protocol
+
+This protocol applies to every final response.
+
+- Start directly with the result.
+- Omit greetings, pleasantries, generic introductions, and generic
+  conclusions.
+- Use compact headings and scannable bullet points.
+- Do not repeat the task, repository rules, or unchanged code.
+- Show only relevant code snippets or unified diffs unless a complete file
+  was explicitly requested.
+- Do not omit failed checks, unavailable checks, assumptions, risks, or scope
+  exceptions for brevity.
+- Do not provide unsolicited recommendations outside the task scope.
+
+For modification tasks, use this compact completion report:
+
+- `Changed`: implemented result.
+- `Files`: files actually modified.
+- `Validation`: commands actually executed and their results.
+- `Not validated`: required checks that could not be executed.
+- `Assumptions`: remaining assumptions or uncertainties.
+- `Out of scope`: material findings not changed.
+
+Omit empty sections.
