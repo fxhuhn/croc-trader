@@ -283,7 +283,20 @@ class TradeViewService:
             if context_dict.get("sma_8") is None or context_dict.get("target") is None:
                 symbol = str(trade.get("symbol", ""))
                 if symbol:
-                    df_hist = self.market_repository.get_symbol_history_raw(symbol)
+                    start_date = (pd.Timestamp.now() - pd.Timedelta(days=60)).strftime(
+                        "%Y-%m-%d"
+                    )
+                    trade_entry = trade.get("entry_date") or trade.get("created_at")
+                    if trade_entry:
+                        try:
+                            start_date = (
+                                pd.Timestamp(trade_entry) - pd.Timedelta(days=60)
+                            ).strftime("%Y-%m-%d")
+                        except (ValueError, TypeError):
+                            pass
+                    df_hist = self.market_repository.get_symbol_history_raw(
+                        symbol, start_date=start_date
+                    )
                     if not df_hist.empty and len(df_hist) >= 8:
                         from .strategies.bounce_bandit import BounceBanditTradeStrategy
 

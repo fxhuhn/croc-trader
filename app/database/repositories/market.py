@@ -269,12 +269,14 @@ class MarketRepository(BaseRepository):
                 dataframe["date"] = pd.to_datetime(dataframe["date"])
             return dataframe
 
-    def get_symbol_history_raw(self, symbol: str, start_date: str) -> pd.DataFrame:
+    def get_symbol_history_raw(
+        self, symbol: str, start_date: str = "2020-01-01"
+    ) -> pd.DataFrame:
         """Loads price history for a single symbol starting from a given date.
 
         Args:
             symbol: Ticker symbol.
-            start_date: Start date string (YYYY-MM-DD).
+            start_date: Start date string (YYYY-MM-DD). Defaults to '2020-01-01'.
 
         Returns:
             DataFrame containing ranked daily price records for the symbol.

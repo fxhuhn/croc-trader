@@ -93,6 +93,21 @@ def test_query_interleaved_date_patching(multi_provider_session):
     assert df["close"].tolist() == [150.0, 155.0]
 
 
+def test_get_symbol_history_raw_defaults_start_date_when_omitted(
+    multi_provider_session,
+) -> None:
+    """Verifies that get_symbol_history_raw defaults start_date to '2020-01-01' when omitted."""
+    repo = MarketRepository(multi_provider_session)
+
+    # Act - call without start_date positional parameter
+    df = repo.get_symbol_history_raw("AAPL")
+
+    # Assert
+    assert not df.empty
+    assert len(df) == 2
+    assert df["close"].tolist() == [150.0, 155.0]
+
+
 def test_market_data_provider_pivoting_with_fallback(multi_provider_session):
     provider = MarketDataProvider(multi_provider_session)
     data = provider.get_universe_daily_data(["AAPL", "MSFT"], days=10)
