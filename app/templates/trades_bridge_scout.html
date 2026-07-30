@@ -15,9 +15,7 @@
         {% call cards.trade_accordion_card(
             symbol=trade.symbol,
             pnl_value=trade.unrealized_pnl,
-            pnl_percentage=trade.pnl_percentage,
-            progress_current=trade.days_held,
-            progress_max=5
+            pnl_percentage=trade.pnl_percentage
         ) %}
             <div class="grid grid-cols-2 gap-8 items-start">
                 <!-- Left Column: Date & Quantity -->
@@ -39,7 +37,7 @@
                         <span class="tabular-nums text-slate-700 font-bold text-xs">{{ "{:,.2f}".format(trade.entry_price|float) }}</span>
                     </div>
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs text-teal-600">Exit Rule</span>
+                        <span class="text-slate-500 font-medium text-xs text-teal-600">Time Stop</span>
                         <span class="tabular-nums text-teal-600 font-bold text-xs">1st of Month MOC</span>
                     </div>
                 </div>
@@ -54,14 +52,13 @@
     <!-- Desktop Grid View -->
     <div class="hidden md:block bg-white md:rounded-3xl md:shadow-sm border border-slate-200 overflow-hidden">
         <!-- Desktop Header -->
-        <div class="grid grid-cols-8 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+        <div class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
             <div>Date</div>
             <div>Symbol</div>
-            <div>Strategy</div>
             <div class="text-right">Quantity</div>
             <div class="text-right">Entry</div>
             <div class="text-right">Last Price</div>
-            <div class="text-right">Exit Condition</div>
+            <div class="text-right">Stop</div>
             <div class="text-right">Open PnL</div>
         </div>
 
@@ -69,7 +66,7 @@
         <div class="divide-y divide-slate-100">
             {% for trade in active_trades %}
             <div class="hover:bg-slate-50/50 transition-colors">
-                <div class="grid grid-cols-8 gap-4 px-4 py-3.5 items-center text-sm">
+                <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
                     <!-- 1. Date -->
                     <div class="text-slate-500 tabular-nums whitespace-nowrap">
                         {{ trade.entry_date }} ({{ trade.days_held }}d)
@@ -80,34 +77,27 @@
                         {{ tradingview_link(trade.symbol, is_button=false) }}
                     </div>
 
-                    <!-- 3. Strategy Badge -->
-                    <div class="whitespace-nowrap">
-                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-teal-50 text-teal-600 border border-teal-100 uppercase whitespace-nowrap">
-                            Bridge Scout
-                        </span>
-                    </div>
-
-                    <!-- 4. Quantity -->
+                    <!-- 3. Quantity -->
                     <div class="text-right tabular-nums text-slate-600 font-medium whitespace-nowrap">
                         {{ trade.current_size|int }}
                     </div>
 
-                    <!-- 5. Entry -->
+                    <!-- 4. Entry -->
                     <div class="text-right tabular-nums text-slate-600 font-medium whitespace-nowrap">
                         {{ "{:,.2f}".format(trade.entry_price|float) }}
                     </div>
 
-                    <!-- 6. Last Price -->
+                    <!-- 5. Last Price -->
                     <div class="text-right tabular-nums text-slate-900 font-bold whitespace-nowrap">
                         {{ "{:,.2f}".format(trade.current_price|float) if trade.current_price else '-' }}
                     </div>
 
-                    <!-- 7. Exit Condition -->
+                    <!-- 6. Stop -->
                     <div class="text-right text-xs text-teal-600 font-medium whitespace-nowrap">
                         1st of Month MOC
                     </div>
 
-                    <!-- 8. Open PnL -->
+                    <!-- 7. Open PnL -->
                     <div class="flex flex-col items-end text-right whitespace-nowrap">
                         {{ render_pnl_cell(trade.unrealized_pnl, trade.pnl_percentage) }}
                     </div>
@@ -115,12 +105,6 @@
             </div>
             {% endfor %}
         </div>
-
-        <!-- Table Footer -->
-        {% set total_unrealized_pnl = active_trades | map(attribute='unrealized_pnl') | sum %}
-        {% set count_active = active_trades | length %}
-        {% set avg_unrealized_pnl = (total_unrealized_pnl / count_active) if count_active > 0 else 0.0 %}
-        {{ render_mobile_table_footer("Total Open PnL", total_unrealized_pnl, avg_unrealized_pnl, count_active) }}
     </div>
 </section>
 {% endif %}
