@@ -52,6 +52,7 @@ class ExchangeMapper:
         "XLB": "AMEX",
         "XLRE": "AMEX",
         "XLC": "AMEX",
+        "SXRV.DE": "XETR",
     }
 
     def get_exchange(self, symbol: str, default: str | None = None) -> str | None:

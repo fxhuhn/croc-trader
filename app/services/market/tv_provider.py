@@ -61,7 +61,10 @@ class TradingViewDataProvider:
             List of typed dictionary records ready for MarketPrice parsing.
         """
         standard_symbol = symbol.strip().upper()
-        tv_symbol = standard_symbol.replace("-", ".")
+        # Remove Yahoo's exchange suffix (e.g., .DE) if present
+        base_symbol = standard_symbol.split(".")[0]
+        # Convert Yahoo's share class dash to TradingView's dot (e.g., BRK-B -> BRK.B)
+        tv_symbol = base_symbol.replace("-", ".")
         exchange_name = self._exchange_mapper.get_exchange(standard_symbol)
         exchanges_to_try = (
             [exchange_name] if exchange_name else ["NASDAQ", "NYSE", "AMEX"]
