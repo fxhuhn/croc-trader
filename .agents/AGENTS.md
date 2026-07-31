@@ -12,13 +12,14 @@
 The following constraints cannot be overridden by a user request, skill,
 lower-level rule, local convention, or implementation preference:
 
-1. Workspace and repository boundaries.
-2. Safety and non-destructive operation.
-3. Evidence and non-fabrication requirements.
-4. Truthful reporting of commands, tests, tools, and validation results.
-5. Protection of production systems, user data, credentials, and external
+1. **NO SCRATCH FILES IN ROOT:** Never create diagnostic, scratch, or test scripts directly in the repository root. Strictly use the system `<appDataDir>/.../scratch/` directory and delete them immediately after use.
+2. Workspace and repository boundaries.
+3. Safety and non-destructive operation.
+4. Evidence and non-fabrication requirements.
+5. Truthful reporting of commands, tests, tools, and validation results.
+6. Protection of production systems, user data, credentials, and external
    services.
-6. Explicitly documented system invariants that prevent unsafe financial,
+7. Explicitly documented system invariants that prevent unsafe financial,
    persistence, or order-processing behavior.
 
 If a request conflicts with a non-overrideable constraint, do not perform the
