@@ -1,55 +1,46 @@
 ---
 name: strategy-screener
-description: Define, explain, compare, and audit Croc-Trader screening strategies through canonical playbooks. Use for strategy contracts, indicators, entry and exit conditions, signal schemas, configuration mappings, implementation comparisons, and strategy-specific test requirements. Load only the relevant strategy playbook. Do not generate production signals or place orders.
+description: Define, explain, compare, and audit Croc-Trader screening strategies through canonical playbooks. Use for strategy contracts, Screener and Trade Manager stages, indicators, entry and exit conditions, signal schemas, persisted runtime state, configuration mappings, implementation comparisons, and strategy-specific test requirements. Load only the relevant playbook. Do not generate production signals or place orders.
 ---
 
-# Strategy Screener Skill
+# Strategy Screener
 
-This skill is the definitive navigation and process source for strategies. It serves as the authoritative entry point to strategy playbooks and the primary auditor of strategy code, configuration, and tests.
+## Responsibility
 
-It is NOT a general Python implementer and NOT a production runner for signal generation.
+This skill manages the documentation and validation of strategy playbooks, which serve as the canonical contract bridging financial design and technical execution. The strategy screener is responsible for explaining, designing, or auditing strategies within the Croc-Trader architecture.
 
 ## Source Hierarchy
 
-For strategy behavior, use:
+In the event of conflicting information, the following hierarchy applies strictly:
 
-1. Explicit user-authorized strategy change.
-2. Canonical strategy playbook.
-3. `architecture.md` and `references/architecture.md`.
-4. Current strategy configuration.
-5. Existing implementation.
-6. Existing tests.
-7. Supporting research references.
+1. Explicit current user request
+2. Canonical Strategy Playbook
+3. `architecture.md`
+4. `references/architecture.md`
+5. Current active configuration
+6. Existing implementation
+7. Existing tests
+8. Supporting research or external descriptions
 
-The implementation is evidence to review. It is not automatically the
-normative strategy definition.
+*Important Constraints*:
+- Existing code is evidence, not automatically the normative contract.
+- Missing strategy information must not be derived simply for implementation convenience.
+- Contradictions must be visibly documented.
+- If evidence is missing, use `Not specified` or `Not verified`.
 
-Do not fill missing playbook behavior from implementation convenience or
-plausible assumptions.
+## Playbook Selection
 
-## Playbook Contract
-
-Every supported strategy must have exactly one canonical playbook based on
-`playbook/TEMPLATE.md`.
-
-Before describing, implementing, or auditing a strategy:
+Before working on a strategy:
 
 1. Resolve the canonical strategy identifier from repository evidence.
-2. Locate the matching playbook.
-3. Load that playbook and only directly relevant architecture, configuration,
-   code, tests, and references.
-4. Verify whether all mandatory template sections are present.
-5. Treat documented playbook behavior as the normative strategy contract.
-6. Compare code, configuration, and tests against that contract.
-7. Mark missing or contradictory behavior explicitly.
-8. Do not invent missing strategy rules.
-
-A strategy is not fully specified while mandatory template sections remain
-missing or unresolved.
+2. Locate exactly one matching playbook.
+3. Load `overview.md`.
+4. Load only the selected strategy playbook.
+5. Load `TEMPLATE.md` only when creating, migrating, or validating a playbook.
+6. Load only directly relevant architecture, configuration, code, tests, and references.
+7. Do not load all strategy playbooks unless the task explicitly requires a cross-strategy comparison.
 
 ## Operating Modes
-
-This skill operates in exactly four modes:
 
 ### Describe
 - Explain the playbook.
@@ -67,18 +58,42 @@ This skill operates in exactly four modes:
 - Output findings categorized by severity and source.
 - Do not automatically apply corrections.
 
-### Implementation Handoff
-- When code changes are explicitly requested, pass verified strategy requirements to `python-craftsman`.
-- Pass relevant test requirements to `python-tester`.
-- Do not execute production implementation directly.
+### Migrate
+- Structurally move an existing playbook into the current template format.
+- Do not add missing domain logic.
+- Mark missing fields with `Not specified` or `Not verified`.
 
-## Forbidden Actions
+## Playbook Contract
+
+All strategy playbooks must adhere to `TEMPLATE.md` and integrate flawlessly with the shared stage model outlined in `overview.md`.
+
+## Mermaid and Visual Model Rules
+
+- Playbooks must include at least one valid, renderable Mermaid diagram.
+- `flowchart LR`, `flowchart TD`, or `stateDiagram-v2` are permitted.
+- The diagram must reflect the data ingestion, screener calculation, setup decision, `CREATED` status transition, Trade Manager entry, `ACTIVE`/`INVALIDATED` states, runtime updates, and `CLOSED` states relevant to the strategy.
+- Do not duplicate all shared components from `overview.md` if they do not change. Focus on strategy-specific logic.
+
+## Implementation Handoff
+
+- Hand off verified domain requirements to `python-craftsman`.
+- Hand off required tests to `python-tester`.
+- Do not execute direct code implementation from this skill.
+
+## Prohibited Actions
 
 This skill must NOT:
 - Generate production signals.
-- Write to `signals.db`.
+- Write to databases.
 - Generate broker orders.
+- Generate CSV order files.
 - Send Telegram messages.
-- Calculate final position sizes (unless architecturally assigned to the screener).
-- Derive unknown parameter values from code or backtests.
-- Silently align playbooks to match the existing implementation without verification.
+- Invent strategy logic based on assumptions.
+- Silently align playbooks to existing code without noting the conflict.
+- Invent new strategy variants.
+- Calculate final position sizing if the architecture assigns it to the Trade Manager or Portfolio Order Layer.
+- Modify application code (`app/`, `tests/`, etc.).
+
+## Output Contract
+
+Findings and designs must be presented cleanly. Do not emit empty tables or sections. Use standard verification language (e.g., `Verified`, `Not specified`, `Not verified`, `Conflicting`).

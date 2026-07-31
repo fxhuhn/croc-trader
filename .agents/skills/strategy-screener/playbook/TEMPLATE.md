@@ -1,367 +1,293 @@
-# Strategy: <Canonical Strategy Name>
+# Strategy Playbook: <Canonical Strategy Name>
 
-## 1. Strategy Identity
+> Specification status: Complete | Incomplete | Conflicting
+> Last verified against code: <date or Not verified>
+> Last verified against configuration: <date or Not verified>
+> Last verified against tests: <date or Not verified>
+
+## 1. Identity and Status
 
 - Strategy identifier:
 - Display name:
 - Strategy family:
-- Implementation module:
-- Configuration section:
-- Current lifecycle status:
+- Variants:
+- Lifecycle status:
 - Playbook version:
-- Last verified date:
+- Screener implementation:
+- Trade Manager implementation:
+- Configuration section:
 
-## 2. Objective and Economic Hypothesis
+## 2. Objective and Hypothesis
 
-Describe:
+### Core concept
 
-- intended market behavior,
-- economic or behavioral hypothesis,
-- expected source of return,
-- expected market regime,
-- hypothesis invalidation conditions.
+### Economic or behavioral hypothesis
 
-Do not present backtest performance as the economic hypothesis.
+### Expected market regime
 
-## 3. Scope and Responsibility
+### Hypothesis invalidation
 
-Define:
+### Known verified limitations
 
-- screener responsibilities,
-- candidate definition,
-- persisted output,
-- trade-manager responsibilities,
-- portfolio-allocation responsibilities,
-- broker and order-handling responsibilities.
+## 3. Responsibility Boundary
 
-The screener must not calculate final order quantities or submit orders unless
-the authoritative architecture explicitly assigns that responsibility.
+| Responsibility | Screener | Trade Manager | Portfolio / Order Layer |
+|---|:---:|:---:|:---:|
+| <task> | | | |
 
-## 4. Instrument Universe
+Document only strategy-specific responsibility or deviation from `overview.md`.
 
-Document:
+## 4. Universe, Data and Provider Requirements
 
-- eligible asset classes,
-- universe source,
-- exchange restrictions,
-- liquidity requirements,
-- minimum data history,
-- exclusion rules,
-- update frequency.
+### Universe
 
-Do not duplicate configured symbol lists as hard-coded playbook values.
+### Required market data
 
-## 5. Required Market Data
+| Field | Frequency | Adjustment policy | Minimum history | Required |
+|---|---|---|---:|---|
 
-| Field | Frequency | Adjustment policy | Required history |
-|---|---|---|---:|
-| Open | Daily | <verified policy> | <bars> |
-| High | Daily | <verified policy> | <bars> |
-| Low | Daily | <verified policy> | <bars> |
-| Close | Daily | <verified policy> | <bars> |
-| Volume | Daily | <verified policy> | <bars> |
+### Provider behavior
 
-Central provider contract:
+- Primary provider: `yfinance`
+- Fallback: TradingView through `tvdatafeed.get_hist()`
+- `TvDatafeedLive`: prohibited
+- Existing provider provenance: preserved
 
-- Primary provider: `yfinance`.
-- Fallback: TradingView through `tvdatafeed.get_hist()` only for missing
-  symbols or missing required data.
-- `TvDatafeedLive` is not used.
-- Existing provider provenance stored per database record remains unchanged.
-- The strategy playbook must not redefine the ingestion database design.
+### Data freshness and cutoff
 
-## 6. Trading-Date Semantics
+## 5. Configuration Contract
 
-Define:
+| Business parameter | Configuration key | Type | Unit | Required | Default | Variant-specific |
+|---|---|---|---|---|---|---|
 
-- effective trading date,
+Do not invent defaults.
+
+## 6. Trading Calendar and Timeline
+
+| Event | Time or phase | Trading-day rule | Holiday behavior |
+|---|---|---|---|
+| Screener run | | | |
+| Signal creation | | | |
+| Earliest entry | | | |
+| Entry expiration | | | |
+| Earliest exit | | | |
+| Time-based exit | | | |
+
+Also define:
+
 - exchange timezone,
+- effective trading date,
+- same-session or next-session entry,
 - data cutoff,
-- last permissible candle,
-- calculation date,
-- earliest possible execution date,
-- weekend and holiday behavior,
-- explicit look-ahead-bias prevention.
+- look-ahead prevention,
+- MOC or MOO cutoff assumptions where applicable.
 
-Do not use a generic example as the strategy rule. Record the verified contract.
+## 7. Phase 1 — Screener
 
-## 7. Configuration Mapping
+### Data inputs
 
-| Playbook parameter | Configuration key | Type | Unit | Required | Default allowed |
-|---|---|---|---|---|---|
-| <parameter> | <exact key> | <type> | <unit> | Yes/No | Yes/No |
-
-Rules:
-
-- no invented defaults,
-- no unexplained duplicated literals,
-- identify whether a parameter changes strategy identity or tuning,
-- missing required configuration fails explicitly.
-
-## 8. Indicator Definitions
+### Setup indicators
 
 For each indicator:
 
-### `<Indicator Name>`
+#### `<Indicator Name>`
 
 - Purpose:
-- Exact mathematical definition:
-- Input series:
+- Exact definition:
+- Inputs:
 - Lookback:
-- Warm-up period:
+- Warm-up:
 - Missing-value behavior:
-- Library implementation:
-- Precision requirements:
 - Configuration key:
+- Implementation symbol:
 
-The mathematical intent must remain understandable independently from a
-library function name.
+### Setup conditions
 
-## 9. Entry Conditions
+| ID | Exact condition | Formula | Required | Evaluation order | Missing-data behavior |
+|---|---|---|---|---:|---|
 
-| Identifier | Exact condition | Required | Evaluation order |
-|---|---|---|---:|
-| E1 | <condition> | Yes/No | 1 |
+Define the final Boolean relationship.
 
-Define the complete Boolean relationship.
+### Ranking and candidate selection
 
-For crossovers define:
+### Duplicate and existing-position checks
 
-- previous-bar condition,
-- current-bar condition,
-- equality behavior,
-- missing-value behavior.
+### Signal generation
 
-Do not use non-measurable descriptions such as “strong trend”.
+### Telegram or notification behavior
 
-## 10. Exit Conditions
+## 8. Phase 1 Output Contract
 
-Separate:
+### Signal fields
 
-- strategy exit,
-- stop-related input,
-- time-based exit,
-- invalidation exit,
-- portfolio-manager exit,
-- trade-manager exit.
-
-If the screener does not generate exits, state this explicitly.
-
-## 11. Signal Contract
-
-| Field | Type | Required | Meaning |
+| Field | Type | Required | Value or meaning |
 |---|---|---|---|
-| strategy | <type> | Yes | Canonical strategy identifier |
-| symbol | <type> | Yes | Canonical instrument symbol |
-| trading_date | date | Yes | Effective strategy date |
-| direction | <type> | Yes | Direction semantics |
-| reference_price | <type> | Yes | Non-execution reference |
-| signal_context | mapping | Yes | Strategy evidence |
 
-Define:
+### Entry reference semantics
+
+- Stored field:
+- Price or threshold:
+- Executable:
+- Used by Trade Manager:
+- Rounding:
+- Tick-size behavior:
+
+### Initial `signal_context`
+
+| Field | Type | Value or formula | Unit | Decision relevant | Diagnostic only |
+|---|---|---|---|---|---|
+
+## 9. Phase 2 — Trade Manager Entry
+
+### Entry preconditions
+
+### Entry timing
+
+### Order and fill contract
+
+| Priority | Condition | Order type | Fill rule | Status or reason |
+|---:|---|---|---|---|
+
+### Entry expiration and invalidation
+
+### Position sizing
+
+- Sizing owner:
+- Budget or risk based:
+- Configuration key:
+- Zero-size behavior:
+- Decimal boundary:
+
+## 10. Phase 2 — Active Trade Management
+
+### Daily inputs
+
+### Runtime indicators
+
+### Mutable runtime state
+
+| Field | Initial value | Update rule | Update timing | Duplicate-processing guard | Decision relevant |
+|---|---|---|---|---|---|
+
+### Daily update sequence
+
+## 11. Phase 2 — Exit Contract
+
+| Priority | Exit condition | Earliest eligible time | Order type | Fill rule | Final status | Reason code |
+|---:|---|---|---|---|---|---|
+
+Also define:
+
+- simultaneous-condition behavior,
+- exit evaluation order,
+- next-open versus same-close semantics,
+- non-trigger behavior,
+- terminal state.
+
+## 12. Portfolio Reconciliation
+
+> Use `Not applicable` for strategies without portfolio-level reconciliation.
+
+Define when applicable:
+
+- target portfolio,
+- current portfolio,
+- positions to keep,
+- positions to close,
+- positions to open,
+- already-active handling,
+- regime-off behavior,
+- operation order,
+- partial execution behavior.
+
+## 13. Persistence and Data Lifecycle
+
+| Artifact or field | Producer | Creation time | Storage target | Mutable | Updater | Terminal behavior |
+|---|---|---|---|---|---|---|
+
+Also define:
 
 - uniqueness key,
-- duplicate behavior,
-- idempotency,
-- creation status,
-- invalid-signal behavior.
-
-Do not include final order quantity unless architecture assigns it to the
-screener.
-
-## 12. Signal Context Schema
-
-| Key | Type | Required | Unit | Meaning |
-|---|---|---|---|---|
-| <key> | <type> | Yes/No | <unit> | <description> |
-
-Rules:
-
-- no undocumented keys,
-- no convenience abbreviations,
-- decision values must equal values used by the calculation,
-- diagnostic-only values must be identified.
-
-## 13. Reference Price Semantics
-
-Define:
-
-- price field,
-- adjusted or unadjusted,
-- informational or downstream use,
-- execution limitations,
-- tick-size or rounding behavior.
-
-A reference price must not be described as an executable price.
-
-## 14. Position and Risk Inputs
-
-Document only strategy-produced or strategy-required risk inputs:
-
-- stop reference,
-- volatility measure,
-- risk distance,
-- ranking score,
-- quality score.
-
-Do not define account budgets, broker limits, portfolio allocation, or final
-quantities unless assigned by architecture.
-
-## 15. Ranking and Candidate Selection
-
-Define:
-
-- ranking metric,
-- sort direction,
-- deterministic tie-breaking,
-- maximum candidates,
-- missing-value behavior.
-
-If absent, state:
-
-`No cross-sectional ranking is performed.`
-
-## 16. Missing and Invalid Data Behavior
-
-| Condition | Required behavior |
-|---|---|
-| Symbol or required data missing from yfinance | Use established TradingView fallback |
-| Required data missing from both providers | Reject evaluation |
-| Insufficient warm-up history | Reject evaluation |
-| Non-finite input | Reject evaluation |
-| Stale final candle | Reject evaluation |
-| Missing required configuration | Fail explicitly |
-| Invalid OHLC relation | Reject affected data |
-| Duplicate run | Apply documented idempotency contract |
-
-Do not silently replace missing prices with zero.
-
-## 17. Synchronous EOD Execution Sequence
-
-1. Resolve effective trading date.
-2. Load strategy configuration.
-3. Load eligible universe.
-4. Load verified daily market data.
-5. Validate history and data cutoff.
-6. Calculate indicators.
-7. Evaluate conditions.
-8. Create deterministic candidates.
-9. Validate signal contract.
-10. Persist idempotently when production application code invokes the strategy.
-11. Return an execution summary.
-
-The skill itself does not execute production signal generation.
-
-## 18. Idempotency and Duplicate Protection
-
-Define:
-
-- run identity,
-- uniqueness key,
-- rerun behavior,
+- idempotency behavior,
+- duplicate-run behavior,
+- transaction boundary,
 - partial-run behavior,
-- skip or update behavior,
-- transaction boundary.
+- cleanup behavior,
+- persistence failure behavior.
 
-The same inputs and trading date must not create duplicate signals.
+## 14. Numerical and Execution Semantics
 
-## 19. Numerical Precision and Rounding
+- Analytical numeric types:
+- Monetary boundary type:
+- Decimal conversion point:
+- Tick-size source:
+- Rounding mode:
+- Reference price versus fill price:
+- Budget versus risk sizing:
+- Broker responsibility:
+- CSV responsibility:
 
-Define:
+## 15. Visual Process Model
 
-- analytical numeric types,
-- monetary boundary types,
-- tick-size source,
-- rounding mode,
-- Decimal conversion boundary,
-- floating-point comparison tolerance where applicable.
+### Required strategy flow
 
-Do not use generic “two decimals” rules unless valid for every permitted
-instrument.
+Include one renderable Mermaid diagram that shows:
 
-## 20. Logging and Observability
+- Screener stage,
+- signal creation,
+- persisted initial data,
+- CREATED transition,
+- Trade Manager entry decision,
+- ACTIVE or INVALIDATED transition,
+- runtime updates where relevant,
+- exit decision,
+- CLOSED transition,
+- order or CSV generation where relevant.
 
-Define required structured events:
+Do not repeat every shared architecture detail from `overview.md`.
 
-- evaluation started,
-- provider fallback used,
-- symbol rejected with reason,
-- candidate generated,
-- duplicate skipped,
-- persistence completed,
-- evaluation completed,
-- evaluation failed.
+### Additional diagrams
 
-Do not log credentials or unnecessary sensitive data.
+Add only when required:
 
-## 21. Implementation Mapping
+- mutable runtime state machine,
+- portfolio reconciliation flow,
+- non-standard data lifecycle.
 
-| Playbook section | Module | Symbol | Status |
+## 16. Implementation, Tests and Evidence
+
+### Implementation mapping
+
+| Contract area | Module | Symbol | Verification status |
 |---|---|---|---|
-| Indicator | <module> | <symbol> | Verified/Not verified |
-| Entry | <module> | <symbol> | Verified/Not verified |
-| Persistence | <module> | <symbol> | Verified/Not verified |
 
-Every mapping must reference an inspected existing symbol.
+### Test contract
 
-Code is the reviewed artifact, not automatically the normative contract.
+#### Positive behavior
 
-## 22. Test Contract
+#### No-signal behavior
 
-### Positive tests
+#### Threshold and boundary cases
 
-- verified signal case,
-- verified no-signal case,
-- exact threshold case,
-- crossover case where applicable.
+#### Timing and holiday cases
 
-### Boundary tests
+#### Missing-data cases
 
-- insufficient warm-up,
-- first valid calculation date,
-- threshold equality,
-- missing final candle,
-- provider fallback,
-- duplicate run.
+#### Provider fallback
 
-### Failure tests
+#### Duplicate and idempotency cases
 
-- missing configuration,
-- invalid OHLC,
-- non-finite values,
-- persistence failure where relevant.
+#### Entry expiration
 
-### Bias tests
+#### Exit priority
 
-- no future candle access,
-- no premature use of execution-day values,
-- correct data cutoff.
+#### Look-ahead prevention
 
-## 23. Acceptance Criteria
+#### Runtime-state update
 
-- [ ] Strategy identity is canonical.
-- [ ] Parameters map to existing configuration keys.
-- [ ] Indicators have exact definitions.
-- [ ] Conditions are unambiguous.
-- [ ] Trading-date semantics prevent look-ahead bias.
-- [ ] Missing-data behavior is explicit.
-- [ ] Provider fallback follows the central ingestion contract.
-- [ ] Signal schema and uniqueness are documented.
-- [ ] Implementation mappings reference existing symbols.
-- [ ] Required tests exist or missing tests are reported.
-- [ ] Screener responsibilities do not conflict with architecture.
+#### Strategy-specific special cases
 
-## 24. Known Limitations
+### References
 
-Document only verified limitations.
-
-Do not add speculative weaknesses or unsupported claims.
-
-## 25. References
-
-Classify each source as:
-
-- normative,
-- supporting,
-- implementation evidence,
-- empirical evidence.
+| Source | Classification | Purpose |
+|---|---|---|
