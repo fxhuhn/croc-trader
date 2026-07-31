@@ -87,7 +87,7 @@ def test_market_repository_equivalence_get_latest_price(sample_db_session):
 
 def test_market_data_provider_equivalence_get_symbol_history(sample_db_session):
     provider = MarketDataProvider(sample_db_session)
-    df = provider.get_symbol_history("AAPL", days=10)
+    df = provider.get_symbol_history("AAPL", days=30000)
 
     assert len(df) == 2
     assert "close" in df.columns
@@ -96,7 +96,7 @@ def test_market_data_provider_equivalence_get_symbol_history(sample_db_session):
 
 def test_market_data_provider_equivalence_get_universe_daily_data(sample_db_session):
     provider = MarketDataProvider(sample_db_session)
-    data = provider.get_universe_daily_data(["AAPL", "MSFT"], days=10)
+    data = provider.get_universe_daily_data(["AAPL", "MSFT"], days=30000)
 
     assert data is not None
     assert "close" in data

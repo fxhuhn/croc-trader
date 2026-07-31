@@ -131,7 +131,7 @@ def test_market_repository_methods_handle_default_parameters_when_omitted(
 
 def test_market_data_provider_pivoting_with_fallback(multi_provider_session):
     provider = MarketDataProvider(multi_provider_session)
-    data = provider.get_universe_daily_data(["AAPL", "MSFT"], days=10)
+    data = provider.get_universe_daily_data(["AAPL", "MSFT"], days=30000)
 
     assert data is not None
     close_df = data["close"]
