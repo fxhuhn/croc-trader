@@ -1,6 +1,6 @@
 ---
 name: flask-ui
-description: "The absolute guardian of the presentation layer, managing Flask Blueprints, Jinja2 templates, and Tailwind CSS layouts."
+description: Use for Flask views, Jinja templates, HTML, CSS, UI behavior, accessibility, and optional ASCII wireframes explicitly requested by the user.
 ---
 
 # Flask UI & Template Agent Skill
@@ -39,3 +39,18 @@ This skill defines the role, scope, rules, and design guidelines of the speciali
 - **Service Dependency Injection**: Routes must obtain instances of database repositories (`SignalRepository`, `TradeRepository`) or services (`ScreenerViewService`) via the helper functions defined in [app/routes/views/dependencies.py](app/routes/views/dependencies.py).
 - **Template Contexts**: Route responses should limit variables strictly to primitives, dataclasses, or structured dict mappings intended for UI injection.
 - All references and imports must be repository-relative.
+
+## ASCII Wireframe Mode
+
+Use this mode only when the user explicitly requests a mockup, wireframe, or
+layout proposal.
+
+In this mode:
+
+- remain read-only,
+- create no files unless explicitly requested,
+- produce no backend changes,
+- use simple monospaced ASCII layouts,
+- show hierarchy, content regions, actions, and responsive alternatives,
+- do not select new UI frameworks,
+- do not present the wireframe as implemented behavior.

@@ -146,21 +146,9 @@ def process_trade_signal(
 ## 4. Architecture Principles
 
 ### 4.1 SOLID Principles
-- **Single-Responsibility Principle (SRP)**
-    - *Definition:* Every module/class should only have one responsibility and therefore only one reason to change.
-    - *Relevant Zen:* There should be one-- and preferably only one --obvious way to do things.
-- **Open-Closed Principle (OCP)**
-    - *Definition:* Software Entities (classes, functions, modules) should be open for extension but closed to change.
-    - *Relevant Zen:* Simple is better than complex. Complex is better than complicated.
-- **Liskov Substitution Principle (LSP)**
-    - *Definition:* If S is a subtype of T, then objects of type T may be replaced with objects of Type S.
-    - *Relevant Zen:* Special cases aren't special enough to break the rules.
-- **Interface Segregation Principle (ISP)**
-    - *Definition:* A client should not depend on methods it does not use.
-    - *Relevant Zen:* Readability Counts && complicated is better than complex.
-- **Dependency Inversion Principle (DIP)**
-    - *Definition:* High-level modules should not depend on low-level modules. They should depend on abstractions and abstractions should not depend on details, rather details should depend on abstractions.
-    - *Relevant Zen:* Explicit is Better than Implicit.
+Apply SOLID principles only where they reduce coupling and improve
+changeability. Do not introduce abstractions, protocols, interfaces, or
+inheritance structures without a current verified requirement.
 
 ### 4.2 DRY — Don't Repeat Yourself
 Avoid duplication of stable business knowledge, rules, constants, and behavior.
@@ -388,56 +376,3 @@ If a metric cannot be measured with the available configuration, report it as
 `Not measured` and evaluate it only through an explicitly identified audit.
 
 ---
-
-## 10. Example (Clean Code & Step-down Applied)
-
-```python
-from dataclasses import dataclass
-import logging
-
-logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class TradingStrategyConfiguration:
-    """Configuration for technical analysis thresholds."""
-
-    trend_window_size: int
-    minimum_required_history: int
-
-
-def analyze_market_trends(
-    closing_prices: list[float],
-    configuration: TradingStrategyConfiguration,
-) -> list[float]:
-    """
-    Orchestrates the market trend analysis process.
-
-    This high-level function follows the Step-down Rule by delegating
-    the mathematical heavy lifting to specialized pure functions.
-    """
-    if not _is_history_sufficient(
-        closing_prices, configuration.minimum_required_history
-    ):
-        logger.warning("Insufficient data for trend analysis.")
-        return []
-
-    return _calculate_trend_thresholds(closing_prices, configuration.trend_window_size)
-
-
-def _is_history_sufficient(prices: list[float], minimum_history_length: int) -> bool:
-    """Checks if the provided price list meets the required length."""
-    return len(prices) >= minimum_history_length
-
-
-def _calculate_trend_thresholds(prices: list[float], window_size: int) -> list[float]:
-    """
-    Core mathematical transformation (Functional Core).
-
-    Calculates the threshold values used to identify trend reversals.
-    """
-    return [
-        sum(prices[start_index : start_index + window_size]) / window_size
-        for start_index in range(len(prices) - window_size + 1)
-    ]
-```

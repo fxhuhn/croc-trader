@@ -13,7 +13,7 @@ It does not independently broaden requirements, redesign unrelated
 architecture, or perform unrelated cleanup.
 
 For new or architecturally significant solutions, it may consume a blueprint
-from `python-creator`. It remains responsible for the actual repository
+from `architecture-specification`. It remains responsible for the actual repository
 implementation and verification workflow.
 
 ---

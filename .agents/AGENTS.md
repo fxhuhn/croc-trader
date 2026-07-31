@@ -71,35 +71,73 @@ conversation, you must re-read these documents at the start of each new task.
 You **MUST** inspect and read the relevant `.agents/skills/<skill>/SKILL.md` file
 whenever a task involves:
 
-| Domain                              | Skill(s) / Rule(s)                                |
-|-------------------------------------|---------------------------------------------------|
-| Data Ingestion & Quality            | `data-ingestion`                                  |
-| Strategy & Signal Generation        | `strategy-screener`                               |
-| Python solution design             | `python-creator`                              |
-| Python implementation              | `python-craftsman`                            |
-| Python behavior verification       | `python-tester`                               |
-| Python architecture and quality    | `python-auditor`                              |
-| Python security and data integrity | `python-security`                             |
-| Architecture documentation sync    | `architecture-sync`                          |
-| Presentation & UI                   | `flask-ui` / `python-designer`                    |
-| API Design & Endpoints              | `rules/api.md`                                    |
+| Domain                              | Skill / Rule                    |
+|-------------------------------------|---------------------------------|
+| Architecture specification          | `architecture-specification`    |
+| Python implementation               | `python-craftsman`              |
+| Python behavior verification        | `python-tester`                 |
+| Python architecture and quality     | `python-auditor`                |
+| Python security and data integrity  | `python-security`               |
+| Architecture documentation sync     | `architecture-sync`             |
+| Data ingestion and market data      | `data-ingestion`                |
+| Strategy contracts and screening    | `strategy-screener`             |
+| Flask, Jinja, HTML and UI            | `flask-ui` / `rules/html.md`     |
 
 ### Skill Applicability
 
-Activate only the skills required by the task:
+Activate only the smallest set of skills required by the task.
 
-- `python-creator`: new modules, substantial capabilities, or architecture-
-  significant redesigns.
-- `python-craftsman`: implementation or modification of Python code.
-- `python-tester`: behavior changes, bug fixes, new logic, or test requests.
-- `python-auditor`: non-trivial Python changes or an explicit quality review.
-- `python-security`: changes involving trust boundaries, external input,
-  persistence, files, subprocesses, networking, authentication, secrets,
-  monetary values, orders, dependencies, or an explicit security review.
-- `architecture-sync`: only the triggers defined in its own skill.
+- `architecture-specification`:
+  Use for new components, architecture-significant changes, public-contract
+  design, state models, data-flow design, or an explicit architecture review.
 
-Do not activate every Python skill mechanically for documentation-only,
-format-only, comment-only, or otherwise non-applicable changes.
+- `python-craftsman`:
+  Use for implementation or modification of Python code.
+
+- `python-tester`:
+  Use for behavior changes, bug fixes, new logic, regression testing, or an
+  explicit test request.
+
+- `python-auditor`:
+  Use for non-trivial Python changes or an explicit quality review.
+
+- `python-security`:
+  Use for trust boundaries, external input, persistence, files, subprocesses,
+  networking, secrets, monetary values, orders, dependencies, or an explicit
+  security review.
+
+- `architecture-sync`:
+  Use only for the triggers defined in its own skill.
+
+- `data-ingestion`:
+  Use for historical EOD market-data providers, fallback behavior, provider
+  provenance, synchronization, and data-quality contracts.
+
+- `strategy-screener`:
+  Use for strategy descriptions, strategy playbooks, signal contracts,
+  strategy implementation comparisons, or strategy audits.
+
+- `flask-ui`:
+  Use for Flask views, Jinja templates, HTML, CSS, UI behavior, accessibility,
+  and optional ASCII wireframes explicitly requested by the user.
+
+Do not activate all skills mechanically.
+
+Documentation-only, comment-only, format-only, and read-only explanation tasks
+must use only the skills that materially contribute to the requested result.
+
+### Domain-to-Implementation Handoff
+
+Domain skills provide authoritative domain constraints and review criteria.
+
+When a task requires Python code changes:
+
+1. Activate the relevant domain skill.
+2. Extract only the verified constraints required for the task.
+3. Hand implementation to `python-craftsman`.
+4. Activate only the applicable independent verification skills.
+
+Domain skills must not become alternative general-purpose Python implementers.
 
 ### Step 3 — Analysis & Implementation
 
