@@ -45,6 +45,8 @@ and `find`.
   requires it.
 - Use temporary directories for generated validation artifacts and remove them
   after use when safe.
+- **NO SCRATCH FILES IN ROOT:** Never create diagnostic, scratch, or test scripts (e.g., `test.py`, `debug.py`) in the repository root directory.
+- **Dedicated Scratch Folders:** All temporary scripts MUST be created either in the system-provided scratch directory (`<appDataDir>/.../scratch/`) or within `scripts/one_off/` if they are to be persisted in the project.
 
 ## VS Code Environment Settings
 * **Interpreter Path**: In `.vscode/settings.json`, always configure `"python.defaultInterpreterPath"` as a relative path (`".venv/bin/python"`).
