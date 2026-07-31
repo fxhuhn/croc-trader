@@ -1,10 +1,7 @@
 ---
-
 trigger: path_based
 paths:
-
-* "app/routes/api.py"
-
+  - "app/routes/api.py"
 ---
 
 # API Architecture and Design Rules — Mandatory

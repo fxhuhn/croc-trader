@@ -26,7 +26,7 @@ In the event of conflicting information, the following hierarchy applies strictl
 - Existing code is evidence, not automatically the normative contract.
 - Missing strategy information must not be derived simply for implementation convenience.
 - Contradictions must be visibly documented.
-- If evidence is missing, use `Not specified` or `Not verified`.
+- If a normative contract value is missing, use `UNSPECIFIED`. If repository evidence has not been checked, use `NOT_REVIEWED`. Do not use prose variants such as `Not specified` or `Not verified`.
 
 ## Playbook Selection
 
@@ -61,7 +61,7 @@ Before working on a strategy:
 ### Migrate
 - Structurally move an existing playbook into the current template format.
 - Do not add missing domain logic.
-- Mark missing fields with `Not specified` or `Not verified`.
+- Mark missing normative values with `UNSPECIFIED`; mark unreviewed implementation, configuration, or test evidence with `NOT_REVIEWED`.
 
 ## Playbook Contract
 
@@ -96,4 +96,4 @@ This skill must NOT:
 
 ## Output Contract
 
-Findings and designs must be presented cleanly. Do not emit empty tables or sections. Use standard verification language (e.g., `Verified`, `Not specified`, `Not verified`, `Conflicting`).
+Findings and designs must be presented cleanly. Do not emit empty tables or sections. Use only the canonical vocabulary from `overview.md`: `COMPLETE`, `INCOMPLETE`, `CONFLICTING`, `VERIFIED`, `PARTIALLY_VERIFIED`, `NOT_REVIEWED`, `NOT_APPLICABLE`, `PARTIAL`, `NONE`, and `UNSPECIFIED` as applicable.

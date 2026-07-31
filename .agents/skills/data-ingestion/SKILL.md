@@ -7,7 +7,7 @@ description: "Data ingestion skill for EOD market data, fallback behavior, provi
 
 This skill defines the data ingestion contract and provider usage rules for the End-of-Day (EOD) trading system.
 
-The existing implementation and database design are authoritative and correct. This skill documents and protects the existing contract without redesigning it.
+The architecture documents define the normative system contract. The current implementation, configuration, database schema, and tests are repository evidence that must be inspected before concrete technical details are stated. Do not assume existing behavior is correct when it conflicts with architecture, explicit requirements, or verified contracts.
 
 ## Provider Contract
 
@@ -39,9 +39,9 @@ user explicitly requests a schema change.
 
 Do not expand the fallback semantics independently. A data quality issue does not automatically trigger a TradingView fallback unless the existing code, tests, or architecture explicitly support it. 
 
-## Technical Details (Authoritative Source)
+## Technical Details and Evidence Sources
 
-The existing architecture documents and implementation are authoritative for technical details, including:
+Architecture documents are normative for technical contracts. Implementation, configuration, database schema, and tests provide conformance evidence and concrete technical details, including:
 - Provider field in the record,
 - Provider identifiers,
 - Upsert behavior,

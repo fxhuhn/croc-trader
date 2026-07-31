@@ -220,11 +220,17 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    SC["Screener"] --> CREATED["CREATED"]
-    CREATED --> TM["Trade Manager"]
-    TM --> ACTIVE["ACTIVE"]
-    TM --> INVALIDATED["INVALIDATED"]
-    ACTIVE --> CLOSED["CLOSED"]
+    SC["Screener"] --> CTX["Initial context fields"]
+    CTX --> CREATED["CREATED"]
+    CREATED --> TM["Trade Manager entry evaluation"]
+    TM -->|expired or rejected| INVALIDATED["INVALIDATED"]
+    TM -->|entry eligible| EREQ["Entry order request"]
+    EREQ --> EOL["Portfolio / Order Layer"]
+    EOL -->|entry filled| ACTIVE["ACTIVE"]
+    ACTIVE --> EXIT["Runtime and exit evaluation"]
+    EXIT --> XREQ["Exit order request"]
+    XREQ --> XOL["Portfolio / Order Layer"]
+    XOL -->|exit filled| CLOSED["CLOSED"]
 ```
 
 | Mermaid element | Contract IDs |
