@@ -1,23 +1,33 @@
 # Strategy Playbook: <Canonical Strategy Name>
 
-> Specification status: Complete | Incomplete | Conflicting
-> Last verified against code: <date or Not verified>
-> Last verified against configuration: <date or Not verified>
-> Last verified against tests: <date or Not verified>
+## 1. Identity
 
-## 1. Identity and Status
+| Field | Contract value | Normative source ID |
+|---|---|---|
+| Strategy identifier | | |
+| Display name | | |
+| Strategy family | | |
+| Variants | | |
+| Lifecycle status | | |
+| Playbook version | | |
 
-- Strategy identifier:
-- Display name:
-- Strategy family:
-- Variants:
-- Lifecycle status:
-- Playbook version:
-- Screener implementation:
-- Trade Manager implementation:
-- Configuration section:
+## 2. Verification Status
 
-## 2. Objective and Hypothesis
+| Dimension | Status | Review date | Review scope | Evidence IDs |
+|---|---|---|---|---|
+| Specification completeness | INCOMPLETE | N/A | Migration inventory | |
+| Implementation conformance | NOT_REVIEWED | N/A | Not reviewed | |
+| Configuration conformance | NOT_REVIEWED | N/A | Not reviewed | |
+| Test coverage | NOT_REVIEWED | N/A | Not reviewed | |
+
+## 3. Source Register
+
+| Source ID | Path or reference | Role | Git commit/version | Scope reviewed | Status |
+|---|---|---|---|---|---|
+
+Allowed roles: `NORMATIVE`, `ARCHITECTURE_NORMATIVE`, `CONFIGURATION_NORMATIVE`, `IMPLEMENTATION_EVIDENCE`, `TEST_EVIDENCE`, `SUPPORTING`.
+
+## 4. Objective
 
 ### Core concept
 
@@ -27,267 +37,214 @@
 
 ### Hypothesis invalidation
 
-### Known verified limitations
+### Known limitations
 
-## 3. Responsibility Boundary
+## 5. Responsibility Contract
 
-| Responsibility | Screener | Trade Manager | Portfolio / Order Layer |
-|---|:---:|:---:|:---:|
-| <task> | | | |
+Document only strategy-specific responsibilities and deviations from `overview.md`.
 
-Document only strategy-specific responsibility or deviation from `overview.md`.
+| Contract ID | Responsibility | Screener | Trade Manager | Portfolio / Order Layer | Normative source ID | Implementation conformance |
+|---|---|---|---|---|---|---|
 
-## 4. Universe, Data and Provider Requirements
+## 6. Universe and Data Contract
 
 ### Universe
 
+| Contract ID | Property | Contract value | Normative source ID | Implementation conformance |
+|---|---|---|---|---|
+
 ### Required market data
 
-| Field | Frequency | Adjustment policy | Minimum history | Required |
-|---|---|---|---:|---|
-
-### Provider behavior
-
-- Primary provider: `yfinance`
-- Fallback: TradingView through `tvdatafeed.get_hist()`
-- `TvDatafeedLive`: prohibited
-- Existing provider provenance: preserved
+| Contract ID | Field | Frequency | Adjustment policy | Minimum history | Required | Normative source ID | Implementation conformance |
+|---|---|---|---|---:|---|---|---|
 
 ### Data freshness and cutoff
 
-## 5. Configuration Contract
+| Contract ID | Property | Contract value | Normative source ID | Implementation conformance |
+|---|---|---|---|---|
 
-| Business parameter | Configuration key | Type | Unit | Required | Default | Variant-specific |
+## 7. Configuration Contract
+
+| Contract ID | Business parameter | Full configuration key | Type | Unit | Required | Resolved default | Variant-specific | Normative source ID | Configuration conformance |
+|---|---|---|---|---|---|---|---|---|---|
+
+## 8. Mathematical Contract
+
+| Contract ID | Name | Exact formula | Inputs and offsets | Unit | Parameter source | Used by | Equality/zero behavior | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---|---|---|---|---|---|---|---|---|
+
+## 9. Trading Timeline
+
+| Contract ID | Event | Time or phase | Trading-day rule | Holiday behavior | Normative source ID | Implementation conformance |
 |---|---|---|---|---|---|---|
 
-Do not invent defaults.
+| Contract ID | Property | Contract value | Normative source ID | Implementation conformance |
+|---|---|---|---|---|
+| | Exchange timezone | | | |
+| | Effective trading date | | | |
+| | Data cutoff | | | |
+| | Look-ahead prevention | | | |
+| | Order cutoff assumptions | | | |
 
-## 6. Trading Calendar and Timeline
+## 10. Screener Decision Contract
 
-| Event | Time or phase | Trading-day rule | Holiday behavior |
-|---|---|---|---|
-| Screener run | | | |
-| Signal creation | | | |
-| Earliest entry | | | |
-| Entry expiration | | | |
-| Earliest exit | | | |
-| Time-based exit | | | |
+### Inputs and indicators
 
-Also define:
+| Contract ID | Input or indicator | Exact definition | Lookback/warm-up | Missing-data behavior | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---|---|---|---|---|---|
 
-- exchange timezone,
-- effective trading date,
-- same-session or next-session entry,
-- data cutoff,
-- look-ahead prevention,
-- MOC or MOO cutoff assumptions where applicable.
+### Conditions
 
-## 7. Phase 1 — Screener
+| Contract ID | Exact condition | Required | Evaluation order | Missing-data behavior | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---:|---|---|---|---|---|
 
-### Data inputs
-
-### Setup indicators
-
-For each indicator:
-
-#### `<Indicator Name>`
-
-- Purpose:
-- Exact definition:
-- Inputs:
-- Lookback:
-- Warm-up:
-- Missing-value behavior:
-- Configuration key:
-- Implementation symbol:
-
-### Setup conditions
-
-| ID | Exact condition | Formula | Required | Evaluation order | Missing-data behavior |
-|---|---|---|---|---:|---|
-
-Define the final Boolean relationship.
+### Final Boolean relationship
 
 ### Ranking and candidate selection
 
 ### Duplicate and existing-position checks
 
-### Signal generation
+### Signal creation
 
-### Telegram or notification behavior
+### Notification behavior
 
-## 8. Phase 1 Output Contract
+## 11. Signal Output Contract
 
 ### Signal fields
 
-| Field | Type | Required | Value or meaning |
-|---|---|---|---|
+| Contract ID | Field | Type | Required | Exact value or meaning | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---|---|---|---|---|---|
 
-### Entry reference semantics
+### Entry semantics
 
-- Stored field:
-- Price or threshold:
-- Executable:
-- Used by Trade Manager:
-- Rounding:
-- Tick-size behavior:
+| Contract ID | Property | Contract value | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---|---|---|---|
+| | Stored reference | | | | |
+| | Entry eligibility time | | | | |
+| | Entry trigger | | | | |
+| | Order type | | | | |
+| | Actual fill rule | | | | |
+| | Entry expiration | | | | |
+| | Rounding/tick behavior | | | | |
 
 ### Initial `signal_context`
 
-| Field | Type | Value or formula | Unit | Decision relevant | Diagnostic only |
-|---|---|---|---|---|---|
+| Contract ID | Field | Type | Exact meaning/formula | Unit | Decision use | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---|---|---|---|---|---|---|
 
-## 9. Phase 2 — Trade Manager Entry
+## 12. Trade Manager Entry Contract
 
-### Entry preconditions
-
-### Entry timing
-
-### Order and fill contract
-
-| Priority | Condition | Order type | Fill rule | Status or reason |
-|---:|---|---|---|---|
+| Contract ID | Priority | Preconditions and trigger | Eligible time | Order type | Actual fill rule | Resulting status/reason | Normative source ID | Implementation conformance | Test coverage |
+|---|---:|---|---|---|---|---|---|---|---|
 
 ### Entry expiration and invalidation
 
 ### Position sizing
 
-- Sizing owner:
-- Budget or risk based:
-- Configuration key:
-- Zero-size behavior:
-- Decimal boundary:
+| Contract ID | Property | Contract value | Normative source ID | Implementation conformance |
+|---|---|---|---|---|
+| | Sizing owner | | | |
+| | Budget or risk basis | | | |
+| | Full configuration key | | | |
+| | Zero-size behavior | | | |
+| | Decimal boundary | | | |
 
-## 10. Phase 2 — Active Trade Management
+## 13. Runtime State Contract
 
-### Daily inputs
+### Daily inputs and indicators
 
-### Runtime indicators
-
-### Mutable runtime state
-
-| Field | Initial value | Update rule | Update timing | Duplicate-processing guard | Decision relevant |
+| Contract ID | Input or indicator | Exact definition | Normative source ID | Implementation conformance | Test coverage |
 |---|---|---|---|---|---|
 
-### Daily update sequence
+### Mutable runtime fields
 
-## 11. Phase 2 — Exit Contract
+| Contract ID | Field | Initial value | Exact update rule | Update timing | Duplicate guard | Decision use | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---|---|---|---|---|---|---|---|
 
-| Priority | Exit condition | Earliest eligible time | Order type | Fill rule | Final status | Reason code |
-|---:|---|---|---|---|---|---|
+### Update sequence
 
-Also define:
+## 14. Exit Contract
 
-- simultaneous-condition behavior,
-- exit evaluation order,
-- next-open versus same-close semantics,
-- non-trigger behavior,
-- terminal state.
+| Contract ID | Priority | Exact exit condition | Earliest eligible time | Order type | Actual fill rule | Final status | Reason code | Normative source ID | Implementation conformance | Test coverage |
+|---|---:|---|---|---|---|---|---|---|---|---|
 
-## 12. Portfolio Reconciliation
+| Contract ID | Property | Contract value | Normative source ID | Implementation conformance |
+|---|---|---|---|---|
+| | Simultaneous-condition behavior | | | |
+| | Evaluation order | | | |
+| | Non-trigger behavior | | | |
+| | Terminal state | | | |
 
-> Use `Not applicable` for strategies without portfolio-level reconciliation.
+## 15. Portfolio Reconciliation
 
-Define when applicable:
+Use `NOT_APPLICABLE` only with a documented reason and source.
 
-- target portfolio,
-- current portfolio,
-- positions to keep,
-- positions to close,
-- positions to open,
-- already-active handling,
-- regime-off behavior,
-- operation order,
-- partial execution behavior.
+| Contract ID | Property | Contract value | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---|---|---|---|
+| | Target portfolio | | | | |
+| | Current portfolio | | | | |
+| | Positions to keep | | | | |
+| | Positions to close | | | | |
+| | Positions to open | | | | |
+| | Already-active handling | | | | |
+| | Regime-off behavior | | | | |
+| | Operation order | | | | |
+| | Partial execution behavior | | | | |
 
-## 13. Persistence and Data Lifecycle
+## 16. Persistence Contract
 
-| Artifact or field | Producer | Creation time | Storage target | Mutable | Updater | Terminal behavior |
+| Contract ID | Artifact or field | Producer | Creation time | Storage target | Mutable | Updater | Terminal behavior | Normative source ID | Implementation conformance | Test coverage |
+|---|---|---|---|---|---|---|---|---|---|---|
+
+| Contract ID | Property | Contract value | Normative source ID | Implementation conformance |
+|---|---|---|---|---|
+| | Uniqueness key | | | |
+| | Idempotency behavior | | | |
+| | Duplicate-run behavior | | | |
+| | Transaction boundary | | | |
+| | Partial-run behavior | | | |
+| | Cleanup behavior | | | |
+| | Persistence failure behavior | | | |
+
+## 17. Decision Flow
+
+```mermaid
+flowchart TD
+    START["Replace with contract-ID-backed strategy decision flow"] --> END["End"]
+```
+
+| Mermaid element | Contract IDs |
+|---|---|
+
+## 18. Execution Flow
+
+```mermaid
+flowchart LR
+    SC["Screener"] --> CREATED["CREATED"]
+    CREATED --> TM["Trade Manager"]
+    TM --> ACTIVE["ACTIVE"]
+    TM --> INVALIDATED["INVALIDATED"]
+    ACTIVE --> CLOSED["CLOSED"]
+```
+
+| Mermaid element | Contract IDs |
+|---|---|
+
+## 19. Optional State Models
+
+`NOT_APPLICABLE` - replace with a sourced reason or add contract-ID-backed state diagrams.
+
+## 20. Implementation Mapping
+
+| Contract ID | Module path | Symbol | Relevant branch/lines | Evidence ID | Conformance status | Notes |
 |---|---|---|---|---|---|---|
 
-Also define:
+## 21. Test Mapping
 
-- uniqueness key,
-- idempotency behavior,
-- duplicate-run behavior,
-- transaction boundary,
-- partial-run behavior,
-- cleanup behavior,
-- persistence failure behavior.
+| Contract ID | Test path | Test symbol | Evidence ID | Coverage status | Notes |
+|---|---|---|---|---|---|
 
-## 14. Numerical and Execution Semantics
+## 22. Known Conflicts and Gaps
 
-- Analytical numeric types:
-- Monetary boundary type:
-- Decimal conversion point:
-- Tick-size source:
-- Rounding mode:
-- Reference price versus fill price:
-- Budget versus risk sizing:
-- Broker responsibility:
-- CSV responsibility:
-
-## 15. Visual Process Model
-
-### Required strategy flow
-
-Include one renderable Mermaid diagram that shows:
-
-- Screener stage,
-- signal creation,
-- persisted initial data,
-- CREATED transition,
-- Trade Manager entry decision,
-- ACTIVE or INVALIDATED transition,
-- runtime updates where relevant,
-- exit decision,
-- CLOSED transition,
-- order or CSV generation where relevant.
-
-Do not repeat every shared architecture detail from `overview.md`.
-
-### Additional diagrams
-
-Add only when required:
-
-- mutable runtime state machine,
-- portfolio reconciliation flow,
-- non-standard data lifecycle.
-
-## 16. Implementation, Tests and Evidence
-
-### Implementation mapping
-
-| Contract area | Module | Symbol | Verification status |
-|---|---|---|---|
-
-### Test contract
-
-#### Positive behavior
-
-#### No-signal behavior
-
-#### Threshold and boundary cases
-
-#### Timing and holiday cases
-
-#### Missing-data cases
-
-#### Provider fallback
-
-#### Duplicate and idempotency cases
-
-#### Entry expiration
-
-#### Exit priority
-
-#### Look-ahead prevention
-
-#### Runtime-state update
-
-#### Strategy-specific special cases
-
-### References
-
-| Source | Classification | Purpose |
-|---|---|---|
+| Conflict ID | Type | Subject | Normative value/source | Other or observed value/source | Affected contract IDs | Resolution status | Required decision owner |
+|---|---|---|---|---|---|---|---|
