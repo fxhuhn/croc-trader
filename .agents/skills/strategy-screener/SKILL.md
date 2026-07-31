@@ -13,14 +13,19 @@ This skill manages the documentation and validation of strategy playbooks, which
 
 In the event of conflicting information, the following hierarchy applies strictly:
 
-1. Explicit current user request
-2. Canonical Strategy Playbook
-3. `architecture.md`
-4. `references/architecture.md`
-5. Current active configuration
-6. Existing implementation
-7. Existing tests
-8. Supporting research or external descriptions
+1. Explicit current user request, subject to non-overrideable governance
+2. `.agents/AGENTS.md`
+3. System invariants in `architecture.md`
+4. Technical contracts in `references/architecture.md`
+5. Applicable rules in `.agents/rules/`
+6. Canonical Strategy Playbook for strategy-specific business rules
+7. Current active configuration
+8. Existing implementation
+9. Existing tests
+10. Supporting research or external descriptions
+
+
+A strategy playbook is normative for strategy-specific indicators, conditions, timing, and business decisions only within the global architecture and persistence contracts. It must not override system-wide responsibilities, database schemas, state invariants, or CSV interfaces.
 
 *Important Constraints*:
 - Existing code is evidence, not automatically the normative contract.
@@ -91,7 +96,7 @@ This skill must NOT:
 - Invent strategy logic based on assumptions.
 - Silently align playbooks to existing code without noting the conflict.
 - Invent new strategy variants.
-- Calculate final position sizing if the architecture assigns it to the Trade Manager or Portfolio Order Layer.
+- Calculate production position sizes, create production orders, or export broker CSV files. The playbook may document the verified Trade Manager sizing and order contract.
 - Modify application code (`app/`, `tests/`, etc.).
 
 ## Output Contract

@@ -43,7 +43,7 @@ Allowed roles: `NORMATIVE`, `ARCHITECTURE_NORMATIVE`, `CONFIGURATION_NORMATIVE`,
 
 Document only strategy-specific responsibilities and deviations from `overview.md`.
 
-| Contract ID | Responsibility | Screener | Trade Manager | Portfolio / Order Layer | Normative source ID | Implementation conformance |
+| Contract ID | Responsibility | Screener | Trade Manager | Broker / Execution Layer | Normative source ID | Implementation conformance |
 |---|---|---|---|---|---|---|
 
 ## 6. Universe and Data Contract
@@ -122,7 +122,8 @@ Document only strategy-specific responsibilities and deviations from `overview.m
 | | Stored reference | | | | |
 | | Entry eligibility time | | | | |
 | | Entry trigger | | | | |
-| | Order type | | | | |
+| | Broker order type | | | | |
+| | Time-in-force / execution instruction | | | | |
 | | Actual fill rule | | | | |
 | | Entry expiration | | | | |
 | | Rounding/tick behavior | | | | |
@@ -134,7 +135,7 @@ Document only strategy-specific responsibilities and deviations from `overview.m
 
 ## 12. Trade Manager Entry Contract
 
-| Contract ID | Priority | Preconditions and trigger | Eligible time | Order type | Actual fill rule | Resulting status/reason | Normative source ID | Implementation conformance | Test coverage |
+| Contract ID | Priority | Preconditions and trigger | Eligible time | Broker order type and TIF | Actual fill rule | Resulting status/reason | Normative source ID | Implementation conformance | Test coverage |
 |---|---:|---|---|---|---|---|---|---|---|
 
 ### Entry expiration and invalidation
@@ -165,7 +166,7 @@ Document only strategy-specific responsibilities and deviations from `overview.m
 
 ## 14. Exit Contract
 
-| Contract ID | Priority | Exact exit condition | Earliest eligible time | Order type | Actual fill rule | Final status | Reason code | Normative source ID | Implementation conformance | Test coverage |
+| Contract ID | Priority | Exact exit condition | Earliest eligible time | Broker order type and TIF | Actual fill rule | Final status | Reason code | Normative source ID | Implementation conformance | Test coverage |
 |---|---:|---|---|---|---|---|---|---|---|---|
 
 | Contract ID | Property | Contract value | Normative source ID | Implementation conformance |
@@ -224,13 +225,13 @@ flowchart LR
     CTX --> CREATED["CREATED"]
     CREATED --> TM["Trade Manager entry evaluation"]
     TM -->|expired or rejected| INVALIDATED["INVALIDATED"]
-    TM -->|entry eligible| EREQ["Entry order request"]
-    EREQ --> EOL["Portfolio / Order Layer"]
-    EOL -->|entry filled| ACTIVE["ACTIVE"]
+    TM -->|entry eligible| EORD["Size, create, and export entry order"]
+    EORD --> EXEC["Broker / Execution Layer"]
+    EXEC -->|entry filled| ACTIVE["ACTIVE"]
     ACTIVE --> EXIT["Runtime and exit evaluation"]
-    EXIT --> XREQ["Exit order request"]
-    XREQ --> XOL["Portfolio / Order Layer"]
-    XOL -->|exit filled| CLOSED["CLOSED"]
+    EXIT --> XORD["Create and export exit order"]
+    XORD --> EXEC2["Broker / Execution Layer"]
+    EXEC2 -->|exit filled| CLOSED["CLOSED"]
 ```
 
 | Mermaid element | Contract IDs |

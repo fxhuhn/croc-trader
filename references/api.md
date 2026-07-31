@@ -1,6 +1,6 @@
 # Croc-Trader REST API Reference
 
-Dokumentation der REST-API-Schnittstellen von Croc-Trader ([app/routes/api.py](file:///Users/produktmanagement/Python/github/croc-trader/app/routes/api.py)).
+Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
 
 ---
 

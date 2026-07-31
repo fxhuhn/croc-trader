@@ -68,6 +68,7 @@ graph TD
 1. **Trigger**: APScheduler triggers the Trade Manager.
 2. **Process**: `app/services/trade_manager/manager.py` queries active positions, validates new entries, runs position sizing, and logs orders in `signals.db`.
 3. **Export**: Outputs bracket orders as CSV into `data/orders/orders_YYYY_MM_DD.csv`.
+4. **Lifecycle**: A setup that expires, is rejected, is duplicated, or misses its entry window transitions to terminal `INVALIDATED`. Only an `ACTIVE` position may transition to terminal `CLOSED`.
 
 ---
 

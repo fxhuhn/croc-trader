@@ -30,10 +30,9 @@ Do not introduce:
 - threaded live consumers,
 - asynchronous provider workflows.
 
-Preserve the existing provider provenance stored with each database record.
+Preserve provider selection and fallback diagnostics in the workflow logs, run metadata, or existing repository fields where they are actually supported. Do not claim that every `market_prices` row contains provider provenance: the documented schema has no per-row provider column.
 
-Do not redesign or migrate the existing provider database schema unless the
-user explicitly requests a schema change.
+Do not redesign or migrate the provider database schema unless the user explicitly requests a schema change.
 
 ## Fallback Semantics
 
@@ -42,8 +41,7 @@ Do not expand the fallback semantics independently. A data quality issue does no
 ## Technical Details and Evidence Sources
 
 Architecture documents are normative for technical contracts. Implementation, configuration, database schema, and tests provide conformance evidence and concrete technical details, including:
-- Provider field in the record,
-- Provider identifiers,
+- Provider identifiers and fallback diagnostics where the repository stores them,
 - Upsert behavior,
 - Database tables,
 - Symbol mapping,
