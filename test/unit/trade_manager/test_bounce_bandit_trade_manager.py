@@ -198,11 +198,10 @@ def test_bounce_bandit_get_daily_updates_returns_sma_8_and_rsi_2(
     )
 
 
-def test_bounce_bandit_logs_warning_on_insufficient_history(
+def test_bounce_bandit_raises_error_on_insufficient_history(
     trade_strategy: BounceBanditTradeStrategy,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Tests that BounceBanditTradeStrategy logs a warning when history is less than 8 candles."""
+    """Tests that BounceBanditTradeStrategy raises ValueError when history is less than 8 candles."""
     trade = {
         "id": 1136,
         "symbol": "QQQ",
@@ -220,14 +219,11 @@ def test_bounce_bandit_logs_warning_on_insufficient_history(
         ]
     )
 
-    with caplog.at_level("WARNING"):
-        transition = trade_strategy.manage_active_trade(trade, df_short)
-
-    assert transition is None
-    assert (
-        "Insufficient price history for Bounce Bandit trade ID 1136 (QQQ)"
-        in caplog.text
-    )
+    with pytest.raises(
+        ValueError,
+        match="Insufficient price history for Bounce Bandit trade ID 1136",
+    ):
+        trade_strategy.manage_active_trade(trade, df_short)
 
 
 def test_resolve_history_start_date_includes_lookback_buffer() -> None:

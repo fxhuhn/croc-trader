@@ -3,6 +3,8 @@ import pandas as pd
 
 def calculate_sma(series: pd.Series, window: int) -> pd.Series:
     """Calculates the Simple Moving Average (SMA)."""
+    if series.empty:
+        raise ValueError("Cannot calculate SMA: series is empty.")
     return series.rolling(window=window).mean()
 
 
@@ -13,6 +15,8 @@ def calculate_true_range(
 
     TR = Max(High - Low, |High - PrevClose|, |Low - PrevClose|)
     """
+    if close.empty:
+        raise ValueError("Cannot calculate True Range: close series is empty.")
     prev_close = close.shift(1)
     tr1 = high - low
     tr2 = (high - prev_close).abs()
@@ -27,12 +31,16 @@ def calculate_atr(
     high: pd.Series, low: pd.Series, close: pd.Series, window: int
 ) -> pd.Series:
     """Calculates the Average True Range (ATR) using Wilder's Smoothing (RMA)."""
+    if close.empty:
+        raise ValueError("Cannot calculate ATR: close series is empty.")
     tr = calculate_true_range(high, low, close)
     return tr.ewm(span=(2 * window) - 1, adjust=False).mean()
 
 
 def calculate_volume_sma(volume: pd.Series, window: int) -> pd.Series:
     """Calculates the Volume SMA."""
+    if volume.empty:
+        raise ValueError("Cannot calculate Volume SMA: volume series is empty.")
     return volume.rolling(window=window).mean()
 
 
@@ -42,12 +50,16 @@ def calculate_ibs(high: pd.Series, low: pd.Series, close: pd.Series) -> pd.Serie
     IBS = (Close - Low) / (High - Low)
     Handles division by zero by replacing 0 range with 0.01.
     """
+    if close.empty:
+        raise ValueError("Cannot calculate IBS: close series is empty.")
     high_low_range = (high - low).replace(0, 0.01)
     return (close - low) / high_low_range
 
 
 def calculate_rsi(series: pd.Series, window: int = 14) -> pd.Series:
     """Calculates the Relative Strength Index (RSI)."""
+    if series.empty:
+        raise ValueError("Cannot calculate RSI: series is empty.")
     delta = series.diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
     loss = (-delta.where(delta < 0, 0)).fillna(0)
@@ -74,7 +86,8 @@ def calculate_max_close_for_rsi(
     Uses Wilder's EWM smoothing matching calculate_rsi. The close_series parameter
     must contain price history up to yesterday (t-1).
     """
-    if len(close_series) < window + 1:
+    min_required_len = window + 1
+    if close_series.empty or len(close_series) < min_required_len:
         return float("nan")
 
     delta = close_series.diff()
@@ -101,6 +114,8 @@ def calculate_max_close_for_rsi(
 
 def calculate_ema(series: pd.Series, window: int) -> pd.Series:
     """Calculates the Exponential Moving Average (EMA)."""
+    if series.empty:
+        raise ValueError("Cannot calculate EMA: series is empty.")
     return series.ewm(span=window, adjust=False).mean()
 
 
@@ -109,4 +124,6 @@ def calculate_roc(series: pd.Series, period: int) -> pd.Series:
 
     ROC = ((Price - Price_n_periods_ago) / Price_n_periods_ago) * 100
     """
+    if series.empty:
+        raise ValueError("Cannot calculate ROC: series is empty.")
     return (series - series.shift(period)) / series.shift(period) * 100
