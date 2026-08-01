@@ -57,6 +57,9 @@ and `find`.
 
 ## Runtime & Environment Configurations
 * **Always inspect `settings.yaml` at the repository root** before connecting to, launching, or testing local services (such as web servers, webhooks, or database paths).
+* **Mandatory Endpoint & Port Verification**: Never state, suggest, or construct a cURL/API URL, port, or route endpoint from memory or default assumptions. Always use `view_file` or `grep_search` to inspect:
+  1. `settings.yaml` for `webserver.host` and `webserver.port`.
+  2. `app/routes/api.py` (or relevant blueprint files) for verified `@blueprint.route` decorator definitions.
 * Do **NOT** rely on fallback default values defined inside Python dataclasses (e.g. `app/config.py`) when runtime configuration files (`settings.yaml`, `.env`) are present in the workspace.
 
 Task scope, change discipline, evidence requirements, and completion reporting
