@@ -196,3 +196,49 @@ def test_bounce_bandit_get_daily_updates_returns_sma_8_and_rsi_2(
     assert updates["target"] <= max(
         updates["required_sma_exit"], updates["required_rsi_exit"]
     )
+
+
+def test_bounce_bandit_logs_warning_on_insufficient_history(
+    trade_strategy: BounceBanditTradeStrategy,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Tests that BounceBanditTradeStrategy logs a warning when history is less than 8 candles."""
+    trade = {
+        "id": 1136,
+        "symbol": "QQQ",
+        "strategy": "bounce_bandit",
+        "status": TradeStatus.ACTIVE.value,
+        "entry_price": 690.25,
+    }
+    # Short history (only 5 candles < 8)
+    prices = [680.0, 682.0, 675.0, 661.0, 683.0]
+    dates = pd.date_range("2026-07-24", periods=5, freq="B")
+    df_short = pd.DataFrame(
+        [
+            {"date": d, "open": p, "high": p + 2, "low": p - 2, "close": p}
+            for d, p in zip(dates, prices, strict=True)
+        ]
+    )
+
+    with caplog.at_level("WARNING"):
+        transition = trade_strategy.manage_active_trade(trade, df_short)
+
+    assert transition is None
+    assert (
+        "Insufficient price history for Bounce Bandit trade ID 1136 (QQQ)"
+        in caplog.text
+    )
+
+
+def test_resolve_history_start_date_includes_lookback_buffer() -> None:
+    """Tests that _resolve_history_start_date subtracts a 60-day lookback buffer from the trade anchor date."""
+    from app.services.trade_manager.manager import _resolve_history_start_date
+
+    trade = {
+        "id": 1136,
+        "symbol": "QQQ",
+        "strategy": "bounce_bandit",
+        "entry_date": "2026-07-24",
+    }
+    start_date = _resolve_history_start_date(trade, lookback_days=60)
+    assert start_date == "2026-05-25"

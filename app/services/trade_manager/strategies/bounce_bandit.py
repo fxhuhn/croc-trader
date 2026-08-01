@@ -224,6 +224,13 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         Exit if Close > SMA(8) OR RSI(2) > 75.
         """
         if dataframe_history.empty or len(dataframe_history) < self.EXIT_SMA_LEN:
+            logger.warning(
+                "Insufficient price history for Bounce Bandit trade ID %s (%s): expected at least %d candles, got %d",
+                trade.get("id"),
+                trade.get("symbol"),
+                self.EXIT_SMA_LEN,
+                len(dataframe_history),
+            )
             return None
 
         close_series = dataframe_history["close"].astype(float)

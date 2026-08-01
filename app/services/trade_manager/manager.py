@@ -297,7 +297,7 @@ class TradeManager:
             return
 
         try:
-            start_date = _resolve_history_start_date(trade)
+            start_date = _resolve_history_start_date(trade, lookback_days=60)
             history_dataframe = self.market_repository.get_symbol_history_raw(
                 symbol, start_date=start_date
             )
@@ -409,7 +409,7 @@ class TradeManager:
             return
 
         try:
-            start_date = _resolve_history_start_date(trade)
+            start_date = _resolve_history_start_date(trade, lookback_days=60)
             history_dataframe = self.market_repository.get_symbol_history_raw(
                 symbol, start_date=start_date
             )
@@ -685,7 +685,7 @@ class TradeManager:
             )
             return None
 
-        start_date = _resolve_history_start_date(trade)
+        start_date = _resolve_history_start_date(trade, lookback_days=60)
         history_dataframe = self.market_repository.get_symbol_history_raw(
             symbol, start_date=start_date
         )
@@ -720,42 +720,64 @@ class TradeManager:
         )
 
 
-def _resolve_history_start_date(trade: dict[str, object]) -> str:
+def _resolve_history_start_date(
+    trade: dict[str, object],
+    lookback_days: int = 0,
+) -> str:
     """Derives the history start date from the trade's signal or entry date.
 
-    Avoids the hardcoded '2024-01-01' fallback by using the trade's own
-    temporal anchor. Falls back to a constant only when no date is available.
+    Optionally subtracts a lookback_days buffer (e.g. 60 calendar days)
+    to ensure technical indicators like SMA and RSI have sufficient pre-entry history.
 
     Args:
         trade: The trade record dictionary.
+        lookback_days: Number of calendar days before the anchor date to load. Defaults to 0.
 
     Returns:
         str: ISO date string (YYYY-MM-DD) to use as the history query start.
     """
+    anchor_date_str: str | None = None
+
     # 1. Prefer entry_date if available
     entry_date = trade.get("entry_date")
     if entry_date:
-        return str(entry_date).split(" ")[0]
+        anchor_date_str = str(entry_date).split(" ")[0]
 
     # 2. Prefer date from signal_context if available (crucial for CREATED trades)
-    signal_context = trade.get("signal_context")
-    if signal_context:
-        try:
-            context_dict = (
-                json.loads(signal_context)
-                if isinstance(signal_context, str)
-                else signal_context
-            )
+    if not anchor_date_str:
+        signal_context = trade.get("signal_context")
+        if signal_context:
+            try:
+                context_dict = (
+                    json.loads(signal_context)
+                    if isinstance(signal_context, str)
+                    else signal_context
+                )
 
-            if isinstance(context_dict, dict) and "date" in context_dict:
-                return str(context_dict["date"]).split(" ")[0]
-        except (json.JSONDecodeError, TypeError) as parse_error:
-            logger.warning("Failed to parse date from signal_context: %s", parse_error)
+                if isinstance(context_dict, dict) and "date" in context_dict:
+                    anchor_date_str = str(context_dict["date"]).split(" ")[0]
+            except (json.JSONDecodeError, TypeError) as parse_error:
+                logger.warning(
+                    "Failed to parse date from signal_context: %s", parse_error
+                )
 
     # 3. Fall back to other keys
-    for date_key in ("created_at", "signal_date"):
-        date_value = trade.get(date_key)
-        if date_value:
-            return str(date_value).split(" ")[0]
+    if not anchor_date_str:
+        for date_key in ("created_at", "signal_date"):
+            date_value = trade.get(date_key)
+            if date_value:
+                anchor_date_str = str(date_value).split(" ")[0]
+                break
 
-    return _HARDCODED_HISTORY_FALLBACK_DATE
+    if not anchor_date_str:
+        return _HARDCODED_HISTORY_FALLBACK_DATE
+
+    if lookback_days <= 0:
+        return anchor_date_str
+
+    try:
+        anchor_dt = pd.Timestamp(anchor_date_str)
+        start_dt = anchor_dt - pd.Timedelta(days=lookback_days)
+        return start_dt.strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return anchor_date_str
