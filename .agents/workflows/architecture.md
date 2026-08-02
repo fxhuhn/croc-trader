@@ -1,3 +1,9 @@
+---
+name: architecture-workflow
+description: Standardablauf für Architekturänderungen (Spezifikation, Handoff & Implementierung)
+trigger: manual
+---
+
 # Architecture Workflow
 
 Dieses Dokument definiert den Standardablauf für Architekturänderungen.

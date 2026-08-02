@@ -108,8 +108,8 @@ Execution commands:
 
 ### 3.4 Complexity Constraints
 - **Max Indentation:** Code must not exceed 3 levels of indentation.
-- **Cognitive Complexity:** Must not exceed **15 per function** (SonarSource model). Use the Early-Return Pattern (see Section 3.5) to reduce nested complexity.
-- **Cyclomatic Complexity:** Must not exceed **10 per function** (measurable via `radon cc`).
+- **Cognitive Complexity:** Must not exceed **15 per function** (SonarSource model; evaluated via manual audit unless dedicated Sonar plugin is configured). Use the Early-Return Pattern (see Section 3.5) to reduce nested complexity.
+- **Cyclomatic Complexity:** Must not exceed **10 per function** (enforced via Ruff `C901` / McCabe).
 - **Function Length:** Functions should fit on one screen (max ~50 lines). If longer, extract sub-routines.
 
 ### 3.5 Early-Return Pattern (Mandatory)

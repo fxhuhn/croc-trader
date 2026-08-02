@@ -5,8 +5,6 @@ description: "Ensures system architecture documentation stays synchronized with 
 
 # Architecture Sync Skill
 
-* Must strictly respect `.agents/rules/workspace.md`. Do not reference or operate on files outside the active repository workspace.
-
 This skill enforces synchronization between the active codebase structure and the system documentation (`architecture.md` and `references/architecture.md`).
 
 ---

@@ -39,6 +39,8 @@ signal.sh
 brain/
 .agents/skills/strategy-screener/playbook/*
 !.agents/skills/strategy-screener/playbook/template.md
+!.agents/skills/strategy-screener/playbook/readme.md
+!.agents/skills/strategy-screener/playbook/croc_setup.md
 
 
 # Nur temporäre Skripte ignorieren (wichtige Skripte bleiben in Git)

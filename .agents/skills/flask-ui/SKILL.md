@@ -5,8 +5,6 @@ description: Use for Flask views, Jinja templates, HTML, CSS, UI behavior, acces
 
 # Flask UI & Template Agent Skill
 
-* **Must strictly respect `.agents/rules/workspace.md`. Do not reference or operate on files outside the active repository workspace.**
-
 This skill defines the role, scope, rules, and design guidelines of the specialized **Flask UI & Template Agent**. This agent is responsible for creating, editing, and maintaining the web interface views and ensuring separation of concerns between HTTP routes and core business domains.
 
 ## Role & Scope

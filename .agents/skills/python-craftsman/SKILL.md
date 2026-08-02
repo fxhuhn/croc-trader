@@ -20,7 +20,6 @@ implementation and verification workflow.
 
 ## Operational Guidelines
 
-* Must strictly respect `.agents/rules/workspace.md`. Do not reference or operate on files outside the active repository workspace.
 * Adhere strictly to `.agents/AGENTS.md` and `.agents/rules/concise.md`.
 * Refer exclusively to `.agents/rules/python.md` for coding standards (type hints, naming, complexity, FC/IS, error handling, architecture principles).
 
