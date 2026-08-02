@@ -17,11 +17,11 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
 | Parameter | Typ | Verfügbar in | Beschreibung & Standardwerte |
 | :--- | :--- | :--- | :--- |
 | **`budget`** | `float` | Backfill Endpunkte (`/trades/backfill/...`) | **Handelskapital / Positionssumme in USD** pro Trade. Standard: `10000.0` |
-| **`start_date`** (oder `start`) | `string` | Backfill Endpunkte (`/trades/backfill/...`) | **Startdatum der Simulation** im Format `YYYY-MM-DD`. Standard: `"2025-01-01"` |
-| **`end_date`** (oder `end`) | `string` | Backfill Endpunkte (`/trades/backfill/...`) | **Enddatum der Simulation** im Format `YYYY-MM-DD`. Standard: Aktuelles Tagesdatum |
+| **`start_date`** *(Alias `start` veraltet)* | `string` | Backfill Endpunkte (`/trades/backfill/...`) | **Startdatum der Simulation** im Format `YYYY-MM-DD`. Standard: `"2025-01-01"` |
+| **`end_date`** *(Alias `end` veraltet)* | `string` | Backfill Endpunkte (`/trades/backfill/...`) | **Enddatum der Simulation** im Format `YYYY-MM-DD`. Standard: Aktuelles Tagesdatum |
 | **`date`** | `string` | Screener Endpunkte (`/screener/...`) | **Stichtagsdatum** für ein historisches Screening im Format `YYYY-MM-DD`. Standard: Aktueller Handelstag |
 | **`days`** | `int` | Screener Endpunkte (`/screener/...`) | **Anzahl Handelstage Lookback** für die Indikatormessung. Standard: `0` |
-| **`clear_existing`** (oder `clear`) | `bool` | Backfill Endpunkte (`/trades/backfill/...`) | **Trades zurücksetzen**: Löscht bestehende Backfill-Trades dieser Strategie vor dem Lauf. Standard: `true` |
+| **`clear_existing`** *(Alias `clear` veraltet)* | `bool` | Backfill Endpunkte (`/trades/backfill/...`) | **Trades zurücksetzen**: Löscht bestehende Backfill-Trades dieser Strategie vor dem Lauf. Standard: `true` |
 
 ---
 

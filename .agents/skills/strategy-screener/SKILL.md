@@ -39,9 +39,9 @@ Before working on a strategy:
 
 1. Resolve the canonical strategy identifier from repository evidence.
 2. Locate exactly one matching playbook.
-3. Load `overview.md`.
+3. Load `playbook/overview.md`.
 4. Load only the selected strategy playbook.
-5. Load `TEMPLATE.md` only when creating, migrating, or validating a playbook.
+5. Load `playbook/TEMPLATE.md` only when creating, migrating, or validating a playbook.
 6. Load only directly relevant architecture, configuration, code, tests, and references.
 7. Do not load all strategy playbooks unless the task explicitly requires a cross-strategy comparison.
 

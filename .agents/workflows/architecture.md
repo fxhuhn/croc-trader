@@ -18,5 +18,11 @@ Der Agent nutzt den Skill `architecture-specification`, um:
 ## 2. Übergabe an die Implementierung (python-craftsman)
 Der Agent wechselt zum Skill `python-craftsman`, um:
 - den Blueprint iterativ umzusetzen,
-- Repository-Regeln (python.md, workspace.md) durchzusetzen,
-- Validierungen (Ruff, Mypy, Pytest) auszuführen.
+- Repository-Regeln (python.md, workspace.md) durchzusetzen.
+
+## 3. Verifikation & Review
+Der Agent führt die Verification Gates aus `python-craftsman` durch:
+- Gate 3: Pytest (`python-tester`)
+- Gate 4: Quality Audit (`python-auditor`), bei Bedarf
+- Gate 5: Security Audit (`python-security`), bei Bedarf
+- Gate 6: Architecture Sync (`architecture-sync`), bei Bedarf
