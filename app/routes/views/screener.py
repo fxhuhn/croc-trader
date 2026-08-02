@@ -11,6 +11,7 @@ from .dependencies import (
     SignalRepository,
     _get_screener_view_service,
     _get_signal_repository,
+    cache,
 )
 
 
@@ -133,6 +134,7 @@ def _get_strategy_overview(
 
 
 @views_bp.route("/screener", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_overview() -> str:
     """Displays the overview dashboard page for all available screeners.
 
@@ -151,6 +153,7 @@ def view_screener_overview() -> str:
 
 
 @views_bp.route("/screener/croc", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_croc() -> str:
     """Displays the Croc Setup screener details and current candidates.
 
@@ -164,6 +167,7 @@ def view_screener_croc() -> str:
 
 
 @views_bp.route("/screener/dip-buyer", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_dip_buyer() -> str:
     """Displays the Dip Buyer screener details and index candidates.
 
@@ -177,6 +181,7 @@ def view_screener_dip_buyer() -> str:
 
 
 @views_bp.route("/screener/turnover", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_turnover() -> str:
     """Displays the Turnover Timing screener results aggregated by symbol.
 
@@ -190,6 +195,7 @@ def view_screener_turnover() -> str:
 
 
 @views_bp.route("/screener/twopercent", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_twopercent() -> str:
     """Displays the Two Percent Screener with current candidates.
 
@@ -203,6 +209,7 @@ def view_screener_twopercent() -> str:
 
 
 @views_bp.route("/screener/ndx-momentum", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_ndx_momentum() -> str:
     """Displays the Nasdaq 100 Momentum screener leaderboard results.
 
@@ -216,6 +223,7 @@ def view_screener_ndx_momentum() -> str:
 
 
 @views_bp.route("/screener/tgim", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_tgim() -> str:
     """Displays the TGIM screener with current candidates.
 
@@ -229,6 +237,7 @@ def view_screener_tgim() -> str:
 
 
 @views_bp.route("/screener/bridge-scout", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_bridge_scout() -> str:
     """Displays the Bridge Scout screener with current candidates.
 
@@ -243,6 +252,7 @@ def view_screener_bridge_scout() -> str:
 
 @views_bp.route("/screener/bounce-bandit", methods=["GET"])
 @views_bp.route("/screener/bounce_bandit", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
 def view_screener_bounce_bandit() -> str:
     """Displays the Bounce Bandit screener with current candidates.
 

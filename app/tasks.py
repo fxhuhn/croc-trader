@@ -178,12 +178,20 @@ def _clear_and_prewarm_cache(app: Flask) -> None:
     Args:
         app: The Flask application instance.
     """
-    if app.debug:
-        logger.info("Skipping cache pre-warming in debug mode.")
+    import os
+    import sys
+
+    if (
+        app.debug
+        or app.testing
+        or "pytest" in sys.modules
+        or os.environ.get("PYTEST_CURRENT_TEST")
+    ):
+        logger.info("Skipping cache pre-warming in debug/testing mode.")
         return
 
     with app.app_context():
-        logger.info("🧹 Clearing cache for /trades routes...")
+        logger.info("🧹 Clearing cache for registered routes...")
         cache.clear()
         _prewarm_target_routes(app)
 
@@ -202,9 +210,21 @@ def _prewarm_target_routes(app: Flask) -> None:
         "/trades/turnover",
         "/trades/ndx-momentum",
         "/trades/twopercent",
+        "/trades/tgim",
+        "/trades/bridge-scout",
+        "/trades/bounce-bandit",
+        "/screener",
+        "/screener/croc",
+        "/screener/dip-buyer",
+        "/screener/turnover",
+        "/screener/twopercent",
+        "/screener/ndx-momentum",
+        "/screener/tgim",
+        "/screener/bridge-scout",
+        "/screener/bounce-bandit",
     ]
 
-    logger.info("🔥 Starting pre-warming of /trades routes...")
+    logger.info("🔥 Starting pre-warming of registered routes...")
     with app.test_client() as test_client:
         for route_path in target_routes:
             _warm_single_route(test_client, route_path)

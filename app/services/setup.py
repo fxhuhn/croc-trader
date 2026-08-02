@@ -285,3 +285,6 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
     scheduler.start()
     app.extensions["scheduler"] = scheduler
     logger.info("Scheduler started and jobs scheduled.")
+
+    # --- Startup: Execute Cache Pre-warming ---
+    run_cache_prewarm(app)

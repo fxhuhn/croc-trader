@@ -118,9 +118,8 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
     # 3. Load exchange mapper
     mapper.load()
 
-    # 4. Services & Scheduler
+    # 4. Services
     register_services(app, config_object)
-    configure_scheduler(app, config_object)
 
     # 5. Register blueprints
     # Only the main aggregator is registered here
@@ -154,6 +153,9 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
     @app.route("/robots.txt")
     def robots_txt():
         return send_from_directory(app.static_folder, "robots.txt")
+
+    # 7. Scheduler & Startup Tasks (configured after all routes are registered)
+    configure_scheduler(app, config_object)
 
     logging.info("🚀 Croc-Trader App initialized (Aggregated Routes).")
     return app
