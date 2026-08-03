@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     tzdata \
+    && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # User Setup und Ordnerstruktur vorab anlegen
