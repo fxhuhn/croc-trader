@@ -210,8 +210,22 @@ class TGIMStrategy(BaseStrategy[int]):
     def _resolve_target_date(
         self, days: int, analysis_date: str | None
     ) -> datetime.date:
-        """Resolves the target analysis date as a datetime.date object."""
+        """Resolves the target analysis date as a datetime.date object.
+
+        If the analysis date falls on Friday (weekend setup bar), Saturday, or Sunday,
+        it automatically rolls forward to the target Monday for TGIM screening.
+        """
         if analysis_date:
-            return datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
-        reference_date = datetime.date.today()
-        return reference_date - datetime.timedelta(days=days)
+            resolved_date = datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
+        else:
+            reference_date = datetime.date.today()
+            resolved_date = reference_date - datetime.timedelta(days=days)
+
+        if resolved_date.weekday() == 4:  # Friday -> Target Monday
+            return resolved_date + datetime.timedelta(days=3)
+        if resolved_date.weekday() == 5:  # Saturday -> Target Monday
+            return resolved_date + datetime.timedelta(days=2)
+        if resolved_date.weekday() == 6:  # Sunday -> Target Monday
+            return resolved_date + datetime.timedelta(days=1)
+
+        return resolved_date

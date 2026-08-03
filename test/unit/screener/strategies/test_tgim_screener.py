@@ -220,3 +220,34 @@ def test_tgim_skips_if_active_trade_already_exists(
 
     assert hits == 0
     mock_trade_repo.create_trade.assert_not_called()
+
+
+def test_tgim_rolls_friday_analysis_date_to_upcoming_monday(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that passing a Friday analysis_date automatically rolls to upcoming Monday for pre-market screening."""
+    friday = pd.Timestamp("2026-07-17")
+    thursday = pd.Timestamp("2026-07-16")
+
+    df_history = pd.DataFrame(
+        [
+            {"date": thursday, "close": 500.0},
+            {"date": friday, "close": 495.0},
+        ]
+    )
+
+    mock_data_provider.get_batch_history.return_value = {"SPY": df_history}
+
+    # Pass Friday 2026-07-17 -> Target Monday becomes 2026-07-20
+    hits = tgim_strategy.run(days=0, analysis_date="2026-07-17")
+
+    assert hits == 1
+    mock_trade_repo.create_trade.assert_called_once()
+    call_kwargs = mock_trade_repo.create_trade.call_args.kwargs
+    assert call_kwargs["symbol"] == "SPY"
+    assert call_kwargs["strategy"] == Strategies.TGIM.value
+    assert call_kwargs["entry"] == 495.0
+    context = call_kwargs["context"]
+    assert context["setup_date"] == "2026-07-20"
