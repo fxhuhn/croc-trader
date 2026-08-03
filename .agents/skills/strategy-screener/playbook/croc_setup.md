@@ -9,7 +9,7 @@
 | Strategy family | `CROC` | IMP-SCR-001, IMP-TM-001 |
 | Variants | `HoldTarget` (`croc_holdtp3`), `SplitTarget` (`croc_split`) | IMP-TM-001, IMP-TM-002 |
 | Lifecycle status | `PRODUCTION` | IMP-SCR-001, IMP-TM-001 |
-| Playbook version | 1.1 | ARC-001 |
+| Playbook version | 4.0 | ARC-001 |
 
 ## 2. Verification Status
 
