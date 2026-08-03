@@ -162,10 +162,10 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
 * **Pfad-Parameter**:
   * `strategy_name`: Strategie-Kennung (`tgim`, `bridge-scout`, `bounce-bandit`).
 * **Query-Parameter (Datum & Budget)**:
-  * **`start_date`** *(oder `start`)*: `string` (Format: `YYYY-MM-DD`, Standard: `"2025-01-01"`). Beispiel: `start_date=2026-01-01`
-  * **`end_date`** *(oder `end`)*: `string` (Format: `YYYY-MM-DD`, Standard: aktueller Tag). Beispiel: `end_date=2026-06-30`
+  * **`start_date`** *(Alias `start` veraltet)*: `string` (Format: `YYYY-MM-DD`, Standard: `"2025-01-01"`). Beispiel: `start_date=2026-01-01`
+  * **`end_date`** *(Alias `end` veraltet)*: `string` (Format: `YYYY-MM-DD`, Standard: aktueller Tag). Beispiel: `end_date=2026-06-30`
   * **`budget`**: `float` (Standard: `10000.0`). Handelsbudget in USD. Beispiel: `budget=5000.0`
-  * **`clear_existing`** *(oder `clear`)*: `bool` (Standard: `true`). Beispiel: `clear_existing=true`
+  * **`clear_existing`** *(Alias `clear` veraltet)*: `bool` (Standard: `true`). Beispiel: `clear_existing=true`
 * **Aufrufbeispiel**:
   `POST /trades/backfill/bridge-scout?start_date=2026-01-01&end_date=2026-06-30&budget=15000.0`
 * **Response `200 OK`**:
