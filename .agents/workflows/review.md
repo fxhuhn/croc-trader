@@ -1,5 +1,5 @@
 ---
-name: review-workflow
+name: review
 description: Standardablauf für Code-Audits, Qualitätsprüfungen und Security-Reviews
 trigger: manual
 ---
