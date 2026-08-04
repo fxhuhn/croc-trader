@@ -91,6 +91,15 @@ class ScreenerViewService:
                 reverse=True,
             )
 
+        # Sort by Setup Score DESC for Dip Buyer
+        if strategy_value == Strategies.DipBuyer:
+            processed_results.sort(
+                key=lambda x: float(
+                    x.get("context", {}).get("setup_score", 0.0) or 0.0
+                ),
+                reverse=True,
+            )
+
         return processed_results
 
     def _fetch_croc_candidates(self, limit: int) -> list[dict[str, object]]:

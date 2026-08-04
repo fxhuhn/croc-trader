@@ -53,3 +53,42 @@ def test_get_turnover_candidates_sorting(mock_signal_repository):
     assert results[0]["dollar_volume"] == 5000000000.0
     assert results[1]["dollar_volume"] == 1000000000.0
     assert results[2]["dollar_volume"] == 500000000.0
+
+
+def test_get_dip_buyer_candidates_sorting_by_score(mock_signal_repository):
+    """Verifies that Dip Buyer candidates are sorted by setup_score descending."""
+    # Arrange
+    service = ScreenerViewService(mock_signal_repository)
+
+    mock_signal_repository.get_trade_candidates.return_value = [
+        {
+            "id": 1,
+            "symbol": "SPY",
+            "strategy": str(Strategies.DipBuyer),
+            "entry_price": 400.0,
+            "signal_context": '{"setup_close": 405.0, "setup_score": 5, "date": "2026-02-20"}',
+        },
+        {
+            "id": 2,
+            "symbol": "QQQ",
+            "strategy": str(Strategies.DipBuyer),
+            "entry_price": 350.0,
+            "signal_context": '{"setup_close": 355.0, "setup_score": 9, "date": "2026-02-20"}',
+        },
+        {
+            "id": 3,
+            "symbol": "IWM",
+            "strategy": str(Strategies.DipBuyer),
+            "entry_price": 200.0,
+            "signal_context": '{"setup_close": 205.0, "setup_score": 7, "date": "2026-02-20"}',
+        },
+    ]
+
+    # Act
+    results = service.get_candidates(Strategies.DipBuyer)
+
+    # Assert
+    assert len(results) == 3
+    assert results[0]["symbol"] == "QQQ"  # Score 9 (highest)
+    assert results[1]["symbol"] == "IWM"  # Score 7 (medium)
+    assert results[2]["symbol"] == "SPY"  # Score 5 (lowest)
