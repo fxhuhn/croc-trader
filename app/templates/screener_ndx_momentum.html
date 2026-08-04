@@ -28,6 +28,18 @@
                             }}</span>
                     </div>
                     <div class="flex justify-between py-1.5 border-b border-slate-100 items-center">
+                        <span class="text-slate-500 font-medium whitespace-nowrap mr-2">Status</span>
+                        <span>
+                            {% if res.position_status == 'HOLD' %}
+                            <span
+                                class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-xs font-bold">HOLD</span>
+                            {% else %}
+                            <span
+                                class="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded text-xs font-bold">NEW</span>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="flex justify-between py-1.5 border-b border-slate-100 items-center">
                         <span class="text-slate-500 font-medium whitespace-nowrap mr-2">Market Breadth</span>
                         <span>
                             {% if res.context.breadth_regime == 'BULL' %}

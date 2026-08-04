@@ -92,3 +92,46 @@ def test_get_dip_buyer_candidates_sorting_by_score(mock_signal_repository):
     assert results[0]["symbol"] == "QQQ"  # Score 9 (highest)
     assert results[1]["symbol"] == "IWM"  # Score 7 (medium)
     assert results[2]["symbol"] == "SPY"  # Score 5 (lowest)
+
+
+def test_ndx_momentum_position_status_new_and_hold(mock_signal_repository):
+    """Verifies that NDX Momentum sets position_status to NEW for CREATED and HOLD for ACTIVE trades."""
+    # Arrange
+    service = ScreenerViewService(mock_signal_repository)
+
+    mock_signal_repository.get_trade_candidates.return_value = [
+        {
+            "id": 1,
+            "symbol": "NVDA",
+            "strategy": str(Strategies.NDXMomentum),
+            "status": "CREATED",
+            "signal_context": '{"momentum_score": 150.0, "date": "2026-07-31"}',
+        },
+        {
+            "id": 2,
+            "symbol": "AAPL",
+            "strategy": str(Strategies.NDXMomentum),
+            "status": "ACTIVE",
+            "signal_context": '{"momentum_score": 120.0, "date": "2026-07-31"}',
+        },
+    ]
+
+    # Act
+    results = service.get_candidates(Strategies.NDXMomentum)
+
+    # Assert
+    assert len(results) == 2
+    assert results[0]["symbol"] == "NVDA"
+    assert results[0]["position_status"] == "NEW"
+    assert results[1]["symbol"] == "AAPL"
+    assert results[1]["position_status"] == "HOLD"
+
+    # Verify repository call included both CREATED and ACTIVE statuses
+    mock_signal_repository.get_trade_candidates.assert_called_with(
+        str(Strategies.NDXMomentum),
+        limit=100,
+        statuses=[
+            pytest.importorskip("app.const").TradeStatus.CREATED,
+            pytest.importorskip("app.const").TradeStatus.ACTIVE,
+        ],
+    )

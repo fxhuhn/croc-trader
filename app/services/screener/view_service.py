@@ -72,6 +72,12 @@ class ScreenerViewService:
             context = self._parse_context(raw_signal_context)
             candidate["context"] = context
 
+            # Position Status (NEW vs HOLD)
+            status_val = str(candidate.get("status", "")).upper()
+            candidate["position_status"] = (
+                "HOLD" if status_val == str(TradeStatus.ACTIVE).upper() else "NEW"
+            )
+
             # Standardize Date Display (Strict)
             date_value = context.get("date") or context.get("setup_date")
             if date_value:
@@ -154,6 +160,12 @@ class ScreenerViewService:
         Returns:
             list[dict[str, object]]: Raw database candidate records.
         """
+        if strategy_value == str(Strategies.NDXMomentum):
+            return self.signal_repository.get_trade_candidates(
+                strategy_value,
+                limit=limit,
+                statuses=[TradeStatus.CREATED, TradeStatus.ACTIVE],
+            )
         if isinstance(strategy, list):
             # Using the newly updated repository method that supports lists
             return self.signal_repository.get_trade_candidates(
