@@ -22,10 +22,6 @@ updates:
     commit-message:
       prefix: "build(deps)"
     open-pull-requests-limit: 5
-    groups:
-      python-dependencies:
-        patterns:
-          - "*"
 
   - package-ecosystem: "docker"
     directory: "/"

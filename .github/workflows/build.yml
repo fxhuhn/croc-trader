@@ -40,12 +40,15 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
-      - name: Build Docker image for scanning
+      - name: Build Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
           load: true
-          tags: croc-trader:test
+          tags: |
+            ${{ github.event.repository.name }}:test
+            ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -53,7 +56,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: 'v0.72.0'
-          image-ref: 'croc-trader:test'
+          image-ref: '${{ github.event.repository.name }}:test'
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
@@ -62,11 +65,8 @@ jobs:
 
       - name: Push Docker image
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+        run: |
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            docker push "$tag"
+          done
 

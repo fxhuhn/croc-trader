@@ -55,18 +55,26 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install bandit==1.8.0
+          pip install bandit==1.8.0 bandit-sarif-formatter
 
       - name: Run Bandit
         run: |
-          bandit -r . -x .venv,test -f json -o bandit-report.json || true
-          bandit -r . -x .venv,test -f screen
+          bandit -r . -x ".venv,*/test/*,*/tests/*" -f json -o bandit-report.json || true
+          bandit -r . -x ".venv,*/test/*,*/tests/*" -f sarif -o bandit-report.sarif || true
+          bandit -r . -x ".venv,*/test/*,*/tests/*" -f screen || true
       - name: Upload Bandit results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: bandit-results
           path: bandit-report.json
+
+      - name: Upload Bandit SARIF report
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: bandit-report.sarif
+          category: bandit
 
   # Job 3: CodeQL Advanced Security (parallel, dauert länger)
   codeql:
@@ -112,6 +120,15 @@ jobs:
           inputs: requirements.txt
           version: 2.7.3
           summary: true
+          format: sarif
+          output: pip-audit.sarif
+
+      - name: Upload pip-audit SARIF report
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: pip-audit.sarif
+          category: pip-audit
 
   # Job 5: Vulture Dead Code Scan (parallel)
   vulture:
@@ -135,4 +152,22 @@ jobs:
 
       - name: Run Vulture
         run: vulture . --exclude .venv,test
+
+  # Job 6: Mypy Static Type Checking (parallel)
+  mypy:
+    name: Mypy Static Type Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: 'pip'
+
+      - name: Run Mypy
+        run: pip install mypy && mypy .
 
