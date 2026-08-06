@@ -107,21 +107,13 @@
 
                         <!-- Gesamt Cell -->
                         <td class="p-1 text-center">
-                            <div class="py-1.5 px-1 rounded-lg text-xs tabular-nums font-bold text-center min-h-[28px] flex items-center justify-center
-                                {% if row.gesamt > 20.0 %}
-                                    bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-black
-                                {% elif row.gesamt > 3.0 %}
-                                    bg-emerald-500 text-white font-bold shadow-sm
-                                {% elif row.gesamt > 0.0 %}
-                                    bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
-                                {% elif row.gesamt == 0.0 %}
-                                    bg-transparent text-transparent font-normal
-                                {% elif row.gesamt >= -3.0 %}
-                                    bg-rose-50 text-rose-700 font-semibold border border-rose-100
-                                {% elif row.gesamt >= -20.0 %}
-                                    bg-rose-500 text-white font-bold shadow-sm
+                            <div class="py-1.5 px-1 text-xs tabular-nums font-bold text-center flex items-center justify-center
+                                {% if row.gesamt > 0.0 %}
+                                    text-emerald-600
+                                {% elif row.gesamt < 0.0 %}
+                                    text-rose-600
                                 {% else %}
-                                    bg-rose-700 text-white font-black
+                                    text-slate-400
                                 {% endif %}">
                                 {% if row.gesamt > 0.0 %}+{{ "%.1f"|format(row.gesamt) }}%{% elif row.gesamt < 0.0 %}{{ "%.1f"|format(row.gesamt) }}%{% else %}{% endif %}
                             </div>
@@ -139,42 +131,26 @@
                         </td>
                         {% for val in portfolio_row.months %}
                         <td class="p-1 text-center">
-                            <div class="py-2 px-1 rounded-lg text-xs tabular-nums text-center font-bold min-h-[30px] flex items-center justify-center
-                                {% if val > 20.0 %}
-                                    bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-black
-                                {% elif val > 3.0 %}
-                                    bg-emerald-500 text-white shadow-sm
-                                {% elif val > 0.0 %}
-                                    bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
-                                {% elif val == 0.0 %}
-                                    bg-transparent text-transparent font-normal
-                                {% elif val >= -3.0 %}
-                                    bg-rose-50 text-rose-700 font-semibold border border-rose-100
-                                {% elif val >= -20.0 %}
-                                    bg-rose-500 text-white shadow-sm
+                            <div class="py-2 px-1 text-xs tabular-nums text-center font-bold flex items-center justify-center
+                                {% if val > 0.0 %}
+                                    text-emerald-600
+                                {% elif val < 0.0 %}
+                                    text-rose-600
                                 {% else %}
-                                    bg-rose-700 text-white font-black
+                                    text-slate-400
                                 {% endif %}">
                                 {% if val > 0.0 %}+{{ "%.1f"|format(val) }}%{% elif val < 0.0 %}{{ "%.1f"|format(val) }}%{% else %}{% endif %}
                             </div>
                         </td>
                         {% endfor %}
                         <td class="p-1 text-center">
-                            <div class="py-2 px-1 rounded-lg text-xs tabular-nums font-bold text-center min-h-[30px] flex items-center justify-center
-                                {% if portfolio_row.gesamt > 20.0 %}
-                                    bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-black
-                                {% elif portfolio_row.gesamt > 3.0 %}
-                                    bg-emerald-500 text-white shadow-sm
-                                {% elif portfolio_row.gesamt > 0.0 %}
-                                    bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
-                                {% elif portfolio_row.gesamt == 0.0 %}
-                                    bg-transparent text-transparent font-normal
-                                {% elif portfolio_row.gesamt >= -3.0 %}
-                                    bg-rose-50 text-rose-700 font-semibold border border-rose-100
-                                {% elif portfolio_row.gesamt >= -20.0 %}
-                                    bg-rose-500 text-white shadow-sm
+                            <div class="py-2 px-1 text-xs tabular-nums font-bold text-center flex items-center justify-center
+                                {% if portfolio_row.gesamt > 0.0 %}
+                                    text-emerald-600
+                                {% elif portfolio_row.gesamt < 0.0 %}
+                                    text-rose-600
                                 {% else %}
-                                    bg-rose-700 text-white font-black
+                                    text-slate-400
                                 {% endif %}">
                                 {% if portfolio_row.gesamt > 0.0 %}+{{ "%.1f"|format(portfolio_row.gesamt) }}%{% elif portfolio_row.gesamt < 0.0 %}{{ "%.1f"|format(portfolio_row.gesamt) }}%{% else %}{% endif %}
                             </div>
@@ -246,21 +222,13 @@
                         </td>
                         {% endfor %}
                         <td class="p-1 text-center">
-                            <div class="py-1.5 px-1 rounded-lg text-xs tabular-nums font-bold text-center min-h-[28px] flex items-center justify-center
-                                {% if row.gesamt > 20.0 %}
-                                    bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-black
-                                {% elif row.gesamt > 3.0 %}
-                                    bg-emerald-500 text-white shadow-sm
-                                {% elif row.gesamt > 0.0 %}
-                                    bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
-                                {% elif row.gesamt == 0.0 %}
-                                    bg-transparent text-transparent font-normal
-                                {% elif row.gesamt >= -3.0 %}
-                                    bg-rose-50 text-rose-700 font-semibold border border-rose-100
-                                {% elif row.gesamt >= -20.0 %}
-                                    bg-rose-500 text-white shadow-sm
+                            <div class="py-1.5 px-1 text-xs tabular-nums font-bold text-center flex items-center justify-center
+                                {% if row.gesamt > 0.0 %}
+                                    text-emerald-600
+                                {% elif row.gesamt < 0.0 %}
+                                    text-rose-600
                                 {% else %}
-                                    bg-rose-700 text-white font-black
+                                    text-slate-400
                                 {% endif %}">
                                 {% if row.gesamt > 0.0 %}+{{ "%.1f"|format(row.gesamt) }}%{% elif row.gesamt < 0.0 %}{{ "%.1f"|format(row.gesamt) }}%{% else %}{% endif %}
                             </div>

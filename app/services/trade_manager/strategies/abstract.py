@@ -366,7 +366,7 @@ class BaseTradeStrategy(ABC):
         """
         context = BaseTradeStrategy._get_full_context(trade)
         value = context.get(key)
-        if isinstance(value, (str, float, int, bool)) or value is None:
+        if isinstance(value, str | float | int | bool) or value is None:
             return value
         return str(value)
 

@@ -710,6 +710,32 @@ def view_analytics_dashboard() -> str:
     )
 
 
+def _calculate_unweighted_monthly_pct(month_df: pd.DataFrame) -> float:
+    """Calculates the unweighted average percentage return of trades in a month.
+
+    Args:
+        month_df: DataFrame of closed trades for the month.
+
+    Returns:
+        float: Unweighted average percentage return across trades.
+    """
+    if month_df.empty:
+        return 0.0
+
+    pnl = pd.to_numeric(month_df["realized_pnl"], errors="coerce").fillna(0.0)
+    entry_prices = pd.to_numeric(month_df["entry_price"], errors="coerce").fillna(0.0)
+    initial_sizes = pd.to_numeric(month_df["initial_size"], errors="coerce").fillna(0.0)
+
+    invested = entry_prices * initial_sizes
+    valid_mask = invested > 0.0
+
+    if not valid_mask.any():
+        return 0.0
+
+    trade_pcts = (pnl[valid_mask] / invested[valid_mask]) * 100.0
+    return float(trade_pcts.mean())
+
+
 @views_bp.route("/analytics/monthly-matrix", methods=["GET"])
 @views_bp.route("/analytics/monthlymatrix", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
@@ -814,8 +840,6 @@ def view_analytics_monthly_matrix() -> str:
             strat_df = pd.DataFrame()
 
         monthly_pcts: list[float] = []
-        total_pnl = 0.0
-        total_invested = 0.0
 
         for month in range(1, 13):
             if not strat_df.empty:
@@ -823,31 +847,13 @@ def view_analytics_monthly_matrix() -> str:
             else:
                 month_df = pd.DataFrame()
 
-            if not month_df.empty:
-                m_pnl = float(month_df["realized_pnl"].fillna(0.0).sum())
-                entry_prices = pd.to_numeric(
-                    month_df["entry_price"], errors="coerce"
-                ).fillna(0.0)
-                initial_sizes = pd.to_numeric(
-                    month_df["initial_size"], errors="coerce"
-                ).fillna(0.0)
-                m_invested = float((entry_prices * initial_sizes).sum())
-
-                total_pnl += m_pnl
-                total_invested += m_invested
-
-                if m_invested > 0.0:
-                    pct = (m_pnl / m_invested) * 100.0
-                else:
-                    pct = 0.0
-            else:
-                pct = 0.0
-
+            pct = _calculate_unweighted_monthly_pct(month_df)
             monthly_pcts.append(round(pct, 1))
 
-        gesamt_pct = (
-            (total_pnl / total_invested * 100.0) if total_invested > 0.0 else 0.0
-        )
+        compounded_factor = 1.0
+        for val in monthly_pcts:
+            compounded_factor *= 1.0 + val / 100.0
+        gesamt_pct = (compounded_factor - 1.0) * 100.0
 
         matrix_rows.append(
             {
@@ -857,40 +863,21 @@ def view_analytics_monthly_matrix() -> str:
             }
         )
 
+    num_strategies = len(matrix_rows)
     portfolio_monthly_pcts: list[float] = []
-    port_total_pnl = 0.0
-    port_total_invested = 0.0
 
-    for month in range(1, 13):
-        if not year_dataframe.empty:
-            m_df = year_dataframe[year_dataframe["exit_date_dt"].dt.month == month]
+    for month_idx in range(12):
+        if num_strategies > 0:
+            month_sum = sum(row["months"][month_idx] for row in matrix_rows)
+            port_pct = month_sum / num_strategies
         else:
-            m_df = pd.DataFrame()
+            port_pct = 0.0
+        portfolio_monthly_pcts.append(round(port_pct, 1))
 
-        if not m_df.empty:
-            m_pnl = float(m_df["realized_pnl"].fillna(0.0).sum())
-            entry_prices = pd.to_numeric(m_df["entry_price"], errors="coerce").fillna(
-                0.0
-            )
-            initial_sizes = pd.to_numeric(m_df["initial_size"], errors="coerce").fillna(
-                0.0
-            )
-            m_invested = float((entry_prices * initial_sizes).sum())
-
-            port_total_pnl += m_pnl
-            port_total_invested += m_invested
-
-            pct = (m_pnl / m_invested * 100.0) if m_invested > 0.0 else 0.0
-        else:
-            pct = 0.0
-
-        portfolio_monthly_pcts.append(round(pct, 1))
-
-    port_gesamt_pct = (
-        (port_total_pnl / port_total_invested * 100.0)
-        if port_total_invested > 0.0
-        else 0.0
-    )
+    port_compounded_factor = 1.0
+    for val in portfolio_monthly_pcts:
+        port_compounded_factor *= 1.0 + val / 100.0
+    port_gesamt_pct = (port_compounded_factor - 1.0) * 100.0
 
     portfolio_row = {
         "name": "Portfolio",

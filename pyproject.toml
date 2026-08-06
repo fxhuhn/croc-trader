@@ -36,7 +36,7 @@ select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "PL", "C90"]
 # Ignorierte Regeln
 # E501: Zeilenlänge (durch Formatter oder für lange SQL-Queries/Kommentare toleriert)
 ignore = [
-    "E501"
+    "E501", "A005"
 ]
 
 [tool.ruff.lint.per-file-ignores]

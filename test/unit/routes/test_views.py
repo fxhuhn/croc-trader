@@ -7,6 +7,7 @@ metrics without touching the actual database or disk.
 """
 
 from collections.abc import Generator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -403,7 +404,7 @@ def test_prepare_active_orders_hierarchical_sorting_and_child_marking() -> None:
     # Test Case 1: Both Parent (731) and Child (732) are open
     # Test Case 2: Standalone Order (735)
     # Test Case 3: Order (742) whose parent (739) is Filled/missing (Active Position)
-    orders = [
+    orders: list[dict[str, Any]] = [
         {
             "order_id": 742,
             "parent_id": 739,
@@ -605,3 +606,53 @@ def test_view_analytics_monthly_matrix_returns_correct_response(
         assert b"Gesamt Portfolio" in response.data
         assert b"SPY (S&amp;P 500)" in response.data
         assert b"QQQ (Nasdaq 100)" in response.data
+
+
+def test_view_analytics_monthly_matrix_compounded_return(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that monthly matrix calculates unweighted average trade returns per month and compounded gesamt return."""
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        # Month 1: Trade 1 (+10%), Trade 2 (+30%) -> Unweighted Month 1 = +20.0%
+        # Month 2: Trade 3 (-10%) -> Unweighted Month 2 = -10.0%
+        # Compounded Gesamt = (1.20 * 0.90 - 1) = +8.0%
+        mock_service.get_trades.return_value = [
+            {
+                "exit_date": "2026-01-10",
+                "realized_pnl": 100.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 10,  # 1000 invested -> +10.0%
+            },
+            {
+                "exit_date": "2026-01-20",
+                "realized_pnl": 30.0,
+                "strategy": "dip_buyer",
+                "entry_price": 10.0,
+                "initial_size": 10,  # 100 invested -> +30.0%
+            },
+            {
+                "exit_date": "2026-02-15",
+                "realized_pnl": -1000.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 100,  # 10000 invested -> -10.0%
+            },
+        ]
+        import pandas as pd
+
+        mock_service.market_repository.get_symbol_history_raw.return_value = (
+            pd.DataFrame()
+        )
+
+        response = test_client.get("/analytics/monthly-matrix?year=2026")
+        assert response.status_code == 200
+        # Dip Buyer Month 1 cell shows +20.0%
+        assert b"+20.0%" in response.data
+        # Dip Buyer Compounded Gesamt shows +8.0%
+        assert b"+8.0%" in response.data
+        # Portfolio Month 1 average across 8 strategies (+20.0% / 8) shows +2.5%
+        assert b"+2.5%" in response.data
