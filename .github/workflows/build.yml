@@ -65,8 +65,10 @@ jobs:
 
       - name: Push Docker image
         if: github.event_name != 'pull_request'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          for tag in ${{ steps.meta.outputs.tags }}; do
+          for tag in $TAGS; do
             docker push "$tag"
           done
 
