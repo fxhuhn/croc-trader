@@ -59,9 +59,9 @@ jobs:
 
       - name: Run Bandit
         run: |
-          bandit -r . -x ".venv,*/test/*,*/tests/*" -f json -o bandit-report.json || true
-          bandit -r . -x ".venv,*/test/*,*/tests/*" -f sarif -o bandit-report.sarif || true
-          bandit -r . -x ".venv,*/test/*,*/tests/*" -f screen || true
+          bandit -ll -r . -x "./.venv,*/test/*,*/tests/*" -f json -o bandit-report.json || true
+          bandit -ll -r . -x "./.venv,*/test/*,*/tests/*" -f sarif -o bandit-report.sarif || true
+          bandit -ll -r . -x "./.venv,*/test/*,*/tests/*" -f screen
       - name: Upload Bandit results
         uses: actions/upload-artifact@v4
         if: always()
