@@ -7,6 +7,7 @@ on:
     branches: [ "next" ]
   schedule:
     - cron: '0 6 * * 1'  # Wöchentlich montags für Security-Scans
+  workflow_dispatch:
 
 permissions:
   contents: read
