@@ -1,6 +1,7 @@
 """Routes and views for performance analytics and allocation dashboard."""
 
 import logging
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -736,6 +737,80 @@ def _calculate_unweighted_monthly_pct(month_df: pd.DataFrame) -> float:
     return float(trade_pcts.mean())
 
 
+def _calculate_evm_allocations(
+    slice_df: pd.DataFrame,
+    strategy_groups: dict[str, list[Any]],
+) -> dict[str, float]:
+    """Calculates EV/M strategy weights from a cumulative closed trades slice.
+
+    Args:
+        slice_df: DataFrame of closed trades up to cutoff date.
+        strategy_groups: Strategy group name to filter list mapping.
+
+    Returns:
+        dict[str, float]: Mapping from strategy group name to percentage weight (0.0 to 1.0).
+    """
+    num_strats = len(strategy_groups)
+    default_weight = 1.0 / num_strats if num_strats > 0 else 0.0
+
+    if slice_df.empty or "strategy" not in slice_df.columns:
+        return dict.fromkeys(strategy_groups, default_weight)
+
+    resolved_strategies = slice_df["strategy"].apply(
+        lambda s: STRATEGY_ALIASES.get(str(s).lower(), s)
+    )
+
+    strategy_evs: dict[str, float] = {}
+    for name, filters in strategy_groups.items():
+        strat_slice_df = slice_df[resolved_strategies.isin(filters)]
+        trades_count = len(strat_slice_df)
+
+        average_roi = 0.0
+        if not strat_slice_df.empty:
+            entry_prices = pd.to_numeric(
+                strat_slice_df["entry_price"], errors="coerce"
+            ).fillna(0.0)
+            initial_sizes = pd.to_numeric(
+                strat_slice_df["initial_size"], errors="coerce"
+            ).fillna(0.0)
+            invested_capital = entry_prices * initial_sizes
+            valid_roi_mask = invested_capital > 0.0
+            if valid_roi_mask.any():
+                roi_per_trade = (
+                    strat_slice_df.loc[valid_roi_mask, "realized_pnl"]
+                    / invested_capital[valid_roi_mask]
+                )
+                average_roi = float(roi_per_trade.mean())
+
+        active_months = 1.0
+        if not strat_slice_df.empty and "entry_date" in strat_slice_df.columns:
+            slice_entry_dates = pd.to_datetime(
+                strat_slice_df["entry_date"], errors="coerce"
+            ).dropna()
+            slice_exit_dates = (
+                strat_slice_df["exit_date_dt"].dropna()
+                if "exit_date_dt" in strat_slice_df.columns
+                else pd.Series(dtype="datetime64[ns]")
+            )
+            if not slice_entry_dates.empty and not slice_exit_dates.empty:
+                first_date = slice_entry_dates.min()
+                last_date = slice_exit_dates.max()
+                days_span = max(1.0, float((last_date - first_date).days))
+                active_months = max(1.0, days_span / 30.44)
+
+        trades_per_month = trades_count / active_months
+        ev_per_month = trades_per_month * average_roi
+        strategy_evs[name] = ev_per_month
+
+    total_ev = sum(max(0.0, val) for val in strategy_evs.values())
+    if total_ev > 0.0:
+        return {
+            name: (max(0.0, strategy_evs[name]) / total_ev) for name in strategy_groups
+        }
+
+    return dict.fromkeys(strategy_groups, default_weight)
+
+
 @views_bp.route("/analytics/monthly-matrix", methods=["GET"])
 @views_bp.route("/analytics/monthlymatrix", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
@@ -792,10 +867,11 @@ def view_analytics_monthly_matrix() -> str:
                 "strategy",
                 "entry_price",
                 "initial_size",
+                "entry_date",
             ]
         )
 
-    for column_name in ("realized_pnl", "entry_price", "initial_size"):
+    for column_name in ("realized_pnl", "entry_price", "initial_size", "entry_date"):
         if column_name not in dataframe.columns:
             dataframe[column_name] = np.nan
 
@@ -885,6 +961,46 @@ def view_analytics_monthly_matrix() -> str:
         "gesamt": round(port_gesamt_pct, 1),
     }
 
+    # Calculate Frequenz-Modell (EV/M) row for Portfoliomodell category
+    # January (month_idx 0) is identical to Standard (equal weight).
+    # Month m > 1 uses EV/M strategy allocation calculated up to end of month m-1.
+    evm_monthly_pcts: list[float] = []
+    for month_idx in range(12):
+        if month_idx == 0:
+            evm_monthly_pcts.append(portfolio_monthly_pcts[0])
+        else:
+            prior_month_end = pd.Timestamp(
+                year=selected_year, month=month_idx, day=1
+            ) + pd.offsets.MonthEnd(0)
+            slice_df = (
+                dataframe[dataframe["exit_date_dt"] <= prior_month_end]
+                if not dataframe.empty
+                else pd.DataFrame()
+            )
+            weights = _calculate_evm_allocations(slice_df, strategy_groups)
+            weighted_return = sum(
+                weights[row["name"]] * row["months"][month_idx] for row in matrix_rows
+            )
+            evm_monthly_pcts.append(weighted_return)
+
+    evm_compounded_factor = 1.0
+    for val in evm_monthly_pcts:
+        evm_compounded_factor *= 1.0 + val / 100.0
+    evm_gesamt_pct = (evm_compounded_factor - 1.0) * 100.0
+
+    portfolio_models_rows = [
+        {
+            "name": "Standard",
+            "months": portfolio_monthly_pcts,
+            "gesamt": round(port_gesamt_pct, 1),
+        },
+        {
+            "name": "Frequenz-Modell (EV/M)",
+            "months": [round(p, 1) for p in evm_monthly_pcts],
+            "gesamt": round(evm_gesamt_pct, 1),
+        },
+    ]
+
     benchmark_rows = []
     benchmark_symbols = [("SPY (S&P 500)", "SPY"), ("QQQ (Nasdaq 100)", "QQQ")]
 
@@ -943,6 +1059,7 @@ def view_analytics_monthly_matrix() -> str:
         months=month_names,
         matrix_rows=matrix_rows,
         portfolio_row=portfolio_row,
+        portfolio_models_rows=portfolio_models_rows,
         benchmark_rows=benchmark_rows,
         active_page="analytics",
         active_subpage="monthly_matrix",

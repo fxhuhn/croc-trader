@@ -604,8 +604,55 @@ def test_view_analytics_monthly_matrix_returns_correct_response(
         assert b"Monthlymatrix" in response.data
         assert b"Dip Buyer" in response.data
         assert b"Gesamt Portfolio" in response.data
+        assert b"Portfoliomodell" in response.data
+        assert b"Standard" in response.data
+        assert b"Frequenz-Modell (EV/M)" in response.data
         assert b"SPY (S&amp;P 500)" in response.data
         assert b"QQQ (Nasdaq 100)" in response.data
+
+
+def test_view_analytics_monthly_matrix_portfolio_models(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that Portfoliomodell calculates Standard and Frequenz-Modell (EV/M) rows correctly."""
+    import pandas as pd
+
+    mock_trades = [
+        {
+            "entry_date": "2026-01-01",
+            "exit_date": "2026-01-15",
+            "realized_pnl": 100.0,
+            "strategy": "dip_buyer",
+            "entry_price": 100.0,
+            "initial_size": 10,  # +10.0% in Jan
+        },
+        {
+            "entry_date": "2026-02-01",
+            "exit_date": "2026-02-15",
+            "realized_pnl": 200.0,
+            "strategy": "dip_buyer",
+            "entry_price": 100.0,
+            "initial_size": 10,  # +20.0% in Feb
+        },
+    ]
+
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.return_value = mock_trades
+        mock_service.market_repository.get_symbol_history_raw.return_value = (
+            pd.DataFrame()
+        )
+
+        response = test_client.get("/analytics/monthly-matrix?year=2026")
+        assert response.status_code == 200
+
+        # Section header rendered
+        assert b"Portfoliomodell" in response.data
+        # Standard and Frequenz-Modell labels
+        assert b"Standard" in response.data
+        assert b"Frequenz-Modell (EV/M)" in response.data
 
 
 def test_view_analytics_monthly_matrix_compounded_return(

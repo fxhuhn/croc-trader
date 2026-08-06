@@ -144,14 +144,76 @@
         </div>
     </section>
 
-    <!-- Section 2: Vergleichsindizes Header -->
+    <!-- Section 2: Portfoliomodell Header -->
+    <div class="mb-4">
+        <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
+            <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Portfoliomodell
+        </h2>
+    </div>
+
+    <!-- Section 2: Portfoliomodell Card Container -->
+    <section class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[850px]">
+                <!-- Table Header -->
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
+                        <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
+                            Modell
+                        </th>
+                        {% for month in months %}
+                        <th class="py-4 px-1.5 text-center w-16">
+                            {{ month }}
+                        </th>
+                        {% endfor %}
+                        <th class="py-4 px-3 text-center w-20">
+                            Gesamt
+                        </th>
+                    </tr>
+                </thead>
+
+                <!-- Portfolio Models Rows (Standard & Frequenz-Modell EV/M) -->
+                <tbody class="divide-y divide-slate-100 text-xs">
+                    {% for row in portfolio_models_rows %}
+                    <tr class="hover:bg-slate-50/60 transition-colors">
+                        <td class="py-3 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="sliders" class="w-3.5 h-3.5 text-indigo-500 shrink-0"></i>
+                                <span>{{ row.name }}</span>
+                            </div>
+                        </td>
+                        {% for val in row.months %}
+                        <td class="p-1 text-center">
+                            {{ render_matrix_badge(val) }}
+                        </td>
+                        {% endfor %}
+                        <td class="p-1 text-center">
+                            <div class="py-1.5 px-1 text-xs tabular-nums font-bold text-center flex items-center justify-center
+                                {% if row.gesamt > 0.0 %}
+                                    text-emerald-600
+                                {% elif row.gesamt < 0.0 %}
+                                    text-rose-600
+                                {% else %}
+                                    text-slate-400
+                                {% endif %}">
+                                {% if row.gesamt > 0.0 %}+{{ "%.1f"|format(row.gesamt) }}%{% elif row.gesamt < 0.0 %}{{ "%.1f"|format(row.gesamt) }}%{% else %}{% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Section 3: Vergleichsindizes Header -->
     <div class="mb-4">
         <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
             <i data-lucide="line-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Vergleichsindizes
         </h2>
     </div>
 
-    <!-- Section 2: Vergleichsindizes Card Container -->
+    <!-- Section 3: Vergleichsindizes Card Container -->
     <section class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse min-w-[850px]">
