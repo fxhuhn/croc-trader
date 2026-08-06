@@ -4,9 +4,9 @@ import logging
 
 import numpy as np
 import pandas as pd
-from flask import render_template
+from flask import render_template, request
 
-from ...const import ExitReason, Strategies
+from ...const import STRATEGY_ALIASES, ExitReason, Strategies
 from ...tools import metrics
 from ...types import TradeStatus
 from .blueprint import views_bp
@@ -707,4 +707,256 @@ def view_analytics_dashboard() -> str:
         monthly_evm=monthly_evm,
         current_month_name=current_month_name,
         active_page="analytics",
+    )
+
+
+@views_bp.route("/analytics/monthly-matrix", methods=["GET"])
+@views_bp.route("/analytics/monthlymatrix", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
+def view_analytics_monthly_matrix() -> str:
+    """Displays the Desktop-optimized Monthly Performance Matrix view.
+
+    Returns:
+        str: Rendered HTML template.
+    """
+    service = _get_trade_view_service()
+
+    current_year = pd.Timestamp.now().year
+    raw_year = request.args.get("year")
+    try:
+        selected_year = int(raw_year) if raw_year else current_year
+    except (ValueError, TypeError):
+        selected_year = current_year
+
+    available_years = [2024, 2025, 2026]
+    if selected_year not in available_years:
+        available_years.append(selected_year)
+        available_years.sort()
+
+    month_names = [
+        "Jan",
+        "Feb",
+        "Mär",
+        "Apr",
+        "Mai",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Dez",
+    ]
+
+    closed_trades = service.get_trades(
+        status=TradeStatus.CLOSED,
+        exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
+    )
+
+    if closed_trades:
+        dataframe = pd.DataFrame(closed_trades)
+        dataframe["exit_date_dt"] = pd.to_datetime(
+            dataframe["exit_date"], errors="coerce"
+        )
+    else:
+        dataframe = pd.DataFrame(
+            columns=[
+                "exit_date_dt",
+                "realized_pnl",
+                "strategy",
+                "entry_price",
+                "initial_size",
+            ]
+        )
+
+    for column_name in ("realized_pnl", "entry_price", "initial_size"):
+        if column_name not in dataframe.columns:
+            dataframe[column_name] = np.nan
+
+    year_dataframe = (
+        dataframe[dataframe["exit_date_dt"].dt.year == selected_year].copy()
+        if not dataframe.empty
+        else pd.DataFrame()
+    )
+
+    strategy_groups = {
+        "Croc Setup": [
+            Strategies.CrocSetup,
+            Strategies.HoldTarget,
+            Strategies.SplitTarget,
+        ],
+        "Dip Buyer": [Strategies.DipBuyer],
+        "Turnover": [
+            Strategies.TurnOverTiming,
+            Strategies.TurnOverTiming_05,
+            Strategies.TurnOverTiming_10,
+        ],
+        "Two Percent": [Strategies.TwoPercent],
+        "NDX Momentum": [Strategies.NDXMomentum],
+        "TGIM": [Strategies.TGIM],
+        "Bridge Scout": [Strategies.BridgeScout],
+        "Bounce Bandit": [Strategies.BounceBandit],
+    }
+
+    if not year_dataframe.empty:
+        resolved_strategies = year_dataframe["strategy"].apply(
+            lambda s: STRATEGY_ALIASES.get(str(s).lower(), s)
+        )
+    else:
+        resolved_strategies = pd.Series(dtype=object)
+
+    matrix_rows = []
+
+    for name, filters in strategy_groups.items():
+        if not year_dataframe.empty:
+            strat_df = year_dataframe[resolved_strategies.isin(filters)].copy()
+        else:
+            strat_df = pd.DataFrame()
+
+        monthly_pcts: list[float] = []
+        total_pnl = 0.0
+        total_invested = 0.0
+
+        for month in range(1, 13):
+            if not strat_df.empty:
+                month_df = strat_df[strat_df["exit_date_dt"].dt.month == month]
+            else:
+                month_df = pd.DataFrame()
+
+            if not month_df.empty:
+                m_pnl = float(month_df["realized_pnl"].fillna(0.0).sum())
+                entry_prices = pd.to_numeric(
+                    month_df["entry_price"], errors="coerce"
+                ).fillna(0.0)
+                initial_sizes = pd.to_numeric(
+                    month_df["initial_size"], errors="coerce"
+                ).fillna(0.0)
+                m_invested = float((entry_prices * initial_sizes).sum())
+
+                total_pnl += m_pnl
+                total_invested += m_invested
+
+                if m_invested > 0.0:
+                    pct = (m_pnl / m_invested) * 100.0
+                else:
+                    pct = 0.0
+            else:
+                pct = 0.0
+
+            monthly_pcts.append(round(pct, 1))
+
+        gesamt_pct = (
+            (total_pnl / total_invested * 100.0) if total_invested > 0.0 else 0.0
+        )
+
+        matrix_rows.append(
+            {
+                "name": name,
+                "months": monthly_pcts,
+                "gesamt": round(gesamt_pct, 1),
+            }
+        )
+
+    portfolio_monthly_pcts: list[float] = []
+    port_total_pnl = 0.0
+    port_total_invested = 0.0
+
+    for month in range(1, 13):
+        if not year_dataframe.empty:
+            m_df = year_dataframe[year_dataframe["exit_date_dt"].dt.month == month]
+        else:
+            m_df = pd.DataFrame()
+
+        if not m_df.empty:
+            m_pnl = float(m_df["realized_pnl"].fillna(0.0).sum())
+            entry_prices = pd.to_numeric(m_df["entry_price"], errors="coerce").fillna(
+                0.0
+            )
+            initial_sizes = pd.to_numeric(m_df["initial_size"], errors="coerce").fillna(
+                0.0
+            )
+            m_invested = float((entry_prices * initial_sizes).sum())
+
+            port_total_pnl += m_pnl
+            port_total_invested += m_invested
+
+            pct = (m_pnl / m_invested * 100.0) if m_invested > 0.0 else 0.0
+        else:
+            pct = 0.0
+
+        portfolio_monthly_pcts.append(round(pct, 1))
+
+    port_gesamt_pct = (
+        (port_total_pnl / port_total_invested * 100.0)
+        if port_total_invested > 0.0
+        else 0.0
+    )
+
+    portfolio_row = {
+        "name": "Portfolio",
+        "months": portfolio_monthly_pcts,
+        "gesamt": round(port_gesamt_pct, 1),
+    }
+
+    benchmark_rows = []
+    benchmark_symbols = [("SPY (S&P 500)", "SPY"), ("QQQ (Nasdaq 100)", "QQQ")]
+
+    market_repo = service.market_repository
+    for label, sym in benchmark_symbols:
+        b_monthly: list[float] = []
+        try:
+            b_df = market_repo.get_symbol_history_raw(
+                sym, start_date=f"{selected_year}-01-01"
+            )
+        except Exception:
+            b_df = pd.DataFrame()
+
+        if not b_df.empty:
+            b_df["date_dt"] = pd.to_datetime(b_df["date"], errors="coerce")
+            b_df = b_df[b_df["date_dt"].dt.year == selected_year].sort_values("date_dt")
+
+            for month in range(1, 13):
+                month_b_df = b_df[b_df["date_dt"].dt.month == month]
+                if not month_b_df.empty:
+                    open_p = float(
+                        month_b_df.iloc[0]["open"] or month_b_df.iloc[0]["close"]
+                    )
+                    close_p = float(month_b_df.iloc[-1]["close"])
+                    pct = ((close_p - open_p) / open_p * 100.0) if open_p > 0.0 else 0.0
+                else:
+                    pct = 0.0
+                b_monthly.append(round(pct, 1))
+
+            if not b_df.empty:
+                year_open = float(b_df.iloc[0]["open"] or b_df.iloc[0]["close"])
+                year_close = float(b_df.iloc[-1]["close"])
+                b_gesamt = (
+                    ((year_close - year_open) / year_open * 100.0)
+                    if year_open > 0.0
+                    else 0.0
+                )
+            else:
+                b_gesamt = 0.0
+        else:
+            b_monthly = [0.0] * 12
+            b_gesamt = 0.0
+
+        benchmark_rows.append(
+            {
+                "name": label,
+                "months": b_monthly,
+                "gesamt": round(b_gesamt, 1),
+            }
+        )
+
+    return render_template(
+        "analytics_monthly_matrix.html",
+        selected_year=selected_year,
+        available_years=available_years,
+        months=month_names,
+        matrix_rows=matrix_rows,
+        portfolio_row=portfolio_row,
+        benchmark_rows=benchmark_rows,
+        active_page="analytics",
+        active_subpage="monthly_matrix",
     )

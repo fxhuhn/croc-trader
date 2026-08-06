@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics — Monthlymatrix{% endblock %}
+
+{% block body_class %}bg-slate-100 md:bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
+
+{% set active_page = 'analytics' %}
+
+{% block content %}
+{% from "macros/navigation.html" import render_header with context %}
+{% from "macros/cards.html" import render_section_header %}
+
+<!-- Header -->
+{{ render_header("Analytics", "analytics", show_switcher=False, active_tab='monthly_matrix') }}
+
+{% set strategy_color_pills = {
+    'Croc Setup': 'bg-emerald-500',
+    'Dip Buyer': 'bg-indigo-500',
+    'Turnover': 'bg-amber-500',
+    'Two Percent': 'bg-purple-500',
+    'NDX Momentum': 'bg-rose-500',
+    'TGIM': 'bg-sky-500',
+    'Bridge Scout': 'bg-teal-500',
+    'Bounce Bandit': 'bg-violet-500'
+} %}
+
+<!-- MAIN CONTENT -->
+<main class="flex-grow pt-4 md:pt-8 pb-20 md:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+
+    <!-- Section 1 Header & Year Filter -->
+    <div class="flex flex-row items-center justify-between gap-4 mb-4">
+        <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
+            <i data-lucide="grid-3x3" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Monthlymatrix
+        </h2>
+
+        <!-- Year Selector -->
+        <form method="GET" action="/analytics/monthly-matrix" class="flex items-center gap-2 shrink-0">
+            <label for="year-select" class="text-xs font-bold text-slate-500 uppercase tracking-wider hidden xs:inline">Jahr:</label>
+            <div class="relative">
+                <select id="year-select" name="year" onchange="this.form.submit()"
+                        class="appearance-none bg-white border border-slate-200 rounded-xl px-3 py-1.5 pr-8 text-xs font-bold text-slate-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer">
+                    {% for y in available_years %}
+                    <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+            </div>
+        </form>
+    </div>
+
+    <!-- Section 1: Matrix Card Container -->
+    <section class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[850px]">
+                <!-- Table Header (1.5x padding: py-4) -->
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
+                        <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
+                            Strategie
+                        </th>
+                        {% for month in months %}
+                        <th class="py-4 px-1.5 text-center w-16">
+                            {{ month }}
+                        </th>
+                        {% endfor %}
+                        <th class="py-4 px-3 text-center w-20 bg-slate-100/70 text-slate-700 font-bold">
+                            Gesamt
+                        </th>
+                    </tr>
+                </thead>
+
+                <!-- Strategy Rows (Standard padding: py-2.5) -->
+                <tbody class="divide-y divide-slate-100 text-xs">
+                    {% for row in matrix_rows %}
+                    <tr class="hover:bg-slate-50/60 transition-colors">
+                        <!-- Strategy Name with Indicator Dot -->
+                        <td class="py-2.5 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10 truncate max-w-[190px]" title="{{ row.name }}">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_color_pills.get(row.name, 'bg-slate-400') }}"></div>
+                                <span class="truncate">{{ row.name }}</span>
+                            </div>
+                        </td>
+
+                        <!-- Monthly Return Cells -->
+                        {% for val in row.months %}
+                        <td class="p-1 text-center">
+                            <div class="py-1.5 px-1 rounded-lg text-xs tabular-nums text-center transition-all min-h-[28px] flex items-center justify-center
+                                {% if val > 3.0 %}
+                                    bg-emerald-500 text-white font-bold shadow-sm
+                                {% elif val > 0.0 %}
+                                    bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
+                                {% elif val == 0.0 %}
+                                    bg-transparent text-transparent font-normal
+                                {% elif val >= -3.0 %}
+                                    bg-rose-50 text-rose-700 font-semibold border border-rose-100
+                                {% else %}
+                                    bg-rose-500 text-white font-bold shadow-sm
+                                {% endif %}">
+                                {% if val > 0.0 %}+{{ "%.1f"|format(val) }}%{% elif val < 0.0 %}{{ "%.1f"|format(val) }}%{% else %}{% endif %}
+                            </div>
+                        </td>
+                        {% endfor %}
+
+                        <!-- Gesamt Cell -->
+                        <td class="p-1 text-center bg-slate-50/50">
+                            <div class="py-1.5 px-1 rounded-lg text-xs tabular-nums font-bold text-center min-h-[28px] flex items-center justify-center
+                                {% if row.gesamt > 3.0 %}
+                                    bg-emerald-500 text-white shadow-sm
+                                {% elif row.gesamt > 0.0 %}
+                                    bg-emerald-100 text-emerald-800 border border-emerald-200
+                                {% elif row.gesamt == 0.0 %}
+                                    bg-transparent text-transparent font-normal
+                                {% elif row.gesamt >= -3.0 %}
+                                    bg-rose-100 text-rose-800 border border-rose-200
+                                {% else %}
+                                    bg-rose-500 text-white shadow-sm
+                                {% endif %}">
+                                {% if row.gesamt > 0.0 %}+{{ "%.1f"|format(row.gesamt) }}%{% elif row.gesamt < 0.0 %}{{ "%.1f"|format(row.gesamt) }}%{% else %}{% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    <!-- Gesamt Portfolio Row (1.5x padding: py-4) -->
+                    <tr class="border-t-2 border-slate-200 bg-slate-50/80">
+                        <td class="py-4 px-4 font-bold text-slate-900 sticky left-0 bg-slate-50 z-10">
+                            <div class="flex items-center gap-2">
+                                <div class="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0"></div>
+                                <span>Portfolio</span>
+                            </div>
+                        </td>
+                        {% for val in portfolio_row.months %}
+                        <td class="p-1 text-center">
+                            <div class="py-2 px-1 rounded-lg text-xs tabular-nums text-center font-bold min-h-[30px] flex items-center justify-center
+                                {% if val > 3.0 %}
+                                    bg-emerald-500 text-white shadow-sm
+                                {% elif val > 0.0 %}
+                                    bg-emerald-100 text-emerald-800 border border-emerald-200
+                                {% elif val == 0.0 %}
+                                    bg-transparent text-transparent font-normal
+                                {% elif val >= -3.0 %}
+                                    bg-rose-100 text-rose-800 border border-rose-200
+                                {% else %}
+                                    bg-rose-500 text-white shadow-sm
+                                {% endif %}">
+                                {% if val > 0.0 %}+{{ "%.1f"|format(val) }}%{% elif val < 0.0 %}{{ "%.1f"|format(val) }}%{% else %}{% endif %}
+                            </div>
+                        </td>
+                        {% endfor %}
+                        <td class="p-1 text-center bg-slate-100">
+                            <div class="py-2 px-1 rounded-lg text-xs tabular-nums font-bold text-center min-h-[30px] flex items-center justify-center
+                                {% if portfolio_row.gesamt > 3.0 %}
+                                    bg-emerald-500 text-white shadow-sm
+                                {% elif portfolio_row.gesamt > 0.0 %}
+                                    bg-emerald-200 text-emerald-900 border border-emerald-300
+                                {% elif portfolio_row.gesamt == 0.0 %}
+                                    bg-transparent text-transparent font-normal
+                                {% elif portfolio_row.gesamt >= -3.0 %}
+                                    bg-rose-200 text-rose-900 border border-rose-300
+                                {% else %}
+                                    bg-rose-500 text-white shadow-sm
+                                {% endif %}">
+                                {% if portfolio_row.gesamt > 0.0 %}+{{ "%.1f"|format(portfolio_row.gesamt) }}%{% elif portfolio_row.gesamt < 0.0 %}{{ "%.1f"|format(portfolio_row.gesamt) }}%{% else %}{% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Section 2: Vergleichsindizes Header -->
+    <div class="mb-4">
+        <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
+            <i data-lucide="line-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Vergleichsindizes
+        </h2>
+    </div>
+
+    <!-- Section 2: Vergleichsindizes Card Container -->
+    <section class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[850px]">
+                <!-- Table Header (1.5x padding: py-4) -->
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
+                        <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
+                            Index
+                        </th>
+                        {% for month in months %}
+                        <th class="py-4 px-1.5 text-center w-16">
+                            {{ month }}
+                        </th>
+                        {% endfor %}
+                        <th class="py-4 px-3 text-center w-20 bg-slate-100/70 text-slate-700 font-bold">
+                            Gesamt
+                        </th>
+                    </tr>
+                </thead>
+
+                <!-- Benchmark Rows (SPY & QQQ) -->
+                <tbody class="divide-y divide-slate-100 text-xs">
+                    {% for row in benchmark_rows %}
+                    <tr class="hover:bg-slate-50/60 transition-colors">
+                        <td class="py-3 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10">
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="trending-up" class="w-3.5 h-3.5 text-indigo-500 shrink-0"></i>
+                                <span>{{ row.name }}</span>
+                            </div>
+                        </td>
+                        {% for val in row.months %}
+                        <td class="p-1 text-center">
+                            <div class="py-1.5 px-1 rounded-lg text-xs tabular-nums text-center transition-all min-h-[28px] flex items-center justify-center
+                                {% if val > 3.0 %}
+                                    bg-emerald-500 text-white font-bold shadow-sm
+                                {% elif val > 0.0 %}
+                                    bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
+                                {% elif val == 0.0 %}
+                                    bg-transparent text-transparent font-normal
+                                {% elif val >= -3.0 %}
+                                    bg-rose-50 text-rose-700 font-semibold border border-rose-100
+                                {% else %}
+                                    bg-rose-500 text-white font-bold shadow-sm
+                                {% endif %}">
+                                {% if val > 0.0 %}+{{ "%.1f"|format(val) }}%{% elif val < 0.0 %}{{ "%.1f"|format(val) }}%{% else %}{% endif %}
+                            </div>
+                        </td>
+                        {% endfor %}
+                        <td class="p-1 text-center bg-slate-50/50">
+                            <div class="py-1.5 px-1 rounded-lg text-xs tabular-nums font-bold text-center min-h-[28px] flex items-center justify-center
+                                {% if row.gesamt > 3.0 %}
+                                    bg-emerald-500 text-white shadow-sm
+                                {% elif row.gesamt > 0.0 %}
+                                    bg-emerald-100 text-emerald-800 border border-emerald-200
+                                {% elif row.gesamt == 0.0 %}
+                                    bg-transparent text-transparent font-normal
+                                {% elif row.gesamt >= -3.0 %}
+                                    bg-rose-100 text-rose-800 border border-rose-200
+                                {% else %}
+                                    bg-rose-500 text-white shadow-sm
+                                {% endif %}">
+                                {% if row.gesamt > 0.0 %}+{{ "%.1f"|format(row.gesamt) }}%{% elif row.gesamt < 0.0 %}{{ "%.1f"|format(row.gesamt) }}%{% else %}{% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+</main>
+
+{% include "partials/mobile_nav.html" with context %}
+{% endblock %}

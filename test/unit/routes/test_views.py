@@ -572,3 +572,36 @@ def test_view_trades_dip_buyer_history_omits_signal_label(
         # Verify no 'DipBuyer &bull;' or 'DipBuyer •' in history row
         assert b"DipBuyer &bull;" not in response.data
         assert b"DipBuyer \xe2\x80\xa2" not in response.data
+
+
+def test_view_analytics_monthly_matrix_returns_correct_response(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that the monthly matrix analytics view renders correctly."""
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.return_value = [
+            {
+                "exit_date": "2026-03-15",
+                "realized_pnl": 500.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 10,
+            }
+        ]
+        import pandas as pd
+
+        mock_service.market_repository.get_symbol_history_raw.return_value = (
+            pd.DataFrame()
+        )
+
+        response = test_client.get("/analytics/monthly-matrix?year=2026")
+
+        assert response.status_code == 200
+        assert b"Monthlymatrix" in response.data
+        assert b"Dip Buyer" in response.data
+        assert b"Gesamt Portfolio" in response.data
+        assert b"SPY (S&amp;P 500)" in response.data
+        assert b"QQQ (Nasdaq 100)" in response.data
