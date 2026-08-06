@@ -279,6 +279,9 @@ class MarketDataUpdater:
                 symbol, number_of_bars=n_bars
             )
             if not records:
+                logger.warning(
+                    "TradingView fallback yielded no records for symbol %s", symbol
+                )
                 if full_reload:
                     self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")
                     logger.warning(

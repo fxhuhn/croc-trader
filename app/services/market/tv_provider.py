@@ -79,8 +79,9 @@ class TradingViewDataProvider:
 
         if history_dataframe is None or history_dataframe.empty:
             logger.warning(
-                "TradingView returned empty data for %s",
+                "TradingView returned empty data for %s (exchanges tried: %s)",
                 standard_symbol,
+                ", ".join(exchanges_to_try),
             )
             return []
 
@@ -122,9 +123,15 @@ class TradingViewDataProvider:
                 )
                 if dataframe is not None and not dataframe.empty:
                     return dataframe
+                logger.warning(
+                    "TradingView returned no data for symbol %s (TV: %s) on exchange %s",
+                    standard_symbol,
+                    tv_symbol,
+                    exchange_name,
+                )
             except Exception as error:
-                logger.debug(
-                    "TradingView Download Error for %s (%s): %s",
+                logger.warning(
+                    "TradingView download error for symbol %s (%s): %s",
                     standard_symbol,
                     exchange_name,
                     error,
