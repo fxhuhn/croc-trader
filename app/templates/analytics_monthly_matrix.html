@@ -8,7 +8,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header with context %}
-{% from "macros/cards.html" import render_section_header %}
+{% from "macros/cards.html" import render_section_header, render_matrix_badge %}
 
 <!-- Header -->
 {{ render_header("Analytics", "analytics", show_switcher=False, active_tab='monthly_matrix') }}
@@ -84,24 +84,7 @@
                         <!-- Monthly Return Cells -->
                         {% for val in row.months %}
                         <td class="p-1 text-center">
-                            <div class="py-1.5 px-1 rounded-lg text-xs tabular-nums text-center transition-all min-h-[28px] flex items-center justify-center
-                                {% if val > 20.0 %}
-                                    bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-black
-                                {% elif val > 3.0 %}
-                                    bg-emerald-500 text-white font-bold shadow-sm
-                                {% elif val > 0.0 %}
-                                    bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
-                                {% elif val == 0.0 %}
-                                    bg-transparent text-transparent font-normal
-                                {% elif val >= -3.0 %}
-                                    bg-rose-50 text-rose-700 font-semibold border border-rose-100
-                                {% elif val >= -20.0 %}
-                                    bg-rose-500 text-white font-bold shadow-sm
-                                {% else %}
-                                    bg-rose-700 text-white font-black
-                                {% endif %}">
-                                {% if val > 0.0 %}+{{ "%.1f"|format(val) }}%{% elif val < 0.0 %}{{ "%.1f"|format(val) }}%{% else %}{% endif %}
-                            </div>
+                            {{ render_matrix_badge(val) }}
                         </td>
                         {% endfor %}
 
@@ -201,24 +184,7 @@
                         </td>
                         {% for val in row.months %}
                         <td class="p-1 text-center">
-                            <div class="py-1.5 px-1 rounded-lg text-xs tabular-nums text-center transition-all min-h-[28px] flex items-center justify-center
-                                {% if val > 20.0 %}
-                                    bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-black
-                                {% elif val > 3.0 %}
-                                    bg-emerald-500 text-white font-bold shadow-sm
-                                {% elif val > 0.0 %}
-                                    bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
-                                {% elif val == 0.0 %}
-                                    bg-transparent text-transparent font-normal
-                                {% elif val >= -3.0 %}
-                                    bg-rose-50 text-rose-700 font-semibold border border-rose-100
-                                {% elif val >= -20.0 %}
-                                    bg-rose-500 text-white font-bold shadow-sm
-                                {% else %}
-                                    bg-rose-700 text-white font-black
-                                {% endif %}">
-                                {% if val > 0.0 %}+{{ "%.1f"|format(val) }}%{% elif val < 0.0 %}{{ "%.1f"|format(val) }}%{% else %}{% endif %}
-                            </div>
+                            {{ render_matrix_badge(val) }}
                         </td>
                         {% endfor %}
                         <td class="p-1 text-center">

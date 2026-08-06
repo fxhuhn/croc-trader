@@ -656,3 +656,83 @@ def test_view_analytics_monthly_matrix_compounded_return(
         assert b"+8.0%" in response.data
         # Portfolio Month 1 average across 8 strategies (+20.0% / 8) shows +2.5%
         assert b"+2.5%" in response.data
+
+
+def test_view_analytics_monthly_matrix_badge_styles(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that monthly matrix badge styles match the required return threshold tiers."""
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        # Month 1: +2.0% (<= 3%)
+        # Month 2: +15.0% (3% to 20%)
+        # Month 3: +25.0% (> 20%)
+        # Month 4: -15.0% (-20% to -3%)
+        # Month 5: -25.0% (< -20%)
+        mock_service.get_trades.return_value = [
+            {
+                "exit_date": "2026-01-10",
+                "realized_pnl": 20.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 10,  # +2.0%
+            },
+            {
+                "exit_date": "2026-02-10",
+                "realized_pnl": 150.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 10,  # +15.0%
+            },
+            {
+                "exit_date": "2026-03-10",
+                "realized_pnl": 250.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 10,  # +25.0%
+            },
+            {
+                "exit_date": "2026-04-10",
+                "realized_pnl": -150.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 10,  # -15.0%
+            },
+            {
+                "exit_date": "2026-05-10",
+                "realized_pnl": -250.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 10,  # -25.0%
+            },
+        ]
+        import pandas as pd
+
+        mock_service.market_repository.get_symbol_history_raw.return_value = (
+            pd.DataFrame()
+        )
+
+        response = test_client.get("/analytics/monthly-matrix?year=2026")
+        assert response.status_code == 200
+
+        # Tier 1 (<= 3%): font-semibold
+        assert (
+            b"bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100"
+            in response.data
+        )
+
+        # Tier 2 (3% to 20%): font-bold (light bg)
+        assert (
+            b"bg-emerald-50 text-emerald-700 font-bold border border-emerald-100"
+            in response.data
+        )
+        assert (
+            b"bg-rose-50 text-rose-700 font-bold border border-rose-100"
+            in response.data
+        )
+
+        # Tier 3 (> 20%): dark area (bg-emerald-500 / bg-rose-500)
+        assert b"bg-emerald-500 text-white font-bold shadow-sm" in response.data
+        assert b"bg-rose-500 text-white font-bold shadow-sm" in response.data

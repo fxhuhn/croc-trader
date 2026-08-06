@@ -683,3 +683,24 @@ progress_current=none, progress_max=none) %}
 </section>
 {% endif %}
 {% endmacro %}
+
+{% macro render_matrix_badge(val) %}
+<div class="py-1.5 px-1 rounded-lg text-xs tabular-nums text-center transition-all min-h-[28px] flex items-center justify-center
+    {% if val > 20.0 %}
+        bg-emerald-500 text-white font-bold shadow-sm
+    {% elif val > 3.0 %}
+        bg-emerald-50 text-emerald-700 font-bold border border-emerald-100
+    {% elif val > 0.0 %}
+        bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100
+    {% elif val == 0.0 %}
+        bg-transparent text-transparent font-normal
+    {% elif val >= -3.0 %}
+        bg-rose-50 text-rose-700 font-semibold border border-rose-100
+    {% elif val >= -20.0 %}
+        bg-rose-50 text-rose-700 font-bold border border-rose-100
+    {% else %}
+        bg-rose-500 text-white font-bold shadow-sm
+    {% endif %}">
+    {% if val > 0.0 %}+{{ "%.1f"|format(val) }}%{% elif val < 0.0 %}{{ "%.1f"|format(val) }}%{% else %}{% endif %}
+</div>
+{% endmacro %}
