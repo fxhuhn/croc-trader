@@ -120,15 +120,6 @@ jobs:
         uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: requirements.txt
-          output-file: pip-audit.sarif
-          format: sarif
-
-      - name: Upload pip-audit SARIF report
-        uses: github/codeql-action/upload-sarif@v4
-        if: hashFiles('pip-audit.sarif') != ''
-        with:
-          sarif_file: pip-audit.sarif
-          category: pip-audit
 
   # Job 5: Vulture Dead Code Scan (parallel)
   vulture:
