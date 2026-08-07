@@ -1,10 +1,6 @@
 name: Docker Build and Push
 
 on:
-  workflow_run:
-    workflows: ["pytest", "Code Quality & Security"]
-    types: [completed]
-    branches: [next]
   push:
     branches: [ "next" ]
     tags: [ "v*.*.*" ]
@@ -12,9 +8,6 @@ on:
 
 jobs:
   docker:
-    if: >
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -24,22 +17,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-
-      # github.ref/github.ref_name zeigen bei workflow_run-Events auf den
-      # Default-Branch, NICHT auf den Branch des auslösenden Workflow-Runs.
-      # Deshalb den echten Branch-Namen explizit ermitteln und als eigenen
-      # Output bereitstellen, statt der metadata-action den Event-Kontext
-      # zu überlassen.
-      - name: Resolve source branch
-        id: branch
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_run" ]; then
-            echo "name=${{ github.event.workflow_run.head_branch }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -57,7 +34,8 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-            type=raw,value=${{ steps.branch.outputs.name }},enable=${{ github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/') }}
+            type=ref,event=branch
+            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
