@@ -7,10 +7,6 @@ env/
 venv/
 alt_*.py
 
-# SQLite
-*.db-wal
-*.db-shm
-
 # Caches & Testabdeckung
 .mypy_cache/
 .pytest_cache/
@@ -24,7 +20,7 @@ htmlcov/
 # Anwendungsdaten & Logs
 logs/
 data/
-*.db
+*.db*
 !.gitkeep
 
 # IDEs & Betriebssysteme
