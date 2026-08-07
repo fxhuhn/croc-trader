@@ -365,7 +365,7 @@
                 <div class="flex justify-between items-center md:contents">
                     <span class="text-xs md:text-sm uppercase md:normal-case font-bold md:font-semibold text-slate-500 md:text-slate-900 tracking-wider md:tracking-normal md:order-1">Overall <span class="hidden md:inline">(Unique)</span></span>
                     <span class="text-sm font-bold text-slate-700 md:text-slate-900 {{ 'md:text-emerald-600' if (total_summary.total_pnl|default(0)) >= 0 else 'md:text-rose-600' }} md:order-4 md:text-right tabular-nums">
-                        {{ "{:+,.2f}".format(total_summary.total_pnl|default(0)) }}
+                        {{ "{:+,.0f}".format(total_summary.total_pnl|default(0)) }}
                     </span>
                 </div>
                 <div class="flex justify-between items-center md:contents mt-0.5 md:mt-0">

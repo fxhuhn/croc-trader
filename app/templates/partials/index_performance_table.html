@@ -41,7 +41,7 @@
             </td>
             <td
                 class="px-6 py-4 text-right border-none {{ 'text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'text-rose-500/90' }}">
-                {{ "{:+,.2f}".format(closed_summary.total_pnl) }} $
+                {{ "{:+,.0f}".format(closed_summary.total_pnl) }} $
             </td>
         </tr>
     </tfoot>
