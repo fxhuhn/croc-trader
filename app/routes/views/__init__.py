@@ -4,7 +4,7 @@ Collects and registers all views and controllers under the views blueprint.
 """
 
 # Import sub-modules to register their respective route endpoints on views_bp
-from . import analytics, backtest, screener, trades  # noqa
+from . import analytics, screener, trades  # noqa
 from .blueprint import views_bp
 
 # Re-expose blueprint for application aggregator registration

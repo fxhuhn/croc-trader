@@ -10,9 +10,6 @@ from ...database.session import DatabaseSession
 
 # Re-expose classes used by views sub-modules for clean importing
 from ...extensions import cache  # noqa
-from ...models import BacktestMetrics
-from ...services.backtester.analytics import BacktestAnalytics  # noqa
-from ...services.backtester.backtest_results import ResultsPersistence  # noqa
 from ...services.screener.view_service import ScreenerViewService
 from ...services.trade_manager.view_service import TradeViewService
 
@@ -73,80 +70,6 @@ def _get_trade_view_service() -> TradeViewService:
         market_repository=MarketRepository(stocks_session),
         broker_repository=BrokerRepository(trading_session),
     )
-
-
-def _get_backtest_database_path() -> Path:
-    """Retrieves the absolute path to the backtests database.
-
-    Returns:
-        Path: Absolute path pointing to the backtests SQLite database.
-    """
-    signals_database_path = _get_database_path("signals")
-    return signals_database_path.parent / "backtest.db"
-
-
-def _prepare_backtest_metrics(summary_data: dict[str, object]) -> BacktestMetrics:
-    """Maps raw summary dictionary data to a typed BacktestMetrics object.
-
-    Args:
-        summary_data: Dictionary containing raw metrics from backtest results.
-
-    Returns:
-        BacktestMetrics: Highly-structured populated metrics object.
-    """
-
-    # Mapping helper helper for types
-    def get_float(key: str) -> float:
-        value = summary_data.get(key, 0.0)
-        return float(value) if value is not None else 0.0
-
-    def get_int(key: str) -> int:
-        value = summary_data.get(key, 0)
-        return int(value) if value is not None else 0
-
-    return BacktestMetrics(
-        total_trades=get_int("total_trades"),
-        win_rate=get_float("win_rate"),
-        profit_factor=get_float("profit_factor"),
-        net_profit=get_float("net_profit"),
-        maximum_drawdown=get_float("maximum_drawdown"),
-        sharpe_ratio=get_float("sharpe_ratio"),
-        expectancy=get_float("expectancy"),
-        system_quality_number=get_float("sqn"),
-        kelly_safe=get_float("kelly_safe"),
-        strategy_return=get_float("strategy_return"),
-        benchmark_return=get_float("benchmark_return"),
-        kelly_criterion=get_float("kelly_safe"),
-        average_win=0.0,
-        average_loss=0.0,
-        average_maximum_adverse_excursion=0.0,
-        average_maximum_favorable_excursion=0.0,
-        risk_of_ruin=0.0,
-        kelly_mean=0.0,
-        kelly_std=0.0,
-        market_exposure_pct=get_float("market_exposure_pct"),
-        risk_adjusted_benchmark=0.0,
-        exposure_efficiency=0.0,
-        return_over_maximum_drawdown=0.0,
-        diversification_score=get_float("diversification_score"),
-    )
-
-
-def _prepare_strategy_metrics(
-    strategy_list: list[dict[str, object]],
-) -> dict[str, BacktestMetrics]:
-    """Converts strategy metrics records into BacktestMetrics map.
-
-    Args:
-        strategy_list: List of raw strategy metrics records from database.
-
-    Returns:
-        dict[str, BacktestMetrics]: Named mapping of strategies to metrics.
-    """
-    return {
-        str(strategy["strategy_name"]): _prepare_backtest_metrics(strategy)
-        for strategy in strategy_list
-    }
 
 
 def generate_sparkline(

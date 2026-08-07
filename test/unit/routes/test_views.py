@@ -375,26 +375,6 @@ def test_view_analytics_dashboard_handles_corrupted_data_gracefully(
         assert b"Analytics" in response.data
 
 
-def test_view_backtest_dashboard_handles_missing_run_id_gracefully(
-    test_client: FlaskClient,
-) -> None:
-    """Verifies backtest route handles missing run identifier gracefully."""
-    # Arrange
-    with (
-        patch("app.routes.views.backtest._get_database_path"),
-        patch("app.routes.views.backtest._get_backtest_database_path"),
-        patch("app.routes.views.backtest.ResultsPersistence") as mock_persistence,
-    ):
-        mock_persistence.return_value.get_latest_run_id.return_value = None
-
-        # Act
-        response = test_client.get("/backtest")
-
-        # Assert
-        assert response.status_code == 200
-        assert b"No backtest results found." in response.data
-
-
 def test_prepare_active_orders_hierarchical_sorting_and_child_marking() -> None:
     """Verifies that active orders are sorted ascending by order_id, grouped by trade_group_id,
     and child orders are properly flagged depending on whether their parent is open.
