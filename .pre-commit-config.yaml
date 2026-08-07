@@ -39,9 +39,17 @@ repos:
 
   - repo: local
     hooks:
+      - id: root-clean-check
+        name: Root Clean Check (No .db files in root)
+        entry: >-
+          python3 -c "from pathlib import Path; import sys; db=[f.name for f in Path('.').glob('*.db*') if f.name!='trading.db']; sys.exit(f'Forbidden root DB files: {db}') if db else None"
+        language: system
+        pass_filenames: false
+
+  - repo: local
+    hooks:
       - id: architecture-sync-check
         name: Architecture Sync Check
         entry: python3 .agents/skills/architecture-sync/scripts/check_sync.py
         language: system
         pass_filenames: false
-

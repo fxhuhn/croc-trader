@@ -1,13 +1,17 @@
-# filename: test_api.py
+# filename: test_api_legacy.py
+import threading
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
+from flask import Flask
+from flask.testing import FlaskClient
 
 from app.database.session import DatabaseSession
 
 
 @pytest.fixture
-def app():
+def app() -> Flask:
     """Provides the Flask application instance."""
     from app import create_app
 
@@ -25,18 +29,17 @@ def app():
 
 
 @pytest.fixture
-def client(app):
+def client(app: Flask) -> FlaskClient:
     return app.test_client()
 
 
-def test_health_check(client):
+def test_health_check(client: FlaskClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
 
 
-def test_webhook_ingest(client):
+def test_webhook_ingest(client: FlaskClient) -> None:
     payload = {"symbol": "AAPL", "signal": "LONG"}
-    # Patching both Repo and Session to avoid DB hits, enforcing exact DatabaseSession spec
     with (
         patch("app.routes.api.SignalRepository") as mock_repo,
         patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
@@ -50,7 +53,7 @@ def test_webhook_ingest(client):
     assert response.status_code == 201
 
 
-def test_screener_run_all(client, app):
+def test_screener_run_all(client: FlaskClient, app: Flask) -> None:
     mock_engine = app.extensions["screener_engine"]
     mock_engine.run_all.return_value = {"trades_count": 0}
 
@@ -61,7 +64,7 @@ def test_screener_run_all(client, app):
     mock_engine.run_all.assert_called_once()
 
 
-def test_trades_backfill(client, app):
+def test_trades_backfill(client: FlaskClient, app: Flask) -> None:
     mock_tm = app.extensions["trade_manager"]
 
     response = client.post(
@@ -71,9 +74,7 @@ def test_trades_backfill(client, app):
     mock_tm.run_daily_process.assert_called_once()
 
 
-def test_market_sync(client):
-    import threading
-
+def test_market_sync(client: FlaskClient) -> None:
     with (
         patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
         patch("app.routes.api.MarketDataUpdater") as mock_updater_class,
@@ -86,14 +87,14 @@ def test_market_sync(client):
         assert response.status_code == 202
         assert response.json["status"] == "accepted"
 
-        # Verify thread target executes in an isolated thread without application context errors
-        target_fn = mock_thread_class.call_args.kwargs.get("target")
-        thread_error = None
+        target_fn = cast(Any, mock_thread_class.call_args.kwargs.get("target"))
+        thread_error: Exception | None = None
 
         def run_in_thread() -> None:
             nonlocal thread_error
             try:
-                target_fn()
+                if target_fn:
+                    target_fn()
             except Exception as exc:
                 thread_error = exc
 
@@ -109,9 +110,7 @@ def test_market_sync(client):
         mock_quality_class.return_value.check_last_trading_day_completeness.assert_called_once()
 
 
-def test_market_reload(client):
-    import threading
-
+def test_market_reload(client: FlaskClient) -> None:
     with (
         patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
         patch("app.routes.api.MarketDataUpdater") as mock_updater_class,
@@ -124,14 +123,14 @@ def test_market_reload(client):
         assert response.status_code == 200
         assert response.json["status"] == "queued"
 
-        # Verify thread target executes in an isolated thread without application context errors
-        target_fn = mock_thread_class.call_args.kwargs.get("target")
-        thread_error = None
+        target_fn = cast(Any, mock_thread_class.call_args.kwargs.get("target"))
+        thread_error: Exception | None = None
 
         def run_in_thread() -> None:
             nonlocal thread_error
             try:
-                target_fn()
+                if target_fn:
+                    target_fn()
             except Exception as exc:
                 thread_error = exc
 
@@ -147,7 +146,9 @@ def test_market_reload(client):
         mock_quality_class.return_value.check_last_trading_day_completeness.assert_called_once()
 
 
-def test_market_reload_with_custom_provider_and_ignore_today(client):
+def test_market_reload_with_custom_provider_and_ignore_today(
+    client: FlaskClient,
+) -> None:
     with (
         patch("app.routes.api.DatabaseSession", spec=DatabaseSession),
         patch("app.routes.api.MarketDataUpdater") as mock_updater_class,
@@ -160,8 +161,9 @@ def test_market_reload_with_custom_provider_and_ignore_today(client):
         )
         assert response.status_code == 200
 
-        target_fn = mock_thread_class.call_args.kwargs.get("target")
-        target_fn()
+        target_fn = cast(Any, mock_thread_class.call_args.kwargs.get("target"))
+        if target_fn:
+            target_fn()
 
         mock_updater_class.return_value.run_update.assert_called_once_with(
             full_reload=True, provider_mode="tradingview", ignore_today=True

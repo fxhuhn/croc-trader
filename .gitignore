@@ -12,6 +12,7 @@ alt_*.py
 *.db-shm
 
 # Caches & Testabdeckung
+.mypy_cache/
 .pytest_cache/
 .ruff_cache/
 .coverage
