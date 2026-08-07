@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   security-events: write
+  pull-requests: write
 
 jobs:
   # Job 1: Ruff Linting & Formatting (schnell)
@@ -175,4 +176,29 @@ jobs:
 
       - name: Run Mypy
         run: mypy app
+
+  # Job 7: Gitleaks Security Scan (parallel)
+  gitleaks:
+    name: Gitleaks Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --report-format sarif --report-path gitleaks-results.sarif
+
+      - name: Upload Gitleaks SARIF report
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: gitleaks-results.sarif
+          category: gitleaks
+
 

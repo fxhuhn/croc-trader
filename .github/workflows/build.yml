@@ -1,15 +1,19 @@
 name: Docker Build and Push
 
 on:
+  workflow_run:
+    workflows: ["pytest", "Code Quality & Security"]
+    types: [completed]
+    branches: [next]
   push:
-    branches: [ "next" ]
     tags: [ "v*.*.*" ]
-  pull_request:
-    branches: [ "next" ]
   workflow_dispatch:
 
-jobs:
+jobs: 
   docker:
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
