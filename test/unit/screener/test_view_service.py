@@ -135,3 +135,60 @@ def test_ndx_momentum_position_status_new_and_hold(mock_signal_repository):
             pytest.importorskip("app.const").TradeStatus.ACTIVE,
         ],
     )
+
+
+def test_parse_context_variations(mock_signal_repository: MagicMock) -> None:
+    service = ScreenerViewService(mock_signal_repository)
+
+    # Case 1: Dict
+    assert service._parse_context({"key": "val"}) == {"key": "val"}
+
+    # Case 2: None / Empty
+    assert service._parse_context(None) == {}
+    assert service._parse_context("") == {}
+
+    # Case 3: Invalid JSON
+    assert service._parse_context("invalid json") == {}
+
+
+def test_harmonize_indices() -> None:
+    assert ScreenerViewService.harmonize_indices(None) == "-"
+    assert ScreenerViewService.harmonize_indices("") == "-"
+
+    result = ScreenerViewService.harmonize_indices("NASDAQ_100, SP_500, UNKNOWN_INDEX")
+    assert result == "NDX, SPX, UNKNOWN INDEX"
+
+
+def test_croc_candidates_fetching(mock_signal_repository: MagicMock) -> None:
+    service = ScreenerViewService(mock_signal_repository)
+
+    mock_signal_repository.get_trade_candidates.return_value = [
+        {
+            "id": 101,
+            "symbol": "AAPL",
+            "strategy": str(Strategies.HoldTarget),
+            "signal_context": '{"date": "2026-08-01 10:00:00"}',
+            "created_at": "2026-08-01T10:00:00Z",
+        }
+    ]
+
+    candidates = service.get_candidates(Strategies.CrocSetup)
+    assert len(candidates) == 1
+    assert candidates[0]["symbol"] == "AAPL"
+    assert candidates[0]["display_date"] == "2026-08-01"
+
+
+def test_candidates_missing_date_fallback(mock_signal_repository: MagicMock) -> None:
+    service = ScreenerViewService(mock_signal_repository)
+
+    mock_signal_repository.get_trade_candidates.return_value = [
+        {
+            "id": 201,
+            "symbol": "MSFT",
+            "strategy": str(Strategies.DipBuyer),
+            "signal_context": "{}",
+        }
+    ]
+
+    candidates = service.get_candidates(Strategies.DipBuyer)
+    assert candidates[0]["display_date"] == "-"

@@ -1,3 +1,4 @@
+from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -118,3 +119,72 @@ def test_market_updater_process_batch_identifies_empty_data_as_failure() -> None
     updater.repo.ignore_symbol.assert_called_once_with(
         "PSTG", "No Data (Yahoo & TradingView)"
     )
+
+
+def test_market_updater_run_update_full_reload_clears_ignored_symbols() -> None:
+    session = MagicMock(spec=DatabaseSession)
+    updater = MarketDataUpdater(session)
+    updater.repo = MagicMock(spec=MarketRepository)
+    updater.repo.get_ignored_symbols.return_value = set()
+    updater.repo.get_all_known_symbols.return_value = ["AAPL"]
+    updater.provider = MagicMock(spec=YahooDataProvider)
+    updater.provider.fetch_batch_raw.return_value = (pd.DataFrame(), [])
+
+    updater.run_update(full_reload=True, specific_symbols=None)
+
+    updater.repo.clear_ignored_symbols.assert_called_once()
+
+
+def test_market_updater_provider_mode_tradingview() -> None:
+    session = MagicMock(spec=DatabaseSession)
+    updater = MarketDataUpdater(session)
+    updater.repo = MagicMock(spec=MarketRepository)
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+    updater.tv_provider.fetch_symbol_history.return_value = [
+        {
+            "date": "2026-08-01",
+            "open": 100,
+            "high": 105,
+            "low": 99,
+            "close": 102,
+            "volume": 1000,
+        }
+    ]
+
+    count = updater._process_batch(
+        ["AAPL"], "2026-08-01", full_reload=False, provider_mode="tradingview"
+    )
+
+    assert count == 1
+    updater.repo.save_bulk_prices.assert_called_once()
+
+
+def test_market_updater_ignore_today_skips_today_bars() -> None:
+    session = MagicMock(spec=DatabaseSession)
+    updater = MarketDataUpdater(session)
+    updater.repo = MagicMock(spec=MarketRepository)
+    updater.provider = MagicMock(spec=YahooDataProvider)
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+    updater.tv_provider.fetch_symbol_history.return_value = []
+
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    columns = pd.MultiIndex.from_tuples([("AAPL", "Close")])
+    mock_batch_df = pd.DataFrame(
+        [[150.0]], index=[pd.Timestamp(today_str)], columns=columns
+    )
+
+    updater.provider.fetch_batch_raw.return_value = (mock_batch_df, [])
+
+    mock_sym_df = pd.DataFrame({"close": [150.0]}, index=[pd.Timestamp(today_str)])
+    updater.provider.extract_symbol_data.return_value = mock_sym_df
+
+    count = updater._process_batch(
+        ["AAPL"],
+        "2026-08-01",
+        full_reload=False,
+        provider_mode="yahoo",
+        ignore_today=True,
+    )
+
+    assert count == 0

@@ -87,3 +87,42 @@ def test_verify_ranking_system_file_not_found(
         verify_ranking_system(missing_file, repo)
 
     assert "not found" in caplog.text
+
+
+def test_verify_ranking_system_exception_handling(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    corrupt_file = tmp_path / "corrupt.yaml"
+    corrupt_file.write_text("invalid: yaml: [", encoding="utf-8")
+    db_file = tmp_path / "test.db"
+    session = DatabaseSession(str(db_file))
+    repo = SignalRepository(session)
+
+    with caplog.at_level(logging.ERROR):
+        verify_ranking_system(corrupt_file, repo)
+
+    assert "Ranking check error" in caplog.text
+
+
+def test_check_ranking_attributes_edge_cases() -> None:
+    # Non-dict and invalid structures
+    results_invalid_type = check_ranking_attributes(12345, {})  # type: ignore[arg-type]
+    assert results_invalid_type == []
+
+    list_with_invalid_items = [
+        "not_a_dict",
+        {"Signal": ""},
+        {"Signal": "  "},
+        {"Status": None},
+    ]
+    results_list = check_ranking_attributes(list_with_invalid_items, {})
+    assert results_list == []
+
+    dict_with_invalid_rules = {
+        "ValidSignal": "not_a_dict_rules",
+        "SignalWithScore": {"Score": 100},
+        "OtherSignal": {"Status": "Active"},
+    }
+    results_dict = check_ranking_attributes(dict_with_invalid_rules, {})
+    result_map = {res.attribute_key: res for res in results_dict}
+    assert "SignalWithScore" in result_map["Signal"].missing_values

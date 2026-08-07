@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pytest
 
@@ -65,3 +65,51 @@ def test_build_mapping_handling(tmp_path: Path) -> None:
         mock_ticker.side_effect = Exception("Service unavailable")
         res = sf._build_mapping(["SPY", "AAPL"])
         assert res == {}
+
+
+def test_build_mapping_rate_limit_429() -> None:
+    sf = SymbolFilter()
+
+    def side_effect(sym: str) -> MagicMock:
+        mock_inst = MagicMock()
+        if sym == "SPY":
+            mock_inst.info = {"longName": "SPY ETF"}
+            return mock_inst
+        mock_inst.info = {}
+        type(mock_inst).info = PropertyMock(
+            side_effect=Exception("429 Too Many Requests")
+        )
+        return mock_inst
+
+    with patch("app.tools.symbol_filter.yf.Ticker") as mock_ticker:
+        mock_ticker.side_effect = side_effect
+        res = sf._build_mapping(["SPY", "AAPL"])
+        assert res == {}
+
+
+def test_build_mapping_duplicates_sorting() -> None:
+    sf = SymbolFilter()
+
+    def side_effect(sym: str) -> MagicMock:
+        mock_inst = MagicMock()
+        if sym == "GOOG":
+            mock_inst.info = {"longName": "Alphabet Inc", "averageVolume": 1000000}
+        elif sym == "GOOGL":
+            mock_inst.info = {"longName": "Alphabet Inc", "averageVolume": 500000}
+        else:
+            mock_inst.info = {"longName": "SPY ETF", "averageVolume": 100}
+        return mock_inst
+
+    with patch("app.tools.symbol_filter.yf.Ticker", side_effect=side_effect):
+        res = sf._build_mapping(["GOOG", "GOOGL"])
+        assert res == {"GOOG": ["GOOGL"]}
+
+
+def test_symbol_filter_cache_load_error(tmp_path: Path) -> None:
+    sf = SymbolFilter()
+    corrupt_cache = tmp_path / "corrupt.json"
+    corrupt_cache.write_text("invalid json {", encoding="utf-8")
+
+    with patch("app.tools.symbol_filter.CACHE_FILE", corrupt_cache):
+        sf._load_from_cache()
+        # Does not raise, gracefully handles

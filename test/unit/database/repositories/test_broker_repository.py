@@ -205,3 +205,52 @@ def test_tws_status_and_helpers_edge_cases(broker_session: DatabaseSession) -> N
 
     price_fallback_empty = repo._resolve_latest_price_fallback("UNKNOWN", [])
     assert price_fallback_empty == 0.0
+
+
+def test_determine_tws_status_presubmitted_and_submitted(
+    broker_session: DatabaseSession,
+) -> None:
+    repo = BrokerRepository(broker_session)
+
+    with broker_session.connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO orders (order_id, trade_group_id, account_id, symbol, action, quantity, order_type, strategy_name, status)
+            VALUES (601, '601_DipBuyer_META', 'U12345', 'META', 'BUY', 10, 'LMT', 'DipBuyer', 'PreSubmitted'),
+                   (602, '602_Turnover_AMD', 'U12345', 'AMD', 'BUY', 15, 'LMT', 'TurnoverTiming', 'Submitted')
+            """
+        )
+
+    status_meta, orders_meta = repo._determine_tws_status("601_DipBuyer_META")
+    assert status_meta == "PreSubmitted"
+    assert len(orders_meta) == 1
+
+    status_amd, orders_amd = repo._determine_tws_status("602_Turnover_AMD")
+    assert status_amd == "Submitted"
+    assert len(orders_amd) == 1
+
+
+def test_get_active_positions_non_numeric_trade_group_id(
+    broker_session: DatabaseSession,
+) -> None:
+    repo = BrokerRepository(broker_session)
+
+    with broker_session.connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO orders (order_id, trade_group_id, account_id, symbol, action, quantity, order_type, strategy_name, status)
+            VALUES (701, 'custom_group_NFLX', 'U12345', 'NFLX', 'BUY', 5, 'LMT', 'TurnoverTiming', 'Filled')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO executions (exec_id, order_id, price, qty, commission, executed_at)
+            VALUES ('exec-701', 701, 600.0, 5, 1.0, '2026-08-05T10:00:00Z')
+            """
+        )
+
+    active = repo.get_active_positions()
+    assert len(active) == 1
+    assert active[0]["id"] == 0
+    assert active[0]["symbol"] == "NFLX"
+    assert active[0]["entry_price"] == 600.0
