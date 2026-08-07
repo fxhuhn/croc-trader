@@ -109,3 +109,14 @@ def test_warm_single_route() -> None:
     mock_client.get.return_value.status_code = 200
     _warm_single_route(mock_client, "/analytics")
     mock_client.get.assert_called_once_with("/analytics")
+
+
+def test_prewarm_target_routes_includes_monthly_matrix() -> None:
+    app = Flask(__name__)
+    with patch("app.tasks._warm_single_route") as mock_warm:
+        from app.tasks import _prewarm_target_routes
+
+        _prewarm_target_routes(app)
+        mock_warm.assert_any_call(
+            mock_warm.call_args_list[0][0][0], "/analytics/monthly-matrix"
+        )

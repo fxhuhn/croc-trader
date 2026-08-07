@@ -204,6 +204,7 @@ def _prewarm_target_routes(app: Flask) -> None:
     """
     target_routes: list[str] = [
         "/analytics",
+        "/analytics/monthly-matrix",
         "/trades",
         "/trades/croc",
         "/trades/dip-buyer",
