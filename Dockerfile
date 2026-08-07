@@ -21,7 +21,8 @@ RUN adduser --disabled-password --gecos "" appuser && \
 
 # Python-Abhängigkeiten installieren
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Anwendungsdateien direkt mit den richtigen Rechten kopieren
 COPY --chown=appuser:appuser . .
