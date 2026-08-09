@@ -59,7 +59,7 @@ jobs:
           image-ref: '${{ github.event.repository.name }}:test'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          exit-code: '0'
+          exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
