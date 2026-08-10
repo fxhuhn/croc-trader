@@ -184,14 +184,24 @@ def test_run_db_backup_exception(tmp_path: Path) -> None:
         run_db_backup(db_path)
 
 
+def test_clear_and_prewarm_cache_skips_in_pytest_mode() -> None:
+    app = Flask(__name__)
+    app.debug = False
+    app.testing = False
+
+    with patch("app.tasks.cache.clear") as mock_clear:
+        _clear_and_prewarm_cache(app)
+        mock_clear.assert_not_called()
+
+
 def test_clear_and_prewarm_cache_prod_mode() -> None:
     app = Flask(__name__)
     app.debug = False
     app.testing = False
 
     with (
-        patch.dict("sys.modules", {"pytest": None}),
-        patch.dict("os.environ", {}, clear=True),
+        patch("sys.modules", {}),
+        patch("os.environ.get", return_value=None),
         patch("app.tasks.cache.clear") as mock_clear,
         patch("app.tasks._prewarm_target_routes") as mock_prewarm,
     ):
