@@ -1,0 +1,7 @@
+# Entwicklungs- und Testabhängigkeiten für Croc-Trader
+-r requirements.txt
+
+pytest>=9.1.1
+pytest-cov>=7.1.0
+ruff>=0.9.0
+mypy>=1.14.0
