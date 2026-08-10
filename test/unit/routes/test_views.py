@@ -15,6 +15,7 @@ from flask import Flask
 from flask.testing import FlaskClient
 
 from app.const import Strategies
+from app.types import TradeStatus
 
 
 @pytest.fixture
@@ -630,9 +631,11 @@ def test_view_analytics_monthly_matrix_portfolio_models(
 
         # Section header rendered
         assert b"Portfoliomodell" in response.data
-        # Standard and Frequenz-Modell labels
+        # Standard, Frequenz-Modell, and Risikoadjustiertes Modell labels
         assert b"Standard" in response.data
         assert b"Frequenz-Modell (EV/M)" in response.data
+        assert b"Risikoadjustiert (Max-Sharpe)" in response.data
+        assert b"Risikoadjustiert (Risk Parity)" in response.data
 
 
 def test_view_analytics_monthly_matrix_compounded_return(
@@ -763,3 +766,228 @@ def test_view_analytics_monthly_matrix_badge_styles(
         # Tier 3 (> 20%): dark area (bg-emerald-500 / bg-rose-500)
         assert b"bg-emerald-500 text-white font-bold shadow-sm" in response.data
         assert b"bg-rose-500 text-white font-bold shadow-sm" in response.data
+
+
+def test_view_analytics_dashboard_edge_cases(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies edge case branches in view_analytics_dashboard including active trades, exposure scaling, and old trades."""
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+
+        # Trades before 2026-01-01 (tests chart_dataframe.empty branch)
+        mock_service.get_trades.side_effect = lambda status, **kwargs: (
+            [
+                {
+                    "id": 1,
+                    "exit_date": "2025-11-10",
+                    "realized_pnl": 500.0,
+                    "strategy": "dip_buyer",
+                    "entry_price": 50.0,
+                    "initial_size": 100,
+                    "entry_date": "2025-11-01",
+                    "stop_loss": 45.0,
+                },
+                {
+                    "id": 2,
+                    "exit_date": "2025-12-10",
+                    "realized_pnl": -200.0,
+                    "strategy": "croc",
+                    "entry_price": 100.0,
+                    "initial_size": 10,
+                    "entry_date": "2025-12-01",
+                    "stop_loss": 90.0,
+                },
+                {
+                    "id": 3,
+                    "exit_date": "2025-12-20",
+                    "realized_pnl": 0.0,
+                    "strategy": "turnover_timing_1.0",
+                    # missing entry_price/stop_loss to test has_valid_risk = False
+                },
+            ]
+            if status == TradeStatus.CLOSED
+            else [
+                {
+                    "id": 10,
+                    "strategy": "dip_buyer",
+                    "unrealized_pnl": 150.0,
+                    "entry_price": 50.0,
+                    "quantity": 10,
+                    "entry_date": "2026-02-01",
+                },
+                {
+                    "id": 11,
+                    "strategy": "unknown_invalid_strategy",
+                    "unrealized_pnl": None,
+                    "entry_date": "invalid-date-string",
+                },
+            ]
+        )
+        mock_service.resolve_strategy.side_effect = lambda t: t.get("strategy")
+
+        response = test_client.get("/analytics")
+        assert response.status_code == 200
+        assert b"Strategy Overview" in response.data
+
+
+def test_view_analytics_monthly_matrix_benchmarks_and_year_handling(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies monthly matrix year parsing fallback and benchmark data quotes rendering."""
+    import pandas as pd
+
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.return_value = [
+            {
+                "exit_date": "2026-01-10",
+                "realized_pnl": 100.0,
+                "strategy": "dip_buyer",
+                "entry_price": 100.0,
+                "initial_size": 10,
+                "entry_date": "2026-01-01",
+            }
+        ]
+
+        # Return mock SPY and QQQ daily quotes DataFrame
+        dates = pd.date_range("2026-01-01", "2026-12-31", freq="B")
+        mock_benchmark_df = pd.DataFrame(
+            {
+                "date": dates.strftime("%Y-%m-%d"),
+                "open": [400.0 + i * 0.1 for i in range(len(dates))],
+                "close": [401.0 + i * 0.1 for i in range(len(dates))],
+            }
+        )
+        mock_service.market_repository.get_symbol_history_raw.return_value = (
+            mock_benchmark_df
+        )
+
+        # Invalid year string query parameter (tests ValueError fallback)
+        response = test_client.get("/analytics/monthly-matrix?year=invalid_year")
+        assert response.status_code == 200
+        assert b"SPY (S&amp;P 500)" in response.data
+        assert b"QQQ (Nasdaq 100)" in response.data
+
+
+def test_calculate_mean_variance_helpers_empty_and_invalid_inputs() -> None:
+    """Verifies _calculate_mean_variance_allocations and _calculate_mean_variance_dashboard_data edge cases."""
+    import pandas as pd
+
+    from app.routes.views.analytics import (
+        _calculate_mean_variance_allocations,
+        _calculate_mean_variance_dashboard_data,
+    )
+
+    strategy_groups = {"Dip Buyer": ["dip_buyer"], "Croc": ["croc"]}
+
+    # Empty DataFrame
+    empty_df = pd.DataFrame()
+    allocs_empty = _calculate_mean_variance_allocations(empty_df, strategy_groups)
+    assert allocs_empty == {"Dip Buyer": 0.5, "Croc": 0.5}
+
+    dash_empty = _calculate_mean_variance_dashboard_data(empty_df, strategy_groups)
+    assert dash_empty["has_low_data"] is True
+    assert len(dash_empty["strategies"]) == 2
+
+    # DataFrame missing 'strategy' column
+    no_strat_df = pd.DataFrame({"realized_pnl": [10.0, 20.0]})
+    allocs_no_strat = _calculate_mean_variance_allocations(no_strat_df, strategy_groups)
+    assert allocs_no_strat == {"Dip Buyer": 0.5, "Croc": 0.5}
+
+    dash_no_strat = _calculate_mean_variance_dashboard_data(
+        no_strat_df, strategy_groups
+    )
+    assert dash_no_strat["has_low_data"] is True
+
+    # DataFrame with fewer than 2 return observations per strategy
+    single_trade_df = pd.DataFrame(
+        [
+            {
+                "strategy": "dip_buyer",
+                "realized_pnl": 10.0,
+                "entry_price": 100.0,
+                "initial_size": 1,
+            }
+        ]
+    )
+    allocs_single = _calculate_mean_variance_allocations(
+        single_trade_df, strategy_groups
+    )
+    assert allocs_single == {"Dip Buyer": 0.5, "Croc": 0.5}
+
+
+def test_view_analytics_dashboard_kelly_scaling_and_active_trades(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies exposure scaling when Kelly > 1.0, active trade zero investment, and benchmark exception handling."""
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+
+        # High win-rate trades to produce large Kelly criterion (> 1.0 total proposed exposure)
+        mock_service.get_trades.side_effect = lambda status, **kwargs: (
+            [
+                {
+                    "id": 1,
+                    "exit_date": "2026-01-10",
+                    "realized_pnl": 500.0,
+                    "strategy": "dip_buyer",
+                    "entry_price": 50.0,
+                    "initial_size": 100,  # +10%
+                    "entry_date": "2026-01-01",
+                    "stop_loss": 45.0,
+                },
+                {
+                    "id": 2,
+                    "exit_date": "2026-01-20",
+                    "realized_pnl": 600.0,
+                    "strategy": "dip_buyer",
+                    "entry_price": 50.0,
+                    "initial_size": 100,  # +12%
+                    "entry_date": "2026-01-15",
+                    "stop_loss": 45.0,
+                },
+            ]
+            if status == TradeStatus.CLOSED
+            else [
+                {
+                    "id": 10,
+                    "strategy": "dip_buyer",
+                    "unrealized_pnl": 50.0,
+                    "entry_price": 0.0,  # zero inv branch
+                    "quantity": 0.0,
+                    "entry_date": "2026-02-01",
+                }
+            ]
+        )
+        mock_service.resolve_strategy.side_effect = lambda t: t.get("strategy")
+
+        response = test_client.get("/analytics")
+        assert response.status_code == 200
+        assert b"Strategy Overview" in response.data
+
+
+def test_view_analytics_monthly_matrix_year_2023_and_zero_open_prices(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies selected year < 2024, market repo exception, and zero open price benchmark handling."""
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.return_value = []
+
+        # Exception on market repository get_symbol_history_raw
+        mock_service.market_repository.get_symbol_history_raw.side_effect = (
+            RuntimeError("Market data service offline")
+        )
+
+        response = test_client.get("/analytics/monthly-matrix?year=2023")
+        assert response.status_code == 200
+        assert b"2023" in response.data

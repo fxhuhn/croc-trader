@@ -113,3 +113,82 @@ def test_symbol_filter_cache_load_error(tmp_path: Path) -> None:
     with patch("app.tools.symbol_filter.CACHE_FILE", corrupt_cache):
         sf._load_from_cache()
         # Does not raise, gracefully handles
+
+
+def test_symbol_filter_save_to_cache_error(tmp_path: Path) -> None:
+    sf = SymbolFilter()
+    invalid_dir = tmp_path / "file_as_dir"
+    invalid_dir.write_text("not a directory", encoding="utf-8")
+    invalid_cache = invalid_dir / "cache.json"
+
+    with (
+        patch("app.tools.symbol_filter.CACHE_DIR", invalid_dir),
+        patch("app.tools.symbol_filter.CACHE_FILE", invalid_cache),
+    ):
+        sf._save_to_cache()  # Should log error and not crash
+
+
+def test_refresh_mapping_background_no_symbols() -> None:
+    sf = SymbolFilter()
+    with (
+        patch("time.sleep"),
+        patch(
+            "app.tools.symbol_filter.ExchangeSymbol.all",
+            new_callable=PropertyMock,
+            return_value=[],
+        ),
+    ):
+        sf._refresh_mapping_background()
+        # Returns early when no symbols found
+
+
+def test_refresh_mapping_background_success(tmp_path: Path) -> None:
+    sf = SymbolFilter()
+    cache_file = tmp_path / "bg_cache.json"
+    with (
+        patch("time.sleep"),
+        patch(
+            "app.tools.symbol_filter.ExchangeSymbol.all",
+            new_callable=PropertyMock,
+            return_value=["GOOG", "GOOGL"],
+        ),
+        patch.object(sf, "_build_mapping", return_value={"GOOG": ["GOOGL"]}),
+        patch("app.tools.symbol_filter.CACHE_DIR", tmp_path),
+        patch("app.tools.symbol_filter.CACHE_FILE", cache_file),
+    ):
+        sf._refresh_mapping_background()
+        assert sf._mapping == {"GOOG": ["GOOGL"]}
+
+
+def test_refresh_mapping_background_exception() -> None:
+    sf = SymbolFilter()
+    with (
+        patch("time.sleep"),
+        patch(
+            "app.tools.symbol_filter.ExchangeSymbol.all",
+            new_callable=PropertyMock,
+            return_value=["AAPL"],
+        ),
+        patch.object(sf, "_build_mapping", side_effect=Exception("Failed")),
+    ):
+        sf._refresh_mapping_background()  # Gracefully logs error
+
+
+def test_build_mapping_generic_error_and_no_duplicates() -> None:
+    sf = SymbolFilter()
+
+    def side_effect(sym: str) -> MagicMock:
+        mock_inst = MagicMock()
+        if sym == "AAPL":
+            mock_inst.info = {"longName": "Apple Inc", "averageVolume": 100}
+        else:
+            mock_inst.info = {}
+            type(mock_inst).info = PropertyMock(
+                side_effect=Exception("Generic connection error")
+            )
+        return mock_inst
+
+    with patch("app.tools.symbol_filter.yf.Ticker", side_effect=side_effect):
+        # AAPL has no duplicates -> returns empty dict
+        res = sf._build_mapping(["AAPL", "FAIL_SYM"])
+        assert res == {}

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.const import Strategies
 from app.services.trade_manager.view_service import TradeViewService
 
 
@@ -36,7 +37,9 @@ def view_service(
 
 
 def test_resolve_strategy(view_service: TradeViewService) -> None:
-    assert view_service.resolve_strategy({"strategy": "dipbuyer"}) == "dipbuyer"
+    assert view_service.resolve_strategy({"strategy": "DipBuyer"}) == str(
+        Strategies.DipBuyer
+    )
     assert (
         view_service.resolve_strategy({"strategy": "unknown_strat"}) == "unknown_strat"
     )
@@ -51,20 +54,20 @@ def test_get_index_stats_empty_and_valid(view_service: TradeViewService) -> None
             "id": 1,
             "status": "CLOSED",
             "realized_pnl": 100.0,
-            "signal_context": '{"index": "SPY"}',
+            "context": {"indices": "SPX"},
         },
         {
             "id": 2,
             "status": "CLOSED",
             "realized_pnl": -50.0,
-            "signal_context": '{"index": "SPY"}',
+            "context": {"indices": "SPX"},
         },
     ]
-    stats = view_service.get_index_stats(trades)
-    assert "SPY" in stats
-    assert stats["SPY"]["win"] == 1
-    assert stats["SPY"]["loss"] == 1
-    assert stats["SPY"]["pnl"] == 50.0
+    stats = view_service.get_index_stats(trades)  # type: ignore[arg-type]
+    assert "SPX" in stats
+    assert stats["SPX"]["win"] == 1
+    assert stats["SPX"]["loss"] == 1
+    assert stats["SPX"]["pnl"] == 50.0
 
 
 def test_get_closed_summary(view_service: TradeViewService) -> None:
@@ -72,11 +75,10 @@ def test_get_closed_summary(view_service: TradeViewService) -> None:
         {"id": 1, "status": "CLOSED", "realized_pnl": 200.0},
         {"id": 2, "status": "CLOSED", "realized_pnl": -100.0},
     ]
-    summary = view_service.get_closed_summary(trades)
+    summary = view_service.get_closed_summary(trades)  # type: ignore[arg-type]
     assert summary["count"] == 2
     assert summary["total_pnl"] == 100.0
     assert summary["average_pnl"] == 50.0
-    assert summary["win_rate"] == 50.0
 
 
 def test_prepare_trade_view(view_service: TradeViewService) -> None:

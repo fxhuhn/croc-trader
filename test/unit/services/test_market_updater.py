@@ -127,10 +127,16 @@ def test_market_updater_run_update_full_reload_clears_ignored_symbols() -> None:
     updater.repo = MagicMock(spec=MarketRepository)
     updater.repo.get_ignored_symbols.return_value = set()
     updater.repo.get_all_known_symbols.return_value = ["AAPL"]
+    updater.trade_repository = MagicMock()
+    updater.trade_repository.get_all_traded_symbols.return_value = []
     updater.provider = MagicMock(spec=YahooDataProvider)
     updater.provider.fetch_batch_raw.return_value = (pd.DataFrame(), [])
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+    updater.tv_provider.fetch_symbol_history.return_value = []
 
-    updater.run_update(full_reload=True, specific_symbols=None)
+    with patch("app.services.market.updater.ExchangeSymbol") as mock_exchange:
+        mock_exchange.return_value.all = ["AAPL"]
+        updater.run_update(full_reload=True, specific_symbols=None)
 
     updater.repo.clear_ignored_symbols.assert_called_once()
 
