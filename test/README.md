@@ -12,7 +12,6 @@ Die Tests sind nach klaren Verantwortungsebenen strukturiert:
 test/
 ├── conftest.py              # Globale Pytest-Fixtures & Mock-Wrapper
 ├── unit/                    # Isolidierte Modul- & Komponenten-Tests
-│   ├── backtester/          # Unit-Tests für Backtester-Math & Analytics
 │   ├── database/            # Repository-Tests (SQLite In-Memory)
 │   ├── routes/              # Flask View & REST API Controller-Tests
 │   ├── screener/            # Strategy Screener Engine Tests

@@ -84,8 +84,6 @@ route_honeypot_login
 route_honeypot_admin
 view_analytics_dashboard
 view_broker_dashboard
-_get_backtest_database_path
-_prepare_strategy_metrics
 view_screener_overview
 view_screener_croc
 view_screener_dip_buyer
