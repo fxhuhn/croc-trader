@@ -1,4 +1,6 @@
 import logging
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -178,9 +180,6 @@ def _clear_and_prewarm_cache(app: Flask) -> None:
     Args:
         app: The Flask application instance.
     """
-    import os
-    import sys
-
     if (
         app.debug
         or app.testing

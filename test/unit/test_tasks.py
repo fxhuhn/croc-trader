@@ -195,13 +195,16 @@ def test_clear_and_prewarm_cache_skips_in_pytest_mode() -> None:
 
 
 def test_clear_and_prewarm_cache_prod_mode() -> None:
+    import sys
+
     app = Flask(__name__)
     app.debug = False
     app.testing = False
 
+    clean_modules = {k: v for k, v in sys.modules.items() if k != "pytest"}
     with (
-        patch("sys.modules", {}),
-        patch("os.environ.get", return_value=None),
+        patch.dict("sys.modules", clean_modules, clear=True),
+        patch.dict("os.environ", {"PYTEST_CURRENT_TEST": ""}),
         patch("app.tasks.cache.clear") as mock_clear,
         patch("app.tasks._prewarm_target_routes") as mock_prewarm,
     ):
