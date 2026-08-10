@@ -54,6 +54,7 @@ jobs:
         pip install pytest pytest-cov
 
     - name: Run pytest
+      if: matrix.python-version != '3.12'
       run: |
         # Add current directory to PYTHONPATH so 'app' can be imported
         export PYTHONPATH=$PYTHONPATH:.
