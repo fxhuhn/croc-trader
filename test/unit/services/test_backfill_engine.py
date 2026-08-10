@@ -161,6 +161,52 @@ def test_run_generic_backfill_execution(tmp_path: Path) -> None:
         assert res["win_rate"] == 100.0
 
 
+def test_run_generic_backfill_clear_existing(tmp_path: Path) -> None:
+    """Verifies clear_existing=True deletes prior trades for strategy."""
+    signals_db = tmp_path / "signals.db"
+    signals_session = DatabaseSession(str(signals_db))
+    trade_repo = TradeRepository(signals_session)
+    trade_repo.init_schema()
+
+    trade_repo.create_trade(
+        symbol="AAPL",
+        strategy="test_strat",
+        size=10,
+        entry=100.0,
+        stop_loss=90.0,
+        target=110.0,
+        context={},
+    )
+
+    class MockScreener:
+        def __init__(self, repo: Any, provider: Any) -> None:
+            pass
+
+        def run(self, days: int = 0, analysis_date: str | None = None) -> int:
+            return 0
+
+    class MockEngine:
+        pass
+
+    with patch("app.services.backfill_engine.MarketDataProvider"):
+        run_generic_backfill(
+            stocks_session=MagicMock(),
+            signals_session=signals_session,
+            strategy_name="test_strat",
+            screener_class=cast(Any, MockScreener),
+            strategy_engine_class=cast(Any, MockEngine),
+            lookback_days=30,
+            start_date="2026-08-03",
+            end_date="2026-08-03",
+            clear_existing=True,
+        )
+
+    from app.types import TradeStatus
+
+    # Pre-existing trade was deleted
+    assert trade_repo.get_by_status([TradeStatus.CREATED, TradeStatus.ACTIVE]) == []
+
+
 def test_deprecated_wrappers_issue_deprecation_warnings() -> None:
     """Verifies legacy backfill functions emit DeprecationWarning when called."""
     mock_stocks_session = MagicMock()
