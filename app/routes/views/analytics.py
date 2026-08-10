@@ -9,6 +9,13 @@ from flask import render_template, request
 
 from ...const import STRATEGY_ALIASES, ExitReason, Strategies
 from ...tools import metrics
+from ...tools.portfolio_optimization import (
+    build_covariance_matrix,
+    calculate_risk_contributions,
+    compute_downside_deviation,
+    optimize_max_sharpe_weights,
+    optimize_risk_parity_weights,
+)
 from ...types import TradeStatus
 from .blueprint import views_bp
 from .dependencies import (
@@ -17,6 +24,10 @@ from .dependencies import (
 )
 
 logger = logging.getLogger(__name__)
+
+MIN_SERIES_LEN: int = 2
+LOW_DATA_THRESHOLD: int = 5
+CALC_EPSILON: float = 1e-6
 
 
 @views_bp.route("/analytics", methods=["GET"])
@@ -60,6 +71,12 @@ def view_analytics_dashboard() -> str:
         today = pd.Timestamp.now()
         current_month_name = f"{german_month_names[today.month]} {today.year}"
         empty_monthly_evm = {"months": [], "allocations": {}}
+        empty_monthly_mv = {
+            "months": [],
+            "max_sharpe": {},
+            "risk_parity": {},
+        }
+        empty_mv_data = {"strategies": [], "has_low_data": True}
 
         return render_template(
             "analytics.html",
@@ -68,6 +85,8 @@ def view_analytics_dashboard() -> str:
             weekly_trend={},
             weekly_pnl={},
             monthly_evm=empty_monthly_evm,
+            monthly_mv=empty_monthly_mv,
+            mean_variance_data=empty_mv_data,
             current_month_name=current_month_name,
         )
 
@@ -609,6 +628,45 @@ def view_analytics_dashboard() -> str:
         "allocations": monthly_allocations,
     }
 
+    # 3.6. Monthly Mean-Variance & Risk Parity Calculation (Cumulative)
+    monthly_mv_max_sharpe = {name: [] for name in strategy_groups}
+    monthly_mv_risk_parity = {name: [] for name in strategy_groups}
+
+    for month_start in monthly_date_range:
+        month_end = month_start + pd.offsets.MonthEnd(0)
+        slice_end = (
+            today
+            if month_start.year == today.year and month_start.month == today.month
+            else month_end
+        )
+
+        slice_df = (
+            dataframe[dataframe["exit_date_dt"] <= slice_end]
+            if not dataframe.empty
+            else pd.DataFrame()
+        )
+
+        ms_allocs = _calculate_mean_variance_allocations(
+            slice_df, strategy_groups, model_type="max_sharpe"
+        )
+        rp_allocs = _calculate_mean_variance_allocations(
+            slice_df, strategy_groups, model_type="risk_parity"
+        )
+
+        for name in strategy_groups:
+            monthly_mv_max_sharpe[name].append(ms_allocs[name])
+            monthly_mv_risk_parity[name].append(rp_allocs[name])
+
+    monthly_mv = {
+        "months": monthly_labels,
+        "max_sharpe": monthly_mv_max_sharpe,
+        "risk_parity": monthly_mv_risk_parity,
+    }
+
+    mean_variance_data = _calculate_mean_variance_dashboard_data(
+        dataframe, strategy_groups
+    )
+
     # 4. Weekly Trend Data (Plotly) - Since 01.01.2026
     start_of_year = pd.Timestamp("2026-01-01")
 
@@ -706,6 +764,8 @@ def view_analytics_dashboard() -> str:
         weekly_trend=weekly_trend,
         weekly_pnl=weekly_profit_and_loss,
         monthly_evm=monthly_evm,
+        monthly_mv=monthly_mv,
+        mean_variance_data=mean_variance_data,
         current_month_name=current_month_name,
         active_page="analytics",
     )
@@ -809,6 +869,243 @@ def _calculate_evm_allocations(
         }
 
     return dict.fromkeys(strategy_groups, default_weight)
+
+
+def _calculate_mean_variance_allocations(
+    slice_df: pd.DataFrame,
+    strategy_groups: dict[str, list[Any]],
+    model_type: str = "max_sharpe",
+) -> dict[str, float]:
+    """Calculates Mean-Variance or Risk Parity strategy weights from a cumulative closed trades slice.
+
+    Args:
+        slice_df: DataFrame of closed trades up to cutoff date.
+        strategy_groups: Strategy group name to filter list mapping.
+        model_type: 'max_sharpe' or 'risk_parity'.
+
+    Returns:
+        dict[str, float]: Mapping from strategy group name to percentage weight (0.0 to 1.0).
+    """
+    num_strats = len(strategy_groups)
+    default_weight = 1.0 / num_strats if num_strats > 0 else 0.0
+
+    if slice_df.empty or "strategy" not in slice_df.columns:
+        return dict.fromkeys(strategy_groups, default_weight)
+
+    resolved_strategies = slice_df["strategy"].apply(
+        lambda s: STRATEGY_ALIASES.get(str(s).lower(), s)
+    )
+
+    strat_returns: list[pd.Series] = []
+    strat_names: list[str] = list(strategy_groups.keys())
+    mus: list[float] = []
+
+    for name in strat_names:
+        filters = strategy_groups[name]
+        strat_slice_df = slice_df[resolved_strategies.isin(filters)]
+
+        roi_series = pd.Series(dtype=float)
+        if not strat_slice_df.empty:
+            entry_prices = pd.to_numeric(
+                strat_slice_df["entry_price"], errors="coerce"
+            ).fillna(0.0)
+            initial_sizes = pd.to_numeric(
+                strat_slice_df["initial_size"], errors="coerce"
+            ).fillna(0.0)
+            invested_capital = entry_prices * initial_sizes
+            valid_roi_mask = invested_capital > 0.0
+            if valid_roi_mask.any():
+                roi_series = (
+                    strat_slice_df.loc[valid_roi_mask, "realized_pnl"]
+                    / invested_capital[valid_roi_mask]
+                )
+
+        strat_returns.append(roi_series)
+        mean_roi = float(roi_series.mean()) if not roi_series.empty else 0.0
+        mus.append(mean_roi)
+
+    max_len = max((len(s) for s in strat_returns), default=0)
+    if max_len < MIN_SERIES_LEN:
+        return dict.fromkeys(strategy_groups, default_weight)
+
+    padded_dict = {
+        name: ser.reset_index(drop=True)
+        for name, ser in zip(strat_names, strat_returns, strict=True)
+    }
+    returns_df = pd.DataFrame(padded_dict)
+
+    cov_matrix = build_covariance_matrix(returns_df)
+    mu_vector = np.array(mus, dtype=float)
+
+    if model_type == "risk_parity":
+        opt_weights = optimize_risk_parity_weights(cov_matrix)
+    else:
+        opt_weights = optimize_max_sharpe_weights(mu_vector, cov_matrix)
+
+    return {name: float(w) for name, w in zip(strat_names, opt_weights, strict=True)}
+
+
+def _calculate_mean_variance_dashboard_data(
+    slice_df: pd.DataFrame,
+    strategy_groups: dict[str, list[Any]],
+) -> dict[str, Any]:
+    """Computes comprehensive Section 6 metrics (Max Sharpe, Risk Parity, MCR, TRC, PRC).
+
+    Args:
+        slice_df: DataFrame of closed trades.
+        strategy_groups: Strategy group mapping.
+
+    Returns:
+        dict[str, Any]: Structured dashboard data containing strategy details and data flags.
+    """
+    num_strats = len(strategy_groups)
+    default_weight = 1.0 / num_strats if num_strats > 0 else 0.0
+    strat_names = list(strategy_groups.keys())
+
+    if slice_df.empty or "strategy" not in slice_df.columns:
+        empty_strats = [
+            {
+                "name": name,
+                "trades_per_month": 0.0,
+                "mu": 0.0,
+                "sigma": 0.0,
+                "sigma_d": 0.0,
+                "sharpe": 0.0,
+                "sortino": 0.0,
+                "weight_max_sharpe": default_weight * 100.0,
+                "weight_risk_parity": default_weight * 100.0,
+                "mcr_max_sharpe": 0.0,
+                "trc_max_sharpe": 0.0,
+                "prc_max_sharpe": default_weight * 100.0,
+                "mcr_risk_parity": 0.0,
+                "trc_risk_parity": 0.0,
+                "prc_risk_parity": default_weight * 100.0,
+                "trades_count": 0,
+            }
+            for name in strat_names
+        ]
+        return {
+            "strategies": empty_strats,
+            "has_low_data": True,
+        }
+
+    resolved_strategies = slice_df["strategy"].apply(
+        lambda s: STRATEGY_ALIASES.get(str(s).lower(), s)
+    )
+
+    strat_returns: list[pd.Series] = []
+    trades_counts: list[int] = []
+    trades_per_months: list[float] = []
+    mus: list[float] = []
+    sigmas: list[float] = []
+    sigma_ds: list[float] = []
+    sharpes: list[float] = []
+    sortinos: list[float] = []
+
+    has_low_data = False
+
+    for name in strat_names:
+        filters = strategy_groups[name]
+        strat_slice_df = slice_df[resolved_strategies.isin(filters)]
+        t_count = len(strat_slice_df)
+        trades_counts.append(t_count)
+        if t_count < LOW_DATA_THRESHOLD:
+            has_low_data = True
+
+        roi_series = pd.Series(dtype=float)
+        average_roi = 0.0
+        if not strat_slice_df.empty:
+            entry_prices = pd.to_numeric(
+                strat_slice_df["entry_price"], errors="coerce"
+            ).fillna(0.0)
+            initial_sizes = pd.to_numeric(
+                strat_slice_df["initial_size"], errors="coerce"
+            ).fillna(0.0)
+            invested_capital = entry_prices * initial_sizes
+            valid_roi_mask = invested_capital > 0.0
+            if valid_roi_mask.any():
+                roi_series = (
+                    strat_slice_df.loc[valid_roi_mask, "realized_pnl"]
+                    / invested_capital[valid_roi_mask]
+                )
+                average_roi = float(roi_series.mean())
+
+        active_months = 1.0
+        if not strat_slice_df.empty and "entry_date" in strat_slice_df.columns:
+            slice_entry_dates = pd.to_datetime(
+                strat_slice_df["entry_date"], errors="coerce"
+            ).dropna()
+            slice_exit_dates = (
+                strat_slice_df["exit_date_dt"].dropna()
+                if "exit_date_dt" in strat_slice_df.columns
+                else pd.Series(dtype="datetime64[ns]")
+            )
+            if not slice_entry_dates.empty and not slice_exit_dates.empty:
+                first_date = slice_entry_dates.min()
+                last_date = slice_exit_dates.max()
+                days_span = max(1.0, float((last_date - first_date).days))
+                active_months = max(1.0, days_span / 30.44)
+
+        t_per_m = t_count / active_months
+        trades_per_months.append(t_per_m)
+        mu_val = t_per_m * average_roi
+        mus.append(mu_val)
+
+        strat_returns.append(roi_series)
+        sig = float(roi_series.std(ddof=1)) if len(roi_series) > 1 else 0.0
+        sigmas.append(sig)
+
+        sig_d = compute_downside_deviation(roi_series) if not roi_series.empty else 0.0
+        sigma_ds.append(sig_d)
+
+        sh = (mu_val / sig) if sig > CALC_EPSILON else 0.0
+        sharpes.append(sh)
+
+        so = (mu_val / sig_d) if sig_d > CALC_EPSILON else 0.0
+        sortinos.append(so)
+
+    padded_dict = {
+        name: ser.reset_index(drop=True)
+        for name, ser in zip(strat_names, strat_returns, strict=True)
+    }
+    returns_df = pd.DataFrame(padded_dict)
+
+    cov_matrix = build_covariance_matrix(returns_df)
+    mu_vector = np.array(mus, dtype=float)
+
+    weights_ms = optimize_max_sharpe_weights(mu_vector, cov_matrix)
+    weights_rp = optimize_risk_parity_weights(cov_matrix)
+
+    mcr_ms, trc_ms, prc_ms = calculate_risk_contributions(weights_ms, cov_matrix)
+    mcr_rp, trc_rp, prc_rp = calculate_risk_contributions(weights_rp, cov_matrix)
+
+    strategies_res = []
+    for idx, name in enumerate(strat_names):
+        strategies_res.append(
+            {
+                "name": name,
+                "trades_per_month": trades_per_months[idx],
+                "mu": mus[idx] * 100.0,
+                "sigma": sigmas[idx] * 100.0,
+                "sigma_d": sigma_ds[idx] * 100.0,
+                "sharpe": sharpes[idx],
+                "sortino": sortinos[idx],
+                "weight_max_sharpe": weights_ms[idx] * 100.0,
+                "weight_risk_parity": weights_rp[idx] * 100.0,
+                "mcr_max_sharpe": mcr_ms[idx] * 100.0,
+                "trc_max_sharpe": trc_ms[idx] * 100.0,
+                "prc_max_sharpe": prc_ms[idx],
+                "mcr_risk_parity": mcr_rp[idx] * 100.0,
+                "trc_risk_parity": trc_rp[idx] * 100.0,
+                "prc_risk_parity": prc_rp[idx],
+                "trades_count": trades_counts[idx],
+            }
+        )
+
+    return {
+        "strategies": strategies_res,
+        "has_low_data": has_low_data,
+    }
 
 
 @views_bp.route("/analytics/monthly-matrix", methods=["GET"])
@@ -988,6 +1285,51 @@ def view_analytics_monthly_matrix() -> str:
         evm_compounded_factor *= 1.0 + val / 100.0
     evm_gesamt_pct = (evm_compounded_factor - 1.0) * 100.0
 
+    # Calculate Risikoadjustierte Modelle (Max-Sharpe & Risk Parity) for Portfoliomodell category
+    mv_ms_monthly_pcts: list[float] = []
+    mv_rp_monthly_pcts: list[float] = []
+    for month_idx in range(12):
+        if month_idx == 0:
+            mv_ms_monthly_pcts.append(portfolio_monthly_pcts[0])
+            mv_rp_monthly_pcts.append(portfolio_monthly_pcts[0])
+        else:
+            prior_month_end = pd.Timestamp(
+                year=selected_year, month=month_idx, day=1
+            ) + pd.offsets.MonthEnd(0)
+            slice_df = (
+                dataframe[dataframe["exit_date_dt"] <= prior_month_end]
+                if not dataframe.empty
+                else pd.DataFrame()
+            )
+            ms_weights = _calculate_mean_variance_allocations(
+                slice_df, strategy_groups, model_type="max_sharpe"
+            )
+            rp_weights = _calculate_mean_variance_allocations(
+                slice_df, strategy_groups, model_type="risk_parity"
+            )
+
+            ms_weighted_return = sum(
+                ms_weights[row["name"]] * row["months"][month_idx]
+                for row in matrix_rows
+            )
+            rp_weighted_return = sum(
+                rp_weights[row["name"]] * row["months"][month_idx]
+                for row in matrix_rows
+            )
+
+            mv_ms_monthly_pcts.append(ms_weighted_return)
+            mv_rp_monthly_pcts.append(rp_weighted_return)
+
+    mv_ms_compounded = 1.0
+    for val in mv_ms_monthly_pcts:
+        mv_ms_compounded *= 1.0 + val / 100.0
+    mv_ms_gesamt_pct = (mv_ms_compounded - 1.0) * 100.0
+
+    mv_rp_compounded = 1.0
+    for val in mv_rp_monthly_pcts:
+        mv_rp_compounded *= 1.0 + val / 100.0
+    mv_rp_gesamt_pct = (mv_rp_compounded - 1.0) * 100.0
+
     portfolio_models_rows = [
         {
             "name": "Standard",
@@ -998,6 +1340,16 @@ def view_analytics_monthly_matrix() -> str:
             "name": "Frequenz-Modell (EV/M)",
             "months": [round(p, 1) for p in evm_monthly_pcts],
             "gesamt": round(evm_gesamt_pct, 1),
+        },
+        {
+            "name": "Risikoadjustiert (Max-Sharpe)",
+            "months": [round(p, 1) for p in mv_ms_monthly_pcts],
+            "gesamt": round(mv_ms_gesamt_pct, 1),
+        },
+        {
+            "name": "Risikoadjustiert (Risk Parity)",
+            "months": [round(p, 1) for p in mv_rp_monthly_pcts],
+            "gesamt": round(mv_rp_gesamt_pct, 1),
         },
     ]
 

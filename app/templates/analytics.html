@@ -353,6 +353,105 @@
         </div>
     </section>
 
+    <!-- Section 6: Risikoadjustiertes Optimierungs-Modell (Mean-Variance / Risk Parity) -->
+    <section class="mb-8 md:mb-12">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
+                <i data-lucide="sliders" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Risikoadjustiertes Modell (Mean-Variance / Risk Parity)
+            </h2>
+            <!-- Interactive Toggle Switch -->
+            <div class="inline-flex p-1 bg-slate-200/80 rounded-xl self-start sm:self-auto text-xs font-semibold">
+                <button type="button" id="toggle-max-sharpe" onclick="switchOptModel('max_sharpe')"
+                    class="px-3 py-1.5 rounded-lg transition-all duration-200 bg-white text-indigo-600 shadow-sm font-bold">
+                    Max-Sharpe
+                </button>
+                <button type="button" id="toggle-risk-parity" onclick="switchOptModel('risk_parity')"
+                    class="px-3 py-1.5 rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-900">
+                    Risk Parity
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
+            {% if mean_variance_data and mean_variance_data.has_low_data %}
+            <div class="mb-6 p-3.5 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-xs text-amber-800">
+                <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"></i>
+                <div>
+                    <span class="font-bold">Eingeschränkte Datenbasis:</span> Mindestens eine Strategie weist weniger als 5 Trades auf. Die Gewichtungen verwenden eine regularisierte Kovarianzmatrix (Shrinkage), um numerische Instabilitäten zu vermeiden.
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Stacked Bar Chart -->
+            <div class="mb-8">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-semibold text-slate-700" id="mv-chart-title">Monatliche Allokation (Max-Sharpe)</h3>
+                </div>
+                <div id="mean-variance-bar-chart" class="h-[300px] w-full"></div>
+            </div>
+            
+            <!-- Details Table -->
+            <div class="border-t border-slate-100 pt-6">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-semibold text-slate-700">Details der risikoadjustierten Optimierung (Aktueller Monat: {{ current_month_name }})</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-100 text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">
+                                <th class="py-3 px-2">Strategy</th>
+                                <th class="py-3 px-2 text-right">Trades / M</th>
+                                <th class="py-3 px-2 text-right">μ (Ertrag)</th>
+                                <th class="py-3 px-2 text-right">σ (Vola)</th>
+                                <th class="py-3 px-2 text-right">σ<sub>D</sub> (Downside)</th>
+                                <th class="py-3 px-2 text-right">Sharpe</th>
+                                <th class="py-3 px-2 text-right">Sortino</th>
+                                <th class="py-3 px-2 text-right">Gewicht (w*)</th>
+                                <th class="py-3 px-2 text-right">MCR</th>
+                                <th class="py-3 px-2 text-right">TRC</th>
+                                <th class="py-3 px-2 text-right">PRC (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mean-variance-table-body" class="divide-y divide-slate-100 text-xs md:text-sm">
+                            {% for strat in mean_variance_data.strategies %}
+                            <tr class="text-slate-700 font-medium hover:bg-slate-50/50 transition-colors">
+                                <td class="py-3 px-2 flex items-center gap-2">
+                                    <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_colors.get(strat.name, 'bg-slate-500') }}"></div>
+                                    <span class="font-bold text-slate-900">{{ strat.name }}</span>
+                                </td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.1f}".format(strat.trades_per_month) }}</td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strat.mu) }}</td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strat.sigma) }}</td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strat.sigma_d) }}</td>
+                                <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.2f}".format(strat.sharpe) }}</td>
+                                <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.2f}".format(strat.sortino) }}</td>
+                                <td class="py-3 px-2 text-right font-black text-indigo-600 font-mono val-weight">
+                                    {{ "{:.1f}%".format(strat.weight_max_sharpe) }}
+                                </td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-mono val-mcr">
+                                    {{ "{:.2f}%".format(strat.mcr_max_sharpe) }}
+                                </td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-mono val-trc">
+                                    {{ "{:.2f}%".format(strat.trc_max_sharpe) }}
+                                </td>
+                                <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono val-prc">
+                                    {{ "{:.1f}%".format(strat.prc_max_sharpe) }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4 pt-4 border-t border-slate-100 flex items-start gap-2 text-xs text-slate-500">
+                    <i data-lucide="info" class="w-4 h-4 text-slate-400 shrink-0 mt-0.5"></i>
+                    <span id="mv-info-text">
+                        Das <strong>Max-Sharpe-Modell</strong> optimiert das Verhältnis von erwarteter Überrendite (&mu;) zur Portfoliovolatilität (&sigma;). MCR (Marginal Risk Contribution) misst die Sensitivität des Risikos, TRC (Total Risk Contribution) den absoluten Risikobeitrag und PRC den prozentualen Anteil am Gesamtrisiko.
+                    </span>
+                </div>
+            </div>
+        </div>
+    </section>
+
 </main>
 
 <!-- Bottom-Navigation -->
@@ -588,6 +687,114 @@
         Plotly.newPlot('frequency-bar-chart', freqTraces, layoutFreq, freqConfig);
     }
 
+    // Mean-Variance / Risk Parity Stacked Bar Chart & Toggle Logic
+    const monthlyMVData = {{ monthly_mv | tojson | safe }};
+    const meanVarianceDetails = {{ mean_variance_data | tojson | safe }};
+
+    function renderMeanVarianceChart(model) {
+        if (!monthlyMVData || !monthlyMVData.months) return;
+        const allocations = monthlyMVData[model] || {};
+        const mvTraces = [];
+
+        for (const strategyName in allocations) {
+            const color = strategyHexColors[strategyName] || '#94a3b8';
+            mvTraces.push({
+                x: monthlyMVData.months,
+                y: allocations[strategyName],
+                name: strategyName,
+                type: 'bar',
+                marker: { color: color },
+                hoverinfo: 'name+y',
+                yhoverformat: '.1%'
+            });
+        }
+
+        const layoutMV = {
+            margin: { l: 45, r: 10, t: 15, b: 35 },
+            showlegend: false,
+            barmode: 'stack',
+            hoverlabel: {
+                bgcolor: '#ffffff',
+                bordercolor: '#cbd5e1',
+                font: { color: '#1e293b', size: 12 }
+            },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            xaxis: {
+                showgrid: false,
+                zeroline: false,
+                showticklabels: true,
+                tickfont: { size: 11, color: '#475569', weight: 'bold' },
+                fixedrange: true
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: '#f1f5f9',
+                zeroline: true,
+                zerolinecolor: '#cbd5e1',
+                zerolinewidth: 1.5,
+                showticklabels: true,
+                tickfont: { size: 12, color: '#94a3b8', family: 'monospace' },
+                tickformat: '.0%',
+                fixedrange: true
+            }
+        };
+
+        const mvConfig = { displayModeBar: false, responsive: true };
+        Plotly.newPlot('mean-variance-bar-chart', mvTraces, layoutMV, mvConfig);
+    }
+
+    window.switchOptModel = function(model) {
+        const btnMax = document.getElementById('toggle-max-sharpe');
+        const btnRisk = document.getElementById('toggle-risk-parity');
+        const chartTitle = document.getElementById('mv-chart-title');
+        const infoText = document.getElementById('mv-info-text');
+
+        if (model === 'max_sharpe') {
+            if (btnMax) btnMax.className = 'px-3 py-1.5 rounded-lg transition-all duration-200 bg-white text-indigo-600 shadow-sm font-bold';
+            if (btnRisk) btnRisk.className = 'px-3 py-1.5 rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-900';
+            if (chartTitle) chartTitle.textContent = 'Monatliche Allokation (Max-Sharpe)';
+            if (infoText) {
+                infoText.innerHTML = 'Das <strong>Max-Sharpe-Modell</strong> optimiert das Verhältnis von erwarteter Überrendite (&mu;) zur Portfoliovolatilität (&sigma;). MCR (Marginal Risk Contribution) misst die Sensitivität des Risikos, TRC (Total Risk Contribution) den absoluten Risikobeitrag und PRC den prozentualen Anteil am Gesamtrisiko.';
+            }
+        } else {
+            if (btnRisk) btnRisk.className = 'px-3 py-1.5 rounded-lg transition-all duration-200 bg-white text-indigo-600 shadow-sm font-bold';
+            if (btnMax) btnMax.className = 'px-3 py-1.5 rounded-lg transition-all duration-200 text-slate-600 hover:text-slate-900';
+            if (chartTitle) chartTitle.textContent = 'Monatliche Allokation (Risk Parity / ERC)';
+            if (infoText) {
+                infoText.innerHTML = 'Das <strong>Risk Parity Modell (Equal Risk Contribution)</strong> gleicht die Risikobeiträge (TRC) aller Systeme an. Niedrigvolatile Systeme erhalten eine höhere Kapitalgewichtung, um ein ausbalanciertes Gesamtrisiko zu erzielen.';
+            }
+        }
+
+        renderMeanVarianceChart(model);
+
+        if (meanVarianceDetails && meanVarianceDetails.strategies) {
+            const rows = document.querySelectorAll('#mean-variance-table-body tr');
+            meanVarianceDetails.strategies.forEach((strat, idx) => {
+                const row = rows[idx];
+                if (!row) return;
+
+                const weightCell = row.querySelector('.val-weight');
+                const mcrCell = row.querySelector('.val-mcr');
+                const trcCell = row.querySelector('.val-trc');
+                const prcCell = row.querySelector('.val-prc');
+
+                const wVal = model === 'max_sharpe' ? strat.weight_max_sharpe : strat.weight_risk_parity;
+                const mcrVal = model === 'max_sharpe' ? strat.mcr_max_sharpe : strat.mcr_risk_parity;
+                const trcVal = model === 'max_sharpe' ? strat.trc_max_sharpe : strat.trc_risk_parity;
+                const prcVal = model === 'max_sharpe' ? strat.prc_max_sharpe : strat.prc_risk_parity;
+
+                if (weightCell) weightCell.textContent = wVal.toFixed(1) + '%';
+                if (mcrCell) mcrCell.textContent = mcrVal.toFixed(2) + '%';
+                if (trcCell) trcCell.textContent = trcVal.toFixed(2) + '%';
+                if (prcCell) prcCell.textContent = prcVal.toFixed(1) + '%';
+            });
+        }
+    };
+
+    // Initial render for Mean-Variance chart
+    renderMeanVarianceChart('max_sharpe');
+
     // Ensure Lucide icons are updated after JS changes if any
     if (typeof lucide !== 'undefined') {
         lucide.createIcons();
@@ -604,6 +811,10 @@
         const freqChart = document.getElementById('frequency-bar-chart');
         if (freqChart && freqChart.classList.contains('js-plotly-plot')) {
             Plotly.Plots.resize('frequency-bar-chart');
+        }
+        const mvChart = document.getElementById('mean-variance-bar-chart');
+        if (mvChart && mvChart.classList.contains('js-plotly-plot')) {
+            Plotly.Plots.resize('mean-variance-bar-chart');
         }
     });
 </script>
