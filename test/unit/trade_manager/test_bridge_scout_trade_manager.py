@@ -76,7 +76,8 @@ def test_generate_entry_order(
     assert order is not None
     assert order.symbol == "AAPL"
     assert order.quantity == 10
-    assert order.order_type == "MKT"
+    assert order.entry is not None
+    assert order.entry.type == "MKT"
 
     # Budget too small
     assert (
@@ -101,7 +102,8 @@ def test_generate_exit_order(
     assert order is not None
     assert order.symbol == "AAPL"
     assert order.quantity == 10
-    assert order.target_price == Decimal("154.0")
+    assert len(order.exits) > 0
+    assert order.exits[0].price == Decimal("154.0")
 
     # Empty size
     no_size = dict(sample_trade, current_size=0)
@@ -122,7 +124,7 @@ def test_check_entry(
     candle = sample_history.iloc[0]
     transition = strategy.check_entry(sample_trade, candle, sample_history)
     assert transition is not None
-    assert transition.new_status == "ACTIVE"
+    assert transition.updates.get("status") == "ACTIVE"
 
     invalid_trade = dict(sample_trade, entry_price=0.0)
     assert strategy.check_entry(invalid_trade, candle, sample_history) is None
@@ -150,5 +152,5 @@ def test_do_manage_active_trade(
         active_trade, feb_candle, "2026-02-01", sample_history
     )
     assert transition is not None
-    assert transition.new_status == "CLOSED"
-    assert transition.exit_reason == ExitReason.TIME_STOP
+    assert transition.updates.get("status") == "CLOSED"
+    assert transition.updates.get("exit_reason") == ExitReason.TIME_STOP.value
