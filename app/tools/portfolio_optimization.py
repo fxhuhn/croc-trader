@@ -8,6 +8,7 @@ It follows the Functional Core principle: referentially transparent calculations
 without side effects or I/O.
 """
 
+import warnings
 from typing import Literal, cast
 
 import numpy as np
@@ -227,20 +228,15 @@ def resample_portfolio_weights(
     model_type: Literal["max_sharpe", "risk_parity"] = "max_sharpe",
     num_simulations: int = 100,
 ) -> np.ndarray:
-    """Performs Monte-Carlo Resampling (Resampled Efficiency) to guard against overfitting.
+    """Performs Monte-Carlo Resampling (Resampled Efficiency) (Deprecated).
 
-    Draws perturbed mean vectors and covariance matrices, solves optimization for each,
-    and averages the weight vectors.
-
-    Args:
-        expected_returns: Vector of expected strategy returns μ.
-        cov_matrix: N x N covariance matrix Σ.
-        model_type: Optimization model type ('max_sharpe' or 'risk_parity').
-        num_simulations: Number of Monte Carlo draws (default 100).
-
-    Returns:
-        np.ndarray: Resampled average weight vector.
+    .. deprecated:: 1.0.0
     """
+    warnings.warn(
+        "resample_portfolio_weights is deprecated and will be removed in a future release.",
+        category=DeprecationWarning,
+        stacklevel=2,
+    )
     num_strats = len(expected_returns)
     if num_strats == 0:
         return np.array([], dtype=float)

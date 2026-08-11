@@ -1,4 +1,5 @@
 import logging
+import warnings
 from dataclasses import dataclass
 
 import numpy
@@ -11,6 +12,11 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SimulationResult:
+    """SimulationResult data container (Deprecated).
+
+    .. deprecated:: 1.0.0
+    """
+
     scenario_name: str
     median_return: float
     max_drawdown: float
@@ -18,9 +24,10 @@ class SimulationResult:
 
 
 class CapacitySimulator:
-    """
-    Runs Monte Carlo simulations to compare Static vs. Dynamic position sizing.
-    Designed to be integrated into the Backtest Runner.
+    """Runs Monte Carlo simulations to compare Static vs. Dynamic position sizing (Deprecated).
+
+    .. deprecated:: 1.0.0
+       Unused capacity simulation class.
     """
 
     def __init__(
@@ -28,6 +35,11 @@ class CapacitySimulator:
         initial_capital: float = 100000.0,
         number_of_simulations: int = 100,
     ) -> None:
+        warnings.warn(
+            "CapacitySimulator is deprecated and will be removed in a future release.",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         self.initial_capital = initial_capital
         self.number_of_simulations = number_of_simulations
 

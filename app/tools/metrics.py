@@ -6,6 +6,7 @@ principle, ensuring referential transparency and ease of testing.
 """
 
 import math
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -231,22 +232,19 @@ def calculate_kelly_criterion(win_rate: float, risk_reward_ratio: float) -> floa
 
 
 def calculate_ulcer_index(equity_curve: pd.Series) -> float:
-    """Calculates the Ulcer Index (Pain Index).
+    """Calculates the Ulcer Index (Pain Index) (Deprecated).
 
     Measures the depth and duration of drawdowns.
 
     Formula: UI = √(Mean(DD²)), where DD = percentage drawdown from peak.
 
-    Source:
-        Martin, Peter G. & McCann, Byron B.
-        *The Investor's Guide to Fidelity Funds*, Wiley, 1989.
-
-    Args:
-        equity_curve: Series of portfolio equity values over time.
-
-    Returns:
-        float: Ulcer Index value.
+    .. deprecated:: 1.0.0
     """
+    warnings.warn(
+        "calculate_ulcer_index is deprecated and will be removed in a future release.",
+        category=DeprecationWarning,
+        stacklevel=2,
+    )
     if equity_curve.empty:
         return 0.0
 

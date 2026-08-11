@@ -1,6 +1,7 @@
 import json
 import logging
 import sqlite3
+import warnings
 
 from ...config import PortfolioConfig
 from ...database.repositories.trade import TradeRepository
@@ -11,7 +12,10 @@ logger = logging.getLogger(__name__)
 
 
 class PortfolioManager:
-    """Central Logic for Capital Allocation.
+    """Central Logic for Capital Allocation (Deprecated).
+
+    .. deprecated:: 1.0.0
+       Use TradeManager or dynamic_sizing directly instead.
 
     Process: Screener -> [PortfolioManager] -> TradeManager(Execution)
     """
@@ -21,6 +25,12 @@ class PortfolioManager:
         trade_repository: TradeRepository,
         portfolio_config: PortfolioConfig | None = None,
     ) -> None:
+        warnings.warn(
+            "PortfolioManager is deprecated and will be removed in a future release. "
+            "Use TradeManager position sizing directly instead.",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         self.trade_repository = trade_repository
         self.allocator = PortfolioAllocator(portfolio_config=portfolio_config)
 

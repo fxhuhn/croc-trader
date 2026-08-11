@@ -2,9 +2,10 @@ from typing import TypedDict
 
 
 class YahooRow(TypedDict):
-    """
-    Type definition for a raw row from Yahoo Finance DataFrame.
-    Used for type hints in basic ingestion logic.
+    """Type definition for a raw row from Yahoo Finance DataFrame (Deprecated).
+
+    .. deprecated:: 1.0.0
+       Unused TypedDict; market updater processes DataFrames directly.
     """
 
     date: str  # Usually string index or column

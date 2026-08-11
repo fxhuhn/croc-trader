@@ -1,3 +1,4 @@
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -130,9 +131,17 @@ class DynamicPositionSizer:
 
 
 class OverflowProtection:
-    """Safeguards against excessive total portfolio exposure."""
+    """Safeguards against excessive total portfolio exposure (Deprecated).
+
+    .. deprecated:: 1.0.0
+    """
 
     def __init__(self, max_total_exposure: float = 1.0) -> None:
+        warnings.warn(
+            "OverflowProtection is deprecated and will be removed in a future release.",
+            category=DeprecationWarning,
+            stacklevel=2,
+        )
         self.max_total_exposure = max_total_exposure
 
     def apply_limits(
