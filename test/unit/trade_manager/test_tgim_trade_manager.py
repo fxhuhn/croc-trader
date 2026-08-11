@@ -244,3 +244,129 @@ def test_tgim_time_exit_on_wednesday_close_if_c1exit_false(
     assert transition.updates["status"] == TradeStatus.CLOSED.value
     assert transition.updates["exit_reason"] == ExitReason.TIME_STOP.value
     assert transition.updates["exit_price"] == 495.0
+
+
+def test_tgim_get_current_parameters(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests get_current_parameters returns TradeParams with correct extras."""
+    trade = {"entry_price": 500.0, "current_size": 20}
+    params = trade_strategy.get_current_parameters(trade)
+    assert params is not None
+    assert params.extras["entry_price"] == 500.0
+    assert params.extras["current_size"] == 20.0
+
+
+def test_tgim_generate_entry_order(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests _generate_entry_order creates valid MKT entry order and handles invalid inputs."""
+    trade = {"symbol": "SPY", "entry_price": 500.0, "budget": 10000.0}
+    df_history = pd.DataFrame()
+    order = trade_strategy._generate_entry_order(trade, df_history, budget=10000.0)
+    assert order is not None
+    assert order.symbol == "SPY"
+    assert order.quantity == 20
+    assert order.entry is not None
+    assert order.entry.type == "MKT"
+
+    # Invalid entry_price or budget
+    assert (
+        trade_strategy._generate_entry_order(
+            {"symbol": "SPY", "entry_price": 0.0}, df_history, budget=10000.0
+        )
+        is None
+    )
+
+    # Quantity < 1
+    assert (
+        trade_strategy._generate_entry_order(
+            {"symbol": "SPY", "entry_price": 500.0, "budget": 10.0},
+            df_history,
+            budget=10.0,
+        )
+        is None
+    )
+
+
+def test_tgim_generate_exit_order(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests _generate_exit_order creates valid MOC exit order and handles invalid inputs."""
+    trade = {"symbol": "SPY", "current_size": 20}
+    df_history = pd.DataFrame([{"close": 505.0}])
+    order = trade_strategy._generate_exit_order(trade, df_history, budget=10000.0)
+    assert order is not None
+    assert order.symbol == "SPY"
+    assert order.quantity == 20
+    assert len(order.exits) > 0
+    assert order.exits[0].type == "MKT"
+    assert order.exits[0].time_in_force == "DAY"
+
+    # Quantity <= 0
+    assert (
+        trade_strategy._generate_exit_order(
+            {"symbol": "SPY", "current_size": 0}, df_history, budget=10000.0
+        )
+        is None
+    )
+
+    # Empty history
+    assert (
+        trade_strategy._generate_exit_order(trade, pd.DataFrame(), budget=10000.0)
+        is None
+    )
+
+
+def test_tgim_check_entry_zero_threshold_returns_none(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests check_entry returns None when threshold price <= 0."""
+    trade = {"symbol": "SPY", "entry_price": 0.0}
+    candle = pd.Series({"date": "2026-07-20", "close": 500.0})
+    assert trade_strategy.check_entry(trade, candle, pd.DataFrame([candle])) is None
+
+
+def test_tgim_manage_active_trade_missing_entry_date_or_empty_history(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests manage_active_trade returns None when entry_date missing or history empty."""
+    trade_no_date = {"symbol": "SPY", "status": TradeStatus.ACTIVE.value}
+    assert trade_strategy.manage_active_trade(trade_no_date, pd.DataFrame()) is None
+
+    trade_with_date = {
+        "symbol": "SPY",
+        "status": TradeStatus.ACTIVE.value,
+        "entry_date": "2026-07-20",
+    }
+    assert trade_strategy.manage_active_trade(trade_with_date, pd.DataFrame()) is None
+
+
+def test_evaluate_tgim_exit_zero_bars() -> None:
+    """Tests pure function evaluate_tgim_exit returns None when bars_held < 1."""
+    from decimal import Decimal
+
+    from app.services.trade_manager.strategies.tgim import evaluate_tgim_exit
+
+    assert (
+        evaluate_tgim_exit(
+            bars_held=0,
+            current_close=Decimal("500.0"),
+            previous_close=Decimal("490.0"),
+        )
+        is None
+    )
+
+
+def test_tgim_manage_active_trade_bars_held_zero(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests manage_active_trade returns None on entry day (bars_held == 0)."""
+    trade = {
+        "symbol": "SPY",
+        "status": TradeStatus.ACTIVE.value,
+        "entry_date": "2026-07-20",
+    }
+    monday_candle = pd.Series({"date": "2026-07-20", "close": 500.0})
+    df_history = pd.DataFrame([monday_candle])
+    assert trade_strategy.manage_active_trade(trade, df_history) is None

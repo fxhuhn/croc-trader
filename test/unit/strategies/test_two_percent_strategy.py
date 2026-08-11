@@ -806,9 +806,116 @@ def test_monday_no_fill_no_holiday_invalidation(
         )
 
     # Assert
+    # Assert
     assert result is not None
     assert (
         "REJECTED" in result or "INVALIDATED" in result
     )  # Base Strategy might return REJECTED
     call_args = mock_trade_repository.update_trade.call_args[0]
     assert call_args[1]["status"] == TradeStatus.INVALID
+
+
+def test_two_percent_calculate_target_price_zero(
+    manager_strategy: ManagerStrategy,
+) -> None:
+    """Tests _calculate_target_price returns 0.0 for entry_price <= 0."""
+    from decimal import Decimal
+
+    assert manager_strategy._calculate_target_price(Decimal("0.0")) == Decimal("0.0")
+
+
+def test_two_percent_generate_entry_order_small_budget(
+    manager_strategy: ManagerStrategy,
+) -> None:
+    """Tests _generate_entry_order returns None when quantity < 1."""
+    trade = {"symbol": "AAPL", "entry_price": 500.0}
+    assert (
+        manager_strategy._generate_entry_order(trade, pd.DataFrame(), budget=10.0)
+        is None
+    )
+
+
+def test_two_percent_generate_exit_order_date_bounds(
+    manager_strategy: ManagerStrategy,
+) -> None:
+    """Tests _generate_exit_order returns None when next_day <= entry_date or target <= 0."""
+    trade = {"symbol": "AAPL", "current_size": 10, "entry_date": "2026-02-10"}
+    df_history = pd.DataFrame([{"date": "2026-02-09"}])
+    assert (
+        manager_strategy._generate_exit_order(trade, df_history, budget=1000.0) is None
+    )
+
+    trade_no_target = {
+        "symbol": "AAPL",
+        "current_size": 10,
+        "entry_date": "2026-02-01",
+        "entry_price": 0.0,
+        "current_target": 0.0,
+    }
+    df_history_2 = pd.DataFrame([{"date": "2026-02-09"}])
+    assert (
+        manager_strategy._generate_exit_order(
+            trade_no_target, df_history_2, budget=1000.0
+        )
+        is None
+    )
+
+
+def test_two_percent_check_entry_missing_signal_date_or_stale(
+    manager_strategy: ManagerStrategy,
+    mock_trade_repository: MagicMock,
+) -> None:
+    """Tests check_entry returns None when signal_date missing, or invalidates when stale."""
+    trade_no_signal = {"symbol": "AAPL", "entry_price": 100.0, "signal_context": "{}"}
+    candle = create_candle("2026-02-09", 100.0)
+    assert (
+        manager_strategy.check_entry(
+            trade_no_signal, candle, pd.DataFrame([candle]), mock_trade_repository
+        )
+        is None
+    )
+
+    trade_stale = {
+        "id": "STALE_1",
+        "symbol": "AAPL",
+        "entry_price": 100.0,
+        "signal_context": '{"date": "2026-01-30"}',
+    }
+    with patch.object(
+        manager_strategy, "_get_trading_days_post_signal", return_value=3
+    ):
+        result = manager_strategy.check_entry(
+            trade_stale, candle, pd.DataFrame([candle]), mock_trade_repository
+        )
+        assert result is not None
+        assert "REJECTED" in result or "INVALIDATED" in result
+
+
+def test_two_percent_process_day_two_entry_no_fill(
+    manager_strategy: ManagerStrategy,
+) -> None:
+    """Tests _process_day_two_entry rejects setup when low > limit."""
+    trade = {"id": "D2_FAIL", "symbol": "AAPL"}
+    transition = manager_strategy._process_day_two_entry(
+        trade,
+        open_price=105.0,
+        low_price=102.0,
+        limit_price=100.0,
+        date_string="2026-02-10",
+    )
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.INVALID.value
+
+
+def test_two_percent_do_manage_active_trade_no_entry_date(
+    manager_strategy: ManagerStrategy,
+) -> None:
+    """Tests _do_manage_active_trade returns None when entry_date is missing."""
+    trade_no_date = {"symbol": "AAPL", "status": "ACTIVE"}
+    candle = create_candle("2026-02-10", 105.0)
+    assert (
+        manager_strategy._do_manage_active_trade(
+            trade_no_date, candle, "2026-02-10", pd.DataFrame([candle])
+        )
+        is None
+    )

@@ -1,6 +1,5 @@
 """Unit tests for generic backfill engine and strategy dispatcher."""
 
-import warnings
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -15,9 +14,6 @@ from app.services.backfill_engine import (
     run_generic_backfill,
     run_strategy_backfill,
 )
-from app.services.bounce_bandit_backfill import run_bounce_bandit_backfill
-from app.services.bridge_scout_backfill import run_bridge_scout_backfill
-from app.services.tgim_backfill import run_tgim_backfill
 from app.services.trade_manager.types import TradeTransition
 
 
@@ -205,33 +201,3 @@ def test_run_generic_backfill_clear_existing(tmp_path: Path) -> None:
 
     # Pre-existing trade was deleted
     assert trade_repo.get_by_status([TradeStatus.CREATED, TradeStatus.ACTIVE]) == []
-
-
-def test_deprecated_wrappers_issue_deprecation_warnings() -> None:
-    """Verifies legacy backfill functions emit DeprecationWarning when called."""
-    mock_stocks_session = MagicMock()
-    mock_signals_session = MagicMock()
-
-    with patch("app.services.backfill_engine.run_generic_backfill") as mock_run:
-        mock_run.return_value = {}
-
-        with warnings.catch_warnings(record=True) as record:
-            warnings.simplefilter("always")
-            run_bridge_scout_backfill(mock_stocks_session, mock_signals_session)
-            assert len(record) == 1
-            assert issubclass(record[0].category, DeprecationWarning)
-            assert "run_bridge_scout_backfill is deprecated" in str(record[0].message)
-
-        with warnings.catch_warnings(record=True) as record:
-            warnings.simplefilter("always")
-            run_bounce_bandit_backfill(mock_stocks_session, mock_signals_session)
-            assert len(record) == 1
-            assert issubclass(record[0].category, DeprecationWarning)
-            assert "run_bounce_bandit_backfill is deprecated" in str(record[0].message)
-
-        with warnings.catch_warnings(record=True) as record:
-            warnings.simplefilter("always")
-            run_tgim_backfill(mock_stocks_session, mock_signals_session)
-            assert len(record) == 1
-            assert issubclass(record[0].category, DeprecationWarning)
-            assert "run_tgim_backfill is deprecated" in str(record[0].message)

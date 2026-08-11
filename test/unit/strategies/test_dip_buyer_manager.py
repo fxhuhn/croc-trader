@@ -244,3 +244,75 @@ def test_generate_orders_active_trade_time_stop(strategy, mock_trade_repo):
     assert orders.exits[1].action == "SELL"
     assert orders.exits[1].type == "MOC"
     assert orders.exits[1].price == 0.0
+
+
+def test_dip_buyer_check_entry_zero_limit_and_stale(strategy, mock_trade_repo) -> None:
+    """Tests check_entry returns None for zero limit price or rejects when stale."""
+    candle = pd.Series({"date": pd.Timestamp("2026-02-18"), "open": 100.0, "low": 95.0})
+    assert (
+        strategy.check_entry(
+            {"entry_price": 0.0}, candle, pd.DataFrame([candle]), mock_trade_repo
+        )
+        is None
+    )
+
+    trade_stale = {
+        "id": "DIP_STALE",
+        "symbol": "AAPL",
+        "entry_price": 100.0,
+        "signal_context": '{"date": "2026-02-10"}',
+    }
+    with patch.object(strategy, "_get_trading_days_post_signal", return_value=2):
+        result = strategy.check_entry(
+            trade_stale, candle, pd.DataFrame([candle]), mock_trade_repo
+        )
+        assert result is not None
+        assert "REJECTED" in result or "INVALIDATED" in result
+
+
+def test_dip_buyer_manage_active_early_date(strategy, mock_trade_repo) -> None:
+    """Tests _do_manage_active_trade returns None when candle date is before entry date."""
+    trade = {"symbol": "AAPL", "status": "ACTIVE", "entry_date": "2026-02-19"}
+    early_candle = pd.Series(
+        {
+            "date": pd.Timestamp("2026-02-18"),
+            "open": 100.0,
+            "high": 105.0,
+            "low": 95.0,
+            "close": 100.0,
+        }
+    )
+    assert (
+        strategy._do_manage_active_trade(
+            trade, early_candle, "2026-02-18", pd.DataFrame([early_candle])
+        )
+        is None
+    )
+
+
+def test_dip_buyer_get_daily_updates(strategy) -> None:
+    """Tests get_daily_updates returns threshold_loc based on previous high."""
+    history = pd.DataFrame([{"high": 98.50}])
+    updates = strategy.get_daily_updates({}, history)
+    assert updates.get("threshold_loc") == 98.51
+
+
+def test_dip_buyer_determine_order_quantity_zero_price(strategy) -> None:
+    """Tests _determine_order_quantity returns 0 when entry_price <= 0."""
+    trade = {"symbol": "AAPL", "entry_price": 0.0}
+    assert strategy._determine_order_quantity(trade, budget=1000.0) == 0
+
+
+def test_dip_buyer_generate_exit_order_empty_exits(strategy) -> None:
+    """Tests _generate_exit_order returns None when exits list is empty."""
+    trade = {
+        "symbol": "AAPL",
+        "entry_price": 100.0,
+        "initial_size": 10,
+        "status": "ACTIVE",
+        "entry_date": "2026-02-18",
+        "current_target": 0.0,
+    }
+    # Empty history with columns -> is_time_stop is False, threshold_loc is None
+    history = pd.DataFrame(columns=["date", "high"])
+    assert strategy._generate_exit_order(trade, history, budget=1000.0) is None

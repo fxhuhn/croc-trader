@@ -154,3 +154,37 @@ def test_do_manage_active_trade(
     assert transition is not None
     assert transition.updates.get("status") == "CLOSED"
     assert transition.updates.get("exit_reason") == ExitReason.TIME_STOP.value
+
+
+def test_check_entry_invalid_json(
+    strategy: BridgeScoutTradeStrategy,
+    sample_trade: dict,
+    sample_history: pd.DataFrame,
+) -> None:
+    """Tests check_entry handles invalid JSON context gracefully."""
+    invalid_json_trade = dict(sample_trade, signal_context="{invalid json}")
+    candle = sample_history.iloc[0]
+    transition = strategy.check_entry(invalid_json_trade, candle, sample_history)
+    assert transition is not None
+    assert transition.updates.get("status") == "ACTIVE"
+
+
+def test_do_manage_active_trade_missing_entry_date_or_empty_history(
+    strategy: BridgeScoutTradeStrategy,
+) -> None:
+    """Tests _do_manage_active_trade returns None when entry_date missing or history empty."""
+    trade_no_date = {"status": "ACTIVE"}
+    candle = pd.Series({"date": "2026-02-01", "close": 150.0})
+    assert (
+        strategy._do_manage_active_trade(
+            trade_no_date, candle, "2026-02-01", pd.DataFrame([candle])
+        )
+        is None
+    )
+    trade_with_date = {"status": "ACTIVE", "entry_date": "2026-01-15"}
+    assert (
+        strategy._do_manage_active_trade(
+            trade_with_date, candle, "2026-02-01", pd.DataFrame()
+        )
+        is None
+    )

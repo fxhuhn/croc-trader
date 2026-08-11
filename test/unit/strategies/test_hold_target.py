@@ -213,3 +213,115 @@ def test_hold_target_no_breakeven(strategy, mock_trade_repo):
 
     assert result is None  # Should return None, no breakeven trigger
     mock_trade_repo.update_trade.assert_not_called()
+
+
+def test_hold_target_check_entry_zero_price_or_early_date(
+    strategy, mock_trade_repo
+) -> None:
+    """Tests check_entry returns None for zero entry price or candle date <= signal date."""
+    candle = pd.Series(
+        {"date": pd.Timestamp("2026-02-18"), "open": 100.0, "high": 105.0, "low": 95.0}
+    )
+    assert (
+        strategy.check_entry(
+            {"entry_price": 0.0}, candle, pd.DataFrame([candle]), mock_trade_repo
+        )
+        is None
+    )
+
+    trade_early = {
+        "entry_price": 100.0,
+        "signal_context": '{"date": "2026-02-18"}',
+    }
+    assert (
+        strategy.check_entry(
+            trade_early, candle, pd.DataFrame([candle]), mock_trade_repo
+        )
+        is None
+    )
+
+
+def test_hold_target_day_one_turnaround(strategy, mock_trade_repo) -> None:
+    """Tests day 1 turnaround when filled and stopped on the same day."""
+    trade = {
+        "id": "HT_TURN",
+        "entry_price": 100.0,
+        "current_stop_loss": 90.0,
+        "initial_size": 10,
+        "current_size": 10,
+        "signal_context": '{"date": "2026-02-17"}',
+    }
+    candle = pd.Series(
+        {"date": pd.Timestamp("2026-02-18"), "open": 102.0, "high": 105.0, "low": 85.0},
+        name=pd.Timestamp("2026-02-18"),
+    )
+    result = strategy.check_entry(
+        trade, candle, pd.DataFrame([candle]), mock_trade_repo
+    )
+    assert result is not None
+    assert "STOPPED" in result
+
+
+def test_hold_target_manage_active_gap_down_stop_and_gap_up_target(
+    strategy, mock_trade_repo
+) -> None:
+    """Tests manage_active_trade with gap down stop loss and gap up target."""
+    # Gap down stop loss
+    trade_stop = {
+        "id": "H1",
+        "entry_price": 150.0,
+        "current_stop_loss": 140.0,
+        "status": "ACTIVE",
+        "entry_date": "2026-02-18",
+    }
+    gap_down_candle = pd.Series(
+        {
+            "open": 130.0,
+            "high": 132.0,
+            "low": 125.0,
+            "close": 128.0,
+            "date": pd.Timestamp("2026-02-19"),
+        },
+        name=pd.Timestamp("2026-02-19"),
+    )
+    strategy.manage_active_trade(
+        trade_stop, pd.DataFrame([gap_down_candle]), mock_trade_repo
+    )
+    assert mock_trade_repo.update_trade.call_args[0][1]["exit_price"] == 130.0
+
+    # Gap up target
+    trade_target = {
+        "id": "H2",
+        "entry_price": 100.0,
+        "current_target": 130.0,
+        "status": "ACTIVE",
+        "entry_date": "2026-02-18",
+    }
+    gap_up_candle = pd.Series(
+        {
+            "open": 135.0,
+            "high": 140.0,
+            "low": 130.0,
+            "close": 138.0,
+            "date": pd.Timestamp("2026-02-20"),
+        },
+        name=pd.Timestamp("2026-02-20"),
+    )
+    strategy.manage_active_trade(
+        trade_target, pd.DataFrame([gap_up_candle]), mock_trade_repo
+    )
+    assert mock_trade_repo.update_trade.call_args[0][1]["exit_price"] == 135.0
+
+
+def test_generate_orders_with_target(strategy, mock_trade_repo) -> None:
+    """Tests generate_orders creates 2 exit legs when target is specified."""
+    trade = {
+        "symbol": "AAPL",
+        "entry_price": 150.0,
+        "current_stop_loss": 140.0,
+        "current_target": 170.0,
+        "current_size": 10,
+    }
+    order = strategy._generate_entry_order(trade, pd.DataFrame(), budget=2000.0)
+    assert order is not None
+    assert len(order.exits) == 2
