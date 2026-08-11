@@ -1,7 +1,7 @@
 cachetools==7.1.4
 Flask==3.0.0
 gunicorn==26.0.0
-lxml==6.0.2
+lxml==6.1.1
 numpy==2.5.1
 matplotlib==3.11.0
 pandas==3.0.5
