@@ -154,7 +154,10 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         active_symbols: set[str] | None = None,
     ) -> TradeTransition | None:
-        """Activates entry on Monday close (Bar 0) if Monday Close <= threshold."""
+        """Activates entry on Monday close (Bar 0) if Monday Close <= threshold.
+
+        Invalidates setup if entry window is missed or condition fails.
+        """
         threshold_price = Decimal(str(trade.get("entry_price") or 0.0))
         if threshold_price <= Decimal("0"):
             return None
@@ -170,7 +173,11 @@ class TGIMTradeStrategy(BaseTradeStrategy):
                 date_string,
             )
 
-        return None
+        return self._reject_setup(
+            trade,
+            date_string,
+            "Missed Entry Window (Monday Close)",
+        )
 
     @override
     def _do_manage_active_trade(

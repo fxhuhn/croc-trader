@@ -201,10 +201,10 @@ def test_check_entry_expires_if_missed_next_day(
     assert result is not None
     assert "EXPIRED" in result
     mock_repository.update_trade.assert_called_once()
-    assert mock_repository.update_trade.call_args[0][1]["status"] == TradeStatus.CLOSED
+    assert mock_repository.update_trade.call_args[0][1]["status"] == TradeStatus.INVALID
     assert (
         mock_repository.update_trade.call_args[0][1]["exit_reason"]
-        == ExitReason.EXPIRED
+        == ExitReason.INVALIDATED
     )
 
 

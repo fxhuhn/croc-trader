@@ -114,6 +114,38 @@ def test_tgim_check_entry_activates_on_monday_close(
     assert transition.updates["entry_price"] == 500.0
 
 
+def test_tgim_check_entry_invalidates_when_close_above_threshold(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests check_entry invalidates setup when Monday Close > threshold price."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.CREATED.value,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+        "budget": 10000.0,
+    }
+    candle = pd.Series(
+        {
+            "date": "2026-07-20",
+            "open": 502.0,
+            "high": 508.0,
+            "low": 501.0,
+            "close": 505.0,  # > 500.0 threshold
+        }
+    )
+    df_history = pd.DataFrame([candle])
+
+    transition = trade_strategy.check_entry(trade, candle, df_history)
+
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["exit_reason"] == ExitReason.INVALIDATED.value
+    assert "Missed Entry Window" in transition.reason
+
+
 def test_tgim_c1exit_on_tuesday_close(
     trade_strategy: TGIMTradeStrategy,
 ) -> None:

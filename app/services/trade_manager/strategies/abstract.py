@@ -680,17 +680,12 @@ class BaseTradeStrategy(ABC):
     def _expire_trade(self, trade: TradeData, date_string: str) -> TradeTransition:
         """Signals expiration when entry isn't hit within time limit.
 
-        Args:
-            trade: The trade.
-            date_string: The date.
-
-        Returns:
-            TradeTransition: Computed state updates.
+        Unified transition to TradeStatus.INVALID / ExitReason.INVALIDATED.
         """
         return TradeTransition(
             updates={
-                "status": TradeStatus.CLOSED,
-                "exit_reason": ExitReason.EXPIRED,
+                "status": TradeStatus.INVALID,
+                "exit_reason": ExitReason.INVALIDATED,
                 "exit_date": date_string,
                 "realized_pnl": 0.0,
             },

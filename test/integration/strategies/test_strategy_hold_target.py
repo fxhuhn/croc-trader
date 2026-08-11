@@ -314,5 +314,5 @@ def test_check_expiration(
     assert result == "EXPIRED"
     mock_repository.update_trade.assert_called_once()
     args, _ = mock_repository.update_trade.call_args
-    assert args[1]["status"] == TradeStatus.CLOSED
-    assert args[1]["exit_reason"] == ExitReason.EXPIRED
+    assert args[1]["status"] == TradeStatus.INVALID
+    assert args[1]["exit_reason"] == ExitReason.INVALIDATED
