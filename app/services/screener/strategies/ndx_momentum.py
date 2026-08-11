@@ -457,8 +457,10 @@ class NDXMomentumScreener(BaseStrategy):
         )
 
         created_count = 0
+        created_trades: list[dict[str, object]] = []
         for symbol in symbols:
             try:
+                closing_price = float(price_data["close"].at[analysis_date, symbol])
                 self._create_single_momentum_trade(
                     symbol,
                     momentum_scores,
@@ -469,6 +471,13 @@ class NDXMomentumScreener(BaseStrategy):
                     regime_indicators,
                 )
                 created_count += 1
+                created_trades.append(
+                    {
+                        "Symbol": symbol,
+                        "Action": "BUY MKT",
+                        "Entry": round(closing_price, 2),
+                    }
+                )
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
                 raise RuntimeError(
                     f"[{self.name}] Database unavailable saving trade for {symbol}: {database_error}"
@@ -482,6 +491,10 @@ class NDXMomentumScreener(BaseStrategy):
                 )
 
         logger.info("[%s] Created %d CREATED trades.", self.name, created_count)
+
+        if self.telegram_bot and created_trades:
+            self._send_telegram_report("NDX Momentum", created_trades)
+
         return created_count
 
     def _create_single_momentum_trade(

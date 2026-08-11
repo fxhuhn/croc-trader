@@ -259,6 +259,19 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             target_date_str,
             trade_id,
         )
+
+        if self.telegram_bot:
+            self._send_telegram_report(
+                "Bridge Scout",
+                [
+                    {
+                        "Symbol": self.TARGET_SYMBOL,
+                        "Action": "BUY MKT",
+                        "Entry": current_close,
+                    }
+                ],
+            )
+
         return 1
 
     def _resolve_target_date(

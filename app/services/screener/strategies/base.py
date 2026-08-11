@@ -73,9 +73,99 @@ class BaseStrategy[T](ABC):
         return mapper.get_exchange(symbol, default="UNKNOWN")
 
     @final
-    def _send_telegram_report(self, title: str, date: str, data: pd.DataFrame) -> None:
-        if not self.telegram_bot or data.empty:
+    def _resolve_report_payload(
+        self,
+        display_name: str | None,
+        data: pd.DataFrame | list[dict[str, object]] | None,
+        date: str | pd.DataFrame | list[dict[str, object]] | None,
+    ) -> tuple[str | None, pd.DataFrame | None]:
+        """Resolves legacy positional or standard keyword arguments into a DataFrame."""
+        if isinstance(date, pd.DataFrame | list):
+            data_payload: pd.DataFrame | list[dict[str, object]] | None = date
+            name_payload = display_name
+        else:
+            data_payload = data
+            name_payload = display_name
+
+        if data_payload is None:
+            return name_payload, None
+
+        if isinstance(data_payload, list):
+            if not data_payload:
+                return name_payload, None
+            return name_payload, pd.DataFrame(data_payload)
+
+        return name_payload, data_payload
+
+    @final
+    def _format_report_row(self, row: pd.Series) -> dict[str, str] | None:
+        """Formats a single DataFrame row into a standardized signal row dictionary."""
+        symbol = str(row.get("Symbol", row.get("symbol", ""))).upper()
+        if not symbol:
+            return None
+
+        action_raw = str(
+            row.get(
+                "Action",
+                row.get("action", row.get("Signal", row.get("signal", "BUY"))),
+            )
+        ).strip()
+        order_type_raw = str(
+            row.get("OrderType", row.get("order_type", row.get("Type", "")))
+        ).strip()
+
+        if order_type_raw and order_type_raw.upper() not in action_raw.upper():
+            action = f"{action_raw} {order_type_raw.upper()}".strip()
+        else:
+            action = action_raw if action_raw else "BUY LMT"
+
+        entry_val = row.get("Entry", row.get("entry", row.get("entry_price", 0.0)))
+        try:
+            entry_str = f"{float(entry_val):.2f}"
+        except (ValueError, TypeError):
+            entry_str = str(entry_val)
+
+        return {
+            "Symbol": symbol,
+            "Action": action,
+            "Entry": entry_str,
+        }
+
+    @final
+    def _send_telegram_report(
+        self,
+        display_name: str | None = None,
+        data: pd.DataFrame | list[dict[str, object]] | None = None,
+        date: str | pd.DataFrame | list[dict[str, object]] | None = None,
+    ) -> None:
+        """Sends a standardized Telegram report for a screener strategy.
+
+        If data is empty or contains 0 signals, no message is dispatched.
+
+        Args:
+            display_name: Display name of the strategy (defaults to self.name).
+            data: DataFrame or list of dicts containing signal records.
+            date: Optional date string or legacy positional payload.
+        """
+        if not self.telegram_bot:
             return
 
-        full_title = f"\U0001f50e {title} ({date})"
-        self.telegram_bot.send_dataframe(data, title=full_title)
+        name_payload, dataframe = self._resolve_report_payload(display_name, data, date)
+        if dataframe is None or dataframe.empty:
+            return
+
+        formatted_rows: list[dict[str, str]] = []
+        for _, row in dataframe.iterrows():
+            if (formatted_row := self._format_report_row(row)) is not None:
+                formatted_rows.append(formatted_row)
+
+        if not formatted_rows:
+            return
+
+        formatted_df = pd.DataFrame(formatted_rows)
+        qty = len(formatted_df)
+        signal_word = "signal" if qty == 1 else "signals"
+        name = name_payload or self.name
+        header = f"{name} ({qty} {signal_word})"
+
+        self.telegram_bot.send_dataframe(formatted_df, title=header)

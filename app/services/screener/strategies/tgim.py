@@ -205,6 +205,19 @@ class TGIMStrategy(BaseStrategy[int]):
             target_date_str,
             trade_id,
         )
+
+        if self.telegram_bot:
+            self._send_telegram_report(
+                "TGIM",
+                [
+                    {
+                        "Symbol": self.TARGET_SYMBOL,
+                        "Action": "BUY MKT",
+                        "Entry": entry_price,
+                    }
+                ],
+            )
+
         return 1
 
     def _resolve_target_date(
