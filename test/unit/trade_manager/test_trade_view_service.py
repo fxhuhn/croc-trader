@@ -99,3 +99,36 @@ def test_prepare_trade_view(view_service: TradeViewService) -> None:
     result = view_service.prepare_trade_view(trade)
     assert result["symbol"] == "AAPL"
     assert result["unrealized_pnl"] == 1000.0
+
+
+def test_get_broker_active_and_error_orders(view_service: TradeViewService) -> None:
+    view_service.broker_repository.get_orders_by_status.side_effect = lambda status: (
+        [{"order_id": 1, "strategy_name": "DipBuyer_1"}]
+        if status == "Submitted"
+        else (
+            [{"order_id": 2, "strategy_name": "Turnover_05"}]
+            if status == "PreSubmitted"
+            else [{"order_id": 3, "strategy_name": "NDXMomentum"}]
+            if status == "Error"
+            else []
+        )
+    )
+
+    active_orders = view_service.get_broker_active_orders()
+    assert len(active_orders) == 2
+    assert active_orders[0]["strategy_filter"] == "DipBuyer"
+    assert active_orders[1]["strategy_filter"] == "TurnoverTiming"
+
+    error_orders = view_service.get_broker_error_orders()
+    assert len(error_orders) == 1
+    assert error_orders[0]["strategy_filter"] == "NDXMomentum"
+
+
+def test_get_broker_orders_none_repository() -> None:
+    service = TradeViewService(
+        trade_repository=MagicMock(),
+        market_repository=MagicMock(),
+        broker_repository=None,
+    )
+    assert service.get_broker_active_orders() == []
+    assert service.get_broker_error_orders() == []

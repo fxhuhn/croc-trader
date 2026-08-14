@@ -1319,3 +1319,67 @@ class TradeViewService:
                 pos["strategy_filter"] = pos["strategy"]
 
         return positions
+
+    def get_broker_active_orders(self) -> list[dict[str, Any]]:
+        """Fetches active submitted and presubmitted orders from TWS broker database.
+
+        Returns:
+            list[dict[str, Any]]: List of active order dictionaries with strategy_filter.
+        """
+        if self.broker_repository is None:
+            return []
+
+        submitted = [
+            dict(r) for r in self.broker_repository.get_orders_by_status("Submitted")
+        ]
+        presubmitted = [
+            dict(r) for r in self.broker_repository.get_orders_by_status("PreSubmitted")
+        ]
+        raw_orders = submitted + presubmitted
+
+        for order in raw_orders:
+            order["strategy_filter"] = _map_order_strategy_filter(
+                str(order.get("strategy_name") or "")
+            )
+
+        return raw_orders
+
+    def get_broker_error_orders(self) -> list[dict[str, Any]]:
+        """Fetches orders with error status from TWS broker database.
+
+        Returns:
+            list[dict[str, Any]]: List of error order dictionaries with strategy_filter.
+        """
+        if self.broker_repository is None:
+            return []
+
+        error_orders = [
+            dict(r) for r in self.broker_repository.get_orders_by_status("Error")
+        ]
+        for order in error_orders:
+            order["strategy_filter"] = _map_order_strategy_filter(
+                str(order.get("strategy_name") or "")
+            )
+
+        return error_orders
+
+
+def _map_order_strategy_filter(strategy_name: str) -> str:
+    """Maps a raw broker strategy name to a standardized UI filter key."""
+    strategy_lower = strategy_name.lower()
+    token_map = (
+        ("dip", "DipBuyer"),
+        ("turnover", "TurnoverTiming"),
+        ("twopercent", "TwoPercent"),
+        ("ndx", "NDXMomentum"),
+        ("momentum", "NDXMomentum"),
+        ("tgim", "TGIM"),
+        ("bridge", "BridgeScout"),
+        ("scout", "BridgeScout"),
+        ("bounce", "BounceBandit"),
+        ("bandit", "BounceBandit"),
+    )
+    for token, label in token_map:
+        if token in strategy_lower:
+            return label
+    return strategy_name or "Unknown"
