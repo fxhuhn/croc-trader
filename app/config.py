@@ -192,6 +192,30 @@ def _parse_database_config(db_data: dict[str, Any]) -> DatabaseConfig:
     return DatabaseConfig(**db_data)
 
 
+def _extract_strategy_config_from_dict(data: dict[str, Any]) -> PortfolioStrategyConfig:
+    """Extracts budget and risk from a strategy mapping."""
+    raw_budget = data.get("budget", data.get("quantity", 0.0))
+    raw_risk = data.get("risk_amount", 0.0)
+    budget = float(raw_budget) if raw_budget is not None else 0.0
+    risk = float(raw_risk) if raw_risk is not None else 0.0
+    return PortfolioStrategyConfig(budget=budget, risk_amount=risk)
+
+
+def _parse_strategy_config_entry(strat_val: Any) -> PortfolioStrategyConfig:
+    """Parses a strategy configuration dictionary or list of properties."""
+    if isinstance(strat_val, dict):
+        return _extract_strategy_config_from_dict(strat_val)
+
+    if isinstance(strat_val, list):
+        merged: dict[str, Any] = {}
+        for prop in strat_val:
+            if isinstance(prop, dict):
+                merged.update(prop)
+        return _extract_strategy_config_from_dict(merged)
+
+    return PortfolioStrategyConfig()
+
+
 def _parse_portfolio_config(portfolio_data: dict[str, Any]) -> PortfolioConfig:
     """Parses portfolio strategy budgets from raw dictionary."""
     if not portfolio_data or "strategies" not in portfolio_data:
@@ -202,35 +226,13 @@ def _parse_portfolio_config(portfolio_data: dict[str, Any]) -> PortfolioConfig:
 
     if isinstance(strategies_data, dict):
         for strat_name, strat_val in strategies_data.items():
-            if isinstance(strat_val, dict):
-                strat_configs[strat_name] = PortfolioStrategyConfig(
-                    budget=float(strat_val.get("budget") or 0.0),
-                    risk_amount=float(strat_val.get("risk_amount") or 0.0),
-                )
+            if isinstance(strat_val, dict | list):
+                strat_configs[strat_name] = _parse_strategy_config_entry(strat_val)
     elif isinstance(strategies_data, list):
         for entry in strategies_data:
             if isinstance(entry, dict):
                 for strat_name, strat_val in entry.items():
-                    budget_val = 0.0
-                    risk_val = 0.0
-                    if isinstance(strat_val, list):
-                        for prop in strat_val:
-                            if isinstance(prop, dict):
-                                if "quantity" in prop:
-                                    budget_val = float(prop["quantity"])
-                                elif "budget" in prop:
-                                    budget_val = float(prop["budget"])
-                                elif "risk_amount" in prop:
-                                    risk_val = float(prop["risk_amount"])
-                    elif isinstance(strat_val, dict):
-                        budget_val = float(
-                            strat_val.get("budget") or strat_val.get("quantity") or 0.0
-                        )
-                        risk_val = float(strat_val.get("risk_amount") or 0.0)
-                    strat_configs[strat_name] = PortfolioStrategyConfig(
-                        budget=budget_val,
-                        risk_amount=risk_val,
-                    )
+                    strat_configs[strat_name] = _parse_strategy_config_entry(strat_val)
 
     def get_strat_config(
         name: str, default_budget: float = 0.0, default_risk: float = 0.0

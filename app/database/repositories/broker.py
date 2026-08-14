@@ -7,11 +7,17 @@ executions, and settlements, mapping rows to structured TypedDict records.
 import logging
 from typing import NotRequired, TypedDict, cast
 
+from ...const import Strategies
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
-EXCLUDED_STRATEGIES: tuple[str, ...] = ("SplitTarget", "HoldTarget")
+EXCLUDED_STRATEGIES: tuple[str, ...] = (
+    Strategies.SplitTarget.value,
+    Strategies.HoldTarget.value,
+    "SplitTarget",
+    "HoldTarget",
+)
 
 
 class OrderRecord(TypedDict):
@@ -175,15 +181,16 @@ class BrokerRepository(BaseRepository):
         Returns:
             dict[str, float]: Mapping of symbol to net executed position quantity.
         """
-        query_string = """
+        placeholders = ",".join("?" for _ in EXCLUDED_STRATEGIES)
+        query_string = f"""
             SELECT
                 o.symbol,
                 SUM(CASE WHEN o.action = 'BUY' THEN e.qty ELSE -e.qty END) AS net_quantity
             FROM executions e
             JOIN orders o ON e.order_id = o.order_id
-            WHERE o.strategy_name NOT IN (?, ?)
+            WHERE o.strategy_name NOT IN ({placeholders})
             GROUP BY o.symbol
-        """
+        """  # nosec B608
         rows = self.fetch_all(query_string, EXCLUDED_STRATEGIES)
         return {
             str(row["symbol"]): float(row["net_quantity"])
@@ -210,7 +217,8 @@ class BrokerRepository(BaseRepository):
         Returns:
             list[ActivePositionRecord]: Active positions list.
         """
-        active_groups_query = """
+        placeholders = ",".join("?" for _ in EXCLUDED_STRATEGIES)
+        active_groups_query = f"""
             SELECT
                 o.trade_group_id,
                 o.symbol,
@@ -218,10 +226,10 @@ class BrokerRepository(BaseRepository):
                 SUM(CASE WHEN o.action = 'BUY' THEN e.qty ELSE -e.qty END) AS net_quantity
             FROM executions e
             JOIN orders o ON e.order_id = o.order_id
-            WHERE o.strategy_name NOT IN (?, ?)
+            WHERE o.strategy_name NOT IN ({placeholders})
             GROUP BY o.trade_group_id
             HAVING net_quantity > 0.0
-        """
+        """  # nosec B608
         active_group_rows = [
             dict(row)
             for row in self.fetch_all(active_groups_query, EXCLUDED_STRATEGIES)

@@ -10,7 +10,6 @@ from app.tools.portfolio_optimization import (
     compute_downside_deviation,
     optimize_max_sharpe_weights,
     optimize_risk_parity_weights,
-    resample_portfolio_weights,
 )
 
 
@@ -97,19 +96,6 @@ def test_calculate_risk_contributions() -> None:
     assert len(trc) == 2
     assert pytest.approx(np.sum(trc), abs=1e-5) == port_vol
     assert pytest.approx(np.sum(prc), abs=1e-3) == 100.0
-
-
-def test_resample_portfolio_weights() -> None:
-    """Verifies Monte-Carlo resampled weights computation."""
-    mu = np.array([0.10, 0.06])
-    cov = np.array([[0.03, 0.002], [0.002, 0.015]])
-
-    resampled = resample_portfolio_weights(
-        mu, cov, model_type="max_sharpe", num_simulations=20
-    )
-    assert len(resampled) == 2
-    assert pytest.approx(np.sum(resampled), abs=1e-5) == 1.0
-    assert np.all(resampled >= 0.0)
 
 
 def test_compute_downside_deviation() -> None:

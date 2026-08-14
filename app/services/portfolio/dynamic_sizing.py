@@ -1,8 +1,9 @@
-import warnings
 from dataclasses import dataclass, field
 from datetime import datetime
 
 import numpy as np
+
+from ...const import Strategies
 
 
 @dataclass
@@ -11,10 +12,10 @@ class CapacityMonitor:
 
     _concurrent_trades: dict[str, list[dict[str, object]]] = field(
         default_factory=lambda: {
-            "dip_buyer": [],
-            "turnover_0.5": [],
-            "turnover_1.0": [],
-            "two_percent": [],
+            Strategies.DipBuyer.value: [],
+            Strategies.TurnOverTiming_05.value: [],
+            Strategies.TurnOverTiming_10.value: [],
+            Strategies.TwoPercent.value: [],
             "global": [],
         }
     )
@@ -128,67 +129,3 @@ class DynamicPositionSizer:
         )
         effective_kelly = self.base_kelly * multiplier
         return capital * effective_kelly
-
-
-class OverflowProtection:
-    """Safeguards against excessive total portfolio exposure (Deprecated).
-
-    .. deprecated:: 1.0.0
-    """
-
-    def __init__(self, max_total_exposure: float = 1.0) -> None:
-        warnings.warn(
-            "OverflowProtection is deprecated and will be removed in a future release.",
-            category=DeprecationWarning,
-            stacklevel=2,
-        )
-        self.max_total_exposure = max_total_exposure
-
-    def apply_limits(
-        self,
-        new_trades: list[dict[str, object]],
-        current_exposure: float,
-        capital: float,
-    ) -> list[dict[str, object]]:
-        """
-        Adjusts proposed trade sizes if total exposure exceeds limit.
-
-        Args:
-            new_trades: List of dicts checks with 'position_size' key.
-            current_exposure: Current active market exposure ratio (0.0 to 1.0+).
-            capital: Total portfolio equity.
-
-        Returns:
-            List of modified trades with adjusted sizes.
-        """
-        total_proposed_value = sum(t["expected_size"] for t in new_trades)
-        proposed_exposure_ratio = total_proposed_value / capital
-
-        projected_total_exposure = current_exposure + proposed_exposure_ratio
-
-        if projected_total_exposure > self.max_total_exposure:
-            # We are over limit. Calculate reduction factor.
-            # Available room = Max - Current
-            # If current is already over max, room is 0 (allow no new trades? or minimal?)
-            # Logic: Proportional reduction of NEW trades.
-
-            available_exposure_room = max(
-                0.0, self.max_total_exposure - current_exposure
-            )
-
-            if available_exposure_room == 0:
-                # Hard block: No new trades allowed
-                reduction_factor = 0.0
-            else:
-                reduction_factor = available_exposure_room / proposed_exposure_ratio
-
-            # Apply reduction
-            for trade in new_trades:
-                original_size = trade["expected_size"]
-                trade["expected_size"] = original_size * reduction_factor
-                trade["note"] = (
-                    f"Reduced by {(1 - reduction_factor) * 100:.1f}% "
-                    f"(Exposure {projected_total_exposure:.2f} > {self.max_total_exposure})"
-                )
-
-        return new_trades

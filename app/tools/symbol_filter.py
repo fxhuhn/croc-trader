@@ -249,9 +249,3 @@ class SymbolFilter:
                     to_remove.add(loser_ticker)
 
         return [candidate for candidate in candidates if candidate not in to_remove]
-
-
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    filter_instance: SymbolFilter = SymbolFilter()
-    logger.info("SymbolFilter initialized for stand-alone testing.")

@@ -55,10 +55,9 @@ class ScreenerViewService:
         # Ensure we pass the string value of the Enum if it's an Enum
         strategy_value = str(strategy)
 
-        if (
-            strategy_value.lower().startswith("croc")
-            or strategy_value == Strategies.CrocSetup
-        ):
+        if strategy_value.lower().startswith(
+            str(Strategies.CrocSetup).lower()
+        ) or Strategies.CrocSetup in (strategy, strategy_value):
             results = self._fetch_croc_candidates(limit)
         else:
             results = self._fetch_standard_candidates(strategy, strategy_value, limit)

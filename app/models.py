@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
@@ -27,11 +29,11 @@ class TradeParams:
 class OrderLeg:
     """Immutable representation of a single order leg (entry or exit)."""
 
-    action: "OrderAction"
-    type: "OrderType"
+    action: OrderAction
+    type: OrderType
     price: Decimal
     quantity: int | None = None
-    time_in_force: "TimeInForce" = "DAY"
+    time_in_force: TimeInForce = "DAY"
 
 
 @dataclass
@@ -269,7 +271,7 @@ class MarketPrice:
     timeframe: str = "1D"
 
     @classmethod
-    def from_yahoo(cls, symbol: str, row: dict[str, Any]) -> "MarketPrice":
+    def from_yahoo(cls, symbol: str, row: dict[str, Any]) -> MarketPrice:
         """
         Factory method to create a MarketPrice from a Yahoo row dictionary.
         Validation logic (e.g., non-negative prices) implies here.
@@ -300,7 +302,7 @@ class MarketPrice:
         )
 
     @classmethod
-    def from_tradingview(cls, symbol: str, row: dict[str, Any]) -> "MarketPrice":
+    def from_tradingview(cls, symbol: str, row: dict[str, Any]) -> MarketPrice:
         """Factory method to create a MarketPrice from a TradingView row dictionary."""
         close_price = float(row.get("close", 0.0))
         if close_price < 0:

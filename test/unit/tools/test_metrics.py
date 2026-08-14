@@ -112,23 +112,6 @@ def test_calculate_kelly_criterion():
     assert kelly == pytest.approx(0.4)
 
 
-def test_calculate_ulcer_index():
-    """Tests Ulcer Index calculation."""
-    # Arrange
-    equity = pd.Series([100.0, 95.0, 90.0, 100.0, 105.0])
-
-    # Act
-    ulcer = metrics.calculate_ulcer_index(equity)
-
-    # Assert
-    # Peaks: 100, 100, 100, 100, 105
-    # DD%: 0, -5, -10, 0, 0
-    # Squared DD%: 0, 25, 100, 0, 0
-    # Mean Sq DD%: 125 / 5 = 25
-    # Ulcer = sqrt(25) = 5.0
-    assert ulcer == pytest.approx(5.0)
-
-
 def test_calculate_max_drawdown_with_initial_value():
     """Tests maximum drawdown calculation with initial value prepended."""
     # Arrange

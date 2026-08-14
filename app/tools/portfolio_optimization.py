@@ -8,8 +8,7 @@ It follows the Functional Core principle: referentially transparent calculations
 without side effects or I/O.
 """
 
-import warnings
-from typing import Literal, cast
+from typing import cast
 
 import numpy as np
 import pandas as pd  # type: ignore[import-untyped]
@@ -220,50 +219,6 @@ def optimize_risk_parity_weights(
         return cast(np.ndarray, optimized_weights / total_w)
 
     return default_weights
-
-
-def resample_portfolio_weights(
-    expected_returns: np.ndarray,
-    cov_matrix: np.ndarray,
-    model_type: Literal["max_sharpe", "risk_parity"] = "max_sharpe",
-    num_simulations: int = 100,
-) -> np.ndarray:
-    """Performs Monte-Carlo Resampling (Resampled Efficiency) (Deprecated).
-
-    .. deprecated:: 1.0.0
-    """
-    warnings.warn(
-        "resample_portfolio_weights is deprecated and will be removed in a future release.",
-        category=DeprecationWarning,
-        stacklevel=2,
-    )
-    num_strats = len(expected_returns)
-    if num_strats == 0:
-        return np.array([], dtype=float)
-
-    accumulated_weights = np.zeros(num_strats)
-    rng = np.random.default_rng(seed=42)
-
-    for _ in range(num_simulations):
-        # Perturb expected returns with Gaussian noise scaled by standard dev
-        std_devs = np.sqrt(np.maximum(np.diag(cov_matrix), EPSILON))
-        perturbed_mu = expected_returns + rng.normal(
-            0.0, 0.1 * std_devs, size=num_strats
-        )
-
-        if model_type == "max_sharpe":
-            weights = optimize_max_sharpe_weights(perturbed_mu, cov_matrix)
-        else:
-            weights = optimize_risk_parity_weights(cov_matrix)
-
-        accumulated_weights += weights
-
-    resampled_weights = accumulated_weights / float(num_simulations)
-    total_w = float(np.sum(resampled_weights))
-    if total_w > EPSILON:
-        return resampled_weights / total_w
-
-    return np.ones(num_strats) / num_strats
 
 
 def compute_downside_deviation(

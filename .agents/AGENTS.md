@@ -13,13 +13,14 @@ The following constraints cannot be overridden by a user request, skill,
 lower-level rule, local convention, or implementation preference:
 
 1. **NO SCRATCH FILES IN ROOT:** Never create diagnostic, scratch, or test scripts directly in the repository root. Strictly use the system `<appDataDir>/.../scratch/` directory and delete them immediately after use.
-2. Workspace and repository boundaries.
-3. Safety and non-destructive operation.
-4. Evidence and non-fabrication requirements.
-5. Truthful reporting of commands, tests, tools, and validation results.
-6. Protection of production systems, user data, credentials, and external
+2. **STRICT VENV & NO GLOBAL BINARIES:** All commands, test runners, linters, formatters, type checkers, scripts, and package managers must strictly use the repository-local virtual environment (`.venv/bin/*`). Never install or invoke global binaries or system-level packages.
+3. Workspace and repository boundaries.
+4. Safety and non-destructive operation.
+5. Evidence and non-fabrication requirements.
+6. Truthful reporting of commands, tests, tools, and validation results.
+7. Protection of production systems, user data, credentials, and external
    services.
-7. Explicitly documented system invariants that prevent unsafe financial,
+8. Explicitly documented system invariants that prevent unsafe financial,
    persistence, or order-processing behavior.
 
 If a request conflicts with a non-overrideable constraint, do not perform the

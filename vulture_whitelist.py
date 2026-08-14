@@ -20,9 +20,7 @@ _.get_all_orders
 _.get_executions_for_order
 _.get_all_daily_data
 _._log_event
-_._get_exchange
 _._process_single_signal
-_.apply_limits
 _.process_daily_signals
 _.get_current_parameters
 _.special_symbols
@@ -50,11 +48,7 @@ SQNClassification
 PortfolioMetrics
 CrocSignal
 SignalStat
-YahooRow
-OverflowProtection
 PortfolioManager
-SimulationResult
-CapacitySimulator
 TurnoverContext
 MetricsOverview
 RegimeDetector
@@ -99,10 +93,7 @@ view_trades_twopercent
 view_backtest_dashboard
 on_starting
 calculate_rsi
-calculate_ema
-calculate_roc
 calculate_sqn
-calculate_ulcer_index
 send
 
 # Module-level variables & settings keys
@@ -182,9 +173,6 @@ strategy_id
 desc
 icon
 is_active
-scenario_name
-median_return
-avg_exposure
 strategy_ranking
 T
 setup_score
@@ -207,7 +195,6 @@ sparkline
 max_days
 version
 holidays
-filter_instance
 logconfig_dict
 server
 MAX_LEVERAGE_MULTIPLIER

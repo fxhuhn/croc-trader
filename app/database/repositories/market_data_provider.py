@@ -33,6 +33,34 @@ class MarketDataProvider:
         self._cache_lookback: int = 0
         self._all_daily_data_cache: dict[int, MarketDataDict] = {}
 
+    def _build_ranked_query(
+        self,
+        where_filter: str,
+        include_symbol_in_select: bool = True,
+        partition_by_symbol: bool = True,
+    ) -> str:
+        """Constructs a deduplicated, ranked OHLCV query prioritizing Yahoo over TradingView."""
+        partition_clause = (
+            "PARTITION BY symbol, date" if partition_by_symbol else "PARTITION BY date"
+        )
+        symbol_col = "symbol, " if include_symbol_in_select else ""
+        query_str = (
+            "WITH ranked AS ("  # nosec B608
+            f"    SELECT date, {symbol_col}open, high, low, close, volume, "
+            "           ROW_NUMBER() OVER ( "
+            f"               {partition_clause} "
+            "               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END "
+            "           ) as rank_idx "
+            "    FROM market_prices "
+            f"   WHERE {where_filter} AND timeframe = '1D'"  # nosec B608
+            ") "
+            f"SELECT date, {symbol_col}open, high, low, close, volume "
+            "FROM ranked "
+            "WHERE rank_idx = 1 "
+            "ORDER BY date ASC"
+        )
+        return query_str
+
     def preload_all_data(self, days: int = 1000) -> None:
         """Loads all market price data into memory for high-speed analysis.
 
@@ -48,21 +76,7 @@ class MarketDataProvider:
                 "%Y-%m-%d"
             )
             with self.session.connect() as connection:
-                query = """
-                    WITH ranked AS (
-                        SELECT date, symbol, open, high, low, close, volume,
-                               ROW_NUMBER() OVER (
-                                   PARTITION BY symbol, date
-                                   ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
-                               ) as rank_idx
-                        FROM market_prices
-                        WHERE date >= ? AND timeframe = '1D'
-                    )
-                    SELECT date, symbol, open, high, low, close, volume
-                    FROM ranked
-                    WHERE rank_idx = 1
-                    ORDER BY date ASC
-                """
+                query = self._build_ranked_query("date >= ?")
                 dataframe = pd.read_sql_query(query, connection, params=(start_date,))
 
             if not dataframe.empty:
@@ -94,21 +108,7 @@ class MarketDataProvider:
 
         try:
             with self.session.connect() as connection:
-                query = """
-                    WITH ranked AS (
-                        SELECT date, symbol, open, high, low, close, volume,
-                               ROW_NUMBER() OVER (
-                                   PARTITION BY symbol, date
-                                   ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
-                               ) as rank_idx
-                        FROM market_prices
-                        WHERE date >= ? AND timeframe = '1D'
-                    )
-                    SELECT date, symbol, open, high, low, close, volume
-                    FROM ranked
-                    WHERE rank_idx = 1
-                    ORDER BY date ASC
-                """
+                query = self._build_ranked_query("date >= ?")
                 dataframe = pd.read_sql_query(query, connection, params=(start_date,))
         except Exception as error:
             logger.error("[MarketData] DB Error: %s", error)
@@ -190,20 +190,8 @@ class MarketDataProvider:
                 for index in range(0, len(symbols), chunk_size):
                     symbol_chunk = symbols[index : index + chunk_size]
                     placeholders = ",".join("?" for _ in symbol_chunk)
-                    query = (
-                        "WITH ranked AS ("
-                        "    SELECT date, symbol, open, high, low, close, volume, "
-                        "           ROW_NUMBER() OVER ( "
-                        "               PARTITION BY symbol, date "
-                        "               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END "
-                        "           ) as rank_idx "
-                        "    FROM market_prices "
-                        f"   WHERE symbol IN ({placeholders}) AND date >= ? AND timeframe = '1D'"  # nosec B608
-                        ") "
-                        "SELECT date, symbol, open, high, low, close, volume "
-                        "FROM ranked "
-                        "WHERE rank_idx = 1 "
-                        "ORDER BY date ASC"
+                    query = self._build_ranked_query(  # nosec B608
+                        f"symbol IN ({placeholders}) AND date >= ?"
                     )
                     query_params = tuple(symbol_chunk) + (start_date,)
                     chunk_dataframe = pd.read_sql_query(
@@ -254,17 +242,25 @@ class MarketDataProvider:
         if self._in_memory_cache and days <= self._cache_lookback:
             try:
                 cached_data = {}
-                cutoff_timestamp = pd.Timestamp.now() - pd.Timedelta(days=days)
                 has_data = False
+                # Anchor relative to latest available date in cached series
+                anchor_series = self._in_memory_cache.get("close")
+                anchor_date = (
+                    anchor_series.index.max()
+                    if anchor_series is not None and not anchor_series.empty
+                    else pd.Timestamp.now()
+                )
+                cutoff_timestamp = anchor_date - pd.Timedelta(days=days)
+
                 for column_name in ["open", "high", "low", "close", "volume"]:
                     if symbol in self._in_memory_cache[column_name].columns:
                         series = self._in_memory_cache[column_name][symbol]
-                        cached_data[column_name] = series[
-                            series.index >= cutoff_timestamp
-                        ]
-                        has_data = True
+                        filtered = series[series.index >= cutoff_timestamp]
+                        if not filtered.empty:
+                            cached_data[column_name] = filtered
+                            has_data = True
 
-                if has_data:
+                if has_data and "close" in cached_data:
                     dataframe = pd.DataFrame(cached_data)
                     dataframe.index.name = "date"
                     return dataframe.reset_index()
@@ -276,21 +272,11 @@ class MarketDataProvider:
                 "%Y-%m-%d"
             )
 
-            query = """
-                WITH ranked AS (
-                    SELECT date, open, high, low, close, volume,
-                           ROW_NUMBER() OVER (
-                               PARTITION BY date
-                               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
-                           ) as rank_idx
-                    FROM market_prices
-                    WHERE symbol = ? AND date >= ? AND timeframe = '1D'
-                )
-                SELECT date, open, high, low, close, volume
-                FROM ranked
-                WHERE rank_idx = 1
-                ORDER BY date ASC
-            """
+            query = self._build_ranked_query(
+                "symbol = ? AND date >= ?",
+                include_symbol_in_select=False,
+                partition_by_symbol=False,
+            )
             dataframe = pd.read_sql_query(
                 query, connection, params=(symbol, start_date)
             )
@@ -325,20 +311,8 @@ class MarketDataProvider:
             )
 
             placeholders = ",".join("?" for _ in symbols)
-            query = (
-                "WITH ranked AS ("
-                "    SELECT symbol, date, open, high, low, close, volume, "
-                "           ROW_NUMBER() OVER ( "
-                "               PARTITION BY symbol, date "
-                "               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END "
-                "           ) as rank_idx "
-                "    FROM market_prices "
-                f"   WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ? AND timeframe = '1D'"  # nosec B608
-                ") "
-                "SELECT symbol, date, open, high, low, close, volume "
-                "FROM ranked "
-                "WHERE rank_idx = 1 "
-                "ORDER BY date ASC"
+            query = self._build_ranked_query(  # nosec B608
+                f"symbol IN ({placeholders}) AND date >= ? AND date <= ?"
             )
 
             dataframe = pd.read_sql(

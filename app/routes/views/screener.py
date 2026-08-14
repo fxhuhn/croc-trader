@@ -162,7 +162,7 @@ def view_screener_croc() -> str:
     """
     limit = request.args.get("limit", 200, type=int)
     service = _get_screener_view_service()
-    results = service.get_candidates("Croc_", limit=limit)
+    results = service.get_candidates(Strategies.CrocSetup, limit=limit)
     return render_template("screener_croc.html", results=results)
 
 

@@ -5,10 +5,8 @@ import pytest
 
 from app.tools.indicators import (
     calculate_atr,
-    calculate_ema,
     calculate_ibs,
     calculate_max_close_for_rsi,
-    calculate_roc,
     calculate_rsi,
     calculate_sma,
     calculate_true_range,
@@ -63,17 +61,3 @@ def test_calculate_max_close_for_rsi_returns_nan_on_insufficient_length() -> Non
     short_series = pd.Series([100.0])
     max_c = calculate_max_close_for_rsi(short_series, window=2, rsi_target=40.0)
     assert pd.isna(max_c)
-
-
-def test_calculate_ema_raises_value_error_on_empty_series() -> None:
-    """Verifies calculate_ema raises ValueError on empty series."""
-    empty_series = pd.Series(dtype=float)
-    with pytest.raises(ValueError, match="Cannot calculate EMA"):
-        calculate_ema(empty_series, window=20)
-
-
-def test_calculate_roc_raises_value_error_on_empty_series() -> None:
-    """Verifies calculate_roc raises ValueError on empty series."""
-    empty_series = pd.Series(dtype=float)
-    with pytest.raises(ValueError, match="Cannot calculate ROC"):
-        calculate_roc(empty_series, period=10)

@@ -1,4 +1,4 @@
-"""Routes and views for active and closed trades across strategies."""
+"""Routes and views for trade history, active positions, and broker dashboard."""
 
 from typing import Any
 
@@ -7,10 +7,34 @@ from flask import render_template, request
 from ...const import ExitReason, Strategies
 from ...types import TradeStatus
 from .blueprint import views_bp
-from .dependencies import (
-    _get_trade_view_service,
-    cache,
-)
+from .dependencies import _get_trade_view_service, cache
+
+STRATEGY_DISPLAY_MAP: dict[Strategies | str, str] = {
+    Strategies.CrocSetup: "Croc Setup",
+    Strategies.HoldTarget: "Croc Setup",
+    Strategies.SplitTarget: "Croc Setup",
+    Strategies.DipBuyer: "Dip Buyer",
+    Strategies.TurnOverTiming: "Turnover",
+    Strategies.TurnOverTiming_05: "Turnover",
+    Strategies.TurnOverTiming_10: "Turnover",
+    Strategies.TwoPercent: "Two Percent",
+    Strategies.NDXMomentum: "NDX Momentum",
+    Strategies.TGIM: "TGIM",
+    Strategies.BridgeScout: "Bridge Scout",
+    Strategies.BounceBandit: "Bounce Bandit",
+}
+
+CROC_STRATEGIES: list[Strategies] = [
+    Strategies.CrocSetup,
+    Strategies.HoldTarget,
+    Strategies.SplitTarget,
+]
+
+TURNOVER_STRATEGIES: list[Strategies] = [
+    Strategies.TurnOverTiming,
+    Strategies.TurnOverTiming_05,
+    Strategies.TurnOverTiming_10,
+]
 
 
 @views_bp.route("/trades", methods=["GET"])
@@ -24,75 +48,13 @@ def view_trades_overview() -> str:
     """
     service = _get_trade_view_service()
 
-    # 1. Fetch Active Trades
     active_trades = service.get_trades(status=TradeStatus.ACTIVE)
     service.attach_sparklines(active_trades)
-
-    # 2. Portfolio Metrics
     summary_metrics = service.get_portfolio_summary(active_trades)
+    strategy_stats = _build_strategy_overview_stats(active_trades, service)
 
-    # 3. Strategy Allocation & Performance
-    strategy_stats = {
-        "Croc Setup": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "Dip Buyer": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "Turnover": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "Two Percent": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "NDX Momentum": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "TGIM": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "Bridge Scout": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "Bounce Bandit": {"count": 0, "pnl": 0.0, "invested": 0.0},
-    }
-
-    croc_group = [
-        Strategies.CrocSetup,
-        Strategies.HoldTarget,
-        Strategies.SplitTarget,
-        "croc",
-    ]
-    turnover_group = [
-        Strategies.TurnOverTiming,
-        Strategies.TurnOverTiming_05,
-        Strategies.TurnOverTiming_10,
-    ]
-
-    for trade in active_trades:
-        # Resolve strategy via service to get the Enum value string
-        strategy_key = service.resolve_strategy(trade)
-
-        # Robust grouping
-        if strategy_key in croc_group:
-            label = "Croc Setup"
-        elif strategy_key == Strategies.DipBuyer:
-            label = "Dip Buyer"
-        elif strategy_key in turnover_group:
-            label = "Turnover"
-        elif strategy_key == Strategies.TwoPercent:
-            label = "Two Percent"
-        elif strategy_key == Strategies.NDXMomentum:
-            label = "NDX Momentum"
-        elif strategy_key == Strategies.TGIM:
-            label = "TGIM"
-        elif strategy_key == Strategies.BridgeScout:
-            label = "Bridge Scout"
-        elif strategy_key == Strategies.BounceBandit:
-            label = "Bounce Bandit"
-        else:
-            label = str(trade.get("strategy", "Unknown"))
-
-        if label not in strategy_stats:
-            strategy_stats[label] = {"count": 0, "pnl": 0.0, "invested": 0.0}
-
-        strategy_stats[label]["count"] += 1
-        strategy_stats[label]["pnl"] += float(trade.get("unrealized_pnl", 0.0) or 0.0)
-
-        entry_price = float(trade.get("entry_price") or 0.0)
-        initial_size = float(trade.get("initial_size") or 0.0)
-        strategy_stats[label]["invested"] += entry_price * initial_size
-
-    # Prepare Data for Donut Chart
     allocation_labels = list(strategy_stats.keys())
     allocation_values = [float(data["invested"]) for data in strategy_stats.values()]
-    # Custom colors: Blue, Purple, Orange, Slate, Emerald...
     palette = ["#2563eb", "#8b5cf6", "#f97316", "#64748b", "#10b981"]
 
     allocation_chart_html = service.generate_donut_chart(
@@ -108,73 +70,98 @@ def view_trades_overview() -> str:
     )
 
 
-@views_bp.route("/trades/croc", methods=["GET"])
-@cache.cached(timeout=86400, query_string=True)
-def view_trades_croc() -> str:
-    """Displays the Croc Setup trade history and active positions.
+def _build_strategy_overview_stats(
+    active_trades: list[dict[str, Any]], service: Any
+) -> dict[str, dict[str, float]]:
+    """Builds aggregated trade counts, PnL, and invested volume per strategy group."""
+    stats: dict[str, dict[str, float]] = {
+        "Croc Setup": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Dip Buyer": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Turnover": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Two Percent": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "NDX Momentum": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "TGIM": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Bridge Scout": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Bounce Bandit": {"count": 0, "pnl": 0.0, "invested": 0.0},
+    }
 
-    Returns:
-        str: Rendered HTML template with Croc setup active/closed trades.
-    """
+    for trade in active_trades:
+        strat_key = service.resolve_strategy(trade)
+        label = STRATEGY_DISPLAY_MAP.get(
+            strat_key, str(trade.get("strategy", "Unknown"))
+        )
+
+        if label not in stats:
+            stats[label] = {"count": 0, "pnl": 0.0, "invested": 0.0}
+
+        stats[label]["count"] += 1
+        stats[label]["pnl"] += float(trade.get("unrealized_pnl", 0.0) or 0.0)
+
+        entry_price = float(trade.get("entry_price") or 0.0)
+        initial_size = float(trade.get("initial_size") or 0.0)
+        stats[label]["invested"] += entry_price * initial_size
+
+    return stats
+
+
+def _render_standard_strategy_trades(
+    template_name: str,
+    strategy: Strategies,
+    include_index_stats: bool = True,
+) -> str:
+    """Renders standard strategy trade history and active positions view."""
     limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
 
-    croc_group = [
-        Strategies.CrocSetup,
-        Strategies.HoldTarget,
-        Strategies.SplitTarget,
-        "croc",
-    ]
-
-    active = service.get_trades(strategies=croc_group, status=TradeStatus.ACTIVE)
+    active = service.get_trades(strategies=strategy, status=TradeStatus.ACTIVE)
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
 
-    closed_all = service.get_trades(strategies=croc_group, status=TradeStatus.CLOSED)
+    closed = service.get_trades(strategies=strategy, status=TradeStatus.CLOSED)
+    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
+    closed = closed[:limit]
+
+    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
+    closed_summary = service.get_closed_summary(closed)
+    active_groups = service.group_trades_by_symbol(active)
+    history_groups = service.group_trades_history(closed)
+
+    context: dict[str, Any] = {
+        "active_trades": active,
+        "active_groups": active_groups,
+        "closed_trades": closed,
+        "history_groups": history_groups,
+        "summary": summary_metrics,
+        "closed_summary": closed_summary,
+    }
+    if include_index_stats:
+        context["index_stats"] = {}
+
+    return render_template(template_name, **context)
+
+
+@views_bp.route("/trades/croc", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
+def view_trades_croc() -> str:
+    """Displays the Croc Setup trade history and active positions."""
+    limit = request.args.get("limit", 100, type=int)
+    service = _get_trade_view_service()
+
+    active = service.get_trades(strategies=CROC_STRATEGIES, status=TradeStatus.ACTIVE)
+    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
+
+    closed_all = service.get_trades(
+        strategies=CROC_STRATEGIES, status=TradeStatus.CLOSED
+    )
     closed = [trade for trade in closed_all if trade.get("exit_reason") != "EXPIRED"]
     closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
     summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
-
     index_stats = service.get_index_stats(closed)
     active_groups = service.group_trades_by_symbol(active)
     history_groups = service.group_trades_history(closed)
-
-    # Signal Aggregation (specific to Croc)
-    signal_stats = {}
-    for trade in closed:
-        raw_signal = (
-            trade["context"].get("original_signal")
-            or trade["context"].get("match_rule", {}).get("Signal")
-            or trade["strategy"]
-        )
-        signal_name = str(raw_signal).replace("Croc_", "") if raw_signal else "Unknown"
-
-        if signal_name not in signal_stats:
-            signal_stats[signal_name] = {
-                "count": 0,
-                "win": 0,
-                "loss": 0,
-                "pnl": 0.0,
-            }
-
-        realized_profit_and_loss = float(trade["realized_pnl"] or 0.0)
-        service._update_statistics(signal_stats[signal_name], realized_profit_and_loss)
-
-    # Add Avg PnL
-    for value in signal_stats.values():
-        value["average_pnl"] = (
-            value["pnl"] / value["count"] if value["count"] > 0 else 0.0
-        )
-
-    sorted_signals = dict(
-        sorted(
-            signal_stats.items(),
-            key=lambda item: item[1]["count"],
-            reverse=True,
-        )
-    )
+    signal_stats = _aggregate_croc_signals(closed, service)
 
     return render_template(
         "trades_croc.html",
@@ -185,18 +172,42 @@ def view_trades_croc() -> str:
         summary=summary_metrics,
         closed_summary=closed_summary,
         index_stats=index_stats,
-        signal_stats=sorted_signals,
+        signal_stats=signal_stats,
+    )
+
+
+def _aggregate_croc_signals(
+    closed_trades: list[dict[str, Any]], service: Any
+) -> dict[str, Any]:
+    """Aggregates win/loss and PnL performance per Croc signal name."""
+    signal_stats: dict[str, dict[str, Any]] = {}
+    for trade in closed_trades:
+        raw_signal = (
+            trade["context"].get("original_signal")
+            or trade["context"].get("match_rule", {}).get("Signal")
+            or trade["strategy"]
+        )
+        signal_name = str(raw_signal).replace("Croc_", "") if raw_signal else "Unknown"
+        if signal_name not in signal_stats:
+            signal_stats[signal_name] = {"count": 0, "win": 0, "loss": 0, "pnl": 0.0}
+
+        realized_pnl = float(trade["realized_pnl"] or 0.0)
+        service._update_statistics(signal_stats[signal_name], realized_pnl)
+
+    for value in signal_stats.values():
+        value["average_pnl"] = (
+            value["pnl"] / value["count"] if value["count"] > 0 else 0.0
+        )
+
+    return dict(
+        sorted(signal_stats.items(), key=lambda item: item[1]["count"], reverse=True)
     )
 
 
 @views_bp.route("/trades/dip-buyer", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_dip_buyer() -> str:
-    """Displays the Dip Buyer trade history and active positions dashboard.
-
-    Returns:
-        str: Rendered HTML template with Dip Buyer trades.
-    """
+    """Displays the Dip Buyer trade history and active positions dashboard."""
     limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
 
@@ -205,7 +216,6 @@ def view_trades_dip_buyer() -> str:
     )
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
 
-    # Inject Max Days for Time Stop Visualization
     for trade in active:
         trade["max_days"] = 7
 
@@ -217,7 +227,6 @@ def view_trades_dip_buyer() -> str:
 
     summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
-
     index_stats = service.get_index_stats(closed)
     weekday_stats = service.get_weekday_stats(closed)
     history_groups = service.group_trades_history(closed)
@@ -237,52 +246,51 @@ def view_trades_dip_buyer() -> str:
 @views_bp.route("/trades/turnover", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_turnover() -> str:
-    """Displays the Turnover Timing trade history and active positions.
-
-    Returns:
-        str: Rendered HTML template with Turnover trades.
-    """
+    """Displays the Turnover Timing trade history and active positions."""
     limit = request.args.get("limit", 200, type=int)
     service = _get_trade_view_service()
 
-    turnover_group = [
-        Strategies.TurnOverTiming,
-        Strategies.TurnOverTiming_05,
-        Strategies.TurnOverTiming_10,
-    ]
-
-    active = service.get_trades(strategies=turnover_group, status=TradeStatus.ACTIVE)
-
-    # Inject Max Days for Visualization (Mon-Fri = 5 days)
+    active = service.get_trades(
+        strategies=TURNOVER_STRATEGIES, status=TradeStatus.ACTIVE
+    )
     for trade in active:
         trade["max_days"] = 5
         trade["green_candle_count"] = trade.get("context", {}).get(
             "green_candle_count", 0
         )
 
-    # Fetch CLOSED Trades EXCLUDING Expired ones
     closed = service.get_trades(
-        strategies=turnover_group,
+        strategies=TURNOVER_STRATEGIES,
         status=TradeStatus.CLOSED,
         exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
     )
-
-    # Sort Closed: Exit Date desc, then Symbol
     closed.sort(key=lambda x: (x["exit_date"] or "", x["symbol"]), reverse=True)
     closed = closed[:limit]
 
-    # Active Groups
     active_groups = service.group_trades_by_symbol(active)
-
-    # Stats
     summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
-
-    # Aggregations
     index_stats = service.get_index_stats(closed)
+    variant_stats = _aggregate_turnover_variants(closed, service)
+    history_groups = service.group_trades_history(closed)
 
-    # Variant Stats
-    variant_stats = {
+    return render_template(
+        "trades_turnover.html",
+        summary=summary_metrics,
+        active_trades=active_groups,
+        history_groups=history_groups,
+        closed_trades=closed,
+        closed_summary=closed_summary,
+        performance_index=list(index_stats.values()),
+        performance_variants=list(variant_stats.values()),
+    )
+
+
+def _aggregate_turnover_variants(
+    closed_trades: list[dict[str, Any]], service: Any
+) -> dict[str, dict[str, Any]]:
+    """Aggregates Turnover 0.5 vs Turnover 1.0 performance."""
+    variants = {
         "Turnover 0.5": {
             "name": "Turnover",
             "version": "0.5",
@@ -300,188 +308,65 @@ def view_trades_turnover() -> str:
             "pnl": 0.0,
         },
     }
-
-    for trade in closed:
-        strategy_name = str(trade.get("strategy") or "")
-        variant_key = None
-        if "0.5" in strategy_name:
-            variant_key = "Turnover 0.5"
-        elif "1.0" in strategy_name:
-            variant_key = "Turnover 1.0"
-
-        if variant_key:
-            realized_profit_and_loss = float(trade["realized_pnl"] or 0.0)
+    for trade in closed_trades:
+        strat_name = str(trade.get("strategy") or "")
+        key = (
+            "Turnover 0.5"
+            if "0.5" in strat_name
+            else ("Turnover 1.0" if "1.0" in strat_name else None)
+        )
+        if key:
             service._update_statistics(
-                variant_stats[variant_key], realized_profit_and_loss
+                variants[key], float(trade["realized_pnl"] or 0.0)
             )
 
-    # Calc Averages for Variants
-    for item in variant_stats.values():
+    for item in variants.values():
         item["average_pnl"] = item["pnl"] / item["count"] if item["count"] > 0 else 0.0
 
-    history_groups = service.group_trades_history(closed)
-
-    return render_template(
-        "trades_turnover.html",
-        summary=summary_metrics,
-        active_trades=active_groups,
-        history_groups=history_groups,
-        closed_trades=closed,
-        closed_summary=closed_summary,
-        performance_index=list(index_stats.values()),
-        performance_variants=list(variant_stats.values()),
-    )
+    return variants
 
 
 @views_bp.route("/trades/ndx-momentum", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_ndx_momentum() -> str:
-    """Displays the NDX Momentum trade history and active positions.
-
-    Returns:
-        str: Rendered HTML template with NDX Momentum trades.
-    """
-    limit = request.args.get("limit", 100, type=int)
-    service = _get_trade_view_service()
-
-    active = service.get_trades(
-        strategies=Strategies.NDXMomentum, status=TradeStatus.ACTIVE
-    )
-    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-
-    closed = service.get_trades(
-        strategies=Strategies.NDXMomentum, status=TradeStatus.CLOSED
-    )
-    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
-    closed = closed[:limit]
-
-    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
-    closed_summary = service.get_closed_summary(closed)
-    history_groups = service.group_trades_history(closed)
-
-    return render_template(
+    """Displays the NDX Momentum trade history and active positions."""
+    return _render_standard_strategy_trades(
         "trades_ndx_momentum.html",
-        active_trades=active,
-        closed_trades=closed,
-        history_groups=history_groups,
-        summary=summary_metrics,
-        closed_summary=closed_summary,
+        Strategies.NDXMomentum,
+        include_index_stats=False,
     )
 
 
 @views_bp.route("/trades/twopercent", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_twopercent() -> str:
-    """Displays the Two Percent trade history and active positions.
-
-    Returns:
-        str: Rendered HTML template with Two Percent trades.
-    """
-    limit = request.args.get("limit", 100, type=int)
-    service = _get_trade_view_service()
-
-    active = service.get_trades(
-        strategies=Strategies.TwoPercent, status=TradeStatus.ACTIVE
-    )
-    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-
-    closed = service.get_trades(
-        strategies=Strategies.TwoPercent, status=TradeStatus.CLOSED
-    )
-    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
-    closed = closed[:limit]
-
-    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
-    closed_summary = service.get_closed_summary(closed)
-
-    active_groups = service.group_trades_by_symbol(active)
-    history_groups = service.group_trades_history(closed)
-
-    return render_template(
+    """Displays the Two Percent trade history and active positions."""
+    return _render_standard_strategy_trades(
         "trades_twopercent.html",
-        active_trades=active,
-        active_groups=active_groups,
-        closed_trades=closed,
-        history_groups=history_groups,
-        summary=summary_metrics,
-        closed_summary=closed_summary,
-        index_stats={},
+        Strategies.TwoPercent,
+        include_index_stats=True,
     )
 
 
 @views_bp.route("/trades/tgim", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_tgim() -> str:
-    """Displays the TGIM trade history and active positions.
-
-    Returns:
-        str: Rendered HTML template with TGIM trades.
-    """
-    limit = request.args.get("limit", 100, type=int)
-    service = _get_trade_view_service()
-
-    active = service.get_trades(strategies=Strategies.TGIM, status=TradeStatus.ACTIVE)
-    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-
-    closed = service.get_trades(strategies=Strategies.TGIM, status=TradeStatus.CLOSED)
-    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
-    closed = closed[:limit]
-
-    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
-    closed_summary = service.get_closed_summary(closed)
-
-    active_groups = service.group_trades_by_symbol(active)
-    history_groups = service.group_trades_history(closed)
-
-    return render_template(
+    """Displays the TGIM trade history and active positions."""
+    return _render_standard_strategy_trades(
         "trades_tgim.html",
-        active_trades=active,
-        active_groups=active_groups,
-        closed_trades=closed,
-        history_groups=history_groups,
-        summary=summary_metrics,
-        closed_summary=closed_summary,
-        index_stats={},
+        Strategies.TGIM,
+        include_index_stats=True,
     )
 
 
 @views_bp.route("/trades/bridge-scout", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_bridge_scout() -> str:
-    """Displays the Bridge Scout trade history and active positions.
-
-    Returns:
-        str: Rendered HTML template with Bridge Scout trades.
-    """
-    limit = request.args.get("limit", 100, type=int)
-    service = _get_trade_view_service()
-
-    active = service.get_trades(
-        strategies=Strategies.BridgeScout, status=TradeStatus.ACTIVE
-    )
-    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-
-    closed = service.get_trades(
-        strategies=Strategies.BridgeScout, status=TradeStatus.CLOSED
-    )
-    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
-    closed = closed[:limit]
-
-    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
-    closed_summary = service.get_closed_summary(closed)
-
-    active_groups = service.group_trades_by_symbol(active)
-    history_groups = service.group_trades_history(closed)
-
-    return render_template(
+    """Displays the Bridge Scout trade history and active positions."""
+    return _render_standard_strategy_trades(
         "trades_bridge_scout.html",
-        active_trades=active,
-        active_groups=active_groups,
-        closed_trades=closed,
-        history_groups=history_groups,
-        summary=summary_metrics,
-        closed_summary=closed_summary,
-        index_stats={},
+        Strategies.BridgeScout,
+        include_index_stats=True,
     )
 
 
@@ -489,156 +374,87 @@ def view_trades_bridge_scout() -> str:
 @views_bp.route("/trades/bounce_bandit", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_bounce_bandit() -> str:
-    """Displays the Bounce Bandit trade history and active positions.
-
-    Returns:
-        str: Rendered HTML template with Bounce Bandit trades.
-    """
-    limit = request.args.get("limit", 100, type=int)
-    service = _get_trade_view_service()
-
-    active = service.get_trades(
-        strategies=Strategies.BounceBandit, status=TradeStatus.ACTIVE
-    )
-    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-
-    closed = service.get_trades(
-        strategies=Strategies.BounceBandit, status=TradeStatus.CLOSED
-    )
-    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
-    closed = closed[:limit]
-
-    summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
-    closed_summary = service.get_closed_summary(closed)
-
-    active_groups = service.group_trades_by_symbol(active)
-    history_groups = service.group_trades_history(closed)
-
-    return render_template(
+    """Displays the Bounce Bandit trade history and active positions."""
+    return _render_standard_strategy_trades(
         "trades_bounce_bandit.html",
-        active_trades=active,
-        active_groups=active_groups,
-        closed_trades=closed,
-        history_groups=history_groups,
-        summary=summary_metrics,
-        closed_summary=closed_summary,
-        index_stats={},
+        Strategies.BounceBandit,
+        include_index_stats=True,
     )
 
 
 def _prepare_active_orders(orders: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Groups and sorts active orders for hierarchical presentation on desktop.
-
-    Orders belonging to the same trade group are sorted by order_id.
-    If a parent order is present in the active orders list, its child orders
-    are marked with is_child=True. If the parent order is already executed/filled
-    (or missing), orders are treated as independent standalone rows (is_child=False).
-
-    Args:
-        orders: List of active order dictionaries.
-
-    Returns:
-        list[dict[str, Any]]: Hierarchically ordered list with is_child attribute.
-    """
+    """Groups and sorts active orders hierarchically."""
     if not orders:
         return []
 
-    # 1. Collect set of open order IDs
-    open_order_ids: set[int] = set()
-    for order in orders:
-        order_id_val = order.get("order_id")
-        if order_id_val is not None and str(order_id_val).isdigit():
-            open_order_ids.add(int(order_id_val))
+    open_order_ids = _collect_open_order_ids(orders)
+    groups = _group_orders_by_key(orders)
 
-    # 2. Group orders by trade_group_id
-    groups: dict[str, list[dict[str, Any]]] = {}
-    for order in orders:
-        group_key = str(order.get("trade_group_id") or order.get("order_id") or "")
-        groups.setdefault(group_key, []).append(order)
-
-    # 3. Sort orders inside each group by order_id asc
-    for group_orders in groups.values():
-        group_orders.sort(key=lambda x: int(x.get("order_id") or 0))
-
-    # 4. Sort groups by the minimum order_id (first order in group)
     sorted_group_keys = sorted(
-        groups.keys(),
-        key=lambda k: int(groups[k][0].get("order_id") or 0),
+        groups.keys(), key=lambda k: int(groups[k][0].get("order_id") or 0)
     )
 
-    # 5. Process and flatten with is_child flag
     prepared_orders: list[dict[str, Any]] = []
     for group_key in sorted_group_keys:
         group_orders = groups[group_key]
-        primary_order = group_orders[0]
-        primary_parent_id = primary_order.get("parent_id")
-
-        # Parent is open if primary order has no parent_id or if parent_id is in open_order_ids
-        parent_is_open = (
-            primary_parent_id is None
-            or primary_parent_id == 0
-            or str(primary_parent_id).strip() in ("", "0", "None", "-")
-            or (
-                str(primary_parent_id).isdigit()
-                and int(primary_parent_id) in open_order_ids
-            )
+        parent_is_open = _is_parent_open(
+            group_orders[0].get("parent_id"), open_order_ids
         )
 
         for idx, order in enumerate(group_orders):
-            if idx == 0:
-                order["is_child"] = False
-            else:
-                order["is_child"] = parent_is_open
+            order["is_child"] = False if idx == 0 else parent_is_open
             prepared_orders.append(order)
 
     return prepared_orders
 
 
+def _group_orders_by_key(
+    orders: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Groups orders by trade_group_id or order_id and sorts each group."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for order in orders:
+        group_key = str(order.get("trade_group_id") or order.get("order_id") or "")
+        groups.setdefault(group_key, []).append(order)
+
+    for group_orders in groups.values():
+        group_orders.sort(key=lambda x: int(x.get("order_id") or 0))
+
+    return groups
+
+
+def _collect_open_order_ids(orders: list[dict[str, Any]]) -> set[int]:
+    """Collects set of open integer order IDs."""
+    open_ids: set[int] = set()
+    for order in orders:
+        val = order.get("order_id")
+        if val is not None and str(val).isdigit():
+            open_ids.add(int(val))
+    return open_ids
+
+
+def _is_parent_open(parent_id: Any, open_order_ids: set[int]) -> bool:
+    """Determines whether parent order is open/active."""
+    if (
+        parent_id is None
+        or parent_id == 0
+        or str(parent_id).strip() in ("", "0", "None", "-")
+    ):
+        return True
+    return str(parent_id).isdigit() and int(parent_id) in open_order_ids
+
+
 @views_bp.route("/broker", methods=["GET"])
 def view_broker_dashboard() -> str:
-    """Displays the Trader Workstation (TWS) broker execution and reconciliation dashboard.
-
-    This route is not cached to ensure that real-time sync errors and execution
-    data are immediately visible to the trader.
-
-    Returns:
-        str: Rendered HTML broker dashboard template.
-    """
+    """Displays the Trader Workstation (TWS) broker execution and reconciliation dashboard."""
     service = _get_trade_view_service()
 
-    # 1. Fetch TWS KPIs and metrics grouped by strategy
     metrics_map = service.get_broker_summary()
-
-    # 2. Fetch Active orders (Submitted / PreSubmitted) and Error orders
-    active_orders = service.broker_repository.get_orders_by_status("Submitted")
-    presubmitted_orders = service.broker_repository.get_orders_by_status("PreSubmitted")
-    raw_active_orders = active_orders + presubmitted_orders
-
-    error_orders = service.broker_repository.get_orders_by_status("Error")
-
-    # Map raw strategy name to strategy filters on the orders
-    for order in raw_active_orders + error_orders:
-        strategy_name_lower = str(order.get("strategy_name") or "").lower()
-        if "dipbuyer" in strategy_name_lower:
-            order["strategy_filter"] = "DipBuyer"
-        elif "turnover" in strategy_name_lower:
-            order["strategy_filter"] = "TurnoverTiming"
-        elif "twopercent" in strategy_name_lower:
-            order["strategy_filter"] = "TwoPercent"
-        elif "ndx" in strategy_name_lower or "momentum" in strategy_name_lower:
-            order["strategy_filter"] = "NDXMomentum"
-        else:
-            order["strategy_filter"] = order.get("strategy_name") or "Unknown"
-
-    all_active_orders = _prepare_active_orders(raw_active_orders)
-
-    # 3. Fetch Closed settlements with attached executions
+    active_orders = service.get_broker_active_orders()
+    all_active_orders = _prepare_active_orders(active_orders)
+    error_orders = service.get_broker_error_orders()
     settlements = service.get_broker_settlements()
-
-    # 4. Fetch Reconciliation discrepancies
     discrepancies = service.get_reconciliation_discrepancies()
-
-    # 5. Fetch Active trades directly from TWS trading database
     active_trades = service.get_broker_active_trades()
 
     return render_template(
@@ -649,62 +465,4 @@ def view_broker_dashboard() -> str:
         settlements=settlements,
         discrepancies=discrepancies,
         active_trades=active_trades,
-    )
-
-
-@views_bp.route("/concept2-test", methods=["GET"])
-def view_concept2_test() -> str:
-    """Displays test mockup for Concept 2 with real live data."""
-    service = _get_trade_view_service()
-
-    active_trades = service.get_trades(status=TradeStatus.ACTIVE)
-    service.attach_sparklines(active_trades)
-    summary_metrics = service.get_portfolio_summary(active_trades)
-
-    strategy_stats = {
-        "Croc Setup": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "Dip Buyer": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "Turnover": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "Two Percent": {"count": 0, "pnl": 0.0, "invested": 0.0},
-        "NDX Momentum": {"count": 0, "pnl": 0.0, "invested": 0.0},
-    }
-
-    croc_group = [
-        Strategies.CrocSetup,
-        Strategies.HoldTarget,
-        Strategies.SplitTarget,
-        "croc",
-    ]
-    turnover_group = [
-        Strategies.TurnOverTiming,
-        Strategies.TurnOverTiming_05,
-        Strategies.TurnOverTiming_10,
-    ]
-
-    for trade in active_trades:
-        strategy_key = service.resolve_strategy(trade)
-        if strategy_key in croc_group:
-            label = "Croc Setup"
-        elif strategy_key == Strategies.DipBuyer:
-            label = "Dip Buyer"
-        elif strategy_key in turnover_group:
-            label = "Turnover"
-        elif strategy_key == Strategies.TwoPercent:
-            label = "Two Percent"
-        elif strategy_key == Strategies.NDXMomentum:
-            label = "NDX Momentum"
-        else:
-            label = str(trade.get("strategy", "Unknown"))
-
-        if label not in strategy_stats:
-            strategy_stats[label] = {"count": 0, "pnl": 0.0, "invested": 0.0}
-
-        strategy_stats[label]["count"] += 1
-        strategy_stats[label]["pnl"] += float(trade.get("unrealized_pnl", 0.0) or 0.0)
-
-    return render_template(
-        "concept2_test.html",
-        summary=summary_metrics,
-        active_trades=active_trades,
-        strategy_stats=strategy_stats,
     )

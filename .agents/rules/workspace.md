@@ -18,15 +18,11 @@ The repository-local virtual environment uses:
 - `.venv/bin/pytest`
 - `.venv/bin/ruff`
 - `.venv/bin/mypy`
+- `.venv/bin/pip`
 - other installed tools under `.venv/bin/`
 
-Do not add Windows-specific paths, PowerShell commands, batch files, or
-Windows compatibility code unless explicitly requested.
-
-Prefer POSIX-compatible command behavior over GNU-specific behavior because
-macOS commonly provides BSD variants of tools such as `sed`, `date`, `stat`,
-and `find`.
-
+* **Strict Virtual Environment Execution:** All commands, test runners, linters, formatters, type checkers, scripts, and package managers MUST strictly be invoked using their repository-relative path `.venv/bin/<tool>` (e.g. `.venv/bin/python`, `.venv/bin/pytest`, `.venv/bin/ruff`, `.venv/bin/mypy`, `.venv/bin/pip`). Never run un-prefixed bare commands like `python` or `pytest`.
+* **Zero Global Installation & Usage:** Never install or use global binaries, packages, or system-wide tools (e.g., `pip install` without `.venv/bin/`, `brew install`, `pipx`, `npm install -g`, `sudo`, etc.). All dependencies MUST be installed exclusively into `.venv` via `.venv/bin/pip install` and documented in `pyproject.toml` / `requirements.txt`.
 * You are strictly locked into the current working directory from which you were invoked.
 * **ZERO EXTERNAL REPOSITORY ACCESS:** Never inspect, read, write, or execute binaries/scripts from external or neighboring repositories (e.g., `github/TradeManager`, `croc-trader_2`, or any path outside the current workspace root).
 * **STRICT COMMAND SCOPING:** Commands executed through the available shell or command-execution capability MUST NOT search or execute outside the workspace. Never run global search commands such as `find /` or `find ~`. All commands must target relative paths within `./` or `.venv/`.
@@ -41,6 +37,7 @@ and `find`.
 - Do not execute downloaded, generated, or untrusted scripts without inspecting
   their contents first.
 - Do not use `sudo` or modify system-wide packages or configuration.
+- Never install or execute global or system-wide binaries.
 - Do not start persistent background processes unless the task explicitly
   requires it.
 - Use temporary directories for generated validation artifacts and remove them

@@ -1,5 +1,3 @@
-import warnings
-
 import pandas as pd
 
 
@@ -112,36 +110,3 @@ def calculate_max_close_for_rsi(
         return close_prev + al_prev - ag_prev * (100.0 / rsi_target - 1.0)
 
     return close_prev + rs_target * al_prev - ag_prev
-
-
-def calculate_ema(series: pd.Series, window: int) -> pd.Series:
-    """Calculates the Exponential Moving Average (EMA) (Deprecated).
-
-    .. deprecated:: 1.0.0
-    """
-    warnings.warn(
-        "calculate_ema is deprecated and will be removed in a future release.",
-        category=DeprecationWarning,
-        stacklevel=2,
-    )
-    if series.empty:
-        raise ValueError("Cannot calculate EMA: series is empty.")
-    return series.ewm(span=window, adjust=False).mean()
-
-
-def calculate_roc(series: pd.Series, period: int) -> pd.Series:
-    """Calculates the Rate of Change (ROC) (Deprecated).
-
-    ROC = ((Price - Price_n_periods_ago) / Price_n_periods_ago) * 100
-
-    .. deprecated:: 1.0.0
-       Note: 2D DataFrames (e.g. NDX Momentum) compute ROC vectorized via DataFrame.pct_change(periods=period) * 100.
-    """
-    warnings.warn(
-        "calculate_roc is deprecated and will be removed in a future release.",
-        category=DeprecationWarning,
-        stacklevel=2,
-    )
-    if series.empty:
-        raise ValueError("Cannot calculate ROC: series is empty.")
-    return (series - series.shift(period)) / series.shift(period) * 100

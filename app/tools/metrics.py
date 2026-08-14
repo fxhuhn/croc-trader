@@ -6,7 +6,6 @@ principle, ensuring referential transparency and ease of testing.
 """
 
 import math
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -229,27 +228,3 @@ def calculate_kelly_criterion(win_rate: float, risk_reward_ratio: float) -> floa
     kelly_fraction = win_rate - (loss_rate / risk_reward_ratio)
 
     return float(max(0.0, min(1.0, kelly_fraction)))
-
-
-def calculate_ulcer_index(equity_curve: pd.Series) -> float:
-    """Calculates the Ulcer Index (Pain Index) (Deprecated).
-
-    Measures the depth and duration of drawdowns.
-
-    Formula: UI = √(Mean(DD²)), where DD = percentage drawdown from peak.
-
-    .. deprecated:: 1.0.0
-    """
-    warnings.warn(
-        "calculate_ulcer_index is deprecated and will be removed in a future release.",
-        category=DeprecationWarning,
-        stacklevel=2,
-    )
-    if equity_curve.empty:
-        return 0.0
-
-    running_maximum = equity_curve.cummax()
-    drawdown_percentage = ((equity_curve - running_maximum) / running_maximum) * 100.0
-
-    squared_drawdown = drawdown_percentage**2
-    return float(np.sqrt(squared_drawdown.mean()))
