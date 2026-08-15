@@ -433,11 +433,15 @@ def _build_weekly_trend_data(
     week_sat = today.normalize() + pd.Timedelta(days=days_until_sat)
     date_range = pd.date_range(start=start_of_year, end=week_sat, freq="W-SAT")
     dates_formatted = [d.strftime("%Y-%m-%d") for d in date_range]
+    week_labels = [
+        f"{d.strftime('%d.%m.%Y')} · KW {d.isocalendar().week}" for d in date_range
+    ]
 
     chart_df = dataframe[dataframe["exit_date_dt"] >= start_of_year].copy()
     if chart_df.empty:
         empty_trend = {
             "dates": dates_formatted,
+            "week_labels": week_labels,
             "aggregate": [0.0] * len(date_range),
             "strategies": {name: [0.0] * len(date_range) for name in STRATEGY_GROUPS},
         }
@@ -461,11 +465,13 @@ def _build_weekly_trend_data(
 
     weekly_trend: dict[str, Any] = {
         "dates": dates_formatted,
+        "week_labels": week_labels,
         "aggregate": agg_cumsum.tolist(),
         "strategies": {},
     }
     weekly_pnl: dict[str, Any] = {
         "dates": dates_formatted,
+        "week_labels": week_labels,
         "aggregate": agg_pnl.tolist(),
         "strategies": {},
     }

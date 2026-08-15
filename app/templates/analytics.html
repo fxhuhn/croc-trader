@@ -74,12 +74,13 @@
         <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
             <i data-lucide="line-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly Performance
         </h2>
-        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
+        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative">
         <div class="flex justify-end items-center mb-3">
             <span class="text-xs font-medium text-slate-500">Weeks</span>
         </div>
 
         <div id="weekly-trend-chart" class="h-[200px] w-full"></div>
+        <div id="tooltip-weekly-trend" class="absolute hidden pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg p-3 z-30 text-xs w-60 sm:w-64"></div>
 
         <!-- Legend (Custom HTML) -->
         <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
@@ -103,12 +104,13 @@
         <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
             <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly PnL
         </h2>
-        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
+        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative">
         <div class="flex justify-end items-center mb-3">
             <span class="text-xs font-medium text-slate-500">Weeks</span>
         </div>
 
         <div id="weekly-pnl-chart" class="h-[200px] w-full"></div>
+        <div id="tooltip-weekly-pnl" class="absolute hidden pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg p-3 z-30 text-xs w-60 sm:w-64"></div>
 
         <!-- Legend (Custom HTML) -->
         <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
@@ -471,6 +473,172 @@
         }
     }
 
+    function formatCurrency(val, withSign) {
+        if (val === null || val === undefined || isNaN(val)) return '$0.00';
+        const num = Number(val);
+        const absStr = Math.abs(num).toLocaleString('en-US', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+        if (withSign) {
+            if (num > 0.0001) return `+$${absStr}`;
+            if (num < -0.0001) return `-$${absStr}`;
+            return `$${absStr}`;
+        }
+        if (num < -0.0001) return `-$${absStr}`;
+        return `$${absStr}`;
+    }
+
+    function renderWeeklyTooltip(tooltipEl, dataPayload, strategyHexColors, pointIndex, isPnL) {
+        const weekLabels = dataPayload.week_labels || dataPayload.dates || [];
+        if (pointIndex >= weekLabels.length) return;
+        const weekLabel = weekLabels[pointIndex];
+        const portfolioVal = (dataPayload.aggregate && dataPayload.aggregate[pointIndex] !== undefined)
+            ? Number(dataPayload.aggregate[pointIndex])
+            : 0.0;
+
+        const stratItems = [];
+        for (const strategyName in dataPayload.strategies) {
+            const rawVal = dataPayload.strategies[strategyName][pointIndex];
+            const val = (rawVal === null || rawVal === undefined || isNaN(rawVal)) ? 0.0 : Number(rawVal);
+            const color = strategyHexColors[strategyName] || '#94a3b8';
+
+            // Filter out 0 value changes for Weekly PnL
+            if (isPnL && Math.abs(val) < 0.005) {
+                continue;
+            }
+
+            stratItems.push({
+                name: strategyName,
+                val: val,
+                color: color
+            });
+        }
+
+        // Sort descending by profit (highest profit first)
+        stratItems.sort(function (a, b) {
+            return b.val - a.val;
+        });
+
+        let stratRows = '';
+        for (const item of stratItems) {
+            const valClass = isPnL
+                ? (item.val > 0.0001 ? 'text-emerald-600' : (item.val < -0.0001 ? 'text-rose-600' : 'text-slate-700'))
+                : 'text-slate-700';
+
+            stratRows += `
+                <div class="flex justify-between items-center py-0.5 text-slate-600">
+                    <div class="flex items-center gap-1.5 min-w-0 pr-2">
+                        <div class="w-2 h-2 rounded-full shrink-0" style="background-color: ${item.color};"></div>
+                        <span class="truncate">${item.name}</span>
+                    </div>
+                    <span class="font-sans tabular-nums text-right font-semibold shrink-0 ${valClass}">${formatCurrency(item.val, isPnL)}</span>
+                </div>
+            `;
+        }
+
+        if (isPnL && stratItems.length === 0) {
+            stratRows = `<div class="text-[11px] text-slate-400 italic py-0.5">Keine Trades</div>`;
+        }
+
+        const portfolioClass = isPnL
+            ? (portfolioVal > 0.0001 ? 'text-emerald-600' : (portfolioVal < -0.0001 ? 'text-rose-600' : 'text-slate-900'))
+            : 'text-slate-900';
+
+        tooltipEl.innerHTML = `
+            <div class="font-bold text-slate-700 text-xs border-b border-slate-100 pb-1.5 mb-1.5">
+                ${weekLabel}
+            </div>
+            <div class="flex flex-col">
+                <div class="flex justify-between items-center py-0.5 font-bold text-slate-900 border-b border-slate-100 pb-1.5 mb-1">
+                    <div class="flex items-center gap-1.5 min-w-0 pr-2">
+                        <div class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></div>
+                        <span class="truncate">Portfolio</span>
+                    </div>
+                    <span class="font-sans tabular-nums text-right font-bold shrink-0 ${portfolioClass}">${formatCurrency(portfolioVal, isPnL)}</span>
+                </div>
+                <div class="flex flex-col gap-0.5">
+                    ${stratRows}
+                </div>
+            </div>
+        `;
+    }
+
+    function attachCardTooltip(chartId, tooltipId, dataPayload, strategyHexColors, isPnL) {
+        const chartEl = document.getElementById(chartId);
+        const tooltipEl = document.getElementById(tooltipId);
+        if (!chartEl || !tooltipEl) return;
+        const cardEl = chartEl.closest('.relative') || chartEl.parentElement;
+
+        function updatePosition(clientX) {
+            const cardRect = cardEl.getBoundingClientRect();
+            const mouseX = clientX - cardRect.left;
+            const tooltipWidth = 250;
+            let left = mouseX + 16;
+            if (mouseX + tooltipWidth + 24 > cardRect.width) {
+                left = Math.max(12, mouseX - tooltipWidth - 16);
+            }
+            tooltipEl.style.left = `${left}px`;
+            tooltipEl.style.top = `24px`;
+        }
+
+        function handleMove(clientX, clientY) {
+            const rect = chartEl.getBoundingClientRect();
+            if (clientX < rect.left || clientX > rect.right || (clientY !== undefined && (clientY < rect.top || clientY > rect.bottom))) {
+                tooltipEl.classList.add('hidden');
+                return;
+            }
+
+            const weekLabels = dataPayload.week_labels || dataPayload.dates || [];
+            const numWeeks = weekLabels.length;
+            if (numWeeks === 0) return;
+
+            // Plotly margin: left 45px, right 10px
+            const leftMargin = 45;
+            const rightMargin = 10;
+            const plotWidth = Math.max(1, rect.width - leftMargin - rightMargin);
+            const relX = clientX - rect.left - leftMargin;
+
+            let pointIndex = Math.floor((relX / plotWidth) * numWeeks);
+            pointIndex = Math.max(0, Math.min(numWeeks - 1, pointIndex));
+
+            renderWeeklyTooltip(tooltipEl, dataPayload, strategyHexColors, pointIndex, isPnL);
+            updatePosition(clientX);
+            tooltipEl.classList.remove('hidden');
+        }
+
+        chartEl.on('plotly_hover', function (eventData) {
+            if (!eventData || !eventData.points || !eventData.points.length) return;
+            const point = eventData.points[0];
+            const pointIndex = point.pointIndex !== undefined ? point.pointIndex : point.pointNumber;
+            if (pointIndex === undefined) return;
+
+            renderWeeklyTooltip(tooltipEl, dataPayload, strategyHexColors, pointIndex, isPnL);
+            if (eventData.event && eventData.event.clientX) {
+                updatePosition(eventData.event.clientX);
+            }
+            tooltipEl.classList.remove('hidden');
+        });
+
+        chartEl.on('plotly_unhover', function () {
+            tooltipEl.classList.add('hidden');
+        });
+
+        chartEl.addEventListener('mousemove', function (e) {
+            handleMove(e.clientX, e.clientY);
+        });
+
+        chartEl.addEventListener('mouseleave', function () {
+            tooltipEl.classList.add('hidden');
+        });
+
+        if (cardEl) {
+            cardEl.addEventListener('mouseleave', function () {
+                tooltipEl.classList.add('hidden');
+            });
+        }
+    }
+
     // Plotly Chart Generation
     document.addEventListener('DOMContentLoaded', function () {
         const weeklyTrendData = {{ weekly_trend | tojson | safe }};
@@ -479,13 +647,14 @@
         const strategyHexColors = {{ strategy_hex_colors | tojson | safe }};
         const monthlyEVData = {{ monthly_evm | tojson | safe }};
 
-    if (!weeklyTrendData || !weeklyTrendData.dates) return;
+    if (!weeklyTrendData || (!weeklyTrendData.dates && !weeklyTrendData.week_labels)) return;
 
+    const xWeeklyTrend = weeklyTrendData.week_labels || weeklyTrendData.dates;
     const traces = [];
 
-    // Portfolio Line (Thick, Light Slate)
+    // Portfolio Line (Thick, Light Slate) - Trace 0
     traces.push({
-        x: weeklyTrendData.dates,
+        x: xWeeklyTrend,
         y: weeklyTrendData.aggregate,
         name: 'Portfolio',
         type: 'scatter',
@@ -498,17 +667,17 @@
         },
         fill: 'tozeroy',
         fillcolor: 'rgba(148, 163, 184, 0.05)',
-        hoverinfo: 'x+y',
-        yhoverformat: '.2f'
+        hoverinfo: 'none'
     });
 
     // Strategy Lines
     for (const strategyName in weeklyTrendData.strategies) {
         const color = strategyHexColors[strategyName] || '#94a3b8';
+        const rawSeries = weeklyTrendData.strategies[strategyName] || [];
 
         traces.push({
-            x: weeklyTrendData.dates,
-            y: weeklyTrendData.strategies[strategyName],
+            x: xWeeklyTrend,
+            y: rawSeries,
             name: strategyName,
             type: 'scatter',
             mode: 'lines',
@@ -519,30 +688,27 @@
             },
             fill: 'tozeroy',
             fillcolor: color + '0D', // approx 5% opacity
-            hoverinfo: 'x+y',
-            yhoverformat: '.2f'
+            hoverinfo: 'none'
         });
     }
 
     const layout = {
         margin: { l: 45, r: 10, t: 5, b: 20 },
         showlegend: false,
-        hovermode: 'x unified',
-        hoverlabel: {
-            bgcolor: '#ffffff',
-            bordercolor: '#cbd5e1', // slate-300 for a clean border
-            font: {
-                color: '#1e293b', // slate-800 for high-contrast dark text
-                size: 12
-            }
-        },
+        hovermode: 'x',
         paper_bgcolor: 'rgba(0,0,0,0)',
         plot_bgcolor: 'rgba(0,0,0,0)',
         xaxis: {
             showgrid: false,
             zeroline: false,
             showticklabels: false,
-            fixedrange: true
+            fixedrange: true,
+            showspikes: true,
+            spikemode: 'across',
+            spikesnap: 'cursor',
+            spikecolor: '#cbd5e1',
+            spikethickness: 1,
+            spikedash: 'solid'
         },
         yaxis: {
             showgrid: true,
@@ -554,7 +720,7 @@
             tickfont: {
                 size: 12,
                 color: '#94a3b8', // slate-400
-                family: 'monospace'
+                family: 'Inter, sans-serif'
             },
             ticksuffix: ' $',
             fixedrange: true
@@ -567,35 +733,17 @@
     };
 
     Plotly.newPlot('weekly-trend-chart', traces, layout, config);
+    attachCardTooltip('weekly-trend-chart', 'tooltip-weekly-trend', weeklyTrendData, strategyHexColors, false);
 
     // Historical Weekly PnL Chart Generation
     const tracesPnL = [];
 
-    if (weeklyPnLData && weeklyPnLData.dates) {
-        // Strategy Bars (Stacked Underneath)
-        for (const strategyName in weeklyPnLData.strategies) {
-            const color = strategyHexColors[strategyName] || '#94a3b8';
+    if (weeklyPnLData && (weeklyPnLData.week_labels || weeklyPnLData.dates)) {
+        const xWeeklyPnL = weeklyPnLData.week_labels || weeklyPnLData.dates;
 
-            tracesPnL.push({
-                x: weeklyPnLData.dates,
-                y: weeklyPnLData.strategies[strategyName],
-                name: strategyName,
-                type: 'bar',
-                marker: {
-                    color: color,
-                    line: {
-                        color: 'rgba(255, 255, 255, 0.1)',
-                        width: 0.5
-                    }
-                },
-                hoverinfo: 'x+y',
-                yhoverformat: '.2f'
-            });
-        }
-
-        // Portfolio Line (Thick, Dashed Light Slate Overlay - matching Weekly Trend style, no fill to allow negative range)
+        // Portfolio Line (Thick, Dashed Light Slate Overlay) - Trace 0
         tracesPnL.push({
-            x: weeklyPnLData.dates,
+            x: xWeeklyPnL,
             y: weeklyPnLData.aggregate,
             name: 'Portfolio',
             type: 'scatter',
@@ -606,15 +754,36 @@
                 shape: 'spline',
                 dash: 'dash'
             },
-            hoverinfo: 'x+y',
-            yhoverformat: '.2f'
+            hoverinfo: 'none'
         });
+
+        // Strategy Bars (Stacked Underneath)
+        for (const strategyName in weeklyPnLData.strategies) {
+            const color = strategyHexColors[strategyName] || '#94a3b8';
+            const rawSeries = weeklyPnLData.strategies[strategyName] || [];
+
+            tracesPnL.push({
+                x: xWeeklyPnL,
+                y: rawSeries,
+                name: strategyName,
+                type: 'bar',
+                marker: {
+                    color: color,
+                    line: {
+                        color: 'rgba(255, 255, 255, 0.1)',
+                        width: 0.5
+                    }
+                },
+                hoverinfo: 'none'
+            });
+        }
 
         // Deep-copy standard layout to avoid side-effects, and enable relative bar stacking
         const layoutPnL = JSON.parse(JSON.stringify(layout));
         layoutPnL.barmode = 'relative';
 
         Plotly.newPlot('weekly-pnl-chart', tracesPnL, layoutPnL, config);
+        attachCardTooltip('weekly-pnl-chart', 'tooltip-weekly-pnl', weeklyPnLData, strategyHexColors, true);
     }
 
     // Frequency Model Stacked Bar Chart (100% scale) Generation

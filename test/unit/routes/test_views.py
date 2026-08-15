@@ -991,3 +991,34 @@ def test_view_analytics_monthly_matrix_year_2023_and_zero_open_prices(
         response = test_client.get("/analytics/monthly-matrix?year=2023")
         assert response.status_code == 200
         assert b"2023" in response.data
+
+
+def test_build_weekly_trend_data_generates_correct_labels_and_series() -> None:
+    """Verifies that _build_weekly_trend_data includes week_labels with KW and dates."""
+    import pandas as pd
+
+    from app.routes.views.analytics import _build_weekly_trend_data
+
+    sample_trades = pd.DataFrame(
+        [
+            {
+                "exit_date_dt": pd.Timestamp("2026-01-10 16:00:00"),
+                "realized_pnl": 150.0,
+                "strategy": "croc_setup",
+            },
+            {
+                "exit_date_dt": pd.Timestamp("2026-01-17 16:00:00"),
+                "realized_pnl": -50.0,
+                "strategy": "dip_buyer",
+            },
+        ]
+    )
+
+    today = pd.Timestamp("2026-01-20")
+    weekly_trend, weekly_pnl = _build_weekly_trend_data(sample_trades, today)
+
+    assert "week_labels" in weekly_trend
+    assert "week_labels" in weekly_pnl
+    assert len(weekly_trend["week_labels"]) == len(weekly_trend["dates"])
+    assert any("KW" in label for label in weekly_trend["week_labels"])
+    assert weekly_trend["week_labels"][0] == "03.01.2026 · KW 1"
