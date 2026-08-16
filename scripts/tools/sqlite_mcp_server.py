@@ -126,7 +126,7 @@ def sqlite_describe_table(database: str, table_name: str) -> list[dict[str, Any]
     with _get_readonly_connection(database) as connection:
         safe_table = _validate_table_name(connection, table_name)
         cursor = connection.cursor()
-        cursor.execute(f"PRAGMA table_info({safe_table});")  # nosec B608: table name validated against sqlite_master
+        cursor.execute(f"PRAGMA table_info({safe_table});")
         columns = cursor.fetchall()
         return [
             {
@@ -197,7 +197,7 @@ def sqlite_count_rows(
     """
     with _get_readonly_connection(database) as connection:
         safe_table = _validate_table_name(connection, table_name)
-        sql = f"SELECT COUNT(*) FROM {safe_table}"  # nosec B608: table name validated against sqlite_master
+        sql = f"SELECT COUNT(*) FROM {safe_table}"  # nosec B608
 
         if where_clause:
             clean_where = where_clause.strip()
