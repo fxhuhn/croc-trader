@@ -47,7 +47,7 @@ or an unrelated legacy problem.
 
 ## AUDIT FRAMEWORK: THE QUALITY PYRAMID
 
-Evaluate code in **pyramid order** according to [python.md](file:///Users/produktmanagement/Python/github/croc-trader/.agents/rules/python.md#0-quality-pyramid---the-foundation-of-all-decisions) (Layer 1 Correctness → Layer 2 Readability → Layer 3 Maintainability → Layer 4 Changeability).
+Evaluate code in **pyramid order** according to `python.md` (Layer 1 Correctness → Layer 2 Readability → Layer 3 Maintainability → Layer 4 Changeability).
 
 ---
 
