@@ -46,8 +46,7 @@ The repository-local virtual environment uses:
 - **Dedicated Scratch Folders:** All temporary scripts MUST be created either in the system-provided scratch directory (`<appDataDir>/.../scratch/`) or within `scripts/one_off/` if they are to be persisted in the project.
 
 ## VS Code Environment Settings
-* **Interpreter Path**: In `.vscode/settings.json`, always configure `"python.defaultInterpreterPath"` as a relative path (`".venv/bin/python"`).
-* **Avoid Variables**: Do **NOT** use `${workspaceFolder}/.venv/bin/python` because VS Code's Python extension can fail to resolve `${workspaceFolder}` depending on the version or environment.
+* **Interpreter Path**: In `.vscode/settings.json`, configure `"python.defaultInterpreterPath"` as `"${workspaceFolder}/.venv/bin/python"`.
 
 ## Strategy & Constant References
 * **Use Strategies Enum**: When checking or filtering trading strategies in the codebase, always use the system-wide canonical `Strategies` enum members from `app/const.py`. Do **NOT** hardcode raw strings (e.g., `"hold_target"`, `"split_target"`, `"DipBuyer"`, or `"TwoPercent"`) in strategy comparisons. Leverage the fact that `Strategies` is a `StrEnum` which compares equal to its raw string representation.
