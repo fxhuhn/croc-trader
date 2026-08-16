@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "croc-sqlite-readonly": {
+      "command": ".venv/bin/python",
+      "args": [
+        "scripts/tools/sqlite_mcp_server.py"
+      ],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
