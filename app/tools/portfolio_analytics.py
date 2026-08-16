@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd  # type: ignore[import-untyped]  # Standard un-typed library import
 
 from ..const import STRATEGY_ALIASES
+from ..tools import metrics
 from ..tools.portfolio_optimization import (
     build_covariance_matrix,
     calculate_risk_contributions,
@@ -584,3 +585,199 @@ def _build_portfolio_models_matrix_rows(
             "gesamt": round(compound(rp_pcts), 1),
         },
     ]
+
+
+def calculate_strategy_risk_and_expectancy(
+    strategy_dataframe: pd.DataFrame, initial_capital: float
+) -> tuple[str, str]:
+    """Computes average percentage risk and expectancy in R-multiples for a strategy.
+
+    Args:
+        strategy_dataframe: DataFrame containing trade records with entry_price, stop_loss, initial_size.
+        initial_capital: Base starting portfolio capital.
+
+    Returns:
+        tuple[str, str]: Formatted average risk percentage and expectancy in R-multiples (or ('N/A', 'N/A')).
+    """
+    if strategy_dataframe.empty or initial_capital <= 0.0:
+        return "N/A", "N/A"
+
+    entry_prices = pd.to_numeric(
+        strategy_dataframe["entry_price"], errors="coerce"
+    ).fillna(0.0)
+    stop_losses = pd.to_numeric(
+        strategy_dataframe["stop_loss"], errors="coerce"
+    ).fillna(0.0)
+    initial_sizes = pd.to_numeric(
+        strategy_dataframe["initial_size"], errors="coerce"
+    ).fillna(0.0)
+
+    valid_mask = (entry_prices > 0.0) & (stop_losses > 0.0) & (initial_sizes > 0.0)
+    risks = (entry_prices - stop_losses).abs() * initial_sizes
+    valid_risks = risks[valid_mask & (risks > 0.0)]
+
+    if valid_risks.empty:
+        return "N/A", "N/A"
+
+    average_risk_dollar = float(valid_risks.mean())
+    average_risk_percentage = (average_risk_dollar / initial_capital) * 100.0
+    expectancy = metrics.calculate_expectancy(strategy_dataframe["realized_pnl"])
+    expectancy_r = (
+        expectancy / average_risk_dollar if average_risk_dollar > 0.0 else 0.0
+    )
+    return f"{average_risk_percentage:.2f}%", f"{expectancy_r:.2f} R"
+
+
+def calculate_kelly_metrics(
+    roi_series: pd.Series, strategy_active_trades: list[dict[str, Any]]
+) -> tuple[float, float, float]:
+    """Calculates Win Rate, Risk Reward Ratio, and Kelly Criterion from closed & active ROIs.
+
+    Args:
+        roi_series: Series of ROI values for closed trades.
+        strategy_active_trades: List of active trade dictionaries.
+
+    Returns:
+        tuple[float, float, float]: Win rate, risk reward ratio, and Kelly criterion.
+    """
+    active_rois: list[float] = []
+    for trade in strategy_active_trades:
+        unrealized_pnl = float(trade.get("unrealized_pnl") or 0.0)
+        entry_price = float(trade.get("entry_price") or 0.0)
+        quantity = float(trade.get("quantity") or trade.get("initial_size") or 0.0)
+        invested_capital = entry_price * quantity
+        active_rois.append(
+            unrealized_pnl / invested_capital if invested_capital > 0.0 else 0.0
+        )
+
+    combined_roi = pd.Series(roi_series.tolist() + active_rois, dtype=float)
+    if combined_roi.empty:
+        return 0.0, 0.0, 0.0
+
+    win_rate = metrics.calculate_win_rate(combined_roi)
+    risk_reward_ratio = metrics.calculate_risk_reward_ratio(combined_roi)
+    kelly_criterion = metrics.calculate_kelly_criterion(win_rate, risk_reward_ratio)
+    return win_rate, risk_reward_ratio, kelly_criterion
+
+
+def calculate_win_loss_rois(
+    strategy_dataframe: pd.DataFrame,
+) -> tuple[float, float]:
+    """Computes arithmetic average win ROI and loss ROI percentages.
+
+    Args:
+        strategy_dataframe: DataFrame of closed trades for a strategy.
+
+    Returns:
+        tuple[float, float]: Average win ROI percentage and average loss ROI percentage.
+    """
+    if strategy_dataframe.empty:
+        return 0.0, 0.0
+
+    win_trades = strategy_dataframe[strategy_dataframe["realized_pnl"] > 0]
+    loss_trades = strategy_dataframe[strategy_dataframe["realized_pnl"] < 0]
+
+    win_roi_series = extract_roi_series(win_trades)
+    loss_roi_series = extract_roi_series(loss_trades)
+
+    average_win_roi = (
+        float(win_roi_series.mean() * 100.0) if not win_roi_series.empty else 0.0
+    )
+    average_loss_roi = (
+        float(loss_roi_series.mean() * 100.0) if not loss_roi_series.empty else 0.0
+    )
+    return average_win_roi, average_loss_roi
+
+
+def apply_depot_and_ev_allocations(
+    strategies_data: list[dict[str, Any]],
+    initial_capital: float = 100_000.0,
+) -> None:
+    """Scales Kelly values to depot limit and computes EV/M allocation percentages.
+
+    Args:
+        strategies_data: List of strategy dictionary metrics to mutate with allocations.
+        initial_capital: Base portfolio capital (default: 100,000.0).
+    """
+    total_proposed = sum(
+        max(0.0, float(strategy["metrics"]["kelly_criterion"]))
+        for strategy in strategies_data
+    )
+    depot_multiplier = 1.0 / total_proposed if total_proposed > 1.0 else 1.0
+
+    total_ev = sum(
+        max(0.0, float(strategy["metrics"]["ev_per_month"]))
+        for strategy in strategies_data
+    )
+
+    for strategy in strategies_data:
+        raw_kelly = float(strategy["metrics"]["kelly_criterion"])
+        strategy["metrics"]["suggested_allocation"] = (
+            raw_kelly * depot_multiplier if raw_kelly > 0.0 else 0.0
+        )
+        raw_ev = float(strategy["metrics"]["ev_per_month"])
+        ev_weight = (raw_ev / total_ev) if (raw_ev > 0.0 and total_ev > 0.0) else 0.0
+        strategy["metrics"]["ev_allocation"] = ev_weight
+        strategy["metrics"]["ev_allocation_100k"] = ev_weight * initial_capital
+
+
+def calculate_benchmark_monthly_returns(
+    benchmark_dataframe: pd.DataFrame,
+    label: str,
+    selected_year: int,
+) -> dict[str, Any]:
+    """Calculates monthly percentage returns and total annual return for a benchmark index.
+
+    Args:
+        benchmark_dataframe: Historical price DataFrame for the benchmark symbol.
+        label: Benchmark display label (e.g. 'SPY (S&P 500)').
+        selected_year: Target calendar year.
+
+    Returns:
+        dict[str, Any]: Dictionary containing label, 12-month returns, and total return.
+    """
+    if benchmark_dataframe.empty or "date" not in benchmark_dataframe.columns:
+        return {"name": label, "months": [0.0] * 12, "gesamt": 0.0}
+
+    working_dataframe = benchmark_dataframe.copy()
+    working_dataframe["date_datetime"] = pd.to_datetime(
+        working_dataframe["date"], errors="coerce"
+    )
+    working_dataframe = working_dataframe[
+        working_dataframe["date_datetime"].dt.year == selected_year
+    ].sort_values("date_datetime")
+
+    if working_dataframe.empty:
+        return {"name": label, "months": [0.0] * 12, "gesamt": 0.0}
+
+    monthly_returns: list[float] = []
+    for month in range(1, 13):
+        month_dataframe = working_dataframe[
+            working_dataframe["date_datetime"].dt.month == month
+        ]
+        if not month_dataframe.empty:
+            open_price = float(
+                month_dataframe.iloc[0]["open"] or month_dataframe.iloc[0]["close"]
+            )
+            close_price = float(month_dataframe.iloc[-1]["close"])
+            percentage_return = (
+                ((close_price - open_price) / open_price * 100.0)
+                if open_price > 0.0
+                else 0.0
+            )
+        else:
+            percentage_return = 0.0
+        monthly_returns.append(round(percentage_return, 1))
+
+    year_open = float(
+        working_dataframe.iloc[0]["open"] or working_dataframe.iloc[0]["close"]
+    )
+    year_close = float(working_dataframe.iloc[-1]["close"])
+    total_annual_return = (
+        ((year_close - year_open) / year_open * 100.0) if year_open > 0.0 else 0.0
+    )
+    return {
+        "name": label,
+        "months": monthly_returns,
+        "gesamt": round(total_annual_return, 1),
+    }
