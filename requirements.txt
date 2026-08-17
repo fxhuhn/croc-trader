@@ -9,4 +9,4 @@ python-dotenv==1.2.1
 PyYAML==6.0.3
 tabulate==0.10.0
 tvdatafeed @ git+https://github.com/semoi/tvdatafeed.git@fc4e59ec0f96703bc5be253f265599055a29b330
-yfinance==1.5.2
+yfinance==1.6.0
