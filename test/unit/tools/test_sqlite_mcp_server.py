@@ -6,6 +6,10 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip(
+    "mcp", reason="MCP server is only tested/used locally and not on GitHub CI"
+)
+
 from scripts.tools.sqlite_mcp_server import (
     _resolve_database_path,
     _sanitize_identifier,

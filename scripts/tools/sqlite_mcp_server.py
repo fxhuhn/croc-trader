@@ -6,12 +6,20 @@ trading.db without allowing any data mutations or schema alterations.
 
 import re
 import sqlite3
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from mcp.server import MCPServer
+try:
+    from mcp.server import MCPServer
+
+    server: MCPServer | None = MCPServer(
+        name="croc-sqlite-readonly",
+        instructions="Read-only SQLite database inspection server for Croc-Trader.",
+    )
+except ImportError:
+    server = None
 
 # Base workspace directory (repository root)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -29,10 +37,12 @@ FORBIDDEN_SQL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-server = MCPServer(
-    name="croc-sqlite-readonly",
-    instructions="Read-only SQLite database inspection server for Croc-Trader.",
-)
+
+def _register_tool[F: Callable[..., Any]](func: F) -> F:
+    """Registers a tool with the local MCP server if the package is installed."""
+    if server is not None:
+        return server.tool()(func)
+    return func
 
 
 def _resolve_database_path(database: str) -> Path:
@@ -94,7 +104,7 @@ def _validate_table_name(connection: sqlite3.Connection, table_name: str) -> str
     return safe_table
 
 
-@server.tool()
+@_register_tool
 def sqlite_list_tables(database: str) -> list[str]:
     """Lists all user tables in the specified database ('stocks', 'signals', or 'trading').
 
@@ -112,7 +122,7 @@ def sqlite_list_tables(database: str) -> list[str]:
         return [row[0] for row in cursor.fetchall()]
 
 
-@server.tool()
+@_register_tool
 def sqlite_describe_table(database: str, table_name: str) -> list[dict[str, Any]]:
     """Returns schema metadata for a specific table in the database.
 
@@ -141,7 +151,7 @@ def sqlite_describe_table(database: str, table_name: str) -> list[dict[str, Any]
         ]
 
 
-@server.tool()
+@_register_tool
 def sqlite_query(
     database: str,
     query: str,
@@ -179,7 +189,7 @@ def sqlite_query(
         return [{key: row[key] for key in row.keys()} for row in rows]
 
 
-@server.tool()
+@_register_tool
 def sqlite_count_rows(
     database: str,
     table_name: str,
@@ -213,6 +223,10 @@ def sqlite_count_rows(
 
 def main() -> None:
     """Runs the MCP server over standard I/O."""
+    if server is None:
+        raise RuntimeError(
+            "The 'mcp' package is not installed. MCP is configured for local use only."
+        )
     server.run(transport="stdio")
 
 
