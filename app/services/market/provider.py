@@ -61,6 +61,7 @@ class YahooDataProvider:
                 start=start_date,
                 group_by="ticker",
                 auto_adjust=True,
+                repair=True,
                 progress=False,
                 threads=True,
                 timeout=REQUEST_TIMEOUT,

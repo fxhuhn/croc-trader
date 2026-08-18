@@ -59,10 +59,13 @@ def test_fetch_batch_raw_single_index() -> None:
     """Tests fetch_batch_raw with SingleIndex DataFrame (single symbol)."""
     provider = YahooDataProvider()
     dummy_df = pd.DataFrame({"close": [150.0]})
-    with patch("yfinance.download", return_value=dummy_df):
+    with patch("yfinance.download", return_value=dummy_df) as mock_download:
         df, failed = provider.fetch_batch_raw(["AAPL"], "2026-01-01")
         assert not df.empty
         assert failed == []
+        mock_download.assert_called_once()
+        _, kwargs = mock_download.call_args
+        assert kwargs.get("repair") is True
 
 
 def test_extract_symbol_data_cases() -> None:
