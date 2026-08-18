@@ -63,7 +63,7 @@ jobs:
       if: matrix.python-version == '3.12'
       run: |
         export PYTHONPATH=$PYTHONPATH:.
-        pytest test/ -v --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=87
+        pytest test/ -v --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=88
 
     - name: Upload coverage to Codecov
       if: matrix.python-version == '3.12'
