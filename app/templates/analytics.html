@@ -11,7 +11,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import render_kpi_card %}
+{% from "macros/cards.html" import segmented_arc_gauge %}
 
 <!-- Top-Navigation -->
 {{ render_header("Strategy", "analytics", show_switcher=False, active_tab='analytics') }}
@@ -23,50 +23,123 @@
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
-    <!-- Section 1: KPI Grid -->
-    <section class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-8 mt-2 md:mt-0">
-        {% set pnl = summary.net_pnl | default(0) %}
+    <!-- Section 1: KPI Grid (2 Rows of 3 Tiles on Desktop) -->
+    <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8 mt-2 md:mt-0">
+        <!-- 1. Return (YTD) -->
+        {% set return_val = summary.return_ytd_pct | default(0.0) %}
         <article
-            class="col-span-2 md:col-span-1 {{ 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30' if pnl >= 0 else 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30' }} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative">
+            class="col-span-2 md:col-span-1 {{ 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-emerald-200/50 border-emerald-400/30' if return_val >= 0 else 'bg-gradient-to-r from-rose-500 to-rose-600 shadow-rose-200/50 border-rose-400/30' }} rounded-2xl md:rounded-3xl shadow-lg p-4 md:p-6 flex items-start justify-between gap-2 border relative">
             <div class="flex flex-col items-start">
-                <div class="{{ 'text-emerald-50/80' if pnl >= 0 else 'text-rose-100/80' }} text-xs uppercase font-bold tracking-wider mb-1">
-                    Net PnL
+                <div class="{{ 'text-emerald-50/80' if return_val >= 0 else 'text-rose-100/80' }} text-xs uppercase font-bold tracking-wider mb-1">
+                    Return (YTD)
                 </div>
                 <div class="text-2xl md:text-3xl font-black text-white leading-none mb-1 tabular-nums">
-                    {{ "{:+,.0f} $".format(pnl) }}
+                    {{ "{:+.1f}%".format(return_val) }}
                 </div>
             </div>
             <i data-lucide="trending-down" aria-hidden="true"
-                class="w-7 h-7 shrink-0 {{ 'hidden' if pnl >= 0 else 'text-rose-200' }}"></i>
+                class="w-7 h-7 shrink-0 {{ 'hidden' if return_val >= 0 else 'text-rose-200' }}"></i>
             <i data-lucide="trending-up" aria-hidden="true"
-                class="w-7 h-7 shrink-0 {{ 'text-emerald-100' if pnl >= 0 else 'hidden' }}"></i>
+                class="w-7 h-7 shrink-0 {{ 'text-emerald-100' if return_val >= 0 else 'hidden' }}"></i>
         </article>
 
-        <!-- Win Rate Card -->
+        <!-- 2. Max Drawdown -->
         <article
-            class="hidden md:flex col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex items-start justify-between gap-2">
-            <div class="flex flex-col items-start">
-                <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
-                    Win Rate
-                </div>
-                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
-                    {% if summary.win_rate is defined and summary.win_rate is not none %}
-                        {% if summary.win_rate <= 1.0 %}
-                            {{ "{:.1%}".format(summary.win_rate) }}
-                        {% else %}
-                            {{ "{:.1f}%".format(summary.win_rate) }}
-                        {% endif %}
-                    {% else %}
-                        0.0%
-                    {% endif %}
-                </div>
+            class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Max Drawdown
+            </div>
+            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                {{ "{:.1%}".format(summary.max_drawdown | default(0.0)) }}
             </div>
         </article>
-        
-        {% set drawdown_value = "{:.1%}".format(summary.max_drawdown | default(0)) %}
-        {{ render_kpi_card("Max Drawdown", drawdown_value, "alert-triangle", "text-rose-500", bg_classes="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm") }}
-        
-        {{ render_kpi_card("Total Trades", summary.total_trades | default(0), "layers", bg_classes="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm") }}
+
+        <!-- 3. Sharpe -->
+        {% set sharpe_val = (summary.sharpe_ratio|float) if (summary.sharpe_ratio is defined and summary.sharpe_ratio is not none) else 0.0 %}
+        {% set sharpe_label = "Poor" if sharpe_val < 1.0 else ("Acceptable" if sharpe_val < 2.0 else ("Very Good" if sharpe_val < 3.0 else "Excellent")) %}
+        {% set sharpe_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if sharpe_val < 1.0 else ("bg-amber-50 text-amber-600 border-amber-200/60" if sharpe_val < 2.0 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if sharpe_val < 3.0 else "bg-indigo-50 text-indigo-600 border-indigo-200/60")) %}
+        {% set sharpe_idx = 0 if sharpe_val < 1.0 else (1 if sharpe_val < 2.0 else (2 if sharpe_val < 3.0 else 3)) %}
+        {% set sharpe_color = "#e11d48" if sharpe_val < 1.0 else ("#d97706" if sharpe_val < 2.0 else ("#059669" if sharpe_val < 3.0 else "#4f46e5")) %}
+        <article
+            class="hidden md:flex col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-row items-center justify-between">
+            <div class="flex flex-col items-start justify-start">
+                <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                    Sharpe
+                </div>
+                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                    {{ "{:.2f}".format(sharpe_val) }}
+                </div>
+                <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ sharpe_cls }}">
+                    <span>{{ sharpe_label }}</span>
+                </div>
+            </div>
+            <div class="shrink-0 flex items-center justify-center pl-2">
+                {{ segmented_arc_gauge(sharpe_idx, sharpe_color, total_segments=4) }}
+            </div>
+        </article>
+
+        <!-- 4. Sortino -->
+        {% set sortino_val = (summary.sortino_ratio|float) if (summary.sortino_ratio is defined and summary.sortino_ratio is not none) else 0.0 %}
+        {% set sortino_label = "Poor" if sortino_val < 1.0 else ("Acceptable" if sortino_val < 2.0 else ("Very Good" if sortino_val < 3.0 else "Excellent")) %}
+        {% set sortino_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if sortino_val < 1.0 else ("bg-amber-50 text-amber-600 border-amber-200/60" if sortino_val < 2.0 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if sortino_val < 3.0 else "bg-indigo-50 text-indigo-600 border-indigo-200/60")) %}
+        {% set sortino_idx = 0 if sortino_val < 1.0 else (1 if sortino_val < 2.0 else (2 if sortino_val < 3.0 else 3)) %}
+        {% set sortino_color = "#e11d48" if sortino_val < 1.0 else ("#d97706" if sortino_val < 2.0 else ("#059669" if sortino_val < 3.0 else "#4f46e5")) %}
+        <article
+            class="hidden md:flex col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-row items-center justify-between">
+            <div class="flex flex-col items-start justify-start">
+                <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                    Sortino
+                </div>
+                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                    {{ "{:.2f}".format(sortino_val) }}
+                </div>
+                <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ sortino_cls }}">
+                    <span>{{ sortino_label }}</span>
+                </div>
+            </div>
+            <div class="shrink-0 flex items-center justify-center pl-2">
+                {{ segmented_arc_gauge(sortino_idx, sortino_color, total_segments=4) }}
+            </div>
+        </article>
+
+        <!-- 5. Profit Factor -->
+        {% set pf_val = (summary.profit_factor|float) if (summary.profit_factor is defined and summary.profit_factor is not none) else 0.0 %}
+        {% set pf_label = "Unprofitable" if pf_val < 1.0 else ("Weak" if pf_val < 1.25 else ("Moderate" if pf_val < 1.5 else ("Good" if pf_val < 2.0 else ("Very Good" if pf_val < 3.0 else "Excellent")))) %}
+        {% set pf_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if pf_val < 1.0 else ("bg-amber-50 text-amber-600 border-amber-200/60" if pf_val < 1.25 else ("bg-slate-100 text-slate-700 border-slate-200" if pf_val < 1.5 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if pf_val < 2.0 else ("bg-teal-50 text-teal-600 border-teal-200/60" if pf_val < 3.0 else "bg-indigo-50 text-indigo-600 border-indigo-200/60")))) %}
+        {% set pf_idx = 0 if pf_val < 1.0 else (1 if pf_val < 1.25 else (2 if pf_val < 1.5 else (3 if pf_val < 2.0 else (4 if pf_val < 3.0 else 5)))) %}
+        {% set pf_color = "#e11d48" if pf_val < 1.0 else ("#d97706" if pf_val < 1.25 else ("#475569" if pf_val < 1.5 else ("#059669" if pf_val < 2.0 else ("#0d9488" if pf_val < 3.0 else "#4f46e5")))) %}
+        <article
+            class="hidden md:flex col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex-row items-center justify-between">
+            <div class="flex flex-col items-start justify-start">
+                <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                    Profit Factor
+                </div>
+                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                    {% if pf_val > 900 %}
+                        &infin;
+                    {% else %}
+                        {{ "{:.2f}".format(pf_val) }}
+                    {% endif %}
+                </div>
+                <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ pf_cls }}">
+                    <span>{{ pf_label }}</span>
+                </div>
+            </div>
+            <div class="shrink-0 flex items-center justify-center pl-2">
+                {{ segmented_arc_gauge(pf_idx, pf_color) }}
+            </div>
+        </article>
+
+        <!-- 6. Sample -->
+        <article
+            class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Sample
+            </div>
+            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                {{ summary.sample_size | default(summary.total_trades | default(0)) }}
+            </div>
+        </article>
     </section>
 
     <!-- Section 2: Weekly Trend (Chart) -->

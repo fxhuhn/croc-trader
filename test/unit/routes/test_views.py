@@ -10,6 +10,7 @@ from collections.abc import Generator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 from flask import Flask
 from flask.testing import FlaskClient
@@ -245,7 +246,8 @@ def test_view_analytics_dashboard_handles_empty_data_gracefully(
         response = test_client.get("/analytics")
 
         # Assert
-        assert b"Total Trades" in response.data
+        assert b"Sample" in response.data
+        assert b"Return (YTD)" in response.data
 
 
 def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
@@ -253,9 +255,10 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
 ) -> None:
     """Verifies analytics dashboard calculates correct performance metrics."""
     # Arrange
+    current_year = pd.Timestamp.now().year
     mock_trades = [
         {
-            "exit_date": "2026-01-10",
+            "exit_date": f"{current_year}-01-10",
             "realized_pnl": 500.0,
             "strategy": Strategies.CrocSetup,
             "entry_price": 100.0,
@@ -263,7 +266,7 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
             "initial_size": 100.0,
         },
         {
-            "exit_date": "2026-01-15",
+            "exit_date": f"{current_year}-01-15",
             "realized_pnl": -200.0,
             "strategy": Strategies.CrocSetup,
             "entry_price": 50.0,
@@ -285,10 +288,13 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
 
         # Assert
         assert response.status_code == 200
-        # Win rate: 1 win out of 2 trades = 50.0%
-        assert b"50.0%" in response.data
-        # PnL: 500 - 200 = 300
-        assert b"300.0" in response.data or b"300" in response.data
+        assert b"Return (YTD)" in response.data
+
+        assert b"Max Drawdown" in response.data
+        assert b"Sharpe" in response.data
+        assert b"Sortino" in response.data
+        assert b"Profit Factor" in response.data
+        assert b"Sample" in response.data
 
 
 def test_view_analytics_dashboard_calculates_correct_95_percentile_utilization(

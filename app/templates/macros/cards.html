@@ -17,17 +17,26 @@
 </article>
 {% endmacro %}
 
-{% macro segmented_arc_gauge(active_idx, active_color="#4f46e5") %}
+{% macro segmented_arc_gauge(active_idx, active_color="#4f46e5", total_segments=6) %}
 <svg class="w-32 h-20 shrink-0" viewBox="0 0 80 44" fill="none" xmlns="http://www.w3.org/2000/svg">
     {% set inactive_color = "#e2e8f0" %}
-    {% set segments_path = [
-        "M 14.19 32.83 A 26 26 0 0 1 16.07 25.84",
-        "M 19.24 20.35 A 26 26 0 0 1 24.35 15.24",
-        "M 29.84 12.07 A 26 26 0 0 1 36.83 10.19",
-        "M 43.17 10.19 A 26 26 0 0 1 50.16 12.07",
-        "M 55.65 15.24 A 26 26 0 0 1 60.76 20.35",
-        "M 63.93 25.84 A 26 26 0 0 1 65.81 32.83"
-    ] %}
+    {% if total_segments == 4 %}
+        {% set segments_path = [
+            "M 14.19 32.83 A 26 26 0 0 1 19.10 20.53",
+            "M 24.17 15.37 A 26 26 0 0 1 36.38 10.25",
+            "M 43.62 10.25 A 26 26 0 0 1 55.83 15.37",
+            "M 60.90 20.53 A 26 26 0 0 1 65.81 32.83"
+        ] %}
+    {% else %}
+        {% set segments_path = [
+            "M 14.19 32.83 A 26 26 0 0 1 16.07 25.84",
+            "M 19.24 20.35 A 26 26 0 0 1 24.35 15.24",
+            "M 29.84 12.07 A 26 26 0 0 1 36.83 10.19",
+            "M 43.17 10.19 A 26 26 0 0 1 50.16 12.07",
+            "M 55.65 15.24 A 26 26 0 0 1 60.76 20.35",
+            "M 63.93 25.84 A 26 26 0 0 1 65.81 32.83"
+        ] %}
+    {% endif %}
     {% for path_d in segments_path %}
         {% set seg_idx = loop.index0 %}
         {% set is_active = (seg_idx == active_idx) %}

@@ -94,7 +94,7 @@ def view_analytics_dashboard() -> str:
 
     dataframe = _prepare_closed_trades_dataframe(closed_trades)
     initial_capital = DEFAULT_INITIAL_CAPITAL
-    summary = _calculate_summary_metrics(dataframe, initial_capital)
+    summary = _calculate_summary_metrics(dataframe, initial_capital, today)
 
     strategies_data = _build_strategies_dashboard(
         dataframe, active_trades, service, initial_capital
@@ -123,9 +123,14 @@ def view_analytics_dashboard() -> str:
 def _render_empty_dashboard(current_month_name: str) -> str:
     """Renders the analytics dashboard with empty fallback state."""
     empty_summary = {
+        "return_ytd_pct": 0.0,
+        "max_drawdown": 0.0,
+        "sharpe_ratio": 0.0,
+        "sortino_ratio": 0.0,
+        "profit_factor": 0.0,
+        "sample_size": 0,
         "net_pnl": 0.0,
         "win_rate": 0.0,
-        "max_drawdown": 0.0,
         "total_trades": 0,
     }
     return render_template(
@@ -163,21 +168,79 @@ def _prepare_closed_trades_dataframe(
         if column_name not in dataframe.columns:
             dataframe[column_name] = np.nan
 
-    dataframe["exit_date_dt"] = pd.to_datetime(dataframe["exit_date"], errors="coerce")
+    exit_dates = pd.to_datetime(dataframe["exit_date"], errors="coerce")
+    if hasattr(exit_dates.dt, "tz") and exit_dates.dt.tz is not None:
+        dataframe["exit_date_dt"] = exit_dates.dt.tz_localize(None)
+    else:
+        dataframe["exit_date_dt"] = exit_dates
     return dataframe.sort_values("exit_date_dt")
 
 
 def _calculate_summary_metrics(
-    dataframe: pd.DataFrame, initial_capital: float
+    dataframe: pd.DataFrame,
+    initial_capital: float,
+    as_of_date: pd.Timestamp | None = None,
 ) -> dict[str, object]:
-    """Calculates top-level summary metrics."""
-    cumulative_pnl = dataframe["realized_pnl"].fillna(0.0).cumsum()
+    """Calculates top-level summary metrics scoped to YTD on invested capital."""
+    current_date = as_of_date if as_of_date is not None else pd.Timestamp.now()
+    start_of_year = pd.Timestamp(year=current_date.year, month=1, day=1)
+
+    if dataframe.empty or "exit_date_dt" not in dataframe.columns:
+        ytd_dataframe = pd.DataFrame(columns=dataframe.columns)
+    else:
+        ytd_dataframe = dataframe[dataframe["exit_date_dt"] >= start_of_year]
+
+    if ytd_dataframe.empty:
+        return {
+            "return_ytd_pct": 0.0,
+            "max_drawdown": 0.0,
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "profit_factor": 0.0,
+            "sample_size": 0,
+            "net_pnl": 0.0,
+            "win_rate": 0.0,
+            "total_trades": 0,
+        }
+
+    pnl_series = pd.to_numeric(ytd_dataframe["realized_pnl"], errors="coerce").fillna(
+        0.0
+    )
+
+    _, portfolio_row, _ = calculate_monthly_matrix_data(
+        dataframe, current_date.year, STRATEGY_GROUPS
+    )
+    return_ytd_pct = float(portfolio_row.get("gesamt", 0.0))
+
+    cumulative_pnl = pnl_series.cumsum()
+
     equity_curve = initial_capital + cumulative_pnl
+    max_drawdown = metrics.calculate_max_drawdown(equity_curve, initial_capital)
+
+    roi_series = extract_roi_series(ytd_dataframe)
+    active_months = calculate_active_months(ytd_dataframe)
+    trades_per_year = (
+        (len(roi_series) / active_months) * 12.0 if active_months > 0.0 else 252.0
+    )
+
+    sharpe_ratio = metrics.calculate_sharpe_ratio_from_roi(
+        roi_series, trades_per_year=trades_per_year
+    )
+    sortino_ratio = metrics.calculate_sortino_ratio_from_roi(
+        roi_series, trades_per_year=trades_per_year
+    )
+    profit_factor = metrics.calculate_profit_factor(pnl_series)
+
     return {
-        "net_pnl": float(dataframe["realized_pnl"].fillna(0.0).sum()),
-        "win_rate": metrics.calculate_win_rate(dataframe["realized_pnl"].fillna(0.0)),
-        "max_drawdown": metrics.calculate_max_drawdown(equity_curve, initial_capital),
-        "total_trades": len(dataframe),
+        "return_ytd_pct": return_ytd_pct,
+        "max_drawdown": max_drawdown,
+        "sharpe_ratio": sharpe_ratio,
+        "sortino_ratio": sortino_ratio,
+        "profit_factor": profit_factor,
+        "sample_size": len(ytd_dataframe),
+        "net_pnl": float(pnl_series.sum()),
+        "win_rate": metrics.calculate_win_rate(pnl_series),
+        "total_trades": len(ytd_dataframe),
     }
 
 

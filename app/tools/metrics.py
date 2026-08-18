@@ -174,6 +174,94 @@ def calculate_sharpe_ratio(
     return float((returns.mean() / standard_deviation) * np.sqrt(annualization_factor))
 
 
+def calculate_return_on_invested(
+    trades_pnl: pd.Series, invested_capital: pd.Series
+) -> float:
+    """Calculates the overall percentage return on total invested capital.
+
+    Formula: Return % = (Σ(PnL_valid) / Σ(Invested_valid)) × 100
+
+    Args:
+        trades_pnl: Series of realized profit and loss per trade.
+        invested_capital: Series of total invested capital (Entry Price × Size) per trade.
+
+    Returns:
+        float: Total percentage return on invested capital.
+    """
+    if trades_pnl.empty or invested_capital.empty:
+        return 0.0
+
+    clean_invested = pd.to_numeric(invested_capital, errors="coerce").fillna(0.0)
+    clean_pnl = pd.to_numeric(trades_pnl, errors="coerce").fillna(0.0)
+
+    valid_mask = clean_invested > EPSILON
+    if not valid_mask.any():
+        return 0.0
+
+    total_invested = float(clean_invested[valid_mask].sum())
+    if total_invested <= EPSILON:
+        return 0.0
+
+    total_pnl = float(clean_pnl[valid_mask].sum())
+    return float((total_pnl / total_invested) * 100.0)
+
+
+def calculate_sharpe_ratio_from_roi(
+    roi_series: pd.Series, trades_per_year: float = 252.0
+) -> float:
+    """Calculates the annualized Sharpe Ratio from a series of trade ROI percentages.
+
+    Formula: SR = (Mean(ROI) / Std(ROI)) × √N_trades_per_year
+
+    Args:
+        roi_series: Series of individual trade return-on-investment ratios.
+        trades_per_year: Estimated or annual trade count scaling factor.
+
+    Returns:
+        float: Annualized Sharpe Ratio.
+    """
+    clean_roi = roi_series.dropna()
+    if len(clean_roi) < 2 or trades_per_year <= EPSILON:
+        return 0.0
+
+    standard_deviation = float(clean_roi.std(ddof=1))
+    if standard_deviation < EPSILON:
+        return 0.0
+
+    return float((clean_roi.mean() / standard_deviation) * np.sqrt(trades_per_year))
+
+
+def calculate_sortino_ratio_from_roi(
+    roi_series: pd.Series,
+    trades_per_year: float = 252.0,
+    target_return: float = 0.0,
+) -> float:
+    """Calculates the annualized Sortino Ratio from trade ROI and downside deviation.
+
+    Formula: Sortino = ((Mean(ROI) − Target) / Downside_Deviation) × √N_trades_per_year
+
+    Args:
+        roi_series: Series of individual trade return-on-investment ratios.
+        trades_per_year: Estimated or annual trade count scaling factor.
+        target_return: Minimum acceptable return benchmark (default 0.0).
+
+    Returns:
+        float: Annualized Sortino Ratio.
+    """
+    clean_roi = roi_series.dropna()
+    if len(clean_roi) < 2 or trades_per_year <= EPSILON:
+        return 0.0
+
+    underperformance = np.minimum(0.0, clean_roi.to_numpy() - target_return)
+    downside_deviation = float(np.sqrt(np.mean(underperformance**2)))
+
+    if downside_deviation < EPSILON:
+        return 0.0
+
+    mean_excess_return = float(clean_roi.mean() - target_return)
+    return float((mean_excess_return / downside_deviation) * np.sqrt(trades_per_year))
+
+
 def calculate_sqn(r_multiples: pd.Series) -> float:
     """Calculates the System Quality Number (SQN).
 
