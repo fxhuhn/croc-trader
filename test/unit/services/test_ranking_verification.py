@@ -126,3 +126,22 @@ def test_check_ranking_attributes_edge_cases() -> None:
     results_dict = check_ranking_attributes(dict_with_invalid_rules, {})
     result_map = {res.attribute_key: res for res in results_dict}
     assert "SignalWithScore" in result_map["Signal"].missing_values
+
+
+def test_check_ranking_attributes_compound_signals() -> None:
+    """Verifies that compound signals like 'bull_1 + bull_bb' match if all components exist in DB."""
+    ranking_data = [
+        {"Signal": "bull_1 + bull_bb", "Kerze": "Hammer"},
+        {"Signal": "bull_1 + unknown_signal", "Kerze": "Hammer"},
+    ]
+    database_attributes = {
+        "Signal": {"bull_1", "bull_bb", "bull_rot"},
+        "Kerze": {"Hammer"},
+    }
+
+    results = check_ranking_attributes(ranking_data, database_attributes)
+    result_map = {res.attribute_key: res for res in results}
+
+    assert "Signal" in result_map
+    assert "bull_1 + bull_bb" in result_map["Signal"].available_values
+    assert "bull_1 + unknown_signal" in result_map["Signal"].missing_values

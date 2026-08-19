@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]  # Third-party untyped library
 
 from app.tools.symbol_lists import ExchangeSymbol
 
@@ -57,3 +57,32 @@ def test_fetch_from_wikipedia_dot_cleaning() -> None:
         )
 
     assert result == ["AAPL", "BF-B", "BRK-B"]
+
+
+def test_refresh_data_fetches_all_indices() -> None:
+    """Verifies that _refresh_data invokes _fetch_from_wikipedia for S&P 500, Nasdaq 100, Dow 30, and Russell 1000."""
+    es = ExchangeSymbol()
+    called_indices = []
+
+    def mock_fetch(
+        url: str | list[str], search_columns: list[str], name: str
+    ) -> list[str]:
+        called_indices.append(name)
+        if name == "Dow Jones 30":
+            return ["AAPL", "MSFT"]
+        if name == "Russell 1000":
+            return ["AAPL", "MSFT", "NVDA"]
+        return ["SPY"]
+
+    with (
+        patch.object(es, "_fetch_from_wikipedia", side_effect=mock_fetch),
+        patch.object(es, "_save_to_cache"),
+    ):
+        es._refresh_data()
+
+    assert "S&P 500" in called_indices
+    assert "NASDAQ-100" in called_indices
+    assert "Dow Jones 30" in called_indices
+    assert "Russell 1000" in called_indices
+    assert es.dow_30 == ["AAPL", "MSFT"]
+    assert es.russell_1000 == ["AAPL", "MSFT", "NVDA"]

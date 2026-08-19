@@ -25,14 +25,14 @@ class ExchangeSymbol:
     _initialized: bool = False
     _lock = threading.Lock()  # Lock for thread-safety
 
-    def __new__(cls):
+    def __new__(cls) -> "ExchangeSymbol":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         # Quick check without lock (Performance)
         if ExchangeSymbol._initialized:
             return
@@ -125,15 +125,21 @@ class ExchangeSymbol:
 
             # 3. Dow Jones 30
             dow_30 = self._fetch_from_wikipedia(
-                url="https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
+                url=[
+                    "https://en.wikipedia.org/wiki/List_of_Dow_Jones_Industrial_Average_companies",
+                    "https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average",
+                ],
                 search_columns=["Symbol", "Ticker"],
                 name="Dow Jones 30",
             )
 
             # 4. Russell 1000
             russell_1000 = self._fetch_from_wikipedia(
-                url="https://en.wikipedia.org/wiki/Russell_1000_Index",
-                search_columns=["Symbol", "Ticker", "Company"],
+                url=[
+                    "https://en.wikipedia.org/wiki/List_of_Russell_1000_companies",
+                    "https://en.wikipedia.org/wiki/Russell_1000_Index",
+                ],
+                search_columns=["Symbol", "Ticker"],
                 name="Russell 1000",
             )
 

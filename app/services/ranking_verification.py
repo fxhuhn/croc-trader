@@ -96,7 +96,16 @@ def check_ranking_attributes(
         missing = []
 
         for req_val in required_values:
-            if req_val.lower() in db_values_lower:
+            if key == "Signal" and "+" in req_val:
+                parts = [p.strip() for p in req_val.split("+") if p.strip()]
+                all_parts_present = bool(parts) and all(
+                    p.lower() in db_values_lower for p in parts
+                )
+                if all_parts_present or req_val.lower() in db_values_lower:
+                    available.append(req_val)
+                else:
+                    missing.append(req_val)
+            elif req_val.lower() in db_values_lower:
                 # Find the original cased value from the database if possible
                 original_cased = next(
                     (v for v in db_values if v.lower() == req_val.lower()),
