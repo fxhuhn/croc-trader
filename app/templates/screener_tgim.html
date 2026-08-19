@@ -16,13 +16,14 @@
     <section class="mb-12">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
             {% for row in results %}
-            {% call cards.screener_card(row.symbol, "", row.context.get('threshold_price', 0), "< MOC") %}
-            <div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
+            {% call cards.screener_card(row.symbol, "", row.context.get('threshold_price', 0), "< MOC") %} <div
+                class="grid grid-cols-2 gap-x-6 text-xs mb-2">
                 <!-- Left Column -->
                 <div class="flex flex-col">
                     <div class="flex justify-between py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium">Datum</span>
-                        <span class="font-bold text-slate-800">{{ row.context.get('setup_date', row.display_date) }}</span>
+                        <span class="font-bold text-slate-800">{{ row.context.get('setup_date', row.display_date)
+                            }}</span>
                     </div>
                 </div>
                 <!-- Right Column -->
@@ -38,17 +39,17 @@
                         </span>
                     </div>
                 </div>
-            </div>
+        </div>
 
-            <!-- Action Button (Chart) -->
-            {{ cards.tradingview_btn(row.symbol) }}
-            {% endcall %}
-            {% else %}
-            {{ cards.empty_state() }}
-            {% endfor %}
+        <!-- Action Button (Chart) -->
+        {{ cards.tradingview_btn(row.symbol) }}
+        {% endcall %}
+        {% else %}
+        {{ cards.empty_state() }}
+        {% endfor %}
         </div>
         <div class="mt-4 px-2 py-2 text-xs text-slate-600 font-medium tracking-wide text-center">
-            Montags-Setup für SPY (Close &lt; min(Close[1], Close[2]))
+            Check auf neue Signale erfolgt täglich.
         </div>
     </section>
 

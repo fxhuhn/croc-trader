@@ -16,7 +16,8 @@
     <section class="mb-12">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
             {% for row in results %}
-            {% call cards.screener_card(row.symbol, None, row.context.get('req_close_rsi40', row.context.get('setup_close', 0)), "MOC Close") %}
+            {% call cards.screener_card(row.symbol, None, row.context.get('req_close_rsi40',
+            row.context.get('setup_close', 0)), "MOC Close") %}
             <div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
                 <!-- Left Column -->
                 <div class="flex flex-col">
@@ -63,7 +64,7 @@
             {% endfor %}
         </div>
         <div class="mt-4 px-2 py-2 text-xs text-slate-600 font-medium tracking-wide text-center">
-            End-of-Month Mean-Reversion Setup für QQQ (RSI(2) &lt; 40, ATR % &lt; 3.5%)
+            Check auf neue Signale erfolgt täglich.
         </div>
     </section>
 
