@@ -206,6 +206,41 @@ def test_get_unique_signal_attributes(
     assert "custom_signal_flag" in attrs["Signal"]
 
 
+def test_get_unique_signal_attributes_malformed_json(
+    signal_session: DatabaseSession,
+) -> None:
+    repo = SignalRepository(signal_session)
+    with signal_session.connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO croc (symbol, timeframe, signal, timestamp, exchange, data)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            ("AAPL", "1d", "TurnoverTiming", "2026-08-01", "SMART", "malformed_json{"),
+        )
+        conn.execute(
+            """
+            INSERT INTO croc (symbol, timeframe, signal, timestamp, exchange, data)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "NVDA",
+                "1d",
+                "DipBuyer",
+                "2026-08-01",
+                "SMART",
+                json.dumps({"status": "active", "kerze": "hammer", "custom_flag": "1"}),
+            ),
+        )
+
+    attrs = repo.get_unique_signal_attributes()
+    assert "TurnoverTiming" in attrs["Signal"]
+    assert "DipBuyer" in attrs["Signal"]
+    assert "custom_flag" in attrs["Signal"]
+    assert "active" in attrs["Status"]
+    assert "hammer" in attrs["Kerze"]
+
+
 def test_get_trade_candidates(signal_session: DatabaseSession) -> None:
     repo = SignalRepository(signal_session)
     ctx = {"setup_score": 80, "market_phase": "BULL", "date": "2026-08-05"}

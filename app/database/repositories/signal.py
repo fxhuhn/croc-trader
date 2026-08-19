@@ -111,19 +111,13 @@ class SignalRepository(BaseRepository):
         sql = """
             SELECT
                 signal,
-                data,
-                json_extract(data, '$.status') as status,
-                json_extract(data, '$.kerze') as kerze,
-                json_extract(data, '$.wolke') as wolke,
-                json_extract(data, '$.trend') as trend,
-                json_extract(data, '$.setter') as setter,
-                json_extract(data, '$.welle') as welle
+                data
             FROM croc
             WHERE data IS NOT NULL OR signal IS NOT NULL
         """
         rows = self.fetch_all(sql)
 
-        attributes = {
+        attributes: dict[str, set[str]] = {
             "Signal": set(),
             "Status": set(),
             "Kerze": set(),
@@ -134,37 +128,11 @@ class SignalRepository(BaseRepository):
         }
 
         for row in rows:
-            for yaml_key, db_key in zip(
-                ["Signal", "Status", "Kerze", "Wolke", "Trend", "Setter", "Welle"],
-                ["signal", "status", "kerze", "wolke", "trend", "setter", "welle"],
-                strict=False,
-            ):
-                value = row[db_key]
-                if value is not None:
-                    attributes[yaml_key].add(str(value))
+            signal_value = row["signal"]
+            if signal_value is not None:
+                attributes["Signal"].add(str(signal_value))
 
-            if row["data"]:
-                try:
-                    payload = json.loads(row["data"])
-                    if isinstance(payload, dict):
-                        for k, v in payload.items():
-                            if str(v).lower().strip() in (
-                                "1",
-                                "true",
-                                "yes",
-                                "on",
-                                "1.0",
-                            ):
-                                if k not in (
-                                    "symbol",
-                                    "timestamp",
-                                    "timeframe",
-                                    "exchange",
-                                    "price",
-                                ):
-                                    attributes["Signal"].add(k)
-                except (json.JSONDecodeError, TypeError) as parse_error:
-                    logger.debug("Failed to parse signal JSON: %s", parse_error)
+            _parse_and_extract_signal_data(row["data"], attributes)
 
         return attributes
 
@@ -315,3 +283,39 @@ class SignalRepository(BaseRepository):
             results.append(row_dict)
 
         return results
+
+
+def _parse_and_extract_signal_data(
+    raw_data: str | None, attributes: dict[str, set[str]]
+) -> None:
+    """Safely extracts attributes and active flags from a raw JSON payload string."""
+    if not raw_data:
+        return
+
+    try:
+        payload = json.loads(raw_data)
+    except (json.JSONDecodeError, TypeError) as parse_error:
+        logger.debug("Failed to parse signal JSON: %s", parse_error)
+        return
+
+    if not isinstance(payload, dict):
+        return
+
+    attribute_mappings = (
+        ("Status", "status"),
+        ("Kerze", "kerze"),
+        ("Wolke", "wolke"),
+        ("Trend", "trend"),
+        ("Setter", "setter"),
+        ("Welle", "welle"),
+    )
+    for yaml_key, dict_key in attribute_mappings:
+        value = payload.get(dict_key)
+        if value is not None:
+            attributes[yaml_key].add(str(value))
+
+    active_values = {"1", "true", "yes", "on", "1.0"}
+    reserved_keys = {"symbol", "timestamp", "timeframe", "exchange", "price"}
+    for key, val in payload.items():
+        if str(val).lower().strip() in active_values and key not in reserved_keys:
+            attributes["Signal"].add(key)
