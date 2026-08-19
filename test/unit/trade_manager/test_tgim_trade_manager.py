@@ -370,3 +370,92 @@ def test_tgim_manage_active_trade_bars_held_zero(
     monday_candle = pd.Series({"date": "2026-07-20", "close": 500.0})
     df_history = pd.DataFrame([monday_candle])
     assert trade_strategy.manage_active_trade(trade, df_history) is None
+
+
+def test_tgim_check_entry_ignores_premarket_friday_candle(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests that check_entry returns None when given a pre-market Friday candle before Monday setup."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.CREATED.value,
+        "entry_price": 500.0,
+        "budget": 10000.0,
+        "signal_context": '{"setup_date": "2026-07-20", "threshold_price": 500.0}',
+    }
+    friday_candle = pd.Series(
+        {
+            "date": "2026-07-17",
+            "open": 498.0,
+            "high": 502.0,
+            "low": 495.0,
+            "close": 500.0,
+        }
+    )
+    df_history = pd.DataFrame([friday_candle])
+
+    transition = trade_strategy.check_entry(trade, friday_candle, df_history)
+    assert transition is None
+
+
+def test_tgim_check_entry_activates_with_exact_monday_close(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests check_entry activates on Monday close using exact Monday close as fill price."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.CREATED.value,
+        "entry_price": 500.0,  # threshold price
+        "budget": 10000.0,
+        "signal_context": '{"setup_date": "2026-07-20", "threshold_price": 500.0}',
+    }
+    monday_candle = pd.Series(
+        {
+            "date": "2026-07-20",
+            "open": 496.0,
+            "high": 498.0,
+            "low": 490.0,
+            "close": 492.50,  # lower than 500.0 threshold
+        }
+    )
+    df_history = pd.DataFrame([monday_candle])
+
+    transition = trade_strategy.check_entry(trade, monday_candle, df_history)
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.ACTIVE.value
+    assert transition.updates["entry_price"] == 492.50
+    assert transition.updates["entry_date"] == "2026-07-20"
+
+
+def test_tgim_check_entry_rejects_past_monday_candle(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests check_entry invalidates trade when evaluated on Tuesday after missing Monday."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.CREATED.value,
+        "entry_price": 500.0,
+        "budget": 10000.0,
+        "signal_context": '{"setup_date": "2026-07-20", "threshold_price": 500.0}',
+    }
+    tuesday_candle = pd.Series(
+        {
+            "date": "2026-07-21",
+            "open": 490.0,
+            "high": 495.0,
+            "low": 488.0,
+            "close": 492.0,
+        }
+    )
+    df_history = pd.DataFrame([tuesday_candle])
+
+    transition = trade_strategy.check_entry(trade, tuesday_candle, df_history)
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["exit_reason"] == ExitReason.INVALIDATED.value

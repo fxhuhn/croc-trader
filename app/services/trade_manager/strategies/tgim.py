@@ -164,6 +164,24 @@ class TGIMTradeStrategy(BaseTradeStrategy):
 
         current_close = Decimal(str(candle["close"]))
         date_string = str(candle["date"])
+        candle_date = pd.Timestamp(candle["date"]).date()
+
+        setup_date_value = (
+            self._get_context_value(trade, "setup_date")
+            or self._get_context_value(trade, "date")
+            or trade.get("entry_date")
+        )
+
+        if setup_date_value:
+            setup_date = pd.Timestamp(str(setup_date_value)).date()
+            if candle_date < setup_date:
+                return None
+            if candle_date > setup_date:
+                return self._reject_setup(
+                    trade,
+                    date_string,
+                    "Missed Entry Window (Monday Close)",
+                )
 
         if current_close <= threshold_price:
             return self._execute_activation(
