@@ -1,0 +1,4 @@
+{
+  "name": "sqlite-reader",
+  "description": "Read-only SQLite database inspection server for Croc-Trader"
+}
