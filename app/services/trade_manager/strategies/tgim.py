@@ -163,8 +163,8 @@ class TGIMTradeStrategy(BaseTradeStrategy):
             return None
 
         current_close = Decimal(str(candle["close"]))
-        date_string = str(candle["date"])
         candle_date = pd.Timestamp(candle["date"]).date()
+        date_string = candle_date.strftime("%Y-%m-%d")
 
         setup_date_value = (
             self._get_context_value(trade, "setup_date")
