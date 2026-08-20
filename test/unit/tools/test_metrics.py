@@ -70,6 +70,20 @@ def test_calculate_max_drawdown():
     assert max_dd == pytest.approx(-0.333333, abs=1e-5)
 
 
+def test_calculate_drawdown_series():
+    """Tests full drawdown series calculation including empty series and initial capital."""
+    assert metrics.calculate_drawdown_series(pd.Series([], dtype=float)).empty
+
+    equity = pd.Series([100.0, 110.0, 90.0, 120.0, 80.0])
+    dd_series = metrics.calculate_drawdown_series(equity)
+    assert len(dd_series) == 5
+    assert dd_series.iloc[0] == 0.0
+    assert dd_series.iloc[1] == 0.0
+    assert dd_series.iloc[2] == pytest.approx(-0.181818, abs=1e-5)
+    assert dd_series.iloc[3] == 0.0
+    assert dd_series.iloc[4] == pytest.approx(-0.333333, abs=1e-5)
+
+
 def test_calculate_sharpe_ratio():
     """Tests Sharpe Ratio calculation."""
     # Arrange

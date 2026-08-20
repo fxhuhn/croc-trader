@@ -142,63 +142,199 @@
         </article>
     </section>
 
-    <!-- Section 2: Weekly Trend (Chart) -->
-    <section class="mb-8 md:mb-12">
-        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="line-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly Performance
-        </h2>
-        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative">
-        <div class="flex justify-end items-center mb-3">
-            <span class="text-xs font-medium text-slate-500">Weeks</span>
+    <!-- Section 2: Monthly Performance & Monthly Drawdown (Underwater) Side-by-Side -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-8 md:mb-12">
+        <!-- Monthly Performance -->
+        <div class="flex flex-col">
+            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                <i data-lucide="calendar" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Monthly Performance
+            </h2>
+            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative flex-1 flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-end items-center mb-3">
+                        <span class="text-xs font-medium text-slate-500">Months (YTD)</span>
+                    </div>
+
+                    <div id="monthly-trend-chart" class="h-[200px] w-full"></div>
+                    <div id="tooltip-monthly-trend" class="absolute hidden pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg p-3 z-30 text-xs w-60 sm:w-64"></div>
+                </div>
+
+                <!-- Legend (Custom HTML) -->
+                <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
+                    <!-- Aggregate Line -->
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-2.5 h-2.5 rounded-sm bg-slate-400"></div>
+                        <span class="text-xs text-slate-700 font-medium">Portfolio</span>
+                    </div>
+                    {% for strategy in strategies %}
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-2.5 h-2.5 rounded-sm {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
+                        <span class="text-xs text-slate-500">{{ strategy.name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
 
-        <div id="weekly-trend-chart" class="h-[200px] w-full"></div>
-        <div id="tooltip-weekly-trend" class="absolute hidden pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg p-3 z-30 text-xs w-60 sm:w-64"></div>
+        <!-- Monthly Drawdown (Underwater) -->
+        <div class="flex flex-col">
+            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                <i data-lucide="trending-down" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-rose-500"></i> Monthly Drawdown (Underwater)
+            </h2>
+            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative flex-1 flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-end items-center mb-3">
+                        <span class="text-xs font-medium text-slate-500">Months (YTD)</span>
+                    </div>
 
-        <!-- Legend (Custom HTML) -->
-        <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
-            <!-- Aggregate Line -->
-            <div class="flex items-center gap-1.5">
-                <div class="w-2.5 h-2.5 rounded-sm bg-slate-400"></div>
-                <span class="text-xs text-slate-700 font-medium">Portfolio</span>
+                    <div id="monthly-drawdown-chart" class="h-[200px] w-full"></div>
+                    <div id="tooltip-monthly-drawdown" class="absolute hidden pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg p-3 z-30 text-xs w-60 sm:w-64"></div>
+                </div>
+
+                <!-- Legend (Custom HTML) -->
+                <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
+                    <!-- Underwater Area Line -->
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-2.5 h-2.5 rounded-sm bg-rose-500"></div>
+                        <span class="text-xs text-slate-700 font-medium">Portfolio Max Intramonth Drawdown</span>
+                    </div>
+                </div>
             </div>
-            {% for strategy in strategies %}
-            <div class="flex items-center gap-1.5">
-                <div class="w-2.5 h-2.5 rounded-sm {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
-                <span class="text-xs text-slate-500">{{ strategy.name }}</span>
-            </div>
-            {% endfor %}
-        </div>
         </div>
     </section>
 
-    <!-- Section 2.5: Historical Weekly PnL (Chart) -->
-    <section class="mb-8 md:mb-12">
-        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly PnL
-        </h2>
-        <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative">
-        <div class="flex justify-end items-center mb-3">
-            <span class="text-xs font-medium text-slate-500">Weeks</span>
+    <!-- Section 2.3: Weekly PnL (3 Months) & Rolling Performance Side-by-Side -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-8 md:mb-12">
+        <!-- Left: Weekly PnL (3 Months) -->
+        <div class="flex flex-col">
+            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly PnL
+            </h2>
+            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative flex-1 flex flex-col justify-between">
+                <div>
+                    <div class="flex justify-end items-center mb-3">
+                        <span class="text-xs font-medium text-slate-500 tabular-nums">{{ weekly_pnl.date_range_label | default(rolling_3m.date_range_label) }}</span>
+                    </div>
+
+                    <div id="weekly-pnl-chart" class="h-[200px] w-full"></div>
+                    <div id="tooltip-weekly-pnl" class="absolute hidden pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg p-3 z-30 text-xs w-60 sm:w-64"></div>
+                </div>
+
+                <!-- Legend (Custom HTML) -->
+                <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
+                    <!-- Aggregate Line -->
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-2.5 h-2.5 rounded-sm bg-slate-400"></div>
+                        <span class="text-xs text-slate-700 font-medium">Portfolio</span>
+                    </div>
+                    {% for strategy in strategies %}
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-2.5 h-2.5 rounded-sm {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
+                        <span class="text-xs text-slate-500">{{ strategy.name }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
 
-        <div id="weekly-pnl-chart" class="h-[200px] w-full"></div>
-        <div id="tooltip-weekly-pnl" class="absolute hidden pointer-events-none bg-white/95 backdrop-blur-md border border-slate-200 rounded-xl shadow-lg p-3 z-30 text-xs w-60 sm:w-64"></div>
+        <!-- Right: Rolling Performance KPIs -->
+        <div class="flex flex-col">
+            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
+                <i data-lucide="history" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Rolling Performance
+            </h2>
+            <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative flex-1 flex flex-col justify-between">
+                <div>
+                    <table class="w-full text-left border-collapse">
+                        <tbody class="divide-y divide-slate-100 text-xs md:text-sm">
+                            <!-- 1. Return -->
+                            {% set r3m_ret = rolling_3m.return_pct | default(0.0) %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="py-2.5 px-1 text-slate-500 font-medium">Return</td>
+                                <td class="py-2.5 px-2 text-right font-bold tabular-nums whitespace-nowrap {{ 'text-emerald-600' if r3m_ret >= 0 else 'text-rose-600' }}">
+                                    {{ "{:+.2f}%".format(r3m_ret) }}
+                                </td>
+                                <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap"></td>
+                            </tr>
 
-        <!-- Legend (Custom HTML) -->
-        <div class="flex flex-wrap gap-x-4 gap-y-2 mt-4 pt-3 border-t border-slate-50">
-            <!-- Aggregate Line -->
-            <div class="flex items-center gap-1.5">
-                <div class="w-2.5 h-2.5 rounded-sm bg-slate-400"></div>
-                <span class="text-xs text-slate-700 font-medium">Portfolio</span>
+                            <!-- 2. Sharpe -->
+                            {% set r3m_sharpe = (rolling_3m.sharpe_ratio | float) if (rolling_3m.sharpe_ratio is defined and rolling_3m.sharpe_ratio is not none) else 0.0 %}
+                            {% set r3m_sharpe_label = "Poor" if r3m_sharpe < 1.0 else ("Acceptable" if r3m_sharpe < 2.0 else ("Very Good" if r3m_sharpe < 3.0 else "Excellent")) %}
+                            {% set r3m_sharpe_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if r3m_sharpe < 1.0 else ("bg-amber-50 text-amber-600 border-amber-200/60" if r3m_sharpe < 2.0 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if r3m_sharpe < 3.0 else "bg-indigo-50 text-indigo-600 border-indigo-200/60")) %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="py-2.5 px-1 text-slate-500 font-medium">Sharpe</td>
+                                <td class="py-2.5 px-2 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                                    {{ "{:.2f}".format(r3m_sharpe) }}
+                                </td>
+                                <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border {{ r3m_sharpe_cls }}">{{ r3m_sharpe_label }}</span>
+                                </td>
+                            </tr>
+
+                            <!-- 3. Profit Factor -->
+                            {% set r3m_pf = (rolling_3m.profit_factor | float) if (rolling_3m.profit_factor is defined and rolling_3m.profit_factor is not none) else 0.0 %}
+                            {% set r3m_pf_label = "Unprofitable" if r3m_pf < 1.0 else ("Weak" if r3m_pf < 1.25 else ("Moderate" if r3m_pf < 1.5 else ("Good" if r3m_pf < 2.0 else ("Very Good" if r3m_pf < 3.0 else "Excellent")))) %}
+                            {% set r3m_pf_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if r3m_pf < 1.0 else ("bg-amber-50 text-amber-600 border-amber-200/60" if r3m_pf < 1.25 else ("bg-slate-100 text-slate-700 border-slate-200" if r3m_pf < 1.5 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if r3m_pf < 2.0 else ("bg-teal-50 text-teal-600 border-teal-200/60" if r3m_pf < 3.0 else "bg-indigo-50 text-indigo-600 border-indigo-200/60")))) %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="py-2.5 px-1 text-slate-500 font-medium">Profit Factor</td>
+                                <td class="py-2.5 px-2 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                                    {% if r3m_pf > 900 %}&infin;{% else %}{{ "{:.2f}".format(r3m_pf) }}{% endif %}
+                                </td>
+                                <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border {{ r3m_pf_cls }}">{{ r3m_pf_label }}</span>
+                                </td>
+                            </tr>
+
+                            <!-- 4. Sortino -->
+                            {% set r3m_sortino = (rolling_3m.sortino_ratio | float) if (rolling_3m.sortino_ratio is defined and rolling_3m.sortino_ratio is not none) else 0.0 %}
+                            {% set r3m_sortino_label = "Poor" if r3m_sortino < 1.0 else ("Acceptable" if r3m_sortino < 2.0 else ("Very Good" if r3m_sortino < 3.0 else "Excellent")) %}
+                            {% set r3m_sortino_cls = "bg-rose-50 text-rose-600 border-rose-200/60" if r3m_sortino < 1.0 else ("bg-amber-50 text-amber-600 border-amber-200/60" if r3m_sortino < 2.0 else ("bg-emerald-50 text-emerald-600 border-emerald-200/60" if r3m_sortino < 3.0 else "bg-indigo-50 text-indigo-600 border-indigo-200/60")) %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="py-2.5 px-1 text-slate-500 font-medium">Sortino</td>
+                                <td class="py-2.5 px-2 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                                    {{ "{:.2f}".format(r3m_sortino) }}
+                                </td>
+                                <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border {{ r3m_sortino_cls }}">{{ r3m_sortino_label }}</span>
+                                </td>
+                            </tr>
+
+                            <!-- 5. Avg ROI -->
+                            {% set r3m_roi = rolling_3m.avg_roi | default(0.0) %}
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="py-2.5 px-1 text-slate-500 font-medium">Avg ROI</td>
+                                <td class="py-2.5 px-2 text-right font-bold tabular-nums whitespace-nowrap {{ 'text-emerald-600' if r3m_roi >= 0 else 'text-rose-600' }}">
+                                    {{ "{:+.2f}%".format(r3m_roi) }}
+                                </td>
+                                <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap"></td>
+                            </tr>
+
+                            <!-- 6. Trades -->
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="py-2.5 px-1 text-slate-500 font-medium">Trades</td>
+                                <td class="py-2.5 px-2 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
+                                    {{ rolling_3m.trades_count | default(0) }}
+                                </td>
+                                <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap">
+                                    {% if rolling_3m.trades_count and rolling_3m.trades_count > 0 %}
+                                    <div class="inline-flex items-baseline gap-1 text-xs font-bold tabular-nums">
+                                        <span class="text-emerald-600">{{ rolling_3m.win_count | default(0) }}W</span>
+                                        <span class="text-slate-300">—</span>
+                                        <span class="text-rose-600">{{ rolling_3m.loss_count | default(0) }}L</span>
+                                    </div>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-slate-50 flex items-center text-xs text-slate-400">
+                    <span class="flex items-center gap-1.5">
+                        <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400"></i>
+                        <span>Gleitendes 3-Monats-Fenster</span>
+                    </span>
+                </div>
             </div>
-            {% for strategy in strategies %}
-            <div class="flex items-center gap-1.5">
-                <div class="w-2.5 h-2.5 rounded-sm {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
-                <span class="text-xs text-slate-500">{{ strategy.name }}</span>
-            </div>
-            {% endfor %}
-        </div>
         </div>
     </section>
 
@@ -562,10 +698,10 @@
         return `$${absStr}`;
     }
 
-    function renderWeeklyTooltip(tooltipEl, dataPayload, strategyHexColors, pointIndex, isPnL) {
-        const weekLabels = dataPayload.week_labels || dataPayload.dates || [];
-        if (pointIndex >= weekLabels.length) return;
-        const weekLabel = weekLabels[pointIndex];
+    function renderSeriesTooltip(tooltipEl, dataPayload, strategyHexColors, pointIndex, isPnL) {
+        const labels = dataPayload.month_labels || dataPayload.week_labels || dataPayload.dates || [];
+        if (pointIndex >= labels.length) return;
+        const label = labels[pointIndex];
         const portfolioVal = (dataPayload.aggregate && dataPayload.aggregate[pointIndex] !== undefined)
             ? Number(dataPayload.aggregate[pointIndex])
             : 0.0;
@@ -620,7 +756,7 @@
 
         tooltipEl.innerHTML = `
             <div class="font-bold text-slate-700 text-xs border-b border-slate-100 pb-1.5 mb-1.5">
-                ${weekLabel}
+                ${label}
             </div>
             <div class="flex flex-col">
                 <div class="flex justify-between items-center py-0.5 font-bold text-slate-900 border-b border-slate-100 pb-1.5 mb-1">
@@ -637,7 +773,31 @@
         `;
     }
 
-    function attachCardTooltip(chartId, tooltipId, dataPayload, strategyHexColors, isPnL) {
+    function renderDrawdownTooltip(tooltipEl, dataPayload, pointIndex) {
+        const labels = dataPayload.month_labels || dataPayload.dates || [];
+        if (pointIndex >= labels.length) return;
+        const label = labels[pointIndex];
+        const drawdownVal = (dataPayload.aggregate && dataPayload.aggregate[pointIndex] !== undefined)
+            ? Number(dataPayload.aggregate[pointIndex])
+            : 0.0;
+        const ddPct = (drawdownVal * 100).toFixed(1) + '%';
+        const valClass = drawdownVal < -0.0001 ? 'text-rose-600' : 'text-slate-900';
+
+        tooltipEl.innerHTML = `
+            <div class="font-bold text-slate-700 text-xs border-b border-slate-100 pb-1.5 mb-1.5">
+                ${label}
+            </div>
+            <div class="flex justify-between items-center py-0.5 font-bold text-slate-900">
+                <div class="flex items-center gap-1.5 min-w-0 pr-2">
+                    <div class="w-2 h-2 rounded-full bg-rose-500 shrink-0"></div>
+                    <span class="truncate">Max Intramonth Drawdown</span>
+                </div>
+                <span class="font-sans tabular-nums text-right font-bold shrink-0 ${valClass}">${ddPct}</span>
+            </div>
+        `;
+    }
+
+    function attachCardTooltip(chartId, tooltipId, dataPayload, renderFn) {
         const chartEl = document.getElementById(chartId);
         const tooltipEl = document.getElementById(tooltipId);
         if (!chartEl || !tooltipEl) return;
@@ -662,9 +822,9 @@
                 return;
             }
 
-            const weekLabels = dataPayload.week_labels || dataPayload.dates || [];
-            const numWeeks = weekLabels.length;
-            if (numWeeks === 0) return;
+            const labels = dataPayload.month_labels || dataPayload.week_labels || dataPayload.dates || [];
+            const numPoints = labels.length;
+            if (numPoints === 0) return;
 
             // Plotly margin: left 45px, right 10px
             const leftMargin = 45;
@@ -672,10 +832,10 @@
             const plotWidth = Math.max(1, rect.width - leftMargin - rightMargin);
             const relX = clientX - rect.left - leftMargin;
 
-            let pointIndex = Math.floor((relX / plotWidth) * numWeeks);
-            pointIndex = Math.max(0, Math.min(numWeeks - 1, pointIndex));
+            let pointIndex = Math.floor((relX / plotWidth) * numPoints);
+            pointIndex = Math.max(0, Math.min(numPoints - 1, pointIndex));
 
-            renderWeeklyTooltip(tooltipEl, dataPayload, strategyHexColors, pointIndex, isPnL);
+            renderFn(tooltipEl, dataPayload, pointIndex);
             updatePosition(clientX);
             tooltipEl.classList.remove('hidden');
         }
@@ -686,7 +846,7 @@
             const pointIndex = point.pointIndex !== undefined ? point.pointIndex : point.pointNumber;
             if (pointIndex === undefined) return;
 
-            renderWeeklyTooltip(tooltipEl, dataPayload, strategyHexColors, pointIndex, isPnL);
+            renderFn(tooltipEl, dataPayload, pointIndex);
             if (eventData.event && eventData.event.clientX) {
                 updatePosition(eventData.event.clientX);
             }
@@ -714,58 +874,14 @@
 
     // Plotly Chart Generation
     document.addEventListener('DOMContentLoaded', function () {
-        const weeklyTrendData = {{ weekly_trend | tojson | safe }};
+        const monthlyTrendData = {{ monthly_trend | tojson | safe }};
+        const monthlyDrawdownData = {{ monthly_drawdown | tojson | safe }};
         const weeklyPnLData = {{ weekly_pnl | tojson | safe }};
         const strategiesMetadata = {{ strategies | tojson | safe }};
         const strategyHexColors = {{ strategy_hex_colors | tojson | safe }};
         const monthlyEVData = {{ monthly_evm | tojson | safe }};
 
-    if (!weeklyTrendData || (!weeklyTrendData.dates && !weeklyTrendData.week_labels)) return;
-
-    const xWeeklyTrend = weeklyTrendData.week_labels || weeklyTrendData.dates;
-    const traces = [];
-
-    // Portfolio Line (Thick, Light Slate) - Trace 0
-    traces.push({
-        x: xWeeklyTrend,
-        y: weeklyTrendData.aggregate,
-        name: 'Portfolio',
-        type: 'scatter',
-        mode: 'lines',
-        line: {
-            color: '#94a3b8', // slate-400 (light grey)
-            width: 3,
-            shape: 'spline',
-            dash: 'dash'
-        },
-        fill: 'tozeroy',
-        fillcolor: 'rgba(148, 163, 184, 0.05)',
-        hoverinfo: 'none'
-    });
-
-    // Strategy Lines
-    for (const strategyName in weeklyTrendData.strategies) {
-        const color = strategyHexColors[strategyName] || '#94a3b8';
-        const rawSeries = weeklyTrendData.strategies[strategyName] || [];
-
-        traces.push({
-            x: xWeeklyTrend,
-            y: rawSeries,
-            name: strategyName,
-            type: 'scatter',
-            mode: 'lines',
-            line: {
-                color: color,
-                width: 1.5,
-                shape: 'spline'
-            },
-            fill: 'tozeroy',
-            fillcolor: color + '0D', // approx 5% opacity
-            hoverinfo: 'none'
-        });
-    }
-
-    const layout = {
+    const baseLineLayout = {
         margin: { l: 45, r: 10, t: 5, b: 20 },
         showlegend: false,
         hovermode: 'x',
@@ -805,10 +921,124 @@
         responsive: true
     };
 
-    Plotly.newPlot('weekly-trend-chart', traces, layout, config);
-    attachCardTooltip('weekly-trend-chart', 'tooltip-weekly-trend', weeklyTrendData, strategyHexColors, false);
+    // 1. Monthly Performance Chart Generation
+    if (monthlyTrendData && (monthlyTrendData.dates || monthlyTrendData.month_labels)) {
+        const xMonthlyTrend = monthlyTrendData.month_labels || monthlyTrendData.dates;
+        const monthlyTraces = [];
 
-    // Historical Weekly PnL Chart Generation
+        // Portfolio Line (Thick, Light Slate) - Trace 0
+        monthlyTraces.push({
+            x: xMonthlyTrend,
+            y: monthlyTrendData.aggregate,
+            name: 'Portfolio',
+            type: 'scatter',
+            mode: 'lines+markers',
+            marker: { size: 5, color: '#94a3b8' },
+            line: {
+                color: '#94a3b8', // slate-400
+                width: 3,
+                shape: 'spline',
+                dash: 'dash'
+            },
+            fill: 'tozeroy',
+            fillcolor: 'rgba(148, 163, 184, 0.05)',
+            hoverinfo: 'none'
+        });
+
+        // Strategy Lines
+        for (const strategyName in monthlyTrendData.strategies) {
+            const color = strategyHexColors[strategyName] || '#94a3b8';
+            const rawSeries = monthlyTrendData.strategies[strategyName] || [];
+
+            monthlyTraces.push({
+                x: xMonthlyTrend,
+                y: rawSeries,
+                name: strategyName,
+                type: 'scatter',
+                mode: 'lines+markers',
+                marker: { size: 4, color: color },
+                line: {
+                    color: color,
+                    width: 1.5,
+                    shape: 'spline'
+                },
+                fill: 'tozeroy',
+                fillcolor: color + '0D',
+                hoverinfo: 'none'
+            });
+        }
+
+        const layoutMonthly = JSON.parse(JSON.stringify(baseLineLayout));
+        layoutMonthly.xaxis.showticklabels = true;
+        layoutMonthly.xaxis.tickfont = { size: 11, color: '#94a3b8' };
+
+        Plotly.newPlot('monthly-trend-chart', monthlyTraces, layoutMonthly, config);
+        attachCardTooltip('monthly-trend-chart', 'tooltip-monthly-trend', monthlyTrendData, function(el, payload, idx) {
+            renderSeriesTooltip(el, payload, strategyHexColors, idx, false);
+        });
+    }
+
+    // 2. Monthly Drawdown (Underwater) Chart Generation
+    if (monthlyDrawdownData && (monthlyDrawdownData.dates || monthlyDrawdownData.month_labels)) {
+        const xMonthlyDrawdown = monthlyDrawdownData.month_labels || monthlyDrawdownData.dates;
+        const drawdownTraces = [{
+            x: xMonthlyDrawdown,
+            y: monthlyDrawdownData.aggregate,
+            name: 'Max Drawdown',
+            type: 'scatter',
+            mode: 'lines+markers',
+            marker: { size: 5, color: '#f43f5e' },
+            line: {
+                color: '#f43f5e', // rose-500
+                width: 2,
+                shape: 'spline'
+            },
+            fill: 'tozeroy',
+            fillcolor: 'rgba(244, 63, 94, 0.12)',
+            hoverinfo: 'none'
+        }];
+
+        const layoutDrawdown = {
+            margin: { l: 45, r: 10, t: 5, b: 20 },
+            showlegend: false,
+            hovermode: 'x',
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            xaxis: {
+                showgrid: false,
+                zeroline: false,
+                showticklabels: true,
+                tickfont: { size: 11, color: '#94a3b8' },
+                fixedrange: true,
+                showspikes: true,
+                spikemode: 'across',
+                spikesnap: 'cursor',
+                spikecolor: '#cbd5e1',
+                spikethickness: 1,
+                spikedash: 'solid'
+            },
+            yaxis: {
+                showgrid: true,
+                gridcolor: '#f1f5f9',
+                zeroline: true,
+                zerolinecolor: '#cbd5e1',
+                zerolinewidth: 1.5,
+                showticklabels: true,
+                tickfont: { size: 12, color: '#94a3b8', family: 'monospace' },
+                tickformat: '.1%',
+                fixedrange: true
+            }
+        };
+
+        Plotly.newPlot('monthly-drawdown-chart', drawdownTraces, layoutDrawdown, config);
+        attachCardTooltip('monthly-drawdown-chart', 'tooltip-monthly-drawdown', monthlyDrawdownData, function(el, payload, idx) {
+            renderDrawdownTooltip(el, payload, idx);
+        });
+    }
+
+
+
+    // 4. Historical Weekly PnL Chart Generation
     const tracesPnL = [];
 
     if (weeklyPnLData && (weeklyPnLData.week_labels || weeklyPnLData.dates)) {
@@ -851,12 +1081,14 @@
             });
         }
 
-        // Deep-copy standard layout to avoid side-effects, and enable relative bar stacking
-        const layoutPnL = JSON.parse(JSON.stringify(layout));
+        // Deep-copy standard layout to enable relative bar stacking
+        const layoutPnL = JSON.parse(JSON.stringify(baseLineLayout));
         layoutPnL.barmode = 'relative';
 
         Plotly.newPlot('weekly-pnl-chart', tracesPnL, layoutPnL, config);
-        attachCardTooltip('weekly-pnl-chart', 'tooltip-weekly-pnl', weeklyPnLData, strategyHexColors, true);
+        attachCardTooltip('weekly-pnl-chart', 'tooltip-weekly-pnl', weeklyPnLData, function(el, payload, idx) {
+            renderSeriesTooltip(el, payload, strategyHexColors, idx, true);
+        });
     }
 
     // Frequency Model Stacked Bar Chart (100% scale) Generation
@@ -1045,7 +1277,14 @@
 
     // Handle Window Resize for Plotly
     window.addEventListener('resize', function () {
-        Plotly.Plots.resize('weekly-trend-chart');
+        const monthlyTrendChart = document.getElementById('monthly-trend-chart');
+        if (monthlyTrendChart && monthlyTrendChart.classList.contains('js-plotly-plot')) {
+            Plotly.Plots.resize('monthly-trend-chart');
+        }
+        const monthlyDDChart = document.getElementById('monthly-drawdown-chart');
+        if (monthlyDDChart && monthlyDDChart.classList.contains('js-plotly-plot')) {
+            Plotly.Plots.resize('monthly-drawdown-chart');
+        }
         const pnlChart = document.getElementById('weekly-pnl-chart');
         if (pnlChart && pnlChart.classList.contains('js-plotly-plot')) {
             Plotly.Plots.resize('weekly-pnl-chart');

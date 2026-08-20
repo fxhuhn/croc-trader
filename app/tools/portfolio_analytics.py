@@ -781,3 +781,254 @@ def calculate_benchmark_monthly_returns(
         "months": monthly_returns,
         "gesamt": round(total_annual_return, 1),
     }
+
+
+def calculate_monthly_trend_data(
+    dataframe: pd.DataFrame,
+    strategy_groups: dict[str, list[Any]],
+    today: pd.Timestamp,
+) -> dict[str, Any]:
+    """Builds cumulative monthly performance series for Plotly charts.
+
+    Calculates the YTD month-by-month cumulative realized PnL across all closed
+    trades for the total portfolio and per individual strategy group.
+
+    Args:
+        dataframe: DataFrame of closed trades containing 'exit_date_dt', 'realized_pnl', 'strategy'.
+        strategy_groups: Mapping from strategy group name to list of matching strategy identifiers.
+        today: Current evaluation timestamp.
+
+    Returns:
+        dict[str, Any]: Formatted dictionary with 'dates', 'month_labels', 'aggregate', and 'strategies'.
+    """
+    start_of_year = pd.Timestamp(year=today.year, month=1, day=1)
+    date_range = pd.date_range(start=start_of_year, end=today, freq="MS")
+    dates_formatted = [date_val.strftime("%Y-%m-%d") for date_val in date_range]
+    month_labels = [
+        f"{GERMAN_MONTH_NAMES[date_val.month]} {date_val.year}"
+        for date_val in date_range
+    ]
+
+    chart_dataframe = (
+        dataframe[dataframe["exit_date_dt"] >= start_of_year].copy()
+        if not dataframe.empty and "exit_date_dt" in dataframe.columns
+        else pd.DataFrame()
+    )
+
+    if chart_dataframe.empty:
+        return {
+            "dates": dates_formatted,
+            "month_labels": month_labels,
+            "aggregate": [0.0] * len(date_range),
+            "strategies": {name: [0.0] * len(date_range) for name in strategy_groups},
+        }
+
+    resolved_strategies = chart_dataframe["strategy"].apply(
+        lambda s: STRATEGY_ALIASES.get(str(s).lower(), s)
+    )
+
+    aggregate_series: list[float] = []
+    strategies_series: dict[str, list[float]] = {name: [] for name in strategy_groups}
+
+    for month_start in date_range:
+        month_end = month_start + pd.offsets.MonthEnd(0)
+        slice_end = (
+            today
+            if month_start.year == today.year and month_start.month == today.month
+            else month_end
+        )
+        month_slice = chart_dataframe[chart_dataframe["exit_date_dt"] <= slice_end]
+        total_month_pnl = (
+            float(pd.to_numeric(month_slice["realized_pnl"], errors="coerce").sum())
+            if not month_slice.empty
+            else 0.0
+        )
+        aggregate_series.append(total_month_pnl)
+
+        for name, filters in strategy_groups.items():
+            matching_rows = resolved_strategies.loc[month_slice.index].isin(filters)
+            strat_slice = month_slice[matching_rows]
+            strat_pnl = (
+                float(pd.to_numeric(strat_slice["realized_pnl"], errors="coerce").sum())
+                if not strat_slice.empty
+                else 0.0
+            )
+            strategies_series[name].append(strat_pnl)
+
+    return {
+        "dates": dates_formatted,
+        "month_labels": month_labels,
+        "aggregate": aggregate_series,
+        "strategies": strategies_series,
+    }
+
+
+def calculate_monthly_drawdown_max_intramonth(
+    dataframe: pd.DataFrame,
+    initial_capital: float,
+    today: pd.Timestamp,
+) -> dict[str, Any]:
+    """Calculates monthly maximum intramonth portfolio drawdown series.
+
+    For each month in YTD, determines the maximum peak-to-trough decline (lowest
+    intramonth percentage drawdown) achieved by the cumulative portfolio equity.
+
+    Args:
+        dataframe: DataFrame of closed trades containing 'exit_date_dt' and 'realized_pnl'.
+        initial_capital: Base starting portfolio capital.
+        today: Current evaluation timestamp.
+
+    Returns:
+        dict[str, Any]: Formatted dictionary with 'dates', 'month_labels', and 'aggregate' drawdown ratios.
+    """
+    start_of_year = pd.Timestamp(year=today.year, month=1, day=1)
+    date_range = pd.date_range(start=start_of_year, end=today, freq="MS")
+    dates_formatted = [date_val.strftime("%Y-%m-%d") for date_val in date_range]
+    month_labels = [
+        f"{GERMAN_MONTH_NAMES[date_val.month]} {date_val.year}"
+        for date_val in date_range
+    ]
+
+    if (
+        dataframe.empty
+        or "exit_date_dt" not in dataframe.columns
+        or initial_capital <= 0.0
+    ):
+        return {
+            "dates": dates_formatted,
+            "month_labels": month_labels,
+            "aggregate": [0.0] * len(date_range),
+        }
+
+    ytd_trades = (
+        dataframe[dataframe["exit_date_dt"] >= start_of_year]
+        .sort_values("exit_date_dt")
+        .copy()
+    )
+
+    monthly_max_drawdowns: list[float] = []
+    current_equity = initial_capital
+    peak_equity = initial_capital
+
+    for month_start in date_range:
+        month_end = month_start + pd.offsets.MonthEnd(0)
+        slice_end = (
+            today
+            if month_start.year == today.year and month_start.month == today.month
+            else month_end
+        )
+
+        month_trades = ytd_trades[
+            (ytd_trades["exit_date_dt"] >= month_start)
+            & (ytd_trades["exit_date_dt"] <= slice_end)
+        ]
+
+        start_month_dd = (
+            (current_equity - peak_equity) / peak_equity if peak_equity > 0.0 else 0.0
+        )
+        worst_month_dd = min(0.0, start_month_dd)
+
+        if not month_trades.empty:
+            for _, row in month_trades.iterrows():
+                pnl = float(row.get("realized_pnl", 0.0) or 0.0)
+                current_equity += pnl
+                peak_equity = max(peak_equity, current_equity)
+                trade_dd = (
+                    (current_equity - peak_equity) / peak_equity
+                    if peak_equity > 0.0
+                    else 0.0
+                )
+                worst_month_dd = min(worst_month_dd, trade_dd)
+
+        monthly_max_drawdowns.append(round(worst_month_dd, 4))
+
+    return {
+        "dates": dates_formatted,
+        "month_labels": month_labels,
+        "aggregate": monthly_max_drawdowns,
+    }
+
+
+def calculate_rolling_3m_metrics(
+    dataframe: pd.DataFrame,
+    initial_capital: float,
+    as_of_date: pd.Timestamp | None = None,
+) -> dict[str, object]:
+    """Calculates summary performance KPIs for the rolling 3-month period.
+
+    Args:
+        dataframe: DataFrame of closed trades with exit_date_dt, realized_pnl, etc.
+        initial_capital: Base starting portfolio capital.
+        as_of_date: Reference calculation date (defaults to current date).
+
+    Returns:
+        dict[str, object]: Dictionary containing rolling 3-month performance KPIs.
+    """
+    current_date = as_of_date if as_of_date is not None else pd.Timestamp.now()
+    start_date = (current_date - pd.DateOffset(months=3)).normalize()
+
+    if dataframe.empty or "exit_date_dt" not in dataframe.columns:
+        period_df = pd.DataFrame(columns=dataframe.columns)
+    else:
+        period_df = dataframe[
+            (dataframe["exit_date_dt"] >= start_date)
+            & (dataframe["exit_date_dt"] <= current_date)
+        ]
+
+    date_range_label = (
+        f"{start_date.strftime('%d.%m.%Y')} – {current_date.strftime('%d.%m.%Y')}"
+    )
+
+    if period_df.empty:
+        return {
+            "return_pct": 0.0,
+            "net_pnl": 0.0,
+            "sharpe_ratio": 0.0,
+            "profit_factor": 0.0,
+            "sortino_ratio": 0.0,
+            "avg_roi": 0.0,
+            "trades_count": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "start_date": start_date.strftime("%d.%m.%Y"),
+            "end_date": current_date.strftime("%d.%m.%Y"),
+            "date_range_label": date_range_label,
+        }
+
+    pnl_series = pd.to_numeric(period_df["realized_pnl"], errors="coerce").fillna(0.0)
+    net_pnl = float(pnl_series.sum())
+    return_pct = (net_pnl / initial_capital) * 100.0 if initial_capital > 0 else 0.0
+
+    roi_series = extract_roi_series(period_df)
+    avg_roi = float(roi_series.mean() * 100.0) if not roi_series.empty else 0.0
+
+    active_months = calculate_active_months(period_df)
+    trades_per_year = (
+        (len(roi_series) / active_months) * 12.0 if active_months > 0.0 else 252.0
+    )
+
+    sharpe_ratio = metrics.calculate_sharpe_ratio_from_roi(
+        roi_series, trades_per_year=trades_per_year
+    )
+    sortino_ratio = metrics.calculate_sortino_ratio_from_roi(
+        roi_series, trades_per_year=trades_per_year
+    )
+    profit_factor = metrics.calculate_profit_factor(pnl_series)
+
+    win_count = int((pnl_series > 0.0).sum())
+    loss_count = int((pnl_series < 0.0).sum())
+
+    return {
+        "return_pct": return_pct,
+        "net_pnl": net_pnl,
+        "sharpe_ratio": sharpe_ratio,
+        "profit_factor": profit_factor,
+        "sortino_ratio": sortino_ratio,
+        "avg_roi": avg_roi,
+        "trades_count": len(period_df),
+        "win_count": win_count,
+        "loss_count": loss_count,
+        "start_date": start_date.strftime("%d.%m.%Y"),
+        "end_date": current_date.strftime("%d.%m.%Y"),
+        "date_range_label": date_range_label,
+    }

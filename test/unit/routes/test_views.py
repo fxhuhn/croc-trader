@@ -248,6 +248,13 @@ def test_view_analytics_dashboard_handles_empty_data_gracefully(
         # Assert
         assert b"Sample" in response.data
         assert b"Return (YTD)" in response.data
+        assert b"Monthly Performance" in response.data
+        assert b"Monthly Drawdown" in response.data
+        assert b"monthly-trend-chart" in response.data
+        assert b"monthly-drawdown-chart" in response.data
+        assert b"Weekly PnL" in response.data
+        assert b"weekly-pnl-chart" in response.data
+        assert b"Rolling Performance" in response.data
 
 
 def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
@@ -289,7 +296,13 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
         # Assert
         assert response.status_code == 200
         assert b"Return (YTD)" in response.data
-
+        assert b"Monthly Performance" in response.data
+        assert b"Monthly Drawdown" in response.data
+        assert b"monthly-trend-chart" in response.data
+        assert b"monthly-drawdown-chart" in response.data
+        assert b"Weekly PnL" in response.data
+        assert b"weekly-pnl-chart" in response.data
+        assert b"Rolling Performance" in response.data
         assert b"Max Drawdown" in response.data
         assert b"Sharpe" in response.data
         assert b"Sortino" in response.data
@@ -1028,3 +1041,9 @@ def test_build_weekly_trend_data_generates_correct_labels_and_series() -> None:
     assert len(weekly_trend["week_labels"]) == len(weekly_trend["dates"])
     assert any("KW" in label for label in weekly_trend["week_labels"])
     assert weekly_trend["week_labels"][0] == "03.01.2026 · KW 1"
+
+    # Lookback 3 months
+    eval_date = pd.Timestamp("2026-04-20")
+    _, pnl_3m = _build_weekly_trend_data(sample_trades, eval_date, lookback_months=3)
+    assert len(pnl_3m["dates"]) <= 15
+    assert len(pnl_3m["week_labels"]) == len(pnl_3m["dates"])

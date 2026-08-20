@@ -20,7 +20,10 @@ from ...tools.portfolio_analytics import (
     calculate_kelly_metrics,
     calculate_mean_variance_allocations,
     calculate_mean_variance_dashboard_data,
+    calculate_monthly_drawdown_max_intramonth,
     calculate_monthly_matrix_data,
+    calculate_monthly_trend_data,
+    calculate_rolling_3m_metrics,
     calculate_strategy_risk_and_expectancy,
     calculate_unweighted_monthly_pct,
     calculate_win_loss_rois,
@@ -40,6 +43,8 @@ _calculate_unweighted_monthly_pct = calculate_unweighted_monthly_pct
 _calculate_evm_allocations = calculate_evm_allocations
 _calculate_mean_variance_allocations = calculate_mean_variance_allocations
 _calculate_mean_variance_dashboard_data = calculate_mean_variance_dashboard_data
+_calculate_monthly_trend_data = calculate_monthly_trend_data
+_calculate_monthly_drawdown_max_intramonth = calculate_monthly_drawdown_max_intramonth
 
 DEFAULT_INITIAL_CAPITAL: float = 100_000.0
 
@@ -95,22 +100,29 @@ def view_analytics_dashboard() -> str:
     dataframe = _prepare_closed_trades_dataframe(closed_trades)
     initial_capital = DEFAULT_INITIAL_CAPITAL
     summary = _calculate_summary_metrics(dataframe, initial_capital, today)
+    rolling_3m = calculate_rolling_3m_metrics(dataframe, initial_capital, today)
 
     strategies_data = _build_strategies_dashboard(
         dataframe, active_trades, service, initial_capital
+    )
+    monthly_trend = calculate_monthly_trend_data(dataframe, STRATEGY_GROUPS, today)
+    monthly_drawdown = calculate_monthly_drawdown_max_intramonth(
+        dataframe, initial_capital, today
     )
     monthly_evm = _calculate_monthly_evm(dataframe, today)
     monthly_mv = _calculate_monthly_mv(dataframe, today)
     mean_variance_data = calculate_mean_variance_dashboard_data(
         dataframe, STRATEGY_GROUPS
     )
-    weekly_trend, weekly_pnl = _build_weekly_trend_data(dataframe, today)
+    _, weekly_pnl = _build_weekly_trend_data(dataframe, today, lookback_months=3)
 
     return render_template(
         "analytics.html",
         summary=summary,
+        rolling_3m=rolling_3m,
         strategies=strategies_data,
-        weekly_trend=weekly_trend,
+        monthly_trend=monthly_trend,
+        monthly_drawdown=monthly_drawdown,
         weekly_pnl=weekly_pnl,
         monthly_evm=monthly_evm,
         monthly_mv=monthly_mv,
@@ -133,11 +145,43 @@ def _render_empty_dashboard(current_month_name: str) -> str:
         "win_rate": 0.0,
         "total_trades": 0,
     }
+    empty_rolling_3m = {
+        "return_pct": 0.0,
+        "net_pnl": 0.0,
+        "sharpe_ratio": 0.0,
+        "profit_factor": 0.0,
+        "sortino_ratio": 0.0,
+        "avg_roi": 0.0,
+        "trades_count": 0,
+        "win_count": 0,
+        "loss_count": 0,
+    }
+    today = pd.Timestamp.now()
+    start_of_year = pd.Timestamp(year=today.year, month=1, day=1)
+    date_range = pd.date_range(start=start_of_year, end=today, freq="MS")
+    dates_formatted = [date_val.strftime("%Y-%m-%d") for date_val in date_range]
+    month_labels = [
+        f"{GERMAN_MONTH_NAMES[date_val.month]} {date_val.year}"
+        for date_val in date_range
+    ]
+    empty_monthly_trend = {
+        "dates": dates_formatted,
+        "month_labels": month_labels,
+        "aggregate": [0.0] * len(date_range),
+        "strategies": {name: [0.0] * len(date_range) for name in STRATEGY_GROUPS},
+    }
+    empty_monthly_drawdown = {
+        "dates": dates_formatted,
+        "month_labels": month_labels,
+        "aggregate": [0.0] * len(date_range),
+    }
     return render_template(
         "analytics.html",
         summary=empty_summary,
+        rolling_3m=empty_rolling_3m,
         strategies=[],
-        weekly_trend={},
+        monthly_trend=empty_monthly_trend,
+        monthly_drawdown=empty_monthly_drawdown,
         weekly_pnl={},
         monthly_evm={"months": [], "allocations": {}},
         monthly_mv={"months": [], "max_sharpe": {}, "risk_parity": {}},
@@ -434,24 +478,39 @@ def _calculate_monthly_mv(
 
 
 def _build_weekly_trend_data(
-    dataframe: pd.DataFrame, today: pd.Timestamp
+    dataframe: pd.DataFrame,
+    today: pd.Timestamp,
+    lookback_months: int | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Builds cumulative and non-cumulative weekly performance series for Plotly charts."""
-    start_of_year = pd.Timestamp(year=today.year, month=1, day=1)
+    if lookback_months is not None and lookback_months > 0:
+        start_date = (today - pd.DateOffset(months=lookback_months)).normalize()
+    else:
+        start_date = pd.Timestamp(year=today.year, month=1, day=1)
+
     days_until_saturday = (5 - today.weekday()) % 7
     week_saturday = today.normalize() + pd.Timedelta(days=days_until_saturday)
-    date_range = pd.date_range(start=start_of_year, end=week_saturday, freq="W-SAT")
+    date_range = pd.date_range(start=start_date, end=week_saturday, freq="W-SAT")
     dates_formatted = [date_val.strftime("%Y-%m-%d") for date_val in date_range]
     week_labels = [
         f"{date_val.strftime('%d.%m.%Y')} · KW {date_val.isocalendar().week}"
         for date_val in date_range
     ]
 
-    chart_dataframe = dataframe[dataframe["exit_date_dt"] >= start_of_year].copy()
+    date_range_label = (
+        f"{start_date.strftime('%d.%m.%Y')} – {today.strftime('%d.%m.%Y')}"
+    )
+
+    chart_dataframe = (
+        dataframe[dataframe["exit_date_dt"] >= start_date].copy()
+        if not dataframe.empty
+        else pd.DataFrame()
+    )
     if chart_dataframe.empty:
         empty_trend = {
             "dates": dates_formatted,
             "week_labels": week_labels,
+            "date_range_label": date_range_label,
             "aggregate": [0.0] * len(date_range),
             "strategies": {name: [0.0] * len(date_range) for name in STRATEGY_GROUPS},
         }
@@ -476,12 +535,14 @@ def _build_weekly_trend_data(
     weekly_trend: dict[str, object] = {
         "dates": dates_formatted,
         "week_labels": week_labels,
+        "date_range_label": date_range_label,
         "aggregate": aggregate_cumsum.tolist(),
         "strategies": {},
     }
     weekly_pnl: dict[str, object] = {
         "dates": dates_formatted,
         "week_labels": week_labels,
+        "date_range_label": date_range_label,
         "aggregate": aggregate_pnl.tolist(),
         "strategies": {},
     }

@@ -110,6 +110,39 @@ def calculate_risk_reward_ratio(trades_pnl: pd.Series) -> float:
     return float(average_win / average_loss) if average_loss > EPSILON else 0.0
 
 
+def calculate_drawdown_series(
+    equity_curve: pd.Series, initial_value: float | None = None
+) -> pd.Series:
+    """Calculates the percentage peak-to-trough drawdown time series.
+
+    Formula: DD_t = (Equity_t − CumMax_t) / CumMax_t
+
+    Source:
+        Magdon-Ismail, M. & Atiya, A.F. *"Maximum Drawdown"*,
+        Risk Magazine, Oct 2004.
+
+    Args:
+        equity_curve: Series of portfolio equity values over time.
+        initial_value: Optional initial capital. If provided, prepended to the series
+                       to ensure the initial peak is correctly registered.
+
+    Returns:
+        pd.Series: Series of drawdown percentages as decimals (0.0 to -1.0).
+    """
+    if equity_curve.empty:
+        return pd.Series(dtype=float)
+
+    if initial_value is not None:
+        equity_curve = pd.concat(
+            [pd.Series([initial_value]), equity_curve], ignore_index=True
+        )
+
+    running_maximum = equity_curve.cummax()
+    valid_max = running_maximum.replace(0.0, np.nan)
+    drawdown = (equity_curve - running_maximum) / valid_max
+    return drawdown.fillna(0.0)
+
+
 def calculate_max_drawdown(
     equity_curve: pd.Series, initial_value: float | None = None
 ) -> float:
@@ -129,18 +162,10 @@ def calculate_max_drawdown(
     Returns:
         float: Maximum drawdown as a negative decimal (e.g., -0.15 for 15%).
     """
-    if equity_curve.empty:
+    drawdown_series = calculate_drawdown_series(equity_curve, initial_value)
+    if drawdown_series.empty:
         return 0.0
-
-    if initial_value is not None:
-        equity_curve = pd.concat(
-            [pd.Series([initial_value]), equity_curve], ignore_index=True
-        )
-
-    running_maximum = equity_curve.cummax()
-    drawdown = (equity_curve - running_maximum) / running_maximum
-
-    return float(drawdown.min())
+    return float(drawdown_series.min())
 
 
 def calculate_sharpe_ratio(

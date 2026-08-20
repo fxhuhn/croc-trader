@@ -13,7 +13,10 @@ from app.tools.portfolio_analytics import (
     calculate_kelly_metrics,
     calculate_mean_variance_allocations,
     calculate_mean_variance_dashboard_data,
+    calculate_monthly_drawdown_max_intramonth,
     calculate_monthly_matrix_data,
+    calculate_monthly_trend_data,
+    calculate_rolling_3m_metrics,
     calculate_strategy_risk_and_expectancy,
     calculate_unweighted_monthly_pct,
     calculate_win_loss_rois,
@@ -270,3 +273,129 @@ def test_calculate_benchmark_monthly_returns() -> None:
     assert res["months"][0] == 10.0  # (110 - 100) / 100 = 10%
     assert res["months"][1] == pytest.approx(9.1, abs=0.1)  # (120 - 110) / 110
     assert res["gesamt"] == 20.0  # (120 - 100) / 100 = 20%
+
+
+def test_calculate_monthly_trend_data(
+    sample_trade_dataframe: pd.DataFrame, strategy_groups: dict[str, list[object]]
+) -> None:
+    """Verifies monthly trend cumulative PnL series calculation."""
+    eval_date = pd.Timestamp("2026-03-15")
+    empty_res = calculate_monthly_trend_data(pd.DataFrame(), strategy_groups, eval_date)
+    assert len(empty_res["dates"]) == 3
+    assert len(empty_res["month_labels"]) == 3
+    assert empty_res["aggregate"] == [0.0, 0.0, 0.0]
+    assert all(ser == [0.0, 0.0, 0.0] for ser in empty_res["strategies"].values())
+
+    res = calculate_monthly_trend_data(
+        sample_trade_dataframe, strategy_groups, eval_date
+    )
+    assert len(res["dates"]) == 3
+    # Jan: croc (50 - 20) + dip (80) = 110. Feb: turnover (100) + 110 = 210. Mar: 210
+    assert res["aggregate"][0] == 110.0
+    assert res["aggregate"][1] == 210.0
+    assert res["aggregate"][2] == 210.0
+    assert res["strategies"]["Croc Setup"][0] == 30.0
+    assert res["strategies"]["Dip Buyer"][0] == 80.0
+    assert res["strategies"]["Turnover"][1] == 100.0
+
+
+def test_calculate_monthly_drawdown_max_intramonth(
+    sample_trade_dataframe: pd.DataFrame,
+) -> None:
+    """Verifies max intramonth drawdown series calculation."""
+    eval_date = pd.Timestamp("2026-03-15")
+    empty_res = calculate_monthly_drawdown_max_intramonth(
+        pd.DataFrame(), initial_capital=100_000.0, today=eval_date
+    )
+    assert len(empty_res["dates"]) == 3
+    assert empty_res["aggregate"] == [0.0, 0.0, 0.0]
+
+    # Custom trades with a known drawdown path in January:
+    # 100,000 -> Jan 5: -5,000 (DD = -5%), Jan 10: +8,000 (Eq = 103k, DD = 0%), Jan 15: -2,000 (Eq = 101k, DD = -1.94%)
+    trades_df = pd.DataFrame(
+        [
+            {
+                "exit_date_dt": pd.Timestamp("2026-01-05"),
+                "realized_pnl": -5000.0,
+            },
+            {
+                "exit_date_dt": pd.Timestamp("2026-01-10"),
+                "realized_pnl": 8000.0,
+            },
+            {
+                "exit_date_dt": pd.Timestamp("2026-01-15"),
+                "realized_pnl": -2000.0,
+            },
+            {
+                "exit_date_dt": pd.Timestamp("2026-02-10"),
+                "realized_pnl": 5000.0,
+            },
+        ]
+    )
+    res = calculate_monthly_drawdown_max_intramonth(
+        trades_df, initial_capital=100_000.0, today=eval_date
+    )
+    assert len(res["aggregate"]) == 3
+    # In Jan, the worst intramonth DD was -5% (-0.05)
+    assert res["aggregate"][0] == pytest.approx(-0.05, abs=1e-4)
+    # In Feb, entered at 101k (Peak 103k -> start DD ~ -1.94%), then +5k -> Eq 106k (DD = 0).
+    # Worst DD in Feb was the starting -1.94%
+    assert res["aggregate"][1] == pytest.approx(-0.0194, abs=1e-4)
+    # In Mar, entered at peak (106k), no trades -> DD = 0.0
+    assert res["aggregate"][2] == 0.0
+
+
+def test_calculate_rolling_3m_metrics_empty_and_valid() -> None:
+    """Verifies rolling 3-month KPI calculations."""
+    eval_date = pd.Timestamp("2026-04-15")
+    empty_res = calculate_rolling_3m_metrics(
+        pd.DataFrame(), initial_capital=100_000.0, as_of_date=eval_date
+    )
+    assert empty_res["trades_count"] == 0
+    assert empty_res["return_pct"] == 0.0
+    assert empty_res["net_pnl"] == 0.0
+    assert empty_res["sharpe_ratio"] == 0.0
+    assert empty_res["profit_factor"] == 0.0
+    assert empty_res["sortino_ratio"] == 0.0
+    assert empty_res["avg_roi"] == 0.0
+
+    # Trades:
+    # 2025-12-01 (older than 3m from 2026-04-15, start is 2026-01-15) -> excluded
+    # 2026-02-01: invested = 1000, pnl = +100 -> ROI = 10%
+    # 2026-03-01: invested = 1000, pnl = -50 -> ROI = -5%
+    trades_df = pd.DataFrame(
+        [
+            {
+                "exit_date_dt": pd.Timestamp("2025-12-01"),
+                "realized_pnl": 500.0,
+                "entry_price": 100.0,
+                "initial_size": 10.0,
+            },
+            {
+                "exit_date_dt": pd.Timestamp("2026-02-01"),
+                "realized_pnl": 100.0,
+                "entry_price": 100.0,
+                "initial_size": 10.0,
+            },
+            {
+                "exit_date_dt": pd.Timestamp("2026-03-01"),
+                "realized_pnl": -50.0,
+                "entry_price": 100.0,
+                "initial_size": 10.0,
+            },
+        ]
+    )
+
+    res = calculate_rolling_3m_metrics(
+        trades_df, initial_capital=10_000.0, as_of_date=eval_date
+    )
+    assert res["trades_count"] == 2
+    assert res["win_count"] == 1
+    assert res["loss_count"] == 1
+    assert res["net_pnl"] == 50.0
+    assert res["return_pct"] == pytest.approx(0.5)  # 50 / 10000 = 0.5%
+    assert res["profit_factor"] == pytest.approx(2.0)  # 100 / 50 = 2.0
+    assert res["avg_roi"] == pytest.approx(2.5)  # mean(10%, -5%) = 2.5%
+    assert res["start_date"] == "15.01.2026"
+    assert res["end_date"] == "15.04.2026"
+    assert res["date_range_label"] == "15.01.2026 – 15.04.2026"
