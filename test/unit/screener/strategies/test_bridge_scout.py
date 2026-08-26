@@ -268,6 +268,8 @@ def test_bridge_scout_generates_premarket_setup_when_candle_not_in_history(
     assert call_kwargs["entry"] > 0
     assert call_kwargs["context"]["req_close_rsi40"] > 0
     assert call_kwargs["context"]["setup_date"] == analysis_date_str
+    assert call_kwargs["context"]["rsi_2"] is not None
+    assert call_kwargs["context"]["setup_close"] == 495.0
 
 
 def test_bridge_scout_premarket_skips_when_atr_too_high(
