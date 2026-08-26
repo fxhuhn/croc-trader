@@ -20,8 +20,8 @@ from ....tools.indicators import (
     calculate_rsi,
 )
 from ....tools.market_holidays import MarketHolidayChecker
-from ....types import TradeStatus
 from ...telegram import TelegramBot
+from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -97,20 +97,17 @@ def is_in_end_of_month_window(
 class BridgeScoutStrategy(BaseStrategy[int]):
     """Implementation of the Bridge Scout trading strategy.
 
-    Strategy Logic:
+    Rules:
     - Asset: QQQ exclusively.
-    - Timing: End-of-Month window (last 5 trading days of the calendar month).
-    - Setup: RSI(2) < 40.0 AND (ATR(10) / Close) * 100 < 3.5%.
-    - Entry: Market On Close (MOC) at setup close.
-    - Exit: Market On Close (MOC) on 1st trading day of new calendar month.
-    - Guard: MaxPositions = 1 (strictly single position allowed).
+    - Timing: End-of-Month window (last 4 trading days of calendar month).
+    - Entry: Market on Open (MOO) on day after signal.
+    - Exit: Market on Close (MOC) on 1st trading day of new month.
     """
 
     STRATEGY_IDENTIFIER = Strategies.BridgeScout
     TARGET_SYMBOL = "QQQ"
     DEFAULT_ENTRY_DAYS_BEFORE = 4
     DEFAULT_RSI_THRESHOLD = 40.0
-    DEFAULT_ATR_LEN = 10
     DEFAULT_MAX_ATR_PCT = 3.5
     DEFAULT_LOOKBACK_PERIOD = 60
 
@@ -121,15 +118,15 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         telegram_bot: TelegramBot | None = None,
         holiday_checker: MarketHolidayChecker | None = None,
     ) -> None:
-        """Initializes Bridge Scout screener strategy with required dependencies."""
+        """Initializes Bridge Scout screener strategy."""
         super().__init__(data_provider=data_provider, telegram_bot=telegram_bot)
         self.trade_repository = trade_repository
         self.holiday_checker = holiday_checker or MarketHolidayChecker()
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
-        """Executes Bridge Scout screening for specified date."""
-        target_date = self._resolve_target_date(days, analysis_date)
+        """Executes Bridge Scout screening logic for the specified date."""
+        target_date = self._resolve_analysis_date(days, analysis_date)
         target_date_str = target_date.strftime("%Y-%m-%d")
 
         if not is_in_end_of_month_window(
@@ -138,8 +135,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             holiday_checker=self.holiday_checker,
         ):
             logger.debug(
-                "Skipping Bridge Scout screening for %s (outside month-end window).",
-                target_date_str,
+                "Date %s is outside Bridge Scout entry window.", target_date_str
             )
             return 0
 
@@ -150,7 +146,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         )
         price_history = history_map.get(self.TARGET_SYMBOL, pd.DataFrame())
 
-        if price_history.empty or len(price_history) < (self.DEFAULT_ATR_LEN + 1):
+        if price_history.empty or len(price_history) < 15:
             logger.warning(
                 "Insufficient price history for %s on %s.",
                 self.TARGET_SYMBOL,
@@ -158,34 +154,15 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             )
             return 0
 
-        latest_candle = price_history.iloc[-1]
-        raw_date = latest_candle["date"]
-        candle_date = (
-            pd.Timestamp(raw_date).date()
-            if isinstance(raw_date, str)
-            else raw_date.date()
-        )
-
-        if candle_date != target_date:
-            logger.debug(
-                "Market data date %s does not match target date %s (likely holiday).",
-                candle_date,
-                target_date,
-            )
-            return 0
-
-        # Calculate indicators
         close_series = price_history["close"].astype(float)
         high_series = price_history["high"].astype(float)
         low_series = price_history["low"].astype(float)
 
-        rsi_series = calculate_rsi(close_series, window=2)
-        atr_series = calculate_atr(
-            high_series, low_series, close_series, window=self.DEFAULT_ATR_LEN
-        )
-
         current_close = float(close_series.iloc[-1])
+        rsi_series = calculate_rsi(close_series, 2)
         current_rsi = float(rsi_series.iloc[-1])
+
+        atr_series = calculate_atr(high_series, low_series, close_series, 10)
         current_atr = float(atr_series.iloc[-1])
         atr_pct = (current_atr / current_close) * 100.0
 
@@ -208,18 +185,11 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             return 0
 
         # Strict single position check (MaxPositions = 1)
-        active_or_created = self.trade_repository.get_by_status(
-            [
-                TradeStatus.CREATED,
-                TradeStatus.ACTIVE,
-            ]
-        )
-        if any(
-            t.get("symbol") == self.TARGET_SYMBOL
-            and "bridge_scout" in str(t.get("strategy")).lower()
-            for t in active_or_created
-        ) or self.trade_repository.exists(
-            self.TARGET_SYMBOL, self.STRATEGY_IDENTIFIER, target_date_str
+        if self._has_existing_trade_or_position(
+            self.trade_repository,
+            self.TARGET_SYMBOL,
+            self.STRATEGY_IDENTIFIER,
+            target_date_str,
         ):
             logger.info(
                 "Bridge Scout trade or active position already exists for %s on %s.",
@@ -264,21 +234,17 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             self._send_telegram_report(
                 "Bridge Scout",
                 [
-                    {
-                        "Symbol": self.TARGET_SYMBOL,
-                        "Action": "BUY MKT",
-                        "Entry": current_close,
-                    }
+                    SignalReportItem(
+                        symbol=self.TARGET_SYMBOL,
+                        action="BUY MKT",
+                        entry_price=current_close,
+                        details={
+                            "RSI(2)": round(current_rsi, 2),
+                            "ATR%": round(atr_pct, 2),
+                        },
+                    )
                 ],
+                target_date_str,
             )
 
         return 1
-
-    def _resolve_target_date(
-        self, days: int, analysis_date: str | None
-    ) -> datetime.date:
-        """Resolves target analysis date as datetime.date object."""
-        if analysis_date:
-            return datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
-        target_datetime = datetime.datetime.now() - datetime.timedelta(days=days)
-        return target_datetime.date()

@@ -10,6 +10,7 @@ from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
+from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -465,9 +466,7 @@ class DipBuyerStrategy(BaseStrategy):
 
         # Reporting
         if self.telegram_bot and created_trades:
-            prefix = "LIVE"
-            df = pd.DataFrame(created_trades)
-            self._send_telegram_report(f"{self.name} ({prefix})", date_str, df)
+            self._send_telegram_report(self.name, created_trades, date_str)
 
         return saved_count
 
@@ -476,7 +475,7 @@ class DipBuyerStrategy(BaseStrategy):
         symbol: str,
         signal_row: pd.Series,
         date_str: str,
-        created_trades: list[dict[str, object]],
+        created_trades: list[SignalReportItem],
     ) -> bool:
         """Helper to create a single database trade for a candidate symbol.
 
@@ -484,7 +483,7 @@ class DipBuyerStrategy(BaseStrategy):
             symbol: Ticker symbol.
             signal_row: Candidate metrics row.
             date_str: Target date string.
-            created_trades: List of successfully created trades to append to.
+            created_trades: List of successfully created trade report items to append to.
 
         Returns:
             bool: True if trade was successfully written.
@@ -495,8 +494,7 @@ class DipBuyerStrategy(BaseStrategy):
         target_price = entry_price + (signal_row["atr"] * self.config.EXIT_TP_FACTOR)
         high_next_target = signal_row["high"] + 0.01
 
-        # Use centralized BaseStrategy index helper (DRY resolution)
-        indices = self._get_indices_for_symbol(symbol)
+        indices_str = self._get_indices_string(symbol)
 
         context = {
             "source": "screener",
@@ -508,7 +506,7 @@ class DipBuyerStrategy(BaseStrategy):
             "atr_r3": round(signal_row["atr_ratio_3day"], 2),
             "ibs": round(signal_row["ibs"], 2),
             "sma200": round(signal_row["sma200"], 2),
-            "indices": ",".join(indices),
+            "indices": indices_str,
             "threshold_loc": round(high_next_target, 2),
         }
 
@@ -523,14 +521,18 @@ class DipBuyerStrategy(BaseStrategy):
         )
 
         created_trades.append(
-            {
-                "Symbol": symbol,
-                "Entry": round(entry_price, 2),
-                "LOC": round(high_next_target, 2),
-                "Score": round(signal_row["setup_score"], 2),
-                "Close": round(signal_row["close"], 2),
-                "ATR": round(signal_row["atr"], 2),
-            }
+            SignalReportItem(
+                symbol=symbol,
+                action="BUY LMT",
+                entry_price=round(entry_price, 2),
+                target_profit=round(target_price, 2),
+                details={
+                    "LOC": round(high_next_target, 2),
+                    "Score": round(signal_row["setup_score"], 2),
+                    "Close": round(signal_row["close"], 2),
+                    "ATR": round(signal_row["atr"], 2),
+                },
+            )
         )
         return True
 

@@ -9,7 +9,6 @@ Identifies sharp, low-volatility pullbacks in QQQ within an established long-ter
 - Exits: Market On Close (MOC) when Close > SMA_8 OR RSI(2) > 75
 """
 
-import datetime
 import logging
 from typing import TypedDict, override
 
@@ -19,8 +18,8 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....tools.indicators import calculate_atr, calculate_rsi, calculate_sma
-from ....types import TradeStatus
 from ...telegram import TelegramBot
+from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -79,7 +78,7 @@ class BounceBanditStrategy(BaseStrategy[int]):
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """Executes the Bounce Bandit screening logic for the specified date."""
-        target_date = self._resolve_target_date(days, analysis_date)
+        target_date = self._resolve_analysis_date(days, analysis_date)
         target_date_str = target_date.strftime("%Y-%m-%d")
 
         history_map = self.data_provider.get_batch_history(
@@ -114,11 +113,11 @@ class BounceBanditStrategy(BaseStrategy[int]):
             )
             return 0
 
-        # Calculate indicators
         close_series = price_history["close"].astype(float)
         high_series = price_history["high"].astype(float)
         low_series = price_history["low"].astype(float)
 
+        # Vectorized Indicator Calculations
         sma_200_series = calculate_sma(close_series, self.TREND_SMA_LEN)
         atr_10_series = calculate_atr(
             high_series, low_series, close_series, self.ATR_LEN
@@ -157,18 +156,11 @@ class BounceBanditStrategy(BaseStrategy[int]):
             return 0
 
         # Strict single position check (MaxPositions = 1 / S.Positions == 0)
-        active_or_created = self.trade_repository.get_by_status(
-            [
-                TradeStatus.CREATED,
-                TradeStatus.ACTIVE,
-            ]
-        )
-        if any(
-            t.get("symbol") == self.TARGET_SYMBOL
-            and "bounce_bandit" in str(t.get("strategy")).lower()
-            for t in active_or_created
-        ) or self.trade_repository.exists(
-            self.TARGET_SYMBOL, self.STRATEGY_IDENTIFIER, target_date_str
+        if self._has_existing_trade_or_position(
+            self.trade_repository,
+            self.TARGET_SYMBOL,
+            self.STRATEGY_IDENTIFIER,
+            target_date_str,
         ):
             logger.info(
                 "Bounce Bandit trade or active position already exists for %s on %s.",
@@ -215,7 +207,7 @@ class BounceBanditStrategy(BaseStrategy[int]):
 
         trade_id = self.trade_repository.create_trade(
             symbol=self.TARGET_SYMBOL,
-            strategy=self.STRATEGY_IDENTIFIER.value,
+            strategy=self.STRATEGY_IDENTIFIER,
             size=0.0,
             entry=current_close,
             stop_loss=0.0,
@@ -234,21 +226,18 @@ class BounceBanditStrategy(BaseStrategy[int]):
             self._send_telegram_report(
                 "Bounce Bandit",
                 [
-                    {
-                        "Symbol": self.TARGET_SYMBOL,
-                        "Action": "BUY MKT",
-                        "Entry": current_close,
-                    }
+                    SignalReportItem(
+                        symbol=self.TARGET_SYMBOL,
+                        action="BUY MKT",
+                        entry_price=current_close,
+                        target_profit=round(target_price, 2),
+                        details={
+                            "RSI(2)": round(current_rsi_2, 2),
+                            "ATR%": round(current_atr_pct, 2),
+                        },
+                    )
                 ],
+                target_date_str,
             )
 
         return 1
-
-    def _resolve_target_date(
-        self, days: int, analysis_date: str | None
-    ) -> datetime.date:
-        """Resolves the target analysis date as a datetime.date object."""
-        if analysis_date:
-            return datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
-        target_datetime = datetime.datetime.now() - datetime.timedelta(days=days)
-        return target_datetime.date()

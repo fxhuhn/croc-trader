@@ -1,3 +1,4 @@
+import datetime
 import logging
 from abc import ABC, abstractmethod
 from typing import TypeVar, final
@@ -5,8 +6,11 @@ from typing import TypeVar, final
 import pandas as pd
 
 from ....database.repositories.market_data_provider import MarketDataProvider
+from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
 from ....tools.symbol_lists import ExchangeSymbol
+from ....types import TradeStatus
+from ..models import SignalReportItem
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +25,7 @@ class BaseStrategy[T](ABC):
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
     ) -> None:
-        """
-        Base class for all screening strategies.
+        """Base class for all screening strategies.
 
         Decoupled from the database — persistence must be defined in subclasses via DI.
         The data provider is injected here; repositories are injected in concrete subclasses.
@@ -30,6 +33,36 @@ class BaseStrategy[T](ABC):
         self.data_provider = data_provider
         self.telegram_bot = telegram_bot
         self.exchange_symbols = ExchangeSymbol()
+
+    def _resolve_analysis_date(
+        self, days: int = 0, analysis_date: str | None = None
+    ) -> datetime.date:
+        """Resolves target analysis date into a clean datetime.date object."""
+        if analysis_date:
+            return datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
+        reference_date = datetime.date.today()
+        return reference_date - datetime.timedelta(days=days)
+
+    def _has_existing_trade_or_position(
+        self,
+        trade_repository: TradeRepository,
+        symbol: str,
+        strategy_identifier: str,
+        target_date_string: str,
+    ) -> bool:
+        """Checks if an active position, open created trade, or same-date trade exists."""
+        active_or_created = trade_repository.get_by_status(
+            [TradeStatus.CREATED, TradeStatus.ACTIVE]
+        )
+        strategy_lower = strategy_identifier.lower()
+        has_open_position = any(
+            t.get("symbol") == symbol
+            and strategy_lower in str(t.get("strategy", "")).lower()
+            for t in active_or_created
+        )
+        return has_open_position or trade_repository.exists(
+            symbol, strategy_identifier, target_date_string
+        )
 
     def _get_indices_for_symbol(self, symbol: str) -> list[str]:
         """Returns the list of indices (SPX, NDX, DOW, RUS) the symbol belongs to.
@@ -51,10 +84,14 @@ class BaseStrategy[T](ABC):
             indices.append("RUS")
         return indices
 
+    def _get_indices_string(self, symbol: str) -> str:
+        """Returns comma-separated string of index identifiers (e.g. 'SPX, NDX')."""
+        indices = self._get_indices_for_symbol(symbol)
+        return ", ".join(indices) if indices else "-"
+
     @abstractmethod
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
-        """
-        Executes the strategy screening pipeline.
+        """Executes the strategy screening pipeline.
 
         Args:
             days: Lookback offset in calendar days (0 = today / live run).
@@ -71,12 +108,18 @@ class BaseStrategy[T](ABC):
     def _resolve_report_payload(
         self,
         display_name: str | None,
-        data: pd.DataFrame | list[dict[str, object]] | None,
-        date: str | pd.DataFrame | list[dict[str, object]] | None,
+        data: pd.DataFrame | list[dict[str, object]] | list[SignalReportItem] | None,
+        date: str
+        | pd.DataFrame
+        | list[dict[str, object]]
+        | list[SignalReportItem]
+        | None,
     ) -> tuple[str | None, pd.DataFrame | None]:
-        """Resolves legacy positional or standard keyword arguments into a DataFrame."""
+        """Resolves report items, dataframes, or dictionaries into a clean DataFrame."""
         if isinstance(date, pd.DataFrame | list):
-            data_payload: pd.DataFrame | list[dict[str, object]] | None = date
+            data_payload: (
+                pd.DataFrame | list[dict[str, object]] | list[SignalReportItem] | None
+            ) = date
             name_payload = display_name
         else:
             data_payload = data
@@ -88,6 +131,13 @@ class BaseStrategy[T](ABC):
         if isinstance(data_payload, list):
             if not data_payload:
                 return name_payload, None
+            if isinstance(data_payload[0], SignalReportItem):
+                report_items = [
+                    item.to_row_dict()
+                    for item in data_payload
+                    if isinstance(item, SignalReportItem)
+                ]
+                return name_payload, pd.DataFrame(report_items)
             return name_payload, pd.DataFrame(data_payload)
 
         return name_payload, data_payload
@@ -129,18 +179,51 @@ class BaseStrategy[T](ABC):
         except (ValueError, TypeError):
             entry_str = str(entry_val)
 
-        return {
+        formatted_dict: dict[str, str] = {
             "Symbol": symbol,
             "Action": action,
             "Entry": entry_str,
         }
 
+        # Preserve additional domain columns if already provided in the row
+        standard_keys = {
+            "Symbol",
+            "symbol",
+            "Action",
+            "action",
+            "Signal",
+            "signal",
+            "OrderType",
+            "order_type",
+            "Type",
+            "Entry",
+            "entry",
+            "entry_price",
+            "Limit Entry",
+            "limit_entry",
+        }
+        for key, value in row.items():
+            if key not in standard_keys and pd.notna(value):
+                if isinstance(value, float):
+                    formatted_dict[str(key)] = f"{value:.2f}"
+                else:
+                    formatted_dict[str(key)] = str(value)
+
+        return formatted_dict
+
     @final
     def _send_telegram_report(
         self,
         display_name: str | None = None,
-        data: pd.DataFrame | list[dict[str, object]] | None = None,
-        date: str | pd.DataFrame | list[dict[str, object]] | None = None,
+        data: pd.DataFrame
+        | list[dict[str, object]]
+        | list[SignalReportItem]
+        | None = None,
+        date: str
+        | pd.DataFrame
+        | list[dict[str, object]]
+        | list[SignalReportItem]
+        | None = None,
     ) -> None:
         """Sends a standardized Telegram report for a screener strategy.
 
@@ -148,7 +231,7 @@ class BaseStrategy[T](ABC):
 
         Args:
             display_name: Display name of the strategy (defaults to self.name).
-            data: DataFrame or list of dicts containing signal records.
+            data: DataFrame or list of dicts/SignalReportItems containing signal records.
             date: Optional date string or legacy positional payload.
         """
         if not self.telegram_bot:

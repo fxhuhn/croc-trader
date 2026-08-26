@@ -613,18 +613,14 @@ class CrocSetupStrategy(BaseStrategy):
             "main": target_price,
         }
 
-    def _get_indices_string(self, symbol: str) -> str:
-        indices = self._get_indices_for_symbol(symbol)
-        return ",".join(indices) if indices else "-"
-
     def _send_report(self, rows: list[dict[str, object]], date: str) -> None:
+        """Sends a consolidated Croc signal report to Telegram."""
         if not self.telegram_bot:
             return
         df = pd.DataFrame(rows)
-        # Select existing columns only
         columns = [
             c
             for c in ["Symbol", "Signal", "Score", "Entry", "Stop", "TP"]
             if c in df.columns
         ]
-        self._send_telegram_report("Croc Signals", date, df[columns])
+        self._send_telegram_report("Croc Signals", df[columns], date)

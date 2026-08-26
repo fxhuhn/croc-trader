@@ -12,6 +12,7 @@ from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_lists import ExchangeSymbol
+from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -472,11 +473,11 @@ class NDXMomentumScreener(BaseStrategy):
                 )
                 created_count += 1
                 created_trades.append(
-                    {
-                        "Symbol": symbol,
-                        "Action": "BUY MKT",
-                        "Entry": round(closing_price, 2),
-                    }
+                    SignalReportItem(
+                        symbol=symbol,
+                        action="BUY MKT",
+                        entry_price=round(closing_price, 2),
+                    )
                 )
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
                 raise RuntimeError(
@@ -493,7 +494,7 @@ class NDXMomentumScreener(BaseStrategy):
         logger.info("[%s] Created %d CREATED trades.", self.name, created_count)
 
         if self.telegram_bot and created_trades:
-            self._send_telegram_report("NDX Momentum", created_trades)
+            self._send_telegram_report("NDX Momentum", created_trades, date_iso_string)
 
         return created_count
 
@@ -509,14 +510,7 @@ class NDXMomentumScreener(BaseStrategy):
     ) -> None:
         """Helper to compute context and save a single momentum trade.
 
-        Args:
-            symbol: Nasdaq ticker symbol.
-            momentum_scores: Calculated series of momentum scores.
-            roc_matrices: Dictionary of ROC dataframes.
-            analysis_date: Setup timestamp.
-            date_iso_string: Setup date string.
-            price_data: Aligned pivoted data.
-            regime_indicators: General market regime metrics.
+        Calculates individual indicator components and persists trade to repository.
         """
         total_momentum_score = float(momentum_scores.at[symbol])
         closing_price = float(price_data["close"].at[analysis_date, symbol])
@@ -544,7 +538,7 @@ class NDXMomentumScreener(BaseStrategy):
 
         self.trade_repository.create_trade(
             symbol=symbol,
-            strategy=self.name,
+            strategy=Strategies.NDXMomentum,
             size=0,
             entry=round(closing_price, 2),
             stop_loss=0.0,

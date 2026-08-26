@@ -8,6 +8,7 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ...telegram import TelegramBot
+from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -279,17 +280,15 @@ class TwoPercentStrategy(BaseStrategy):
         if not self.telegram_bot:
             return
 
-        report_data = pd.DataFrame(
-            [
-                {
-                    "Symbol": self.SYMBOL,
-                    "Action": "BUY LMT",
-                    "Entry": round(entry, 2),
-                    "Setup Close": round(close, 2),
-                }
-            ]
-        )
+        report_items = [
+            SignalReportItem(
+                symbol=self.SYMBOL,
+                action="BUY LMT",
+                entry_price=round(entry, 2),
+                details={"Setup Close": round(close, 2)},
+            )
+        ]
 
         self._send_telegram_report(
-            f"{self.STRATEGY_IDENTIFIER} Entries", date_str, report_data
+            f"{self.STRATEGY_IDENTIFIER} Entries", report_items, date_str
         )

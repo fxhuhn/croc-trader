@@ -12,6 +12,7 @@ from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
 from ...telegram import TelegramBot
+from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -480,26 +481,27 @@ class TurnoverTimingStrategy(BaseStrategy):
             if symbol not in unique_symbols:
                 unique_symbols[symbol] = candidate
 
-        report_rows = []
+        report_items: list[SignalReportItem] = []
         for item in unique_symbols.values():
             close_price = float(item["close"])
             atr_value = float(item["atr"])
 
             for factor in self.configuration.entry_factors:
                 limit_price = round(close_price - (atr_value * factor), 2)
-                report_rows.append(
-                    {
-                        "Symbol": item["symbol"],
-                        "Action": f"BUY LMT ({factor} ATR)",
-                        "Entry": limit_price,
-                        "Close": round(close_price, 2),
-                        "ATR": round(atr_value, 2),
-                    }
+                report_items.append(
+                    SignalReportItem(
+                        symbol=str(item["symbol"]),
+                        action=f"BUY LMT ({factor} ATR)",
+                        entry_price=limit_price,
+                        details={
+                            "Close": round(close_price, 2),
+                            "ATR": round(atr_value, 2),
+                        },
+                    )
                 )
 
-        report_dataframe = pd.DataFrame(report_rows)
         self._send_telegram_report(
-            "Turnover Signals", str(setup_date.date()), report_dataframe
+            "Turnover Signals", report_items, str(setup_date.date())
         )
 
     def analyze_single_symbol(self, symbol: str) -> dict[str, object]:

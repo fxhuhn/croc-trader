@@ -96,6 +96,10 @@ class TelegramBot:
             logger.error("Telegram network error: %s", error_message)
             return None
 
+    def _escape_markdown_title(self, title: str) -> str:
+        """Escapes markdown formatting characters in plain text titles."""
+        return title.replace("_", "\\_").replace("*", "\\*")
+
     def send_dataframe(
         self, dataframe: pd.DataFrame, title: str = ""
     ) -> dict[str, object] | None:
@@ -111,11 +115,13 @@ class TelegramBot:
         if not self.enabled:
             return None
 
+        escaped_title = self._escape_markdown_title(title)
+
         if dataframe.empty:
-            return self.send_message(f"{title}\n_(No Data)_")
+            return self.send_message(f"*{escaped_title}*\n_(No Data)_")
 
         table_string = tabulate(
             dataframe, tablefmt="simple", showindex=False, headers="keys"
         )
-        message = f"*{title}*\n```\n{table_string}\n```"
+        message = f"*{escaped_title}*\n```\n{table_string}\n```"
         return self.send_message(message, parse_mode="Markdown")

@@ -16,6 +16,7 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ...telegram import TelegramBot
+from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -191,7 +192,7 @@ class TGIMStrategy(BaseStrategy[int]):
 
         trade_id = self.trade_repository.create_trade(
             symbol=self.TARGET_SYMBOL,
-            strategy=self.STRATEGY_IDENTIFIER.value,
+            strategy=self.STRATEGY_IDENTIFIER,
             size=0.0,
             entry=entry_price,
             stop_loss=0.0,
@@ -210,12 +211,13 @@ class TGIMStrategy(BaseStrategy[int]):
             self._send_telegram_report(
                 "TGIM",
                 [
-                    {
-                        "Symbol": self.TARGET_SYMBOL,
-                        "Action": "BUY MOC",
-                        "Entry": entry_price,
-                    }
+                    SignalReportItem(
+                        symbol=self.TARGET_SYMBOL,
+                        action="BUY MOC",
+                        entry_price=entry_price,
+                    )
                 ],
+                target_date_str,
             )
 
         return 1

@@ -69,7 +69,7 @@ def test_telegram_send_dataframe() -> None:
     ) as mock_send_message:
         res_empty = bot.send_dataframe(pd.DataFrame(), title="Empty Report")
         assert res_empty == {"ok": True}
-        mock_send_message.assert_called_with("Empty Report\n_(No Data)_")
+        mock_send_message.assert_called_with("*Empty Report*\n_(No Data)_")
 
     # Populated DataFrame -> tabulates table
     df = pd.DataFrame([{"Ticker": "AAPL", "Price": 150.0}])
