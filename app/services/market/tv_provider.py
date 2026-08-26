@@ -6,7 +6,7 @@ via the TvDatafeed API library.
 
 import logging
 import time
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import pandas as pd
 from tvDatafeed import Interval, TvDatafeed
@@ -171,4 +171,4 @@ class TradingViewDataProvider:
         # Vectorized assignment of standard symbol across all rows
         cleaned_dataframe["symbol"] = standard_symbol
 
-        return cleaned_dataframe.to_dict("records")  # type: ignore[return-value]
+        return cast(list[TradingViewBarRecord], cleaned_dataframe.to_dict("records"))

@@ -1,11 +1,11 @@
 import logging
 from datetime import datetime, timedelta
 
+from app.const import TradeStatus
 from app.services.market.updater import MarketDataUpdater
 from app.services.telegram import TelegramBot
 from app.tools.market_holidays import MarketHolidayChecker
 from app.tools.trading_calendar import get_last_completed_trading_day
-from app.types import TradeStatus
 
 logger = logging.getLogger(__name__)
 

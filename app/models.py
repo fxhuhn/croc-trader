@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -302,7 +303,7 @@ class MarketPrice:
         )
 
     @classmethod
-    def from_tradingview(cls, symbol: str, row: dict[str, Any]) -> MarketPrice:
+    def from_tradingview(cls, symbol: str, row: Mapping[str, object]) -> MarketPrice:
         """Factory method to create a MarketPrice from a TradingView row dictionary."""
         close_price = float(row.get("close", 0.0))
         if close_price < 0:

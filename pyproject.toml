@@ -142,7 +142,10 @@ module = [
     "pandas.*",
     "yfinance.*",
     "tvdatafeed.*",
+    "tvDatafeed.*",
+    "tvDatafeed",
     "scipy.*",
+
     "plotly.*",
 ]
 ignore_missing_imports = true
@@ -274,33 +277,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.market.provider",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.market.quality",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.market.tv_provider",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.market.updater",
-]
-ignore_errors = true
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
@@ -521,6 +497,10 @@ markers = [
 
 [tool.mutmut]
 source_paths = [
+    "app/services/market/provider.py",
+    "app/services/market/quality.py",
+    "app/services/market/tv_provider.py",
+    "app/services/market/updater.py",
     "app/services/screener/strategies/bounce_bandit.py",
     "app/services/screener/strategies/bridge_scout.py",
     "app/services/screener/strategies/tgim.py",
@@ -533,6 +513,7 @@ source_paths = [
 ]
 backup = false
 runner = "pytest"
+
 
 
 
