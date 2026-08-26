@@ -38,7 +38,8 @@ brain/
 !.agents/skills/strategy-screener/playbook/template.md
 !.agents/skills/strategy-screener/playbook/readme.md
 !.agents/skills/strategy-screener/playbook/croc_setup.md
-
+.agents/mcp_config.json
+.agents/plugins/sqlite-reader/mcp_config.json
 
 # Nur temporäre Skripte ignorieren (wichtige Skripte bleiben in Git)
 scripts/one_off/
