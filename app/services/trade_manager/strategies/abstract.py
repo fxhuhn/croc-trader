@@ -419,7 +419,8 @@ class BaseTradeStrategy(ABC):
 
         # Ensure signal_date is compared as Timestamp
         # Use history to count valid trading sessions
-        return len(dataframe_history[dataframe_history["date"] > signal_date])
+        history_dates = pd.to_datetime(dataframe_history["date"])
+        return len(dataframe_history[history_dates > signal_date])
 
     def _calculate_position_size(
         self, fill_price: float, stop_loss: float, risk_amount: float

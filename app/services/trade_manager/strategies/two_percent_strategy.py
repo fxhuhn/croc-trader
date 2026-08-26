@@ -4,10 +4,10 @@ from typing import final, override
 
 import pandas as pd
 
-from ....const import Strategies
+from ....const import ExitReason, Strategies
 from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
-from ....types import ExitReason, TradeData
+from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, HolidayCheckerProtocol
 

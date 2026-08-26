@@ -24,7 +24,7 @@ class TwoPercentStrategyContext(TypedDict):
     source: str
 
 
-class TwoPercentStrategy(BaseStrategy):
+class TwoPercentStrategy(BaseStrategy[int]):
     """
     Implementation of the TwoPercent trading strategy.
 
@@ -105,12 +105,11 @@ class TwoPercentStrategy(BaseStrategy):
         return pd.Timestamp.now().normalize()
 
     def _get_real_today(self) -> datetime.date:
-        """
-        Returns the current date in real time.
+        """Returns the current date in real time.
 
         This boundary helper isolates the side-effect of querying the system clock.
         """
-        return pd.Timestamp.now().normalize().date()
+        return datetime.date.today()
 
     def _fetch_price_history(self, analysis_timestamp: pd.Timestamp) -> pd.DataFrame:
         """Fetches historical price data with sufficient lookback."""
@@ -272,7 +271,7 @@ class TwoPercentStrategy(BaseStrategy):
             entry=entry,
             stop_loss=0.0,
             target=0.0,
-            context=dict(context),  # type: ignore[arg-type] — TypedDict dictionary conversion for repository context contract
+            context=dict(context),
         )
 
     def _send_signal_report(self, date_str: str, close: float, entry: float) -> None:
