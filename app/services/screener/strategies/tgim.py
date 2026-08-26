@@ -198,7 +198,7 @@ class TGIMStrategy(BaseStrategy[int]):
             entry=entry_price,
             stop_loss=0.0,
             target=0.0,
-            context=context,
+            context=dict(context),
         )
 
         logger.info(
