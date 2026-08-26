@@ -53,15 +53,16 @@ Evaluate code in **pyramid order** according to `python.md` (Layer 1 Correctness
 
 ## AUDIT PROCESS & SCANS
 
-1. **⚡ Correctness Scan**: Verify error handling, SQL safety, boundary conditions, and immutability where an immutable domain contract is required.
+1. **⚡ Correctness Scan**: Verify error handling, SQL safety, boundary conditions ($ATR=0$, empty series, simultaneous Stop/Target collisions), zero lookahead-bias, and immutability where an immutable domain contract is required.
 2. **📖 Readability Scan**: Check naming, the 30-second rule, cyclomatic
    complexity from Ruff when available, cognitive complexity only when a
    compatible tool is configured, indentation depth, function length, and
    appropriate use of early returns.
 3. **🔧 Maintainability Scan**: Check effective MyPy coverage of the changed
-   scope, introduced typing errors, DRY, SRP, public documentation, and whether
+   scope, introduced typing errors, DRY, SRP, public documentation, existence of Tier 1 & Tier 2 tests (BVA, Hypothesis fuzzing), and whether
    broad tool exclusions hide changed code.
-4. **🔄 Changeability Scan**: Verify DIP, OCP, orthogonality, and boundary validation.
+4. **🔄 Changeability & Mutation Scan**: Verify DIP, OCP, orthogonality, boundary validation, and test-assertiveness against code mutations (Mutation Score $\ge 85\,\%$ on modified core algorithms).
+
 
 ---
 

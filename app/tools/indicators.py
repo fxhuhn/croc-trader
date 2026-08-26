@@ -75,6 +75,10 @@ def calculate_rsi(series: pd.Series, window: int = 14) -> pd.Series:
 
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
+
+    # Handle zero loss/gain edge cases (e.g. flat line or monotonic gains)
+    rsi = rsi.where(avg_loss != 0, 100.0)
+    rsi = rsi.where((avg_gain != 0) | (avg_loss != 0), 50.0)
     return rsi
 
 

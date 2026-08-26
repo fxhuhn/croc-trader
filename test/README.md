@@ -26,28 +26,36 @@ test/
 
 ---
 
-## 🚀 Test-Ausführung
+## 🚀 Test-Ausführung (Das 3-Stufen-Modell)
 
-### 1. Gesamten Test-Suite ausführen
+Die Testsuite ist in 3 Ausführungs-Tiers gegliedert:
+
+### 1. Tier 1: Fast Gate (< 15s)
+Führt alle isolierten Unit- und Boundary-Tests aus (Pre-Commit / schneller Entwickler-Loop):
 ```bash
-.venv/bin/pytest
+.venv/bin/pytest -m tier1 -v
+# oder alle Unit-Tests
+.venv/bin/pytest test/unit/ -v
 ```
 
-### 2. Test-Suite mit Coverage-Report ausführen
+### 2. Tier 2: Verification Gate (< 2m)
+Führt Property-Based Fuzzing (`hypothesis`), Lookahead-Bias-Guards und SQLite Chaos Injection aus:
+```bash
+.venv/bin/pytest -m tier2 -v
+# oder gezielt die Robustness-Suite
+.venv/bin/pytest test/robustness/ -v
+```
+
+### 3. Tier 3: Deep Hardening & Mutation Testing
+Führt Mutation Testing auf dem Functional Core der Strategien aus:
+```bash
+.venv/bin/mutmut run
+.venv/bin/mutmut results
+```
+
+### 4. Gesamte Suite mit Coverage
 ```bash
 .venv/bin/pytest --cov=app --cov-report=term-missing
-```
-
-### 3. Spezifischen Test-Ebenen ausführen
-```bash
-# Nur Unit-Tests ausführen
-.venv/bin/pytest test/unit/ -v
-
-# Nur Security- & Hardening-Tests ausführen
-.venv/bin/pytest test/security/ -v
-
-# Einzelne Testdatei ausführen
-.venv/bin/pytest test/unit/database/repositories/test_trade_repository.py -v
 ```
 
 ---
@@ -72,3 +80,6 @@ Vor jedem Commit / PR müssen die Verifikations-Gates erfüllt werden:
 1. **In-Memory SQLite**: Datenbank-Repository-Tests nutzen `DatabaseSession(str(tmp_path / "test.db"))` für schnelle, isolierte Ausführung ohne Festplatten-Seiteneffekte.
 2. **Deterministic Time**: Zeitabhängige Tests nutzen feste Datumsstrings (z.B. `"2026-08-01"`).
 3. **No External Network Access**: Externe APIs (yfinance, Telegram, IBKR) werden isoliert gemockt.
+4. **Zero Lookahead-Bias**: Indikator- und Strategieberechnungen an Tag $T$ dürfen niemals zukünftige Daten einbeziehen.
+5. **Dev-Only Dependencies**: `hypothesis` und `mutmut` sind strikt in `requirements-dev.txt` deklariert und existieren nicht im Docker-Produktiv-Image.
+

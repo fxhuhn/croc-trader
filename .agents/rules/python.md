@@ -205,9 +205,14 @@ def calculate_moving_average(
         sum(prices[start_index : start_index + lookback_period]) / lookback_period
         for start_index in range(len(prices) - lookback_period + 1)
     ]
-```
+### 4.6 Financial Invariants & Hardening Laws
+- **Zero Lookahead-Bias:** Point-in-time calculation at date $T$ must never depend on or access bars $T+1 \dots T+N$.
+- **Boundary & Zero-Volatilität Absicherung:** Core calculations must never crash with `ZeroDivisionError` on $ATR=0$, flat price lines, or zero volumes.
+- **Deterministische Kollisions-Auflösung:** Berührt ein Bar gleichzeitig Stop-Loss und Take-Profit ($Low \le Stop$ und $High \ge Target$), muss die Strategie deterministisch den Worst-Case (Stop-Loss) zuerst abwickeln.
+- **Erhaltungssätze & Rundung:** Finale Orders und Kontensalden müssen zwingend in `Decimal` modelliert und gegen Erhaltungssätze ($\text{Portfolio} = \text{Cash} + \sum \text{Positionen}$) verifiziert werden.
 
 ---
+
 
 ## 5. Error Handling & Logging
 

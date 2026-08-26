@@ -40,13 +40,18 @@ assumption as a test.
 
 ## TESTING PROTOCOL
 
-### STEP 1: TEST BOUNDARY RULES & TEST LEVELS
+### STEP 1: TEST BOUNDARY RULES & TEST LEVELS (THE 3-TIER SUITE)
 
-- Unit tests verify isolated contracts and deterministic domain behavior.
-- Integration tests verify repository adapters, SQLite transactions, file
-  contracts, and component boundaries with controlled local resources.
-- End-to-end tests are used only when the task changes a complete documented
-  workflow and can run without production or uncontrolled external systems.
+- **Tier 1: Fast Unit & Boundary Value Analysis (BVA) (< 15s)**
+  - Unit tests verify isolated contracts and deterministic domain behavior.
+  - Mandatory BVA for every strategy: Empty data, $N < \text{Lookback}$, $Volume = 0$, $ATR = 0$, $High = Low$, Gap jumps, and simultaneous Stop/Target touches.
+- **Tier 2: Robustness, Property Fuzzing & Fault Injection (< 2m)**
+  - Property-Based Invariant testing with `hypothesis` against randomized OHLCV series.
+  - Zero Lookahead-Bias validation (Point-in-time calculation at $T$ is invariant to $T+1..T+N$).
+  - SQLite Chaos / Fault Injection (Simulate DB locks, rollbacks on error, WAL concurrency).
+- **Tier 3: Deep Hardening & Golden Master Replays (Audit & Nightly)**
+  - Mutation Testing with `mutmut` (Target: Mutation Score $\ge 85\,\%$ on Functional Core).
+  - Bit-level parity checks against frozen 1-year historical Golden Master datasets.
 
 - Functional-core unit tests use no mocks.
 - Imperative-shell unit tests isolate external boundaries.
@@ -59,6 +64,7 @@ assumption as a test.
 - Tests must never access production services, production databases, user data,
   or uncontrolled external networks.
 - Use mocks only at actual boundaries, not for internal implementation details.
+
 
 ### STEP 2: COVERAGE & TIME RULES
 
