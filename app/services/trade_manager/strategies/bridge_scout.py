@@ -10,7 +10,6 @@ Execution Rules:
    - Market On Close (MOC) exit on that day.
 """
 
-import json
 import logging
 from decimal import Decimal
 from typing import final, override
@@ -116,25 +115,55 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         active_symbols: set[str] | None = None,
     ) -> TradeTransition | None:
-        """Activates entry on setup date MOC."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-        if entry_price <= 0:
+        """Activates entry on month-end setup date MOC if Close <= req_close_rsi40.
+
+        Invalidates setup if entry window is missed or condition fails.
+        """
+        raw_entry_price = trade.get("entry_price") or 0.0
+        threshold_price = float(raw_entry_price)
+        if threshold_price <= 0.0:
             return None
 
-        date_string = str(candle["date"])
-        try:
-            raw_ctx = trade.get("signal_context")
-            ctx = json.loads(raw_ctx) if isinstance(raw_ctx, str) else (raw_ctx or {})
-            if isinstance(ctx, dict) and ctx.get("date"):
-                date_string = str(ctx["date"])
-        except (json.JSONDecodeError, TypeError, ValueError):
-            pass
+        current_close = float(candle["close"])
+        candle_date = pd.Timestamp(candle["date"]).date()
+        date_string = candle_date.strftime("%Y-%m-%d")
 
-        return self._execute_activation(
+        setup_date_value = (
+            self._get_context_value(trade, "setup_date")
+            or self._get_context_value(trade, "date")
+            or trade.get("entry_date")
+        )
+
+        req_close_val = self._get_context_value(trade, "req_close_rsi40")
+        if req_close_val is not None:
+            try:
+                threshold_price = float(req_close_val)
+            except (ValueError, TypeError):
+                pass
+
+        if setup_date_value:
+            setup_date = pd.Timestamp(str(setup_date_value)).date()
+            if candle_date < setup_date:
+                return None
+            if candle_date > setup_date:
+                return self._reject_setup(
+                    trade,
+                    date_string,
+                    "Missed Entry Window (Bridge Scout MOC)",
+                )
+
+        if current_close <= threshold_price:
+            return self._execute_activation(
+                trade,
+                current_close,
+                "Bridge Scout MOC Entry",
+                date_string,
+            )
+
+        return self._reject_setup(
             trade,
-            entry_price,
-            "Bridge Scout MOC Entry",
             date_string,
+            f"Bridge Scout condition failed: Close {current_close:.2f} > Threshold {threshold_price:.2f}",
         )
 
     @override

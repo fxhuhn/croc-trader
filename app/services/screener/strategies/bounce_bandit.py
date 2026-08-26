@@ -58,6 +58,7 @@ class BounceBanditStrategy(BaseStrategy[int]):
     """
 
     STRATEGY_IDENTIFIER = Strategies.BounceBandit
+    name = Strategies.BounceBandit
     TARGET_SYMBOL = "QQQ"
     DEFAULT_LOOKBACK_PERIOD = 350
     TREND_SMA_LEN = 200

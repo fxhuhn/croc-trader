@@ -82,6 +82,7 @@ class TGIMStrategy(BaseStrategy[int]):
     """
 
     STRATEGY_IDENTIFIER = Strategies.TGIM
+    name = Strategies.TGIM
     TARGET_SYMBOL = "SPY"
     DEFAULT_MAX_HOLDING_BARS = 2
     DEFAULT_LOOKBACK_PERIOD = 30

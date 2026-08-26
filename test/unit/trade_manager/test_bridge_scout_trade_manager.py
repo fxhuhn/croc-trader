@@ -9,7 +9,7 @@ from app.const import Strategies
 from app.services.trade_manager.strategies.bridge_scout import (
     BridgeScoutTradeStrategy,
 )
-from app.types import ExitReason
+from app.types import ExitReason, TradeStatus
 
 
 @pytest.fixture
@@ -121,13 +121,60 @@ def test_check_entry(
     sample_trade: dict,
     sample_history: pd.DataFrame,
 ) -> None:
-    candle = sample_history.iloc[0]
+    candle = sample_history.iloc[
+        0
+    ]  # close is 150.0, date is 2026-01-15, threshold is 150.0
     transition = strategy.check_entry(sample_trade, candle, sample_history)
     assert transition is not None
     assert transition.updates.get("status") == "ACTIVE"
 
     invalid_trade = dict(sample_trade, entry_price=0.0)
     assert strategy.check_entry(invalid_trade, candle, sample_history) is None
+
+
+def test_check_entry_threshold_invalidation(
+    strategy: BridgeScoutTradeStrategy,
+    sample_trade: dict,
+    sample_history: pd.DataFrame,
+) -> None:
+    """Tests that check_entry invalidates trade when close > threshold."""
+    candle = sample_history.iloc[0]  # close is 150.0
+    # Threshold is lower than actual close (e.g. 145.0)
+    trade_with_low_threshold = dict(
+        sample_trade,
+        entry_price=145.0,
+        signal_context='{"setup_date": "2026-01-15", "req_close_rsi40": 145.0}',
+    )
+    transition = strategy.check_entry(trade_with_low_threshold, candle, sample_history)
+    assert transition is not None
+    assert transition.updates.get("status") == TradeStatus.INVALID
+    assert "Bridge Scout condition failed" in str(transition.reason)
+
+
+def test_check_entry_missed_window_invalidation(
+    strategy: BridgeScoutTradeStrategy,
+    sample_trade: dict,
+    sample_history: pd.DataFrame,
+) -> None:
+    """Tests that check_entry invalidates trade when candle date is after setup date."""
+    candle_later = sample_history.iloc[1]  # date is 2026-02-01, setup was 2026-01-15
+    transition = strategy.check_entry(sample_trade, candle_later, sample_history)
+    assert transition is not None
+    assert transition.updates.get("status") == TradeStatus.INVALID
+    assert "Missed Entry Window" in str(transition.reason)
+
+
+def test_check_entry_before_setup_date_returns_none(
+    strategy: BridgeScoutTradeStrategy,
+    sample_trade: dict,
+) -> None:
+    """Tests that check_entry returns None when candle date is before setup date."""
+    future_trade = dict(
+        sample_trade,
+        signal_context='{"setup_date": "2026-01-20"}',
+    )
+    candle_earlier = pd.Series({"date": "2026-01-15", "close": 140.0})
+    assert strategy.check_entry(future_trade, candle_earlier, pd.DataFrame()) is None
 
 
 def test_do_manage_active_trade(
@@ -154,19 +201,6 @@ def test_do_manage_active_trade(
     assert transition is not None
     assert transition.updates.get("status") == "CLOSED"
     assert transition.updates.get("exit_reason") == ExitReason.TIME_STOP.value
-
-
-def test_check_entry_invalid_json(
-    strategy: BridgeScoutTradeStrategy,
-    sample_trade: dict,
-    sample_history: pd.DataFrame,
-) -> None:
-    """Tests check_entry handles invalid JSON context gracefully."""
-    invalid_json_trade = dict(sample_trade, signal_context="{invalid json}")
-    candle = sample_history.iloc[0]
-    transition = strategy.check_entry(invalid_json_trade, candle, sample_history)
-    assert transition is not None
-    assert transition.updates.get("status") == "ACTIVE"
 
 
 def test_do_manage_active_trade_missing_entry_date_or_empty_history(

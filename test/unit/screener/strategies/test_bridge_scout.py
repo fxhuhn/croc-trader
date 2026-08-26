@@ -230,6 +230,90 @@ def test_bridge_scout_skips_if_active_position_exists(
     mock_trade_repo.create_trade.assert_not_called()
 
 
+def test_bridge_scout_generates_premarket_setup_when_candle_not_in_history(
+    bridge_scout_screener: BridgeScoutStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests pre-market setup signal generation when candle for target date is not in DB yet."""
+    # Target date is July 28th, but historical data only goes up to July 27th (pre-market)
+    analysis_date_str = "2026-07-28"
+    dates = pd.date_range(end="2026-07-27", periods=20, freq="B")
+
+    closes = [500.0] * 19 + [495.0]
+    highs = [c + 1.0 for c in closes]
+    lows = [c - 1.0 for c in closes]
+
+    df_history = pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [100000] * 20,
+        }
+    )
+
+    mock_data_provider.get_batch_history.return_value = {"QQQ": df_history}
+
+    hits = bridge_scout_screener.run(days=0, analysis_date=analysis_date_str)
+
+    assert hits == 1
+    mock_trade_repo.create_trade.assert_called_once()
+    call_kwargs = mock_trade_repo.create_trade.call_args.kwargs
+    assert call_kwargs["symbol"] == "QQQ"
+    assert call_kwargs["strategy"] == Strategies.BridgeScout.value
+    # entry is the calculated req_close_rsi40 threshold
+    assert call_kwargs["entry"] > 0
+    assert call_kwargs["context"]["req_close_rsi40"] > 0
+    assert call_kwargs["context"]["setup_date"] == analysis_date_str
+
+
+def test_bridge_scout_premarket_skips_when_atr_too_high(
+    bridge_scout_screener: BridgeScoutStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that pre-market setup is skipped if ATR% exceeds threshold."""
+    analysis_date_str = "2026-07-28"
+    dates = pd.date_range(end="2026-07-27", periods=20, freq="B")
+
+    # High volatility swings
+    closes = [500.0] * 10 + [
+        400.0,
+        600.0,
+        400.0,
+        600.0,
+        400.0,
+        600.0,
+        400.0,
+        600.0,
+        400.0,
+        500.0,
+    ]
+    highs = [c + 50.0 for c in closes]
+    lows = [c - 50.0 for c in closes]
+
+    df_history = pd.DataFrame(
+        {
+            "date": dates,
+            "open": closes,
+            "high": highs,
+            "low": lows,
+            "close": closes,
+            "volume": [100000] * 20,
+        }
+    )
+
+    mock_data_provider.get_batch_history.return_value = {"QQQ": df_history}
+
+    hits = bridge_scout_screener.run(days=0, analysis_date=analysis_date_str)
+
+    assert hits == 0
+    mock_trade_repo.create_trade.assert_not_called()
+
+
 # --- EXECUTION STRATEGY TESTS ---
 
 
@@ -244,12 +328,13 @@ def test_bridge_scout_trade_manager_lifecycle() -> None:
         "status": "CREATED",
         "entry_price": 480.0,
         "budget": 10000.0,
+        "signal_context": '{"setup_date": "2026-07-28", "req_close_rsi40": 480.0}',
     }
 
-    candle_entry = pd.Series({"date": pd.Timestamp("2026-07-28"), "close": 480.0})
+    candle_entry = pd.Series({"date": pd.Timestamp("2026-07-28"), "close": 475.0})
     df_empty = pd.DataFrame()
 
-    # 1. Entry Activation
+    # 1. Entry Activation (Close 475.0 <= Threshold 480.0 -> ACTIVE)
     transition_entry = strategy.check_entry(trade_record, candle_entry, df_empty)
     assert transition_entry is not None
     assert transition_entry.updates["status"] == "ACTIVE"
@@ -260,7 +345,7 @@ def test_bridge_scout_trade_manager_lifecycle() -> None:
         "symbol": "QQQ",
         "strategy": "bridge_scout",
         "status": "ACTIVE",
-        "entry_price": 480.0,
+        "entry_price": 475.0,
         "entry_date": "2026-07-28",
         "current_size": 100,
     }
