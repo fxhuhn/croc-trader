@@ -114,7 +114,16 @@ class BaseStrategy[T](ABC):
         else:
             action = action_raw if action_raw else "BUY LMT"
 
-        entry_val = row.get("Entry", row.get("entry", row.get("entry_price", 0.0)))
+        entry_val = row.get(
+            "Entry",
+            row.get(
+                "entry",
+                row.get(
+                    "entry_price",
+                    row.get("Limit Entry", row.get("limit_entry", 0.0)),
+                ),
+            ),
+        )
         try:
             entry_str = f"{float(entry_val):.2f}"
         except (ValueError, TypeError):

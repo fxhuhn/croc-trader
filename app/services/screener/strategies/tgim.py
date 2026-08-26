@@ -212,7 +212,7 @@ class TGIMStrategy(BaseStrategy[int]):
                 [
                     {
                         "Symbol": self.TARGET_SYMBOL,
-                        "Action": "BUY MKT",
+                        "Action": "BUY MOC",
                         "Entry": entry_price,
                     }
                 ],

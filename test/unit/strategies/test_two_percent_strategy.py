@@ -919,3 +919,34 @@ def test_two_percent_do_manage_active_trade_no_entry_date(
         )
         is None
     )
+
+
+def test_two_percent_send_signal_report(
+    mock_trade_repository: MagicMock, mock_data_provider: MagicMock
+) -> None:
+    """Tests _send_signal_report correctly formats telegram dataframe with Entry and Action."""
+    mock_telegram = MagicMock()
+    strategy = ScreenerStrategy(
+        trade_repository=mock_trade_repository,
+        data_provider=mock_data_provider,
+        telegram_bot=mock_telegram,
+    )
+
+    strategy._send_signal_report("2026-02-20", close=600.0, entry=594.0)
+
+    assert mock_telegram.send_dataframe.called
+    sent_df, kwargs = (
+        mock_telegram.send_dataframe.call_args[0],
+        mock_telegram.send_dataframe.call_args[1],
+    )
+    df = (
+        sent_df
+        if isinstance(sent_df, pd.DataFrame)
+        else mock_telegram.send_dataframe.call_args[0][0]
+    )
+    assert df.iloc[0]["Symbol"] == "SXRV.DE"
+    assert df.iloc[0]["Action"] == "BUY LMT"
+    assert df.iloc[0]["Entry"] == "594.00"
+    assert "two_percent Entries" in kwargs.get(
+        "title", mock_telegram.send_dataframe.call_args[1].get("title", "")
+    )

@@ -283,8 +283,9 @@ class TwoPercentStrategy(BaseStrategy):
             [
                 {
                     "Symbol": self.SYMBOL,
-                    "Setup Close": f"{close:.2f}",
-                    "Limit Entry": f"{entry:.2f}",
+                    "Action": "BUY LMT",
+                    "Entry": round(entry, 2),
+                    "Setup Close": round(close, 2),
                 }
             ]
         )

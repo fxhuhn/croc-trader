@@ -485,15 +485,17 @@ class TurnoverTimingStrategy(BaseStrategy):
             close_price = float(item["close"])
             atr_value = float(item["atr"])
 
-            report_rows.append(
-                {
-                    "Symbol": item["symbol"],
-                    "Entry 0.5 ATR": round(close_price - (atr_value * 0.5), 2),
-                    "Entry 1.0 ATR": round(close_price - (atr_value * 1.0), 2),
-                    "Close": round(close_price, 2),
-                    "ATR": round(atr_value, 2),
-                }
-            )
+            for factor in self.configuration.entry_factors:
+                limit_price = round(close_price - (atr_value * factor), 2)
+                report_rows.append(
+                    {
+                        "Symbol": item["symbol"],
+                        "Action": f"BUY LMT ({factor} ATR)",
+                        "Entry": limit_price,
+                        "Close": round(close_price, 2),
+                        "ATR": round(atr_value, 2),
+                    }
+                )
 
         report_dataframe = pd.DataFrame(report_rows)
         self._send_telegram_report(
