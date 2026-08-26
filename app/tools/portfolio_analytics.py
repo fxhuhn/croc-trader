@@ -6,7 +6,7 @@ Follows the Functional Core pattern: deterministic calculations without side eff
 from typing import Any
 
 import numpy as np
-import pandas as pd  # type: ignore[import-untyped]  # Standard un-typed library import
+import pandas as pd
 
 from ..const import STRATEGY_ALIASES
 from ..tools import metrics

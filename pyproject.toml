@@ -137,9 +137,18 @@ pretty = true
 files = ["app"]
 exclude = ["^\\.venv/", "^build/", "^dist/"]
 
-
+[[tool.mypy.overrides]]
+module = [
+    "pandas.*",
+    "yfinance.*",
+    "tvdatafeed.*",
+    "scipy.*",
+    "plotly.*",
+]
+ignore_missing_imports = true
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
+
 [[tool.mypy.overrides]]
 module = [
     "app",
@@ -349,12 +358,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.screener.strategies.bridge_scout",
-]
-ignore_errors = true
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
@@ -447,12 +450,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.trade_manager.strategies.bridge_scout",
-]
-ignore_errors = true
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
@@ -560,10 +557,13 @@ markers = [
 
 [tool.mutmut]
 source_paths = [
+    "app/services/screener/strategies/bridge_scout.py",
+    "app/services/trade_manager/strategies/bridge_scout.py",
     "app/tools/indicators.py",
 ]
 backup = false
 runner = "pytest"
+
 
 
 [tool.coverage.run]
