@@ -466,7 +466,7 @@ class DipBuyerStrategy(BaseStrategy):
 
         # Reporting
         if self.telegram_bot and created_trades:
-            self._send_telegram_report(self.name, created_trades, date_str)
+            self._send_telegram_report("Dip Buyer", created_trades, date_str)
 
         return saved_count
 
