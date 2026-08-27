@@ -23,6 +23,7 @@ from app.services.screener.strategies.croc_setup import (
 )
 from app.services.screener.strategies.dip_buyer import DipBuyerStrategy
 from app.services.screener.strategies.ndx_momentum import (
+    MomentumTradeContext,
     NDXMomentumScreener,
 )
 from app.services.screener.strategies.turnover_timing import (
@@ -258,23 +259,24 @@ class TestFailClosedOnDatabaseErrors:
         )
 
         # Act & Assert
+        context = MomentumTradeContext(
+            symbols=["AAPL"],
+            momentum_scores=pd.Series([10.0], index=["AAPL"]),
+            roc_matrices={21: roc_df, 63: roc_df, 126: roc_df, 252: roc_df},
+            analysis_date=analysis_date,
+            price_data={
+                "close": pd.DataFrame({"AAPL": [100.0]}, index=[analysis_date])
+            },
+            regime_indicators={
+                "bull": True,
+                "qqq": 100.0,
+                "qqq_sma": 90.0,
+                "breadth_fast": 60.0,
+                "breadth_slow": 50.0,
+            },
+        )
         with pytest.raises(RuntimeError, match="Database unavailable"):
-            ndx_strategy._create_trades_direct(
-                symbols=["AAPL"],
-                momentum_scores=pd.Series([10.0], index=["AAPL"]),
-                roc_matrices={21: roc_df, 63: roc_df, 126: roc_df, 252: roc_df},
-                analysis_date=analysis_date,
-                price_data={
-                    "close": pd.DataFrame({"AAPL": [100.0]}, index=[analysis_date])
-                },
-                regime_indicators={
-                    "bull": True,
-                    "qqq": 100.0,
-                    "qqq_sma": 90.0,
-                    "breadth_fast": 60.0,
-                    "breadth_slow": 50.0,
-                },
-            )
+            ndx_strategy._create_trades_direct(context)
 
     def test_dip_buyer_process_signals_raises_on_db_lock(
         self,

@@ -17,6 +17,7 @@ from app.const import ExitReason, Strategies, TradeStatus
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.trade import TradeRepository
 from app.services.screener.strategies.dip_buyer import (
+    DipBuyerAnalysisSnapshot,
     DipBuyerStrategy,
 )
 from app.services.trade_manager.strategies.dip_buyer import (
@@ -58,63 +59,71 @@ def test_bva_dip_buyer_screener_filter_boundaries() -> None:
     # Close=100 (> 5.0), Open=102 (Red candle today), PrevClose=102, PrevOpen=104 (Red yesterday),
     # SMA200=90 (< Close), VolSMA=1.2M (> 1M), ATR5=4.0 (ATR/Close = 0.04 > 0.03),
     # IBS=0.15 (< 0.2), 3-day drop=-5.0 (Drop/ATR = -1.25 < -1.0), in_universe=True
-    valid_checks = screener._run_analysis_checks(
+    valid_snapshot = DipBuyerAnalysisSnapshot(
         current_close=100.0,
         current_open=102.0,
         previous_close=102.0,
         previous_open=104.0,
         sma200=90.0,
         volume_sma=1_200_000.0,
+        atr=4.0,
         atr_ratio_3day=-1.25,
         volatility_ratio=0.04,
         ibs=0.15,
         has_indices=True,
     )
+    valid_checks = screener._run_analysis_checks(valid_snapshot)
     assert all(valid_checks.values()) is True
 
     # 2. Downtrend Boundary: Close <= SMA200 -> Failed
-    downtrend_checks = screener._run_analysis_checks(
+    downtrend_snapshot = DipBuyerAnalysisSnapshot(
         current_close=100.0,
         current_open=102.0,
         previous_close=102.0,
         previous_open=104.0,
         sma200=105.0,
         volume_sma=1_200_000.0,
+        atr=4.0,
         atr_ratio_3day=-1.25,
         volatility_ratio=0.04,
         ibs=0.15,
         has_indices=True,
     )
+    downtrend_checks = screener._run_analysis_checks(downtrend_snapshot)
     assert downtrend_checks["uptrend_sma200"] is False
 
     # 3. High IBS Boundary: IBS >= 0.2 -> Failed
-    high_ibs_checks = screener._run_analysis_checks(
+    high_ibs_snapshot = DipBuyerAnalysisSnapshot(
         current_close=100.0,
         current_open=102.0,
         previous_close=102.0,
         previous_open=104.0,
         sma200=90.0,
         volume_sma=1_200_000.0,
+        atr=4.0,
         atr_ratio_3day=-1.25,
         volatility_ratio=0.04,
         ibs=0.25,
         has_indices=True,
     )
+    high_ibs_checks = screener._run_analysis_checks(high_ibs_snapshot)
     assert high_ibs_checks["low_ibs"] is False
 
     # 4. Weak Drop Ratio: Drop >= -1.0 ATR (e.g. -0.80) -> Failed
-    weak_drop_checks = screener._run_analysis_checks(
+    weak_drop_snapshot = DipBuyerAnalysisSnapshot(
         current_close=100.0,
         current_open=102.0,
         previous_close=102.0,
         previous_open=104.0,
         sma200=90.0,
         volume_sma=1_200_000.0,
+        atr=4.0,
         atr_ratio_3day=-0.80,
         volatility_ratio=0.04,
         ibs=0.15,
         has_indices=True,
     )
+    weak_drop_checks = screener._run_analysis_checks(weak_drop_snapshot)
     assert weak_drop_checks["dip_atr_ratio_3day"] is False
 
 

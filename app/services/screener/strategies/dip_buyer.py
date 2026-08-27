@@ -8,6 +8,7 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
+from ....tools import indicators
 from ....tools.indicators import extract_safe_float
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
@@ -15,6 +16,39 @@ from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
+
+MIN_DIP_HISTORY_BARS: int = 2
+VOLUME_SMA_WINDOW: int = 20
+PRICE_DROP_DAYS: int = 3
+CALCULATION_WINDOW_SIZE: int = 250
+
+
+@dataclass(frozen=True)
+class DipBuyerMarketFrames:
+    """Container for tabular price and volume dataframes."""
+
+    closes: pd.DataFrame
+    highs: pd.DataFrame
+    lows: pd.DataFrame
+    volumes: pd.DataFrame
+    opens: pd.DataFrame
+
+
+@dataclass(frozen=True)
+class DipBuyerAnalysisSnapshot:
+    """Snapshot of technical values for single-symbol evaluation."""
+
+    current_close: float
+    current_open: float
+    previous_close: float
+    previous_open: float
+    sma200: float
+    volume_sma: float
+    atr: float
+    atr_ratio_3day: float
+    volatility_ratio: float
+    ibs: float
+    has_indices: bool
 
 
 @dataclass(frozen=True)
@@ -249,42 +283,43 @@ class DipBuyerStrategy(BaseStrategy[int]):
             return pd.DataFrame()
 
         # --- Data Slicing ---
-        slices = self._slice_data_for_window(
-            closes, highs, lows, volumes, opens, current_index_location
+        frames = DipBuyerMarketFrames(
+            closes=closes,
+            highs=highs,
+            lows=lows,
+            volumes=volumes,
+            opens=opens,
         )
-        if not slices:
+        sliced_frames = self._slice_data_for_window(frames, current_index_location)
+        if not sliced_frames:
             return pd.DataFrame()
 
-        return self._slice_and_compute_market_state(slices)
+        return self._slice_and_compute_market_state(sliced_frames)
 
     def _slice_and_compute_market_state(
         self,
-        slices: tuple[
-            pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
-        ],
+        frames: DipBuyerMarketFrames,
     ) -> pd.DataFrame:
         """Computes technical states and filters candidates from sliced price blocks."""
-        closes_slice, highs_slice, lows_slice, volumes_slice, opens_slice = slices
-
         # --- Indicator Calculation ---
         indicators_dict = self._compute_indicators(
-            closes_slice, highs_slice, lows_slice, volumes_slice
+            frames.closes, frames.highs, frames.lows, frames.volumes
         )
 
         # --- Market State Construction ---
         # Current Row Index (Relative to slice)
-        index = len(closes_slice) - 1
+        index = len(frames.closes) - 1
         previous_index = index - 1
 
         if previous_index < 0:
             return pd.DataFrame()
 
         current_market_state = {
-            "close": closes_slice.iloc[index],
-            "open": opens_slice.iloc[index],
-            "high": highs_slice.iloc[index],
-            "low": lows_slice.iloc[index],
-            "volume": volumes_slice.iloc[index],
+            "close": frames.closes.iloc[index],
+            "open": frames.opens.iloc[index],
+            "high": frames.highs.iloc[index],
+            "low": frames.lows.iloc[index],
+            "volume": frames.volumes.iloc[index],
             "sma200": indicators_dict["sma200"].iloc[index],
             "volume_sma": indicators_dict["volume_sma"].iloc[index],
             "atr": indicators_dict["atr"].iloc[index],
@@ -295,8 +330,8 @@ class DipBuyerStrategy(BaseStrategy[int]):
         }
 
         previous_market_state = {
-            "close": closes_slice.iloc[previous_index],
-            "open": opens_slice.iloc[previous_index],
+            "close": frames.closes.iloc[previous_index],
+            "open": frames.opens.iloc[previous_index],
         }
 
         # --- Filter Application ---
@@ -304,31 +339,23 @@ class DipBuyerStrategy(BaseStrategy[int]):
 
     def _slice_data_for_window(
         self,
-        closes: pd.DataFrame,
-        highs: pd.DataFrame,
-        lows: pd.DataFrame,
-        volumes: pd.DataFrame,
-        opens: pd.DataFrame,
+        frames: DipBuyerMarketFrames,
         current_location: int,
-    ) -> (
-        tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]
-        | None
-    ):
+    ) -> DipBuyerMarketFrames | None:
         """Slices the dataframes to the required calculation window."""
-        required_window = 250
-        start_location = max(0, current_location - required_window)
+        start_location = max(0, current_location - CALCULATION_WINDOW_SIZE)
         # Python slicing excludes upper bound, so +1
         end_location = current_location + 1
 
         if start_location >= end_location:
             return None
 
-        return (
-            closes.iloc[start_location:end_location],
-            highs.iloc[start_location:end_location],
-            lows.iloc[start_location:end_location],
-            volumes.iloc[start_location:end_location],
-            opens.iloc[start_location:end_location],
+        return DipBuyerMarketFrames(
+            closes=frames.closes.iloc[start_location:end_location],
+            highs=frames.highs.iloc[start_location:end_location],
+            lows=frames.lows.iloc[start_location:end_location],
+            volumes=frames.volumes.iloc[start_location:end_location],
+            opens=frames.opens.iloc[start_location:end_location],
         )
 
     def _compute_indicators(
@@ -339,19 +366,17 @@ class DipBuyerStrategy(BaseStrategy[int]):
         volumes: pd.DataFrame,
     ) -> dict[str, pd.DataFrame]:
         """Calculates all technical indicators efficiently."""
-        from ....tools import indicators
-
         # A) Trend: SMA 200
         sma200 = indicators.calculate_sma(closes, self.config.SMA_TREND_WINDOW)
 
         # B) Volume: SMA 20
-        volume_sma20 = indicators.calculate_volume_sma(volumes, 20)
+        volume_sma20 = indicators.calculate_volume_sma(volumes, VOLUME_SMA_WINDOW)
 
         # C) ATR
         atr = indicators.calculate_atr(highs, lows, closes, self.config.ATR_WINDOW)
 
         # D) Dip Metrics
-        price_drop_3day = closes - closes.shift(3)
+        price_drop_3day = closes - closes.shift(PRICE_DROP_DAYS)
         atr_safe = atr.replace(0.0, float("nan"))
         atr_ratio_3day = price_drop_3day / atr_safe
 
@@ -543,7 +568,7 @@ class DipBuyerStrategy(BaseStrategy[int]):
         # 3. Indicators
         indicators_dict = self._compute_indicators(closes, highs, lows, volumes)
 
-        if len(closes) < 2:
+        if len(closes) < MIN_DIP_HISTORY_BARS:
             return {
                 "symbol": symbol,
                 "indices": [],
@@ -568,48 +593,28 @@ class DipBuyerStrategy(BaseStrategy[int]):
         index = -1
         previous_index = -2
 
-        # Extract values
-        current_close = closes.iloc[index][symbol]
-        current_open = df["open"].iloc[index]
-        previous_close = closes.iloc[previous_index][symbol]
-        previous_open = df["open"].iloc[previous_index]
-
-        sma200 = indicators_dict["sma200"].iloc[index][symbol]
-        volume_sma = indicators_dict["volume_sma"].iloc[index][symbol]
-        atr = indicators_dict["atr"].iloc[index][symbol]
-        atr_ratio_3day = indicators_dict["atr_ratio_3day"].iloc[index][symbol]
-        ibs = indicators_dict["ibs"].iloc[index][symbol]
-        volatility_ratio = indicators_dict["volatility_ratio"].iloc[index][symbol]
-
         # Use centralized BaseStrategy index helper (DRY resolution)
         indices = self._get_indices_for_symbol(symbol)
         preferred_indices = {"DOW", "SPX", "NDX"}
         has_preferred_index = bool(set(indices) & preferred_indices)
 
-        checks = self._run_analysis_checks(
-            current_close=current_close,
-            current_open=current_open,
-            previous_close=previous_close,
-            previous_open=previous_open,
-            sma200=sma200,
-            volume_sma=volume_sma,
-            atr_ratio_3day=atr_ratio_3day,
-            volatility_ratio=volatility_ratio,
-            ibs=ibs,
+        snapshot = DipBuyerAnalysisSnapshot(
+            current_close=closes.iloc[index][symbol],
+            current_open=df["open"].iloc[index],
+            previous_close=closes.iloc[previous_index][symbol],
+            previous_open=df["open"].iloc[previous_index],
+            sma200=indicators_dict["sma200"].iloc[index][symbol],
+            volume_sma=indicators_dict["volume_sma"].iloc[index][symbol],
+            atr=indicators_dict["atr"].iloc[index][symbol],
+            atr_ratio_3day=indicators_dict["atr_ratio_3day"].iloc[index][symbol],
+            volatility_ratio=indicators_dict["volatility_ratio"].iloc[index][symbol],
+            ibs=indicators_dict["ibs"].iloc[index][symbol],
             has_indices=has_preferred_index,
         )
 
+        checks = self._run_analysis_checks(snapshot)
         passed = all(checks.values())
-
-        values_dict = self._build_analysis_values(
-            current_close=current_close,
-            sma200=sma200,
-            volume_sma=volume_sma,
-            atr=atr,
-            atr_ratio_3day=atr_ratio_3day,
-            ibs=ibs,
-            volatility_ratio=volatility_ratio,
-        )
+        values_dict = self._build_analysis_values(snapshot)
 
         error_message = None
         if not has_preferred_index:
@@ -633,49 +638,38 @@ class DipBuyerStrategy(BaseStrategy[int]):
 
     def _run_analysis_checks(
         self,
-        current_close: float,
-        current_open: float,
-        previous_close: float,
-        previous_open: float,
-        sma200: float,
-        volume_sma: float,
-        atr_ratio_3day: float,
-        volatility_ratio: float,
-        ibs: float,
-        has_indices: bool,
+        snapshot: DipBuyerAnalysisSnapshot,
     ) -> dict[str, bool]:
         """Runs the validation checks for a single symbol analysis."""
         return {
-            "min_volume": bool(volume_sma > self.config.MIN_VOLUME),
-            "min_price": bool(current_close > self.config.MIN_PRICE),
-            "uptrend_sma200": bool(current_close > sma200),
-            "dip_atr_ratio_3day": bool(atr_ratio_3day < self.config.MAX_ATR_RATIO_3DAY),
-            "volatility_ratio": bool(
-                volatility_ratio > self.config.MIN_VOLATILITY_RATIO
+            "min_volume": bool(snapshot.volume_sma > self.config.MIN_VOLUME),
+            "min_price": bool(snapshot.current_close > self.config.MIN_PRICE),
+            "uptrend_sma200": bool(snapshot.current_close > snapshot.sma200),
+            "dip_atr_ratio_3day": bool(
+                snapshot.atr_ratio_3day < self.config.MAX_ATR_RATIO_3DAY
             ),
-            "low_ibs": bool(ibs < self.config.MAX_IBS),
-            "red_candle_today": bool(current_close < current_open),
-            "red_candle_yesterday": bool(previous_close < previous_open),
-            "in_universe": has_indices,
+            "volatility_ratio": bool(
+                snapshot.volatility_ratio > self.config.MIN_VOLATILITY_RATIO
+            ),
+            "low_ibs": bool(snapshot.ibs < self.config.MAX_IBS),
+            "red_candle_today": bool(snapshot.current_close < snapshot.current_open),
+            "red_candle_yesterday": bool(
+                snapshot.previous_close < snapshot.previous_open
+            ),
+            "in_universe": snapshot.has_indices,
         }
 
     def _build_analysis_values(
         self,
-        current_close: float,
-        sma200: float,
-        volume_sma: float,
-        atr: float,
-        atr_ratio_3day: float,
-        ibs: float,
-        volatility_ratio: float,
+        snapshot: DipBuyerAnalysisSnapshot,
     ) -> dict[str, float]:
         """Builds the values dictionary for a single symbol analysis."""
         return {
-            "close": round(extract_safe_float(current_close), 2),
-            "sma200": round(extract_safe_float(sma200), 2),
-            "volume_sma": float(int(extract_safe_float(volume_sma, 0))),
-            "atr": round(extract_safe_float(atr), 2),
-            "atr_ratio_3day": round(extract_safe_float(atr_ratio_3day), 2),
-            "ibs": round(extract_safe_float(ibs), 2),
-            "volatility_ratio": round(extract_safe_float(volatility_ratio), 3),
+            "close": round(extract_safe_float(snapshot.current_close), 2),
+            "sma200": round(extract_safe_float(snapshot.sma200), 2),
+            "volume_sma": float(int(extract_safe_float(snapshot.volume_sma, 0))),
+            "atr": round(extract_safe_float(snapshot.atr), 2),
+            "atr_ratio_3day": round(extract_safe_float(snapshot.atr_ratio_3day), 2),
+            "ibs": round(extract_safe_float(snapshot.ibs), 2),
+            "volatility_ratio": round(extract_safe_float(snapshot.volatility_ratio), 3),
         }

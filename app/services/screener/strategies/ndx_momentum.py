@@ -17,6 +17,25 @@ from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
+SATURDAY_WEEKDAY: int = 5
+MONTH_END_LOOKAHEAD_MAX_DAYS: int = 5
+ROC_WINDOW_1M: int = 21
+ROC_WINDOW_3M: int = 63
+ROC_WINDOW_6M: int = 126
+ROC_WINDOW_12M: int = 252
+
+
+@dataclass(frozen=True)
+class MomentumTradeContext:
+    """Context and analytical snapshot for momentum trade generation."""
+
+    symbols: list[str]
+    momentum_scores: pd.Series
+    roc_matrices: dict[int, pd.DataFrame]
+    analysis_date: pd.Timestamp
+    price_data: dict[str, pd.DataFrame]
+    regime_indicators: dict[str, float | bool]
+
 
 @dataclass(frozen=True)
 class NDXMomentumConfiguration:
@@ -111,14 +130,15 @@ class NDXMomentumScreener(BaseStrategy[int]):
         )
 
         # 3. Create Trades
-        return self._create_trades_direct(
-            analysis_result["top_symbols"],
-            analysis_result["momentum_scores"],
-            analysis_result["roc_matrices"],
-            pd.Timestamp(analysis_result["date"]),
-            analysis_result["price_data"],
+        context = MomentumTradeContext(
+            symbols=analysis_result["top_symbols"],
+            momentum_scores=analysis_result["momentum_scores"],
+            roc_matrices=analysis_result["roc_matrices"],
+            analysis_date=pd.Timestamp(analysis_result["date"]),
+            price_data=analysis_result["price_data"],
             regime_indicators=analysis_result["regime_indicators"],
         )
+        return self._create_trades_direct(context)
 
     def calculate_analysis(
         self, analysis_date: str | None = None, force_run: bool = False
@@ -433,11 +453,12 @@ class NDXMomentumScreener(BaseStrategy[int]):
         """Checks if the date represents the last trading day of its month."""
         current_month = date.month
         lookahead_date = date + pd.Timedelta(days=1)
-        for _ in range(5):
+        for _ in range(MONTH_END_LOOKAHEAD_MAX_DAYS):
             if lookahead_date.month != current_month:
                 return True
-            if lookahead_date.dayofweek < 5 and not self.holiday_checker.is_holiday(
-                lookahead_date
+            if (
+                lookahead_date.dayofweek < SATURDAY_WEEKDAY
+                and not self.holiday_checker.is_holiday(lookahead_date)
             ):
                 return False
             lookahead_date += pd.Timedelta(days=1)
@@ -445,31 +466,24 @@ class NDXMomentumScreener(BaseStrategy[int]):
 
     def _create_trades_direct(
         self,
-        symbols: list[str],
-        momentum_scores: pd.Series,
-        roc_matrices: dict[int, pd.DataFrame],
-        analysis_date: pd.Timestamp,
-        price_data: dict[str, pd.DataFrame],
-        regime_indicators: dict[str, float | bool],
+        context: MomentumTradeContext,
     ) -> int:
         """Writes the selected leaders to the trades table as CREATED status."""
-        date_iso_string = analysis_date.strftime("%Y-%m-%d")
+        date_iso_string = context.analysis_date.strftime("%Y-%m-%d")
         self.trade_repository.clear_created_trades(self.name)
 
         created_count = 0
 
         created_trades: list[SignalReportItem] = []
-        for symbol in symbols:
+        for symbol in context.symbols:
             try:
-                closing_price = float(price_data["close"].at[analysis_date, symbol])
+                closing_price = float(
+                    context.price_data["close"].at[context.analysis_date, symbol]
+                )
                 self._create_single_momentum_trade(
                     symbol,
-                    momentum_scores,
-                    roc_matrices,
-                    analysis_date,
+                    context,
                     date_iso_string,
-                    price_data,
-                    regime_indicators,
                 )
                 created_count += 1
                 created_trades.append(
@@ -501,39 +515,68 @@ class NDXMomentumScreener(BaseStrategy[int]):
     def _create_single_momentum_trade(
         self,
         symbol: str,
-        momentum_scores: pd.Series,
-        roc_matrices: dict[int, pd.DataFrame],
-        analysis_date: pd.Timestamp,
+        context: MomentumTradeContext,
         date_iso_string: str,
-        price_data: dict[str, pd.DataFrame],
-        regime_indicators: dict[str, float | bool],
     ) -> None:
         """Helper to compute context and save a single momentum trade.
 
         Calculates individual indicator components and persists trade to repository.
         """
-        total_momentum_score = float(momentum_scores.at[symbol])
-        closing_price = float(price_data["close"].at[analysis_date, symbol])
+        total_momentum_score = float(context.momentum_scores.at[symbol])
+        closing_price = float(
+            context.price_data["close"].at[context.analysis_date, symbol]
+        )
 
         trade_context = {
             "source": "screener",
             "date": date_iso_string,
-            "roc_1": round(float(roc_matrices[21].at[analysis_date, symbol]), 2),
-            "roc_3": round(float(roc_matrices[63].at[analysis_date, symbol]), 2),
-            "roc_6": round(float(roc_matrices[126].at[analysis_date, symbol]), 2),
-            "roc_12": round(float(roc_matrices[252].at[analysis_date, symbol]), 2),
+            "roc_1": round(
+                float(
+                    context.roc_matrices[ROC_WINDOW_1M].at[
+                        context.analysis_date, symbol
+                    ]
+                ),
+                2,
+            ),
+            "roc_3": round(
+                float(
+                    context.roc_matrices[ROC_WINDOW_3M].at[
+                        context.analysis_date, symbol
+                    ]
+                ),
+                2,
+            ),
+            "roc_6": round(
+                float(
+                    context.roc_matrices[ROC_WINDOW_6M].at[
+                        context.analysis_date, symbol
+                    ]
+                ),
+                2,
+            ),
+            "roc_12": round(
+                float(
+                    context.roc_matrices[ROC_WINDOW_12M].at[
+                        context.analysis_date, symbol
+                    ]
+                ),
+                2,
+            ),
             "momentum_score": round(total_momentum_score, 2),
             "qqq_regime": "BULL"
-            if (regime_indicators["qqq"] > regime_indicators["qqq_sma"])
+            if (context.regime_indicators["qqq"] > context.regime_indicators["qqq_sma"])
             else "BEAR",
             "breadth_regime": "BULL"
-            if (regime_indicators["breadth_fast"] > regime_indicators["breadth_slow"])
+            if (
+                context.regime_indicators["breadth_fast"]
+                > context.regime_indicators["breadth_slow"]
+            )
             else "BEAR",
-            "regime": "BULL" if regime_indicators["bull"] else "BEAR",
-            "qqq_abs": regime_indicators["qqq"],
-            "qqq_sma": regime_indicators["qqq_sma"],
-            "breadth_fast": regime_indicators["breadth_fast"],
-            "breadth_slow": regime_indicators["breadth_slow"],
+            "regime": "BULL" if context.regime_indicators["bull"] else "BEAR",
+            "qqq_abs": context.regime_indicators["qqq"],
+            "qqq_sma": context.regime_indicators["qqq_sma"],
+            "breadth_fast": context.regime_indicators["breadth_fast"],
+            "breadth_slow": context.regime_indicators["breadth_slow"],
         }
 
         self.trade_repository.create_trade(

@@ -21,6 +21,15 @@ from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
+MIN_PREMARKET_HISTORY_BARS: int = 2
+MIN_POSTMARKET_HISTORY_BARS: int = 3
+FRIDAY_WEEKDAY: int = 4
+SATURDAY_WEEKDAY: int = 5
+SUNDAY_WEEKDAY: int = 6
+DAYS_FROM_FRIDAY_TO_MONDAY: int = 3
+DAYS_FROM_SATURDAY_TO_MONDAY: int = 2
+DAYS_FROM_SUNDAY_TO_MONDAY: int = 1
+
 
 @dataclass(frozen=True)
 class TGIMSetupResult:
@@ -115,7 +124,7 @@ class TGIMStrategy(BaseStrategy[int]):
         )
         price_history = history_map.get(self.TARGET_SYMBOL, pd.DataFrame())
 
-        if price_history.empty or len(price_history) < 2:
+        if price_history.empty or len(price_history) < MIN_PREMARKET_HISTORY_BARS:
             logger.warning(
                 "Insufficient price history for %s on %s.",
                 self.TARGET_SYMBOL,
@@ -133,7 +142,7 @@ class TGIMStrategy(BaseStrategy[int]):
 
         if candle_date == target_date:
             # Monday candle is present in history (post-market or historical backtest)
-            if len(price_history) < 3:
+            if len(price_history) < MIN_POSTMARKET_HISTORY_BARS:
                 return 0
             current_close = Decimal(str(latest_candle["close"]))
             friday_close = Decimal(str(price_history.iloc[-2]["close"]))
@@ -154,20 +163,42 @@ class TGIMStrategy(BaseStrategy[int]):
                     thursday_close,
                 )
                 return 0
+
+            entry_price = float(setup_result.threshold_price)
+            friday_close_float = float(friday_close)
+            thursday_close_float = float(thursday_close)
+            threshold_price = float(setup_result.threshold_price)
+            context_data: TGIMStrategyContext = {
+                "date": target_date_str,
+                "setup_date": target_date_str,
+                "setup_close": float(current_close),
+                "threshold_price": threshold_price,
+                "friday_close": friday_close_float,
+                "thursday_close": thursday_close_float,
+                "day": "Monday",
+                "max_holding_bars": self.DEFAULT_MAX_HOLDING_BARS,
+                "source": "ScreenerEngine",
+            }
         else:
-            # Pre-market / pre-close screening: Monday candle is not in DB yet.
+            # Pre-market live screening (Monday candle not in DB yet)
             friday_close = Decimal(str(latest_candle["close"]))
             thursday_close = Decimal(str(price_history.iloc[-2]["close"]))
-            threshold_price = min(friday_close, thursday_close)
-            setup_result = TGIMSetupResult(
-                is_signal=True,
-                setup_close=threshold_price,
-                threshold_price=threshold_price,
-                friday_close=friday_close,
-                thursday_close=thursday_close,
-            )
-
-        entry_price = float(setup_result.threshold_price)
+            threshold_price_dec = min(friday_close, thursday_close)
+            friday_close_float = float(friday_close)
+            thursday_close_float = float(thursday_close)
+            threshold_price = float(threshold_price_dec)
+            entry_price = threshold_price
+            context_data = {
+                "date": target_date_str,
+                "setup_date": target_date_str,
+                "setup_close": 0.0,
+                "threshold_price": threshold_price,
+                "friday_close": friday_close_float,
+                "thursday_close": thursday_close_float,
+                "day": "Monday",
+                "max_holding_bars": self.DEFAULT_MAX_HOLDING_BARS,
+                "source": "ScreenerEngine",
+            }
 
         if self.trade_repository.exists(
             self.TARGET_SYMBOL, self.STRATEGY_IDENTIFIER, target_date_str
@@ -179,33 +210,21 @@ class TGIMStrategy(BaseStrategy[int]):
             )
             return 0
 
-        context: TGIMStrategyContext = {
-            "date": target_date_str,
-            "setup_date": target_date_str,
-            "setup_close": float(setup_result.setup_close),
-            "threshold_price": float(setup_result.threshold_price),
-            "friday_close": float(setup_result.friday_close),
-            "thursday_close": float(setup_result.thursday_close),
-            "day": "Monday",
-            "max_holding_bars": self.DEFAULT_MAX_HOLDING_BARS,
-            "source": "ScreenerEngine",
-        }
-
-        trade_id = self.trade_repository.create_trade(
+        self.trade_repository.create_trade(
             symbol=self.TARGET_SYMBOL,
             strategy=self.STRATEGY_IDENTIFIER,
             size=0.0,
             entry=entry_price,
             stop_loss=0.0,
             target=0.0,
-            context=dict(context),
+            context=dict(context_data),
         )
-
         logger.info(
-            "Generated TGIM signal for %s on %s (Trade ID: %s).",
+            "[%s] CREATED trade recorded for %s @ %s (threshold: %s).",
+            self.name,
             self.TARGET_SYMBOL,
-            target_date_str,
-            trade_id,
+            entry_price,
+            threshold_price,
         )
 
         if self.telegram_bot:
@@ -215,7 +234,7 @@ class TGIMStrategy(BaseStrategy[int]):
                     SignalReportItem(
                         symbol=self.TARGET_SYMBOL,
                         action="BUY MOC",
-                        entry_price=entry_price,
+                        entry_price=round(entry_price, 2),
                     )
                 ],
                 target_date_str,
@@ -237,11 +256,11 @@ class TGIMStrategy(BaseStrategy[int]):
             reference_date = datetime.date.today()
             resolved_date = reference_date - datetime.timedelta(days=days)
 
-        if resolved_date.weekday() == 4:  # Friday -> Target Monday
-            return resolved_date + datetime.timedelta(days=3)
-        if resolved_date.weekday() == 5:  # Saturday -> Target Monday
-            return resolved_date + datetime.timedelta(days=2)
-        if resolved_date.weekday() == 6:  # Sunday -> Target Monday
-            return resolved_date + datetime.timedelta(days=1)
+        if resolved_date.weekday() == FRIDAY_WEEKDAY:  # Friday -> Target Monday
+            return resolved_date + datetime.timedelta(days=DAYS_FROM_FRIDAY_TO_MONDAY)
+        if resolved_date.weekday() == SATURDAY_WEEKDAY:  # Saturday -> Target Monday
+            return resolved_date + datetime.timedelta(days=DAYS_FROM_SATURDAY_TO_MONDAY)
+        if resolved_date.weekday() == SUNDAY_WEEKDAY:  # Sunday -> Target Monday
+            return resolved_date + datetime.timedelta(days=DAYS_FROM_SUNDAY_TO_MONDAY)
 
         return resolved_date

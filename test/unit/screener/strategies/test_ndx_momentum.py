@@ -6,7 +6,10 @@ import pytest
 
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.trade import TradeRepository
-from app.services.screener.strategies.ndx_momentum import NDXMomentumScreener
+from app.services.screener.strategies.ndx_momentum import (
+    MomentumTradeContext,
+    NDXMomentumScreener,
+)
 
 
 @pytest.fixture
@@ -198,8 +201,14 @@ def test_create_trades_direct_error_handling(strategy, mock_trade_repository):
 
     mock_trade_repository.create_trade.side_effect = side_effect
 
-    count = strategy._create_trades_direct(
-        symbols, momentum_scores, roc_map, analysis_date, price_data, regime
+    context = MomentumTradeContext(
+        symbols=symbols,
+        momentum_scores=momentum_scores,
+        roc_matrices=roc_map,
+        analysis_date=analysis_date,
+        price_data=price_data,
+        regime_indicators=regime,
     )
+    count = strategy._create_trades_direct(context)
     assert count == 1
     assert mock_trade_repository.create_trade.call_count == 2

@@ -13,6 +13,10 @@ from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
+WEDNESDAY_WEEKDAY: int = 2
+THURSDAY_WEEKDAY: int = 3
+FRIDAY_WEEKDAY: int = 4
+
 
 class TwoPercentStrategyContext(TypedDict):
     """Context data for the TwoPercent signal."""
@@ -133,54 +137,55 @@ class TwoPercentStrategy(BaseStrategy[int]):
     def _get_last_valid_candle(
         self, history: pd.DataFrame, analysis_timestamp: pd.Timestamp
     ) -> pd.Series | None:
-        """
-        Filters history up to the analysis_timestamp and returns the candle ONLY IF
-        it is definitively the final trading day of that calendar week.
-
-        This foolproof logic ensures robust backtesting and live execution
-        without relying on an external holiday calendar.
-        """
+        """Filters history up to analysis_timestamp and returns candle if end of week."""
         if history.empty:
             logger.warning("History is empty")
             return None
 
-        # 1. Fast date lookup via vectorization
-        if "date" in history.columns:
-            date_column = pd.to_datetime(history["date"]).dt.date
-        else:
-            if not isinstance(history.index, pd.DatetimeIndex):
-                logger.error("[%s] Missing DatetimeIndex or 'date' column.", self.name)
-                return None
-            date_column = history.index.to_series().dt.date
+        date_column = self._extract_date_series(history)
+        if date_column is None:
+            return None
 
-        # 2. Filter history strictly up to analysis_timestamp
         analysis_date = analysis_timestamp.date()
-        mask = date_column <= analysis_date
-        filtered = history.loc[mask]
-
+        filtered = history.loc[date_column <= analysis_date]
         if filtered.empty:
             logger.debug("[%s] No data up to %s", self.name, analysis_timestamp)
             return None
 
         last_candle = filtered.iloc[-1]
         candle_date = self._extract_timestamp(last_candle).date()
-
-        # Ensures the trigger strictly matches the requested execution date
         if candle_date != analysis_date:
             return None
 
-        # 3. Definitively check if this is the final trading day of the week
-        weekday = candle_date.weekday()
-        if weekday == 4:
-            return last_candle  # Friday is intrinsically the end of the week.
-
-        if weekday < 4:
-            if self._is_fallback_weekday_end_of_week(
-                candle_date, weekday, set(date_column), reference_date=analysis_date
-            ):
-                return last_candle
+        if self._is_end_of_week_candle(candle_date, date_column, analysis_date):
+            return last_candle
 
         return None
+
+    def _is_end_of_week_candle(
+        self,
+        candle_date: datetime.date,
+        date_column: pd.Series,
+        analysis_date: datetime.date,
+    ) -> bool:
+        """Checks if the candle represents Friday or a valid fallback weekday."""
+        weekday = candle_date.weekday()
+        if weekday == FRIDAY_WEEKDAY:
+            return True
+        if weekday < FRIDAY_WEEKDAY:
+            return self._is_fallback_weekday_end_of_week(
+                candle_date, weekday, set(date_column), reference_date=analysis_date
+            )
+        return False
+
+    def _extract_date_series(self, history: pd.DataFrame) -> pd.Series | None:
+        """Extracts date column as pd.Series of datetime.date objects."""
+        if "date" in history.columns:
+            return pd.to_datetime(history["date"]).dt.date
+        if not isinstance(history.index, pd.DatetimeIndex):
+            logger.error("[%s] Missing DatetimeIndex or 'date' column.", self.name)
+            return None
+        return history.index.to_series().dt.date
 
     def _is_fallback_weekday_end_of_week(
         self,
@@ -200,11 +205,12 @@ class TwoPercentStrategy(BaseStrategy[int]):
         Returns:
             bool: True if this is the last trading day of the week.
         """
-        friday = candle_date + datetime.timedelta(days=4 - weekday)
+        friday = candle_date + datetime.timedelta(days=FRIDAY_WEEKDAY - weekday)
 
         # Check for any future days in the same week using standard python set membership
         future_days = [
-            candle_date + datetime.timedelta(days=i) for i in range(1, 4 - weekday + 1)
+            candle_date + datetime.timedelta(days=i)
+            for i in range(1, FRIDAY_WEEKDAY - weekday + 1)
         ]
         for future_day in future_days:
             if future_day in existing_dates:
@@ -246,11 +252,12 @@ class TwoPercentStrategy(BaseStrategy[int]):
 
     def _get_day_label(self, timestamp: pd.Timestamp) -> str:
         """Returns a human-readable label for the execution day."""
-        if timestamp.weekday() == 4:
+        weekday = timestamp.weekday()
+        if weekday == FRIDAY_WEEKDAY:
             return "Friday"
-        elif timestamp.weekday() == 3:
+        if weekday == THURSDAY_WEEKDAY:
             return "Thursday (Fallback)"
-        elif timestamp.weekday() == 2:
+        if weekday == WEDNESDAY_WEEKDAY:
             return "Wednesday (Fallback)"
         return "Fallback"
 

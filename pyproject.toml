@@ -61,13 +61,6 @@ ignore = [
 "app/services/portfolio/allocator.py" = ["C901", "PLR0911", "PLR0912", "PLR0915"]
 "app/services/portfolio/dynamic_sizing.py" = ["PLR2004"]
 "app/services/screener/engine.py" = ["PLR0913", "PLR0917"]
-"app/services/screener/strategies/bounce_bandit.py" = ["PLR0915"]
-"app/services/screener/strategies/bridge_scout.py" = ["PLR0911", "PLR2004"]
-"app/services/screener/strategies/dip_buyer.py" = ["PLC0415", "PLR0911", "PLR0913", "PLR0917", "PLR2004"]
-"app/services/screener/strategies/ndx_momentum.py" = ["PLR0913", "PLR0917", "PLR2004"]
-"app/services/screener/strategies/tgim.py" = ["PLR2004"]
-"app/services/screener/strategies/turnover_timing.py" = ["PLR0913", "PLR0917", "PLR2004"]
-"app/services/screener/strategies/two_percent_strategy.py" = ["PLR0911", "PLR2004"]
 "app/services/setup.py" = ["PLC0415"]
 "app/services/trade_manager/manager.py" = ["C901", "PLR0911", "PLR0912"]
 "app/services/trade_manager/strategies/abstract.py" = ["PLR0913", "PLR0917"]
@@ -263,18 +256,6 @@ module = [
     "app.services.screener.engine",
 ]
 ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.screener.strategies.base",
-]
-ignore_errors = true
-
-
-
-
-
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]

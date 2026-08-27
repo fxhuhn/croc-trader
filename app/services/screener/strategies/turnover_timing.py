@@ -18,6 +18,24 @@ from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
+FRIDAY_WEEKDAY: int = 4
+THURSDAY_WEEKDAY: int = 3
+FACTOR_HALF: float = 0.5
+FACTOR_FULL: float = 1.0
+MIN_SMA_LOOKBACK_BARS: int = 200
+
+
+@dataclass(frozen=True)
+class TurnoverCandidateFilterContext:
+    """Analytical series context for universe candidate ranking."""
+
+    closes: pd.DataFrame
+    indices_map: dict[str, list[str]]
+    current_close: pd.Series
+    current_sma_price: pd.Series
+    current_sma_turnover: pd.Series
+    current_atr: pd.Series
+
 
 class TurnoverCandidate(TypedDict):
     """Metadata for potential trading candidates."""
@@ -168,10 +186,10 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         """Verifies if today is Friday or a holiday-adjusted Thursday."""
         day_of_week = analysis_timestamp.dayofweek  # Monday=0, Sunday=6
 
-        if day_of_week == 4:  # Friday
+        if day_of_week == FRIDAY_WEEKDAY:  # Friday
             return True
 
-        if day_of_week == 3:  # Thursday
+        if day_of_week == THURSDAY_WEEKDAY:  # Thursday
             tomorrow = analysis_timestamp + pd.Timedelta(days=1)
             if self.holiday_checker.is_holiday(tomorrow.date()):
                 return True
@@ -246,14 +264,15 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
             )
             return []
 
-        return self._rank_and_filter_candidates(
-            closes,
-            indices_map,
-            current_close,
-            current_sma_price,
-            current_sma_turnover,
-            current_atr,
+        context = TurnoverCandidateFilterContext(
+            closes=closes,
+            indices_map=indices_map,
+            current_close=current_close,
+            current_sma_price=current_sma_price,
+            current_sma_turnover=current_sma_turnover,
+            current_atr=current_atr,
         )
+        return self._rank_and_filter_candidates(context)
 
     def _calculate_indicators_slice(
         self,
@@ -277,30 +296,25 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
 
     def _rank_and_filter_candidates(
         self,
-        closes: pd.DataFrame,
-        indices_map: dict[str, list[str]],
-        current_close: pd.Series,
-        current_sma_price: pd.Series,
-        current_sma_turnover: pd.Series,
-        current_atr: pd.Series,
+        context: TurnoverCandidateFilterContext,
     ) -> list[TurnoverCandidate]:
         """Ranks and filters candidates based on turnover and trend metrics."""
         candidates = []
         symbol_filter = SymbolFilter()
 
-        for index_name, symbols_in_index in indices_map.items():
+        for index_name, symbols_in_index in context.indices_map.items():
             # Create a mask for valid symbols in this index
-            index_mask = [s for s in symbols_in_index if s in closes.columns]
+            index_mask = [s for s in symbols_in_index if s in context.closes.columns]
             if not index_mask:
                 continue
 
             # Consolidate data for vectorized filtering
             current_data = pd.DataFrame(
                 {
-                    "close": current_close.reindex(index_mask),
-                    "sma_price": current_sma_price.reindex(index_mask),
-                    "turnover_sma": current_sma_turnover.reindex(index_mask),
-                    "atr": current_atr.reindex(index_mask),
+                    "close": context.current_close.reindex(index_mask),
+                    "sma_price": context.current_sma_price.reindex(index_mask),
+                    "turnover_sma": context.current_sma_turnover.reindex(index_mask),
+                    "atr": context.current_atr.reindex(index_mask),
                 }
             ).dropna()
 
@@ -401,9 +415,9 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         created_signals = 0
 
         for factor in self.configuration.entry_factors:
-            if factor == 0.5:
+            if factor == FACTOR_HALF:
                 strategy_name = str(Strategies.TurnOverTiming_05)
-            elif factor == 1.0:
+            elif factor == FACTOR_FULL:
                 strategy_name = str(Strategies.TurnOverTiming_10)
             else:
                 strategy_name = f"{self.name}_{factor}"
@@ -432,7 +446,7 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
             self.trade_repository.create_trade(
                 symbol=symbol,
                 strategy=strategy_name,
-                size=0,
+                size=0.0,
                 entry=limit_price,
                 stop_loss=0.0,
                 target=0.0,
@@ -505,10 +519,10 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         except (KeyError, ValueError, TypeError) as error:
             return {"symbol": symbol, "error": f"Data Frame Error: {str(error)}"}
 
-        if len(closes) < 200:
+        if len(closes) < MIN_SMA_LOOKBACK_BARS:
             return {
                 "symbol": symbol,
-                "error": f"Not enough data (Found {len(closes)}, Need 200+)",
+                "error": f"Not enough data (Found {len(closes)}, Need {MIN_SMA_LOOKBACK_BARS}+)",
             }
 
         turnover = closes * volumes

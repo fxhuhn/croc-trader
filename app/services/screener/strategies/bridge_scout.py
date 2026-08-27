@@ -27,6 +27,12 @@ from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
+DECEMBER_MONTH: int = 12
+SATURDAY_WEEKDAY: int = 5
+MIN_BRIDGE_HISTORY_BARS: int = 15
+DEFAULT_ATR_WINDOW: int = 10
+DEFAULT_RSI_WINDOW: int = 2
+
 
 @dataclass(frozen=True)
 class BridgeScoutParameters:
@@ -77,7 +83,7 @@ def get_remaining_trading_days_in_month(
     checker = holiday_checker or MarketHolidayChecker()
 
     # Find month boundary (last calendar day of the month)
-    if check_date.month == 12:
+    if check_date.month == DECEMBER_MONTH:
         next_month_start = datetime.date(check_date.year + 1, 1, 1)
     else:
         next_month_start = datetime.date(check_date.year, check_date.month + 1, 1)
@@ -86,7 +92,7 @@ def get_remaining_trading_days_in_month(
     trading_day_count = 0
     current = check_date
     while current <= last_day_of_month:
-        if current.weekday() < 5 and not checker.is_holiday(current):
+        if current.weekday() < SATURDAY_WEEKDAY and not checker.is_holiday(current):
             trading_day_count += 1
         current += datetime.timedelta(days=1)
 
@@ -117,53 +123,48 @@ def is_in_end_of_month_window(
     return 1 <= remaining_days <= (days_before + 1)
 
 
-def evaluate_bridge_scout_setup(
+def _evaluate_live_same_day(
     close_series: pd.Series,
-    high_series: pd.Series,
-    low_series: pd.Series,
-    params: BridgeScoutParameters | None = None,
+    current_atr: float,
+    cfg: BridgeScoutParameters,
 ) -> BridgeScoutSetupResult | None:
-    """Pure calculation: Evaluates Bridge Scout setup conditions without side effects."""
-    cfg = params or BridgeScoutParameters()
-    if close_series.empty or len(close_series) < 15:
+    current_close = float(close_series.iloc[-1])
+    if current_close <= 0:
         return None
+    rsi_series = calculate_rsi(close_series, DEFAULT_RSI_WINDOW)
+    current_rsi = float(rsi_series.iloc[-1])
+    atr_pct = (current_atr / current_close) * 100.0
 
-    atr_series = calculate_atr(high_series, low_series, close_series, 10)
-    current_atr = float(atr_series.iloc[-1])
-
-    if cfg.is_live_same_day:
-        current_close = float(close_series.iloc[-1])
-        if current_close <= 0:
-            return None
-        rsi_series = calculate_rsi(close_series, 2)
-        current_rsi = float(rsi_series.iloc[-1])
-        atr_pct = (current_atr / current_close) * 100.0
-
-        if current_rsi >= cfg.rsi_threshold or atr_pct >= cfg.max_atr_pct:
-            return BridgeScoutSetupResult(
-                is_signal=False,
-                setup_close=current_close,
-                entry_price=current_close,
-                rsi_2=round(current_rsi, 2),
-                atr_pct=round(atr_pct, 2),
-                req_close_rsi40=0.0,
-            )
-
-        req_close_rsi40 = calculate_max_close_for_rsi(
-            close_series.iloc[:-1],
-            window=2,
-            rsi_target=cfg.rsi_threshold,
-        )
+    if current_rsi >= cfg.rsi_threshold or atr_pct >= cfg.max_atr_pct:
         return BridgeScoutSetupResult(
-            is_signal=True,
+            is_signal=False,
             setup_close=current_close,
             entry_price=current_close,
             rsi_2=round(current_rsi, 2),
             atr_pct=round(atr_pct, 2),
-            req_close_rsi40=round(req_close_rsi40, 2),
+            req_close_rsi40=0.0,
         )
 
-    # Pre-market / live screening: candle for target_date is not in DB yet
+    req_close_rsi40 = calculate_max_close_for_rsi(
+        close_series.iloc[:-1],
+        window=DEFAULT_RSI_WINDOW,
+        rsi_target=cfg.rsi_threshold,
+    )
+    return BridgeScoutSetupResult(
+        is_signal=True,
+        setup_close=current_close,
+        entry_price=current_close,
+        rsi_2=round(current_rsi, 2),
+        atr_pct=round(atr_pct, 2),
+        req_close_rsi40=round(req_close_rsi40, 2),
+    )
+
+
+def _evaluate_premarket(
+    close_series: pd.Series,
+    current_atr: float,
+    cfg: BridgeScoutParameters,
+) -> BridgeScoutSetupResult | None:
     last_close = float(close_series.iloc[-1])
     if last_close <= 0:
         return None
@@ -181,10 +182,10 @@ def evaluate_bridge_scout_setup(
 
     req_close_rsi40 = calculate_max_close_for_rsi(
         close_series,
-        window=2,
+        window=DEFAULT_RSI_WINDOW,
         rsi_target=cfg.rsi_threshold,
     )
-    rsi_series = calculate_rsi(close_series, 2)
+    rsi_series = calculate_rsi(close_series, DEFAULT_RSI_WINDOW)
     rsi_2_val = round(float(rsi_series.iloc[-1]), 2)
 
     return BridgeScoutSetupResult(
@@ -195,6 +196,28 @@ def evaluate_bridge_scout_setup(
         atr_pct=round(atr_pct, 2),
         req_close_rsi40=round(req_close_rsi40, 2),
     )
+
+
+def evaluate_bridge_scout_setup(
+    close_series: pd.Series,
+    high_series: pd.Series,
+    low_series: pd.Series,
+    params: BridgeScoutParameters | None = None,
+) -> BridgeScoutSetupResult | None:
+    """Pure calculation: Evaluates Bridge Scout setup conditions without side effects."""
+    cfg = params or BridgeScoutParameters()
+    if close_series.empty or len(close_series) < MIN_BRIDGE_HISTORY_BARS:
+        return None
+
+    atr_series = calculate_atr(
+        high_series, low_series, close_series, DEFAULT_ATR_WINDOW
+    )
+    current_atr = float(atr_series.iloc[-1])
+
+    if cfg.is_live_same_day:
+        return _evaluate_live_same_day(close_series, current_atr, cfg)
+
+    return _evaluate_premarket(close_series, current_atr, cfg)
 
 
 class BridgeScoutStrategy(BaseStrategy[int]):
@@ -250,7 +273,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         )
         price_history = history_map.get(self.TARGET_SYMBOL, pd.DataFrame())
 
-        if price_history.empty or len(price_history) < 15:
+        if price_history.empty or len(price_history) < MIN_BRIDGE_HISTORY_BARS:
             logger.warning(
                 "Insufficient price history for %s on %s.",
                 self.TARGET_SYMBOL,
