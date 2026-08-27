@@ -75,6 +75,15 @@ class SettlementRecord(TypedDict):
     total_commissions: float
     net_pnl: float
     settled_at: str
+    executions: NotRequired[list[ExecutionRecord]]
+    local_trade_id: NotRequired[str]
+    symbol: NotRequired[str]
+    strategy_name: NotRequired[str]
+    entry_date: NotRequired[str]
+    days_held: NotRequired[int]
+    quantity: NotRequired[float]
+    pnl_percentage: NotRequired[float]
+    strategy_filter: NotRequired[str]
 
 
 class ActivePositionRecord(TypedDict):
@@ -93,6 +102,7 @@ class ActivePositionRecord(TypedDict):
     unrealized_pnl: float
     pnl_percentage: float
     trade_group_id: str
+    strategy_filter: NotRequired[str]
 
 
 class BrokerRepository(BaseRepository):
@@ -256,11 +266,8 @@ class BrokerRepository(BaseRepository):
             parts = trade_group_id.split("_")
             local_id = int(parts[0]) if parts and parts[0].isdigit() else 0
 
-            latest_execution_date = (
-                latest_buy["executed_at"][:10]
-                if latest_buy and latest_buy.get("executed_at")
-                else "-"
-            )
+            executed_at = latest_buy.get("executed_at") if latest_buy else None
+            latest_execution_date = executed_at[:10] if executed_at is not None else "-"
 
             position_record: ActivePositionRecord = {
                 "id": local_id,

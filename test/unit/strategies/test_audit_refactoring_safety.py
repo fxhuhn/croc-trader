@@ -176,6 +176,10 @@ def test_two_percent_generate_exit_order_early_returns():
 
 def test_two_percent_day_one_entry_target_calculation():
     """Verifies target price calculation during Day 1 entry activation."""
+    from app.services.trade_manager.strategies.two_percent_strategy import (
+        TwoPercentEntryContext,
+    )
+
     strategy = TwoPercentStrategy()
     trade = {
         "id": 20,
@@ -188,12 +192,14 @@ def test_two_percent_day_one_entry_target_calculation():
 
     # Open below limit -> Limit set to Open price
     transition = strategy._process_day_one_entry(
-        trade=trade,
-        open_price=195.0,
-        low_price=194.0,
-        limit_price=200.0,
-        date_string="2026-02-02",
-        is_today_holiday=False,
+        TwoPercentEntryContext(
+            trade=trade,
+            open_price=195.0,
+            low_price=194.0,
+            limit_price=200.0,
+            date_string="2026-02-02",
+            is_today_holiday=False,
+        )
     )
     assert transition is not None
     assert transition.updates["status"] == TradeStatus.ACTIVE

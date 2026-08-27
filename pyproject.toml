@@ -62,15 +62,6 @@ ignore = [
 "app/services/portfolio/dynamic_sizing.py" = ["PLR2004"]
 "app/services/screener/engine.py" = ["PLR0913", "PLR0917"]
 "app/services/setup.py" = ["PLC0415"]
-"app/services/trade_manager/manager.py" = ["C901", "PLR0911", "PLR0912"]
-"app/services/trade_manager/strategies/abstract.py" = ["PLR0913", "PLR0917"]
-"app/services/trade_manager/strategies/dip_buyer.py" = ["PLR2004"]
-"app/services/trade_manager/strategies/hold_target.py" = ["PLR0911", "PLR2004"]
-"app/services/trade_manager/strategies/ndx_momentum.py" = ["PLR2004"]
-"app/services/trade_manager/strategies/tgim.py" = ["PLR2004"]
-"app/services/trade_manager/strategies/turnover_timing.py" = ["PLR2004"]
-"app/services/trade_manager/strategies/two_percent_strategy.py" = ["PLR0913", "PLR0917", "PLR2004"]
-"app/services/trade_manager/view_service.py" = ["C901", "PLC0415", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PLR2004"]
 "app/tools/metrics.py" = ["PLR2004"]
 "app/tools/trading_calendar.py" = ["PLR2004"]
 "scripts/analyzer/ml_analysis.py" = ["PLR2004"]
@@ -268,46 +259,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "app.services.setup",
-]
-ignore_errors = true
-
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.trade_manager.manager",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.trade_manager.order_export",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.trade_manager.strategies.abstract",
-]
-ignore_errors = true
-
-
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.trade_manager.strategies.hold_target",
-]
-ignore_errors = true
-
-
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.trade_manager.view_service",
 ]
 ignore_errors = true
 

@@ -1,10 +1,13 @@
 import csv
 import logging
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import cast
 
 from ...config import settings
 from ...const import Strategies
 from ...models import Order
+from ...types import TradeData
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +22,11 @@ def _get_override_for_symbol(symbol: str) -> dict[str, str]:
         dict[str, str]: The dictionary of overrides, or empty if none found.
     """
     overrides = getattr(settings.app, "order_overrides", {})
-    return overrides.get(symbol, {})
+    if isinstance(overrides, dict):
+        val = overrides.get(symbol, {})
+        if isinstance(val, dict):
+            return cast(dict[str, str], val)
+    return {}
 
 
 # Strategies whose orders are written to the daily CSV export.
@@ -64,13 +71,15 @@ def get_strategy_display_name(strategy_enum: Strategies) -> str:
 
 
 def write_csv_orders_file(
-    orders_data: list[tuple[dict[str, object], Order]],
+    orders_data: Sequence[tuple[TradeData | dict[str, object], Order]],
     date_string: str,
     ibkr_account_id: str,
-    resolve_strategy_fn: callable,
+    resolve_strategy_fn: Callable[[str], Strategies | None],
 ) -> Path | None:
     """Transforms and saves generated orders to a CSV file in bracket layout."""
-    filtered_orders_data: list[tuple[dict[str, object], Order, Strategies]] = []
+    filtered_orders_data: list[
+        tuple[TradeData | dict[str, object], Order, Strategies]
+    ] = []
     for trade, order in orders_data:
         resolved_strategy = resolve_strategy_fn(str(trade.get("strategy", "")))
         if resolved_strategy in _CSV_SUPPORTED_STRATEGIES:
@@ -132,7 +141,7 @@ def write_csv_orders_file(
 
 
 def map_order_to_csv_rows(
-    trade: dict[str, object],
+    trade: TradeData | dict[str, object],
     order: Order,
     trade_group_id: str,
     strategy_display_name: str,

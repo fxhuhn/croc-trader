@@ -1,7 +1,8 @@
 import json
 import logging
+from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, TypedDict, cast
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -14,20 +15,85 @@ from ...const import (
     TargetColumn,
     TradeStatus,
 )
-from ...database.repositories.broker import BrokerRepository
+from ...database.repositories.broker import (
+    ActivePositionRecord,
+    BrokerRepository,
+    SettlementRecord,
+)
 from ...database.repositories.market import MarketRepository
 from ...database.repositories.trade import TradeRepository
 from ...tools import metrics
-
-# Import TradeData from types to avoid duplication definition (if possible), or keep TradeViewData as extended
-# The user asked to avoid duplication with app/types.py.
-# We can import TradeData and use it as a base or reference.
 from ...types import TradeData
+from .strategies.bounce_bandit import BounceBanditTradeStrategy
 
 logger = logging.getLogger(__name__)
 
+CRITICAL_STOP_LOSS_THRESHOLD: float = 0.01
+MIN_HISTORY_FOR_BOUNCE_BANDIT_DAILY_UPDATE: int = 8
+MIN_SERIES_LENGTH_FOR_SQN: int = 2
+MIN_ROWS_FOR_PREVIOUS_CANDLE: int = 2
+MIN_TIMESTAMP_SPLIT_PARTS: int = 2
 
-class TradeViewData(TradeData):
+
+@dataclass(frozen=True)
+class ViewBuildParams:
+    """Encapsulates parameters for constructing a TradeViewData object."""
+
+    trade: dict[str, object]
+    context_dict: dict[str, object]
+    display_entry: str
+    display_exit: str
+    days_held: int
+    prices: dict[str, float]
+    pnl_data: dict[str, object]
+
+
+@dataclass
+class StrategyMetricAccumulator:
+    """Accumulator for computing broker strategy statistics."""
+
+    pnl: float = 0.0
+    fees: float = 0.0
+    total_count: int = 0
+    win_count: int = 0
+    slippage_sum: float = 0.0
+
+
+class SymbolTradeGroup(TypedDict):
+    """Grouped active trades for a single symbol."""
+
+    symbol: str
+    total_pnl: float
+    total_invested: float
+    total_pnl_percentage: float
+    variants: list["TradeViewData"]
+
+
+class HistoryTradeGroup(TypedDict):
+    """Grouped closed trade history records."""
+
+    symbol: str
+    entry_date: str
+    max_exit: str
+    display_index: str
+    trades: list["TradeViewData"]
+
+
+def _map_strategy_filter_name(raw_name: str) -> str:
+    """Normalizes a raw strategy name into its UI filter representation."""
+    raw_lower = raw_name.lower()
+    if "dip" in raw_lower:
+        return "DipBuyer"
+    if "turnover" in raw_lower:
+        return "TurnoverTiming"
+    if "twopercent" in raw_lower or "percent" in raw_lower:
+        return "TwoPercent"
+    if "ndx" in raw_lower or "momentum" in raw_lower:
+        return "NDXMomentum"
+    return raw_name
+
+
+class TradeViewData(TradeData, total=False):
     """
     Extended dictionary for trade view data, inheriting from TradeData.
     Adds display-specific fields.
@@ -47,6 +113,11 @@ class TradeViewData(TradeData):
     sparkline: str
     max_days: int | None
     version: str | None
+    current_price: float | None
+    stop_loss: float | None
+    take_profit: float | None
+    tws_status: str | None
+    tws_orders: list[object]
 
     # Context (overrides str | None from TradeData for parsed dict)
     context: dict[str, object]
@@ -121,7 +192,10 @@ class TradeViewService:
         try:
             raw_context = trade.get("signal_context")
             if isinstance(raw_context, str) and raw_context:
-                return json.loads(raw_context)
+                parsed = json.loads(raw_context)
+                if isinstance(parsed, dict):
+                    return {str(k): v for k, v in parsed.items()}
+                return {}
             if isinstance(raw_context, dict):
                 return {str(k): v for k, v in raw_context.items()}
             return {}
@@ -193,7 +267,8 @@ class TradeViewService:
             unrealized_pnl = (current_price - entry_price) * initial_size
             pnl_percentage = ((current_price - entry_price) / entry_price) * 100
 
-        stop_loss = float(trade.get("current_stop_loss") or 0.0)
+        stop_loss_val = trade.get("current_stop_loss")
+        stop_loss = float(str(stop_loss_val)) if stop_loss_val is not None else 0.0
         target_price = 0.0
 
         # Target Hierarchy using Enums
@@ -220,7 +295,10 @@ class TradeViewService:
         is_critical = False
         if stop_loss > 0.0:
             distance = abs(current_price - stop_loss)
-            if current_price > 0 and (distance / current_price) < 0.01:
+            if (
+                current_price > 0
+                and (distance / current_price) < CRITICAL_STOP_LOSS_THRESHOLD
+            ):
                 is_critical = True
 
         return unrealized_pnl, pnl_percentage, is_critical, progress
@@ -245,7 +323,10 @@ class TradeViewService:
         Returns:
             tuple[float, float]: Tuple of (realized_pnl, pnl_percentage).
         """
-        realized_pnl = float(trade.get("realized_pnl") or 0.0)
+        realized_pnl_val = trade.get("realized_pnl")
+        realized_pnl = (
+            float(str(realized_pnl_val)) if realized_pnl_val is not None else 0.0
+        )
         pnl_percentage = 0.0
 
         if entry_price > 0:
@@ -266,6 +347,45 @@ class TradeViewService:
 
         return realized_pnl, pnl_percentage
 
+    def _enrich_bounce_bandit_context(
+        self, trade: dict[str, object], context_dict: dict[str, object]
+    ) -> None:
+        """Enriches context for BounceBandit trades with dynamic indicators if missing."""
+        if not self.is_strategy_match(trade, Strategies.BounceBandit):
+            return
+        if (
+            context_dict.get("sma_8") is not None
+            and context_dict.get("target") is not None
+        ):
+            return
+
+        symbol = str(trade.get("symbol", ""))
+        if not symbol:
+            return
+
+        start_date = (pd.Timestamp.now() - pd.Timedelta(days=60)).strftime("%Y-%m-%d")
+        trade_entry = trade.get("entry_date") or trade.get("created_at")
+        if trade_entry:
+            try:
+                start_date = (
+                    pd.Timestamp(trade_entry) - pd.Timedelta(days=60)
+                ).strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                pass
+
+        df_hist = self.market_repository.get_symbol_history_raw(
+            symbol, start_date=start_date
+        )
+        if (
+            not df_hist.empty
+            and len(df_hist) >= MIN_HISTORY_FOR_BOUNCE_BANDIT_DAILY_UPDATE
+        ):
+            updates = BounceBanditTradeStrategy().get_daily_updates(
+                cast(TradeData, trade), df_hist
+            )
+            if updates:
+                context_dict.update(updates)
+
     def prepare_trade_view(self, trade: dict[str, object]) -> TradeViewData:
         """Transforms a raw trade dict into a strictly typed TradeViewData.
 
@@ -279,47 +399,39 @@ class TradeViewService:
         if "indices" not in context_dict and "bucket" in context_dict:
             context_dict["indices"] = context_dict["bucket"]
 
-        if self.is_strategy_match(trade, Strategies.BounceBandit):
-            if context_dict.get("sma_8") is None or context_dict.get("target") is None:
-                symbol = str(trade.get("symbol", ""))
-                if symbol:
-                    start_date = (pd.Timestamp.now() - pd.Timedelta(days=60)).strftime(
-                        "%Y-%m-%d"
-                    )
-                    trade_entry = trade.get("entry_date") or trade.get("created_at")
-                    if trade_entry:
-                        try:
-                            start_date = (
-                                pd.Timestamp(trade_entry) - pd.Timedelta(days=60)
-                            ).strftime("%Y-%m-%d")
-                        except (ValueError, TypeError):
-                            pass
-                    df_hist = self.market_repository.get_symbol_history_raw(
-                        symbol, start_date=start_date
-                    )
-                    if not df_hist.empty and len(df_hist) >= 8:
-                        from .strategies.bounce_bandit import BounceBanditTradeStrategy
-
-                        updates = BounceBanditTradeStrategy().get_daily_updates(
-                            trade, df_hist
-                        )
-                        if updates:
-                            context_dict.update(updates)
+        self._enrich_bounce_bandit_context(trade, context_dict)
 
         display_entry, display_exit, days_held = self._extract_dates_and_holding(trade)
 
-        entry_price = float(trade.get("entry_price") or 0.0)
+        entry_price_val = trade.get("entry_price")
+        entry_price = (
+            float(str(entry_price_val)) if entry_price_val is not None else 0.0
+        )
+        current_price_val = trade.get("current_price")
+        raw_current_price = (
+            float(str(current_price_val)) if current_price_val is not None else 0.0
+        )
         current_price = self._resolve_current_price(
             str(trade.get("symbol", "")),
             trade.get("status"),
-            float(trade.get("current_price") or 0.0),
+            raw_current_price,
         )
-        initial_size = float(trade.get("initial_size") or 0.0)
-        current_size = float(trade.get("current_size") or 0.0)
-        exit_price = float(trade.get("exit_price") or 0.0)
+        initial_size_val = trade.get("initial_size")
+        initial_size = (
+            float(str(initial_size_val)) if initial_size_val is not None else 0.0
+        )
+        current_size_val = trade.get("current_size")
+        current_size = (
+            float(str(current_size_val)) if current_size_val is not None else 0.0
+        )
+        exit_price_val = trade.get("exit_price")
+        exit_price = float(str(exit_price_val)) if exit_price_val is not None else 0.0
 
         unrealized_pnl = 0.0
-        realized_pnl = float(trade.get("realized_pnl") or 0.0)
+        realized_pnl_val = trade.get("realized_pnl")
+        realized_pnl = (
+            float(str(realized_pnl_val)) if realized_pnl_val is not None else 0.0
+        )
         pnl_percentage = 0.0
         is_critical = False
         progress = 0.0
@@ -348,7 +460,7 @@ class TradeViewService:
             "current_size": current_size,
             "exit": exit_price,
         }
-        pnl_data = {
+        pnl_data: dict[str, object] = {
             "unrealized_pnl": unrealized_pnl,
             "realized_pnl": realized_pnl,
             "pnl_percentage": pnl_percentage,
@@ -357,13 +469,15 @@ class TradeViewService:
         }
 
         return self._build_view_data(
-            trade,
-            context_dict,
-            display_entry,
-            display_exit,
-            days_held,
-            prices,
-            pnl_data,
+            ViewBuildParams(
+                trade=trade,
+                context_dict=context_dict,
+                display_entry=display_entry,
+                display_exit=display_exit,
+                days_held=days_held,
+                prices=prices,
+                pnl_data=pnl_data,
+            )
         )
 
     def _extract_dates_and_holding(
@@ -399,56 +513,63 @@ class TradeViewService:
 
     def _build_view_data(
         self,
-        trade: dict[str, object],
-        context_dict: dict[str, object],
-        display_entry: str,
-        display_exit: str,
-        days_held: int,
-        prices: dict[str, float],
-        pnl_data: dict[str, object],
+        params: ViewBuildParams,
     ) -> TradeViewData:
         """Assembles and returns a TradeViewData dictionary."""
-        entry_date = trade.get("entry_date")
-        exit_date = trade.get("exit_date")
+        entry_date = params.trade.get("entry_date")
+        exit_date = params.trade.get("exit_date")
+        signal_context_val = params.trade.get("signal_context")
+        exit_reason_val = params.trade.get("exit_reason")
 
-        # Query TWS details (not used by strategy trade pages)
-        tws_status = None
-        tws_orders = []
+        stop_loss_val = params.trade.get("current_stop_loss")
+        stop_loss = float(str(stop_loss_val)) if stop_loss_val is not None else 0.0
+
+        target_val = params.trade.get("current_target")
+        target = float(str(target_val)) if target_val is not None else 0.0
+
+        budget_val = params.trade.get("budget")
+        budget = float(str(budget_val)) if budget_val is not None else 0.0
 
         return {
-            "id": trade.get("id", ""),
-            "symbol": trade.get("symbol", ""),
-            "strategy": trade.get("strategy", ""),
-            "version": self._extract_strategy_version(str(trade.get("strategy", ""))),
-            "status": trade.get("status", ""),
+            "id": str(params.trade.get("id", "")),
+            "symbol": str(params.trade.get("symbol", "")),
+            "strategy": str(params.trade.get("strategy", "")),
+            "version": self._extract_strategy_version(
+                str(params.trade.get("strategy", ""))
+            ),
+            "status": str(params.trade.get("status", "")),
             "entry_date": str(entry_date) if entry_date else None,
             "exit_date": str(exit_date) if exit_date else None,
-            "entry_price": prices["entry"],
-            "exit_price": prices["exit"],
-            "current_price": prices["current"],
-            "initial_size": prices["initial_size"],
-            "current_size": prices["current_size"],
-            "current_stop_loss": float(trade.get("current_stop_loss") or 0.0),
-            "current_target": float(trade.get("current_target") or 0.0),
-            "budget": float(trade.get("budget") or 0.0),
-            "signal_context": trade.get("signal_context"),
-            "exit_reason": trade.get("exit_reason"),
-            "stop_loss": float(trade.get("current_stop_loss") or 0.0),
+            "entry_price": params.prices["entry"],
+            "exit_price": params.prices["exit"],
+            "current_price": params.prices["current"],
+            "initial_size": int(params.prices["initial_size"]),
+            "current_size": int(params.prices["current_size"]),
+            "current_stop_loss": stop_loss,
+            "current_target": target,
+            "budget": budget,
+            "signal_context": (
+                str(signal_context_val) if signal_context_val is not None else None
+            ),
+            "exit_reason": (
+                str(exit_reason_val) if exit_reason_val is not None else None
+            ),
+            "stop_loss": stop_loss,
             "take_profit": 0.0,
-            "display_entry": display_entry,
-            "display_exit": display_exit,
-            "days_held": days_held,
-            "unrealized_pnl": float(pnl_data["unrealized_pnl"]),
-            "realized_pnl": float(pnl_data["realized_pnl"]),
-            "pnl_percentage": float(pnl_data["pnl_percentage"]),
-            "is_critical": bool(pnl_data["is_critical"]),
-            "progress": float(pnl_data["progress"]),
-            "display_size": prices["initial_size"],
+            "display_entry": params.display_entry,
+            "display_exit": params.display_exit,
+            "days_held": params.days_held,
+            "unrealized_pnl": float(str(params.pnl_data["unrealized_pnl"])),
+            "realized_pnl": float(str(params.pnl_data["realized_pnl"])),
+            "pnl_percentage": float(str(params.pnl_data["pnl_percentage"])),
+            "is_critical": bool(params.pnl_data["is_critical"]),
+            "progress": float(str(params.pnl_data["progress"])),
+            "display_size": params.prices["initial_size"],
             "sparkline": "",
             "max_days": None,
-            "context": context_dict,
-            "tws_status": tws_status,
-            "tws_orders": tws_orders,
+            "context": params.context_dict,
+            "tws_status": None,
+            "tws_orders": [],
         }
 
     def generate_sparkline(
@@ -483,8 +604,12 @@ class TradeViewService:
             height=50,
             width=120,
         )
-        return figure.to_html(
-            full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
+        return str(
+            figure.to_html(
+                full_html=False,
+                include_plotlyjs="cdn",
+                config={"displayModeBar": False},
+            )
         )
 
     def generate_donut_chart(
@@ -511,8 +636,12 @@ class TradeViewService:
             showlegend=False,
             height=200,
         )
-        return figure.to_html(
-            full_html=False, include_plotlyjs="cdn", config={"displayModeBar": False}
+        return str(
+            figure.to_html(
+                full_html=False,
+                include_plotlyjs="cdn",
+                config={"displayModeBar": False},
+            )
         )
 
     def attach_sparklines(
@@ -627,7 +756,11 @@ class TradeViewService:
                 total_5d_change += trade["unrealized_pnl"]
                 continue
 
-            past_row = rows.iloc[-2] if len(rows) >= 2 else rows.iloc[0]
+            past_row = (
+                rows.iloc[-2]
+                if len(rows) >= MIN_ROWS_FOR_PREVIOUS_CANDLE
+                else rows.iloc[0]
+            )
             past_date_str = str(past_row["date"]).split("T")[0].split(" ")[0]
             past_price = float(past_row["close"])
 
@@ -635,11 +768,16 @@ class TradeViewService:
                 str(trade.get("entry_date") or "").split("T")[0].split(" ")[0]
             )
             initial_size = float(trade.get("initial_size") or 0.0)
-            current_price = float(trade.get("current_price") or past_price)
+            current_price_val = trade.get("current_price")
+            current_price = (
+                float(str(current_price_val))
+                if current_price_val is not None
+                else past_price
+            )
             direction = str(trade.get("context", {}).get("direction", "long")).lower()
 
             if entry_date_str and entry_date_str > past_date_str:
-                total_5d_change += trade["unrealized_pnl"]
+                total_5d_change += float(trade.get("unrealized_pnl") or 0.0)
             else:
                 if direction == "short":
                     trade_5d_change = (past_price - current_price) * initial_size
@@ -656,7 +794,7 @@ class TradeViewService:
                 latest_ts = self.trade_repository.get_latest_updated_at()
                 if latest_ts:
                     parts = latest_ts.replace("T", " ").split(" ")
-                    if len(parts) >= 2:
+                    if len(parts) >= MIN_TIMESTAMP_SPLIT_PARTS:
                         date_part = parts[0]
                         time_part = parts[1].split(".")[0][:5]
                         return f"{date_part} {time_part}"
@@ -682,9 +820,13 @@ class TradeViewService:
     ) -> dict[str, float | int | str | None]:
         """Calculates summary metrics for active trades."""
         total_invested = sum(
-            trade["entry_price"] * trade["initial_size"] for trade in active_trades
+            float(trade.get("entry_price") or 0.0)
+            * float(trade.get("initial_size") or 0.0)
+            for trade in active_trades
         )
-        total_open_pnl = sum(trade["unrealized_pnl"] for trade in active_trades)
+        total_open_pnl = sum(
+            float(trade.get("unrealized_pnl") or 0.0) for trade in active_trades
+        )
         open_pnl_5d_change = self._calculate_open_pnl_5d_change(
             active_trades, reference_date=reference_date
         )
@@ -712,9 +854,10 @@ class TradeViewService:
                 pnl = float(trade.get("realized_pnl") or 0.0)
                 entry = float(trade.get("entry_price") or 0.0)
                 size = float(trade.get("initial_size") or 0.0)
-                stop = float(
+                stop_val = (
                     trade.get("current_stop_loss") or trade.get("stop_loss") or 0.0
                 )
+                stop = float(str(stop_val))
                 if entry > 0 and stop > 0 and entry != stop:
                     risk = abs(entry - stop) * size
                 elif entry > 0 and size > 0:
@@ -723,7 +866,11 @@ class TradeViewService:
                     risk = 1.0
                 r_list.append(pnl / risk if risk > 0 else 0.0)
 
-            sqn = metrics.calculate_sqn(pd.Series(r_list)) if len(r_list) >= 2 else 0.0
+            sqn = (
+                metrics.calculate_sqn(pd.Series(r_list))
+                if len(r_list) >= MIN_SERIES_LENGTH_FOR_SQN
+                else 0.0
+            )
         except Exception as err:
             logger.debug(
                 "Failed to calculate closed trade metrics for portfolio summary: %s",
@@ -749,7 +896,9 @@ class TradeViewService:
         self, closed_trades: list[TradeViewData]
     ) -> dict[str, float | int]:
         """Calculates summary metrics for closed trades."""
-        total_pnl = sum(trade["realized_pnl"] for trade in closed_trades)
+        total_pnl = sum(
+            float(trade.get("realized_pnl") or 0.0) for trade in closed_trades
+        )
         count = len(closed_trades)
         avg_pnl = total_pnl / count if count > 0 else 0.0
 
@@ -759,9 +908,9 @@ class TradeViewService:
         self, trades: list[TradeViewData]
     ) -> list[dict[str, object]]:
         """Groups active trades by symbol."""
-        grouped: dict[str, dict[str, object]] = {}
+        grouped: dict[str, SymbolTradeGroup] = {}
         for trade in trades:
-            symbol = trade["symbol"]
+            symbol = str(trade.get("symbol", ""))
             if symbol not in grouped:
                 grouped[symbol] = {
                     "symbol": symbol,
@@ -771,10 +920,11 @@ class TradeViewService:
                     "variants": [],
                 }
             grouped[symbol]["variants"].append(trade)
-            grouped[symbol]["total_pnl"] += trade["unrealized_pnl"]
-            grouped[symbol]["total_invested"] += (
-                trade["entry_price"] * trade["initial_size"]
-            )
+            unrealized_pnl = float(trade.get("unrealized_pnl") or 0.0)
+            entry_price = float(trade.get("entry_price") or 0.0)
+            initial_size = float(trade.get("initial_size") or 0.0)
+            grouped[symbol]["total_pnl"] += unrealized_pnl
+            grouped[symbol]["total_invested"] += entry_price * initial_size
 
         for group in grouped.values():
             if group["total_invested"] > 0:
@@ -782,78 +932,77 @@ class TradeViewService:
                     group["total_pnl"] / group["total_invested"]
                 ) * 100
 
-        return sorted(grouped.values(), key=lambda x: x["symbol"])
+        sorted_groups = sorted(grouped.values(), key=lambda x: str(x["symbol"]))
+        return [cast(dict[str, object], g) for g in sorted_groups]
 
     def group_trades_history(
         self, trades: list[TradeViewData]
     ) -> list[dict[str, object]]:
         """Groups closed trades by Symbol + Entry Date."""
-        grouped: dict[tuple[str, str], dict[str, object]] = {}
+        grouped: dict[tuple[str, str], HistoryTradeGroup] = {}
 
         for trade in trades:
-            # Entry date key fallback
-            entry_date_key = trade["display_entry"]
-            if entry_date_key == "-" and trade["context"].get("setup_date"):
+            entry_date_key = str(trade.get("display_entry", "-"))
+            if entry_date_key == "-" and trade.get("context", {}).get("setup_date"):
                 entry_date_key = str(trade["context"]["setup_date"]).split(" ")[0]
 
-            key = (trade["symbol"], entry_date_key)
-
-            # Map Index
-            display_index = str(trade["context"].get("indices", ""))
+            symbol = str(trade.get("symbol", ""))
+            key = (symbol, entry_date_key)
+            display_index = str(trade.get("context", {}).get("indices", ""))
+            exit_date_str = str(trade.get("exit_date") or "")
 
             if key not in grouped:
                 grouped[key] = {
-                    "symbol": trade["symbol"],
+                    "symbol": symbol,
                     "entry_date": entry_date_key,
-                    "max_exit": trade["exit_date"] or "",
+                    "max_exit": exit_date_str,
                     "display_index": display_index,
                     "trades": [],
                 }
 
             grouped[key]["trades"].append(trade)
+            grouped[key]["max_exit"] = max(grouped[key]["max_exit"], exit_date_str)
 
-            # Update max exit for sorting
-            current_exit = trade["exit_date"] or ""
-            grouped[key]["max_exit"] = max(grouped[key]["max_exit"], current_exit)
-
-        # Return sorted list
-        return sorted(grouped.values(), key=lambda x: str(x["max_exit"]), reverse=True)
+        sorted_history = sorted(
+            grouped.values(), key=lambda x: str(x["max_exit"]), reverse=True
+        )
+        return [cast(dict[str, object], h) for h in sorted_history]
 
     def get_index_stats(
         self, trades: list[TradeViewData]
     ) -> dict[str, dict[str, object]]:
         """Aggregates PnL statistics by Index (SPX, NDX, etc.)."""
-        statistics = {
-            IndexAliases.SPX: {
-                "name": IndexAliases.SPX,
+        statistics: dict[str, dict[str, object]] = {
+            IndexAliases.SPX.value: {
+                "name": IndexAliases.SPX.value,
                 "count": 0,
                 "win": 0,
                 "loss": 0,
                 "pnl": 0.0,
             },
-            IndexAliases.NDX: {
-                "name": IndexAliases.NDX,
+            IndexAliases.NDX.value: {
+                "name": IndexAliases.NDX.value,
                 "count": 0,
                 "win": 0,
                 "loss": 0,
                 "pnl": 0.0,
             },
-            IndexAliases.DOW: {
-                "name": IndexAliases.DOW,
+            IndexAliases.DOW.value: {
+                "name": IndexAliases.DOW.value,
                 "count": 0,
                 "win": 0,
                 "loss": 0,
                 "pnl": 0.0,
             },
-            IndexAliases.RUS: {
-                "name": IndexAliases.RUS,
+            IndexAliases.RUS.value: {
+                "name": IndexAliases.RUS.value,
                 "count": 0,
                 "win": 0,
                 "loss": 0,
                 "pnl": 0.0,
             },
-            IndexAliases.NO_INDEX: {
-                "name": IndexAliases.NO_INDEX,
+            IndexAliases.NO_INDEX.value: {
+                "name": IndexAliases.NO_INDEX.value,
                 "count": 0,
                 "win": 0,
                 "loss": 0,
@@ -862,35 +1011,30 @@ class TradeViewService:
         }
 
         for trade in trades:
-            pnl = trade["realized_pnl"]
-            raw_indices = str(trade["context"].get("indices", ""))
+            pnl = float(trade.get("realized_pnl") or 0.0)
+            raw_indices = str(trade.get("context", {}).get("indices", ""))
             matched = False
 
-            # Use IndexAliases Enum values for strict containment checks
             if IndexAliases.SPX in raw_indices:
-                self._update_statistics(statistics[IndexAliases.SPX], pnl)
+                self._update_statistics(statistics[IndexAliases.SPX.value], pnl)
                 matched = True
-
             if IndexAliases.NDX in raw_indices:
-                self._update_statistics(statistics[IndexAliases.NDX], pnl)
+                self._update_statistics(statistics[IndexAliases.NDX.value], pnl)
                 matched = True
-
             if IndexAliases.DOW in raw_indices:
-                self._update_statistics(statistics[IndexAliases.DOW], pnl)
+                self._update_statistics(statistics[IndexAliases.DOW.value], pnl)
                 matched = True
-
             if IndexAliases.RUS in raw_indices:
-                self._update_statistics(statistics[IndexAliases.RUS], pnl)
+                self._update_statistics(statistics[IndexAliases.RUS.value], pnl)
                 matched = True
 
             if not matched:
-                self._update_statistics(statistics[IndexAliases.NO_INDEX], pnl)
+                self._update_statistics(statistics[IndexAliases.NO_INDEX.value], pnl)
 
-        # Calc averages
         for item in statistics.values():
-            item["average_pnl"] = (
-                item["pnl"] / item["count"] if item["count"] > 0 else 0.0
-            )
+            cnt = int(cast(int | float, item["count"]))
+            total_pnl = float(cast(int | float, item["pnl"]))
+            item["average_pnl"] = total_pnl / cnt if cnt > 0 else 0.0
 
         return statistics
 
@@ -916,7 +1060,7 @@ class TradeViewService:
             6: "Sunday",
         }
 
-        statistics = {
+        statistics: dict[int, dict[str, object]] = {
             i: {
                 "name": weekdays[i],
                 "count": 0,
@@ -929,13 +1073,12 @@ class TradeViewService:
         }
 
         for trade in trades:
-            pnl = trade.get("realized_pnl", 0.0)
+            pnl = float(trade.get("realized_pnl") or 0.0)
             entry_date_str = trade.get("entry_date")
             if not entry_date_str:
                 continue
 
             try:
-                # Use pandas.Timestamp to safely handle multiple formats
                 weekday_idx = pd.Timestamp(entry_date_str).weekday()
                 if weekday_idx in statistics:
                     self._update_statistics(statistics[weekday_idx], pnl)
@@ -946,11 +1089,10 @@ class TradeViewService:
                     e,
                 )
 
-        # Calculate average PnL for each weekday
         for item in statistics.values():
-            item["average_pnl"] = (
-                item["pnl"] / item["count"] if item["count"] > 0 else 0.0
-            )
+            cnt = int(cast(int | float, item["count"]))
+            total_pnl = float(cast(int | float, item["pnl"]))
+            item["average_pnl"] = total_pnl / cnt if cnt > 0 else 0.0
 
         return statistics
 
@@ -963,12 +1105,16 @@ class TradeViewService:
             statistics_dict: The dictionary holding index stats.
             pnl: The realized profit and loss value.
         """
-        statistics_dict["count"] += 1
-        statistics_dict["pnl"] += pnl
+        count_val = int(cast(int | float, statistics_dict.get("count", 0))) + 1
+        pnl_val = float(cast(int | float, statistics_dict.get("pnl", 0.0))) + pnl
+        statistics_dict["count"] = count_val
+        statistics_dict["pnl"] = pnl_val
         if pnl > 0:
-            statistics_dict["win"] += 1
+            win_val = int(cast(int | float, statistics_dict.get("win", 0))) + 1
+            statistics_dict["win"] = win_val
         else:
-            statistics_dict["loss"] += 1
+            loss_val = int(cast(int | float, statistics_dict.get("loss", 0))) + 1
+            statistics_dict["loss"] = loss_val
 
     def get_broker_summary(self) -> dict[str, dict[str, Any]]:
         """Calculates performance metrics from trades_settlement grouped by strategy.
@@ -981,78 +1127,66 @@ class TradeViewService:
         settlements = self.broker_repository.get_settlements()
 
         strategies = ["all", "DipBuyer", "TurnoverTiming", "TwoPercent", "NDXMomentum"]
-        metrics = {
-            strat: {
-                "pnl": 0.0,
-                "pnlText": "0",
-                "winrate": "0.0%",
-                "slippage": "0.00",
-                "fees": 0.0,
-                "win_count": 0,
-                "total_count": 0,
-                "slippage_sum": 0.0,
-            }
-            for strat in strategies
+        accumulators: dict[str, StrategyMetricAccumulator] = {
+            strat: StrategyMetricAccumulator() for strat in strategies
         }
 
         for settlement in settlements:
             trade_group_identifier = settlement.get("trade_group_id") or ""
             parts = trade_group_identifier.split("_")
             raw_strat = parts[1] if len(parts) > 1 else ""
+            mapped_strategy = _map_order_strategy_filter(raw_strat)
 
             mapped_keys = ["all"]
-            raw_strat_lower = raw_strat.lower()
-            if "dip" in raw_strat_lower:
-                mapped_keys.append("DipBuyer")
-            elif "turnover" in raw_strat_lower:
-                mapped_keys.append("TurnoverTiming")
-            elif "twopercent" in raw_strat_lower:
-                mapped_keys.append("TwoPercent")
-            elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
-                mapped_keys.append("NDXMomentum")
+            if mapped_strategy in accumulators and mapped_strategy != "all":
+                mapped_keys.append(mapped_strategy)
 
             net_pnl = float(settlement.get("net_pnl") or 0.0)
             slippage = float(settlement.get("price_diff_slippage") or 0.0)
             commission = float(settlement.get("total_commissions") or 0.0)
 
             for key in mapped_keys:
-                metrics[key]["pnl"] += net_pnl
-                metrics[key]["fees"] += commission
-                metrics[key]["total_count"] += 1
-                metrics[key]["slippage_sum"] += slippage
+                acc = accumulators[key]
+                acc.pnl += net_pnl
+                acc.fees += commission
+                acc.total_count += 1
+                acc.slippage_sum += slippage
                 if net_pnl > 0:
-                    metrics[key]["win_count"] += 1
+                    acc.win_count += 1
 
+        result: dict[str, dict[str, Any]] = {}
         for strat in strategies:
-            strat_metrics = metrics[strat]
-            total_count = strat_metrics["total_count"]
+            acc = accumulators[strat]
+            pnl_text = f"+{acc.pnl:,.0f}" if acc.pnl > 0 else f"{acc.pnl:,.0f}"
+            winrate = (
+                f"{(acc.win_count / acc.total_count) * 100:.1f}%"
+                if acc.total_count > 0
+                else "0.0%"
+            )
+            avg_slippage = (
+                acc.slippage_sum / acc.total_count if acc.total_count > 0 else 0.0
+            )
+            slippage_text = (
+                f"+{avg_slippage:.2f}" if avg_slippage > 0 else f"{avg_slippage:.2f}"
+            )
+            result[strat] = {
+                "pnl": acc.pnl,
+                "pnlText": pnl_text,
+                "winrate": winrate,
+                "slippage": slippage_text,
+                "fees": acc.fees,
+                "win_count": acc.win_count,
+                "total_count": acc.total_count,
+                "slippage_sum": acc.slippage_sum,
+            }
 
-            pnl_val = strat_metrics["pnl"]
-            if pnl_val > 0:
-                strat_metrics["pnlText"] = f"+{pnl_val:,.0f}"
-            else:
-                strat_metrics["pnlText"] = f"{pnl_val:,.0f}"
+        return result
 
-            if total_count > 0:
-                winrate_val = (strat_metrics["win_count"] / total_count) * 100
-                strat_metrics["winrate"] = f"{winrate_val:.1f}%"
-
-                avg_slippage = strat_metrics["slippage_sum"] / total_count
-                if avg_slippage > 0:
-                    strat_metrics["slippage"] = f"+{avg_slippage:.2f}"
-                else:
-                    strat_metrics["slippage"] = f"{avg_slippage:.2f}"
-            else:
-                strat_metrics["winrate"] = "0.0%"
-                strat_metrics["slippage"] = "0.00"
-
-        return metrics
-
-    def get_broker_settlements(self) -> list[dict[str, Any]]:
+    def get_broker_settlements(self) -> list[SettlementRecord]:
         """Retrieves closed trade settlements with execution details attached.
 
         Returns:
-            list[dict[str, Any]]: List of settlements with attached execution lists.
+            list[SettlementRecord]: List of settlements with attached execution lists.
         """
         if self.broker_repository is None:
             return []
@@ -1069,7 +1203,7 @@ class TradeViewService:
             settlement["symbol"] = parts[-1] if len(parts) > 1 else ""
             settlement["strategy_name"] = (
                 "_".join(parts[1:-1])
-                if len(parts) > 2
+                if len(parts) > MIN_ROWS_FOR_PREVIOUS_CANDLE
                 else (parts[1] if len(parts) > 1 else "")
             )
 
@@ -1104,21 +1238,86 @@ class TradeViewService:
                 else 0.0
             )
             settlement["pnl_percentage"] = pnl_percentage
-
-            # Map raw strategy name for the template's data-strategy attribute
-            raw_strat_lower = settlement["strategy_name"].lower()
-            if "dip" in raw_strat_lower:
-                settlement["strategy_filter"] = "DipBuyer"
-            elif "turnover" in raw_strat_lower:
-                settlement["strategy_filter"] = "TurnoverTiming"
-            elif "twopercent" in raw_strat_lower:
-                settlement["strategy_filter"] = "TwoPercent"
-            elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
-                settlement["strategy_filter"] = "NDXMomentum"
-            else:
-                settlement["strategy_filter"] = settlement["strategy_name"]
+            settlement["strategy_filter"] = _map_order_strategy_filter(
+                settlement["strategy_name"]
+            )
 
         return settlements
+
+    def _check_local_trade_discrepancy(
+        self,
+        symbol: str,
+        local_trades: list[dict[str, object]],
+        broker_positions: dict[str, float],
+    ) -> dict[str, Any] | None:
+        """Checks for discrepancy between local trade record and broker position."""
+        symbol_trades = [t for t in local_trades if t.get("symbol") == symbol]
+        active_trades = [t for t in symbol_trades if t.get("status") == "ACTIVE"]
+
+        local_status = "CLOSED"
+        local_position = 0.0
+        if active_trades:
+            local_status = "ACTIVE"
+            size_val = (
+                active_trades[0].get("current_size")
+                or active_trades[0].get("initial_size")
+                or 0.0
+            )
+            local_position = float(str(size_val))
+
+        tws_position = float(broker_positions.get(symbol, 0.0))
+        trade_obj = symbol_trades[0] if symbol_trades else local_trades[0]
+        strategy = _map_order_strategy_filter(self.resolve_strategy(trade_obj))
+
+        if local_status == "ACTIVE" and tws_position == 0.0:
+            return {
+                "symbol": symbol,
+                "local_status": local_status,
+                "broker_status": "Keine Position",
+                "discrepancy_type": "MISSING_EXECUTION",
+                "quantity_difference": local_position,
+                "recommended_action": "Trade in Croc-Trader stornieren / bereinigen",
+                "strategy": strategy,
+            }
+        if local_status == "CLOSED" and tws_position > 0.0:
+            return {
+                "symbol": symbol,
+                "local_status": local_status,
+                "broker_status": f"Offene Position ({int(tws_position)})",
+                "discrepancy_type": "GHOST_POSITION",
+                "quantity_difference": tws_position,
+                "recommended_action": "Position direkt in TWS schließen",
+                "strategy": strategy,
+            }
+        return None
+
+    def _check_broker_orphan_discrepancy(
+        self, symbol: str, tws_position: float
+    ) -> dict[str, Any]:
+        """Creates a discrepancy record for an orphan broker position not present locally."""
+        raw_strat = "Unknown"
+        if self.broker_repository:
+            query = """
+                SELECT o.strategy_name
+                FROM executions e
+                JOIN orders o ON e.order_id = o.order_id
+                WHERE o.symbol = ? AND o.strategy_name NOT IN ('SplitTarget', 'HoldTarget')
+                ORDER BY e.executed_at DESC LIMIT 1
+            """
+            rows = self.broker_repository.fetch_all(query, (symbol,))
+            if rows:
+                raw_strat = str(rows[0]["strategy_name"])
+
+        strategy = _map_order_strategy_filter(raw_strat)
+        return {
+            "symbol": symbol,
+            "local_status": "CLOSED",
+            "broker_status": f"Offene Position ({int(tws_position)})",
+            "discrepancy_type": "GHOST_POSITION",
+            "quantity_difference": tws_position,
+            "recommended_action": "Position direkt in TWS schließen",
+            "strategy": strategy,
+        }
 
     def get_reconciliation_discrepancies(self) -> list[dict[str, Any]]:
         """Compares local signals.db trades with TWS executions in trading.db.
@@ -1130,11 +1329,9 @@ class TradeViewService:
         """
         if self.broker_repository is None:
             return []
-        # Fetch active and closed trades from local database
+
         local_active = self.trade_repository.get_by_status("ACTIVE")
         local_closed = self.trade_repository.get_by_status("CLOSED")
-
-        # Combine and filter out manual strategies
         combined_local_trades = local_active + local_closed
         local_trades = [
             trade
@@ -1146,126 +1343,36 @@ class TradeViewService:
             ]
         ]
 
-        # Fetch TWS broker net position sizes
         broker_positions = self.broker_repository.get_net_positions_by_symbol()
+        discrepancies: list[dict[str, Any]] = []
+        checked_symbols: set[str] = set()
 
-        discrepancies = []
-        checked_symbols = set()
-
-        # Check local trades first
         for trade in local_trades:
             symbol = str(trade.get("symbol") or "")
-            if symbol in checked_symbols:
+            if not symbol or symbol in checked_symbols:
                 continue
             checked_symbols.add(symbol)
+            disc = self._check_local_trade_discrepancy(
+                symbol, local_trades, broker_positions
+            )
+            if disc is not None:
+                discrepancies.append(disc)
 
-            # Get local status and position size
-            symbol_trades = [t for t in local_trades if t.get("symbol") == symbol]
-            active_trades = [t for t in symbol_trades if t.get("status") == "ACTIVE"]
-
-            local_status = "CLOSED"
-            local_position = 0.0
-            if active_trades:
-                local_status = "ACTIVE"
-                local_position = float(
-                    active_trades[0].get("current_size")
-                    or active_trades[0].get("initial_size")
-                    or 0.0
-                )
-
-            # Get TWS position size
-            tws_position = float(broker_positions.get(symbol, 0.0))
-
-            # Resolve strategy for local trade
-            trade_obj = symbol_trades[0] if symbol_trades else trade
-            raw_strat = self.resolve_strategy(trade_obj)
-            raw_strat_lower = str(raw_strat).lower()
-            if "dip" in raw_strat_lower:
-                strategy = "DipBuyer"
-            elif "turnover" in raw_strat_lower:
-                strategy = "TurnoverTiming"
-            elif "twopercent" in raw_strat_lower:
-                strategy = "TwoPercent"
-            elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
-                strategy = "NDXMomentum"
-            else:
-                strategy = raw_strat
-
-            # Mismatch detection
-            if local_status == "ACTIVE" and tws_position == 0.0:
-                discrepancies.append(
-                    {
-                        "symbol": symbol,
-                        "local_status": local_status,
-                        "broker_status": "Keine Position",
-                        "discrepancy_type": "MISSING_EXECUTION",
-                        "quantity_difference": local_position,
-                        "recommended_action": "Trade in Croc-Trader stornieren / bereinigen",
-                        "strategy": strategy,
-                    }
-                )
-            elif local_status == "CLOSED" and tws_position > 0.0:
-                discrepancies.append(
-                    {
-                        "symbol": symbol,
-                        "local_status": local_status,
-                        "broker_status": f"Offene Position ({int(tws_position)})",
-                        "discrepancy_type": "GHOST_POSITION",
-                        "quantity_difference": tws_position,
-                        "recommended_action": "Position direkt in TWS schließen",
-                        "strategy": strategy,
-                    }
-                )
-
-        # Check TWS symbols that had no local trade checked
         for symbol, tws_position in broker_positions.items():
             if symbol in checked_symbols:
                 continue
             if tws_position > 0.0:
-                raw_strat = "Unknown"
-                if self.broker_repository:
-                    query = """
-                        SELECT o.strategy_name
-                        FROM executions e
-                        JOIN orders o ON e.order_id = o.order_id
-                        WHERE o.symbol = ? AND o.strategy_name NOT IN ('SplitTarget', 'HoldTarget')
-                        ORDER BY e.executed_at DESC LIMIT 1
-                    """
-                    rows = self.broker_repository.fetch_all(query, (symbol,))
-                    if rows:
-                        raw_strat = rows[0]["strategy_name"]
-
-                raw_strat_lower = str(raw_strat).lower()
-                if "dip" in raw_strat_lower:
-                    strategy = "DipBuyer"
-                elif "turnover" in raw_strat_lower:
-                    strategy = "TurnoverTiming"
-                elif "twopercent" in raw_strat_lower:
-                    strategy = "TwoPercent"
-                elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
-                    strategy = "NDXMomentum"
-                else:
-                    strategy = raw_strat
-
                 discrepancies.append(
-                    {
-                        "symbol": symbol,
-                        "local_status": "CLOSED",
-                        "broker_status": f"Offene Position ({int(tws_position)})",
-                        "discrepancy_type": "GHOST_POSITION",
-                        "quantity_difference": tws_position,
-                        "recommended_action": "Position direkt in TWS schließen",
-                        "strategy": strategy,
-                    }
+                    self._check_broker_orphan_discrepancy(symbol, tws_position)
                 )
 
         return discrepancies
 
-    def get_broker_active_trades(self) -> list[dict[str, Any]]:
+    def get_broker_active_trades(self) -> list[ActivePositionRecord]:
         """Loads active trades/positions directly from TWS trading.db executions.
 
         Returns:
-            list[dict[str, Any]]: Active positions list.
+            list[ActivePositionRecord]: Active positions list.
         """
         if self.broker_repository is None:
             return []
@@ -1276,14 +1383,12 @@ class TradeViewService:
             symbol = pos["symbol"]
             current_price = pos["current_price"]
 
-            # Fetch current price from market database if available
             if self.market_repository is not None:
                 latest_price = self.market_repository.get_latest_price(symbol)
                 if latest_price:
                     current_price = latest_price
                     pos["current_price"] = current_price
 
-            # Recalculate unrealized PnL: (current - entry) * size
             entry_price = pos["entry_price"]
             size = pos["current_size"]
             unrealized_pnl = (current_price - entry_price) * size
@@ -1296,7 +1401,6 @@ class TradeViewService:
             pos["unrealized_pnl"] = unrealized_pnl
             pos["pnl_percentage"] = pnl_percentage
 
-            # Calculate days held
             entry_date_str = pos["entry_date"]
             if entry_date_str and entry_date_str != "-":
                 try:
@@ -1305,18 +1409,7 @@ class TradeViewService:
                 except Exception:
                     pos["days_held"] = 0
 
-            # Map raw strategy name for the template's strategy_filter attribute
-            raw_strat_lower = pos["strategy"].lower()
-            if "dip" in raw_strat_lower:
-                pos["strategy_filter"] = "DipBuyer"
-            elif "turnover" in raw_strat_lower:
-                pos["strategy_filter"] = "TurnoverTiming"
-            elif "twopercent" in raw_strat_lower:
-                pos["strategy_filter"] = "TwoPercent"
-            elif "ndx" in raw_strat_lower or "momentum" in raw_strat_lower:
-                pos["strategy_filter"] = "NDXMomentum"
-            else:
-                pos["strategy_filter"] = pos["strategy"]
+            pos["strategy_filter"] = _map_order_strategy_filter(pos["strategy"])
 
         return positions
 

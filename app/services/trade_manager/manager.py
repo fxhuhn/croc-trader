@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 
@@ -18,7 +19,7 @@ from ...services.market.updater import MarketDataUpdater
 from ...services.telegram import TelegramBot
 from ...tools.market_holidays import MarketHolidayChecker
 from ...tools.trading_calendar import get_last_completed_trading_day
-from ...types import TradeStatus
+from ...types import TradeData, TradeStatus
 from .order_export import write_csv_orders_file
 from .strategies.abstract import BaseTradeStrategy
 from .strategies.bounce_bandit import BounceBanditTradeStrategy
@@ -29,6 +30,7 @@ from .strategies.ndx_momentum import NDXMomentumTradeStrategy
 from .strategies.tgim import TGIMTradeStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
 from .strategies.two_percent_strategy import TwoPercentStrategy
+from .types import TradeTransition
 
 logger = logging.getLogger(__name__)
 
@@ -154,17 +156,17 @@ class TradeManager:
             return STRATEGY_ALIASES[lower_name]
 
         clean_name = re.sub(r"[^a-z0-9]", "", lower_name)
-
-        if "turnover" in clean_name:
-            return Strategies.TurnOverTiming
-        if "dip" in clean_name:
-            return Strategies.DipBuyer
-        if "hold" in clean_name or "tp3" in clean_name:
-            return Strategies.HoldTarget
-        if "split" in clean_name:
-            return Strategies.SplitTarget
-        if "percent" in clean_name:
-            return Strategies.TwoPercent
+        keyword_mappings: tuple[tuple[str, Strategies], ...] = (
+            ("turnover", Strategies.TurnOverTiming),
+            ("dip", Strategies.DipBuyer),
+            ("hold", Strategies.HoldTarget),
+            ("tp3", Strategies.HoldTarget),
+            ("split", Strategies.SplitTarget),
+            ("percent", Strategies.TwoPercent),
+        )
+        for keyword, strategy_enum in keyword_mappings:
+            if keyword in clean_name:
+                return strategy_enum
 
         return None
 
@@ -266,6 +268,96 @@ class TradeManager:
 
         logger.info("TradeManager: Daily process complete.")
 
+    def _verify_and_sync_recency(
+        self,
+        symbol: str,
+        history_dataframe: pd.DataFrame,
+        start_date: str,
+        reference_date: str | pd.Timestamp | datetime.date | None,
+    ) -> tuple[bool, pd.DataFrame]:
+        """Checks if the history has the expected candle, attempting a targeted sync if missing."""
+        if reference_date is not None:
+            ref_date_obj = pd.Timestamp(reference_date).date()
+        else:
+            ref_date_obj = datetime.datetime.now().date()
+
+        expected_last_trading_day = get_last_completed_trading_day(
+            ref_date_obj, self.holiday_checker
+        )
+        latest_candle_date = pd.Timestamp(history_dataframe.iloc[-1]["date"]).date()
+
+        if latest_candle_date < expected_last_trading_day:
+            logger.info(
+                "Active trade [%s] missing expected candle for %s (latest in DB: %s). Attempting targeted update...",
+                symbol,
+                expected_last_trading_day,
+                latest_candle_date,
+            )
+            self._attempt_targeted_market_update(symbol)
+            history_dataframe = self.market_repository.get_symbol_history_raw(
+                symbol, start_date=start_date
+            )
+            if not history_dataframe.empty:
+                latest_candle_date = pd.Timestamp(
+                    history_dataframe.iloc[-1]["date"]
+                ).date()
+
+        if latest_candle_date < expected_last_trading_day:
+            logger.warning(
+                "Active trade [%s] still missing candle for %s after sync (latest in DB: %s). Deferring exit check.",
+                symbol,
+                expected_last_trading_day,
+                latest_candle_date,
+            )
+            return False, history_dataframe
+
+        return True, history_dataframe
+
+    def _apply_active_trade_updates(
+        self,
+        trade: dict[str, object],
+        symbol: str,
+        history_dataframe: pd.DataFrame,
+        strategy: BaseTradeStrategy,
+        transition: TradeTransition | None,
+    ) -> None:
+        """Applies price, dynamic context, and transition updates to the active trade record."""
+        current_close = history_dataframe.iloc[-1]["close"]
+        updates: dict[str, object] = {"current_price": current_close}
+
+        daily_updates = strategy.get_daily_updates(
+            cast(TradeData, trade), history_dataframe
+        )
+        if daily_updates:
+            try:
+                signal_context_raw = trade.get("signal_context") or "{}"
+                context_dict = (
+                    json.loads(str(signal_context_raw))
+                    if isinstance(signal_context_raw, str)
+                    else signal_context_raw
+                )
+                if isinstance(context_dict, dict):
+                    context_dict.update(daily_updates)
+                    updates["signal_context"] = json.dumps(
+                        context_dict, ensure_ascii=False
+                    )
+            except (json.JSONDecodeError, TypeError) as parse_error:
+                logger.warning(
+                    "Failed to parse signal_context JSON for trade %s: %s",
+                    trade.get("id"),
+                    parse_error,
+                )
+
+        trade_id = int(str(trade["id"]))
+        if transition:
+            updates.update(transition.updates)
+            self.trade_repository.update_trade(
+                trade_id, updates, reason=transition.reason
+            )
+            logger.info("Trade update [%s]: %s", symbol, transition.message)
+        else:
+            self.trade_repository.update_trade(trade_id, updates)
+
     def _process_active_trade(
         self,
         trade: dict[str, object],
@@ -277,12 +369,6 @@ class TradeManager:
 
         Data-level errors (bad symbol, missing history) are logged as warnings.
         Database errors propagate upward as RuntimeError (fail-closed).
-
-        Args:
-            trade: The trade record dictionary from the database.
-            latest_leaders: Optional set of active leaders.
-            reference_date: Optional reference date for recency calculation.
-            verify_recency: Whether to enforce recency verification against the expected trading day.
         """
         symbol = str(trade.get("symbol", ""))
         strategy_name = str(trade.get("strategy", ""))
@@ -305,81 +391,22 @@ class TradeManager:
                 return
 
             if verify_recency:
-                if reference_date is not None:
-                    ref_date_obj = pd.Timestamp(reference_date).date()
-                else:
-                    ref_date_obj = datetime.datetime.now().date()
-
-                expected_last_trading_day = get_last_completed_trading_day(
-                    ref_date_obj, self.holiday_checker
+                is_valid, history_dataframe = self._verify_and_sync_recency(
+                    symbol, history_dataframe, start_date, reference_date
                 )
-                latest_candle_date = pd.Timestamp(
-                    history_dataframe.iloc[-1]["date"]
-                ).date()
-
-                if latest_candle_date < expected_last_trading_day:
-                    logger.info(
-                        "Active trade [%s] missing expected candle for %s (latest in DB: %s). Attempting targeted update...",
-                        symbol,
-                        expected_last_trading_day,
-                        latest_candle_date,
-                    )
-                    self._attempt_targeted_market_update(symbol)
-                    history_dataframe = self.market_repository.get_symbol_history_raw(
-                        symbol, start_date=start_date
-                    )
-                    if not history_dataframe.empty:
-                        latest_candle_date = pd.Timestamp(
-                            history_dataframe.iloc[-1]["date"]
-                        ).date()
-
-                if latest_candle_date < expected_last_trading_day:
-                    logger.warning(
-                        "Active trade [%s] still missing candle for %s after sync (latest in DB: %s). Deferring exit check.",
-                        symbol,
-                        expected_last_trading_day,
-                        latest_candle_date,
-                    )
+                if not is_valid:
                     return
 
             transition = strategy.manage_active_trade(
-                trade, history_dataframe, latest_leaders=latest_leaders
+                cast(TradeData, trade),
+                history_dataframe,
+                latest_leaders=latest_leaders,
             )
 
             if not history_dataframe.empty:
-                current_close = history_dataframe.iloc[-1]["close"]
-                updates = {"current_price": current_close}
-
-                # Update dynamic trade state (e.g. thresholds, targets) via the strategy
-                daily_updates = strategy.get_daily_updates(trade, history_dataframe)
-                if daily_updates:
-                    try:
-                        signal_context_raw = trade.get("signal_context") or "{}"
-                        context_dict = (
-                            json.loads(signal_context_raw)
-                            if isinstance(signal_context_raw, str)
-                            else signal_context_raw
-                        )
-                        if isinstance(context_dict, dict):
-                            context_dict.update(daily_updates)
-                            updates["signal_context"] = json.dumps(
-                                context_dict, ensure_ascii=False
-                            )
-                    except (json.JSONDecodeError, TypeError) as parse_error:
-                        logger.warning(
-                            "Failed to parse signal_context JSON for trade %s: %s",
-                            trade.get("id"),
-                            parse_error,
-                        )
-
-                if transition:
-                    updates.update(transition.updates)
-                    self.trade_repository.update_trade(
-                        trade["id"], updates, reason=transition.reason
-                    )
-                    logger.info("Trade update [%s]: %s", symbol, transition.message)
-                else:
-                    self.trade_repository.update_trade(trade["id"], updates)
+                self._apply_active_trade_updates(
+                    trade, symbol, history_dataframe, strategy, transition
+                )
 
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
@@ -418,7 +445,10 @@ class TradeManager:
 
             candle = history_dataframe.iloc[-1]
             transition = strategy.check_entry(
-                trade, candle, history_dataframe, active_symbols=active_symbols
+                cast(TradeData, trade),
+                candle,
+                history_dataframe,
+                active_symbols=active_symbols,
             )
 
             if transition:
@@ -427,7 +457,9 @@ class TradeManager:
                     status_val.value if hasattr(status_val, "value") else status_val
                 )
                 if status_str == "ACTIVE":
-                    daily_updates = strategy.get_daily_updates(trade, history_dataframe)
+                    daily_updates = strategy.get_daily_updates(
+                        cast(TradeData, trade), history_dataframe
+                    )
                     if daily_updates:
                         try:
                             signal_context_raw = (
@@ -436,7 +468,7 @@ class TradeManager:
                                 or "{}"
                             )
                             context_dict = (
-                                json.loads(signal_context_raw)
+                                json.loads(str(signal_context_raw))
                                 if isinstance(signal_context_raw, str)
                                 else signal_context_raw
                             )
@@ -452,8 +484,9 @@ class TradeManager:
                                 parse_error,
                             )
 
+                trade_id = int(str(trade["id"]))
                 self.trade_repository.update_trade(
-                    trade["id"], transition.updates, reason=transition.reason
+                    trade_id, transition.updates, reason=transition.reason
                 )
                 logger.info("Entry check [%s]: %s", symbol, transition.message)
 
@@ -695,11 +728,14 @@ class TradeManager:
         if resolved_strategy:
             config_budget = settings.app.portfolio.get_budget(resolved_strategy.value)
 
-        budget: float = float(trade.get("budget") or config_budget)
+        budget_val = trade.get("budget")
+        budget: float = (
+            float(str(budget_val)) if budget_val is not None else config_budget
+        )
 
         # Call strategy order generation
         return strategy.generate_orders(
-            trade,
+            cast(TradeData, trade),
             history_dataframe,
             budget,
             created_symbols=created_symbols,
@@ -712,12 +748,42 @@ class TradeManager:
         date_string: str,
     ) -> Path | None:
         """Backward-compatible helper calling the extracted write_csv_orders_file function."""
+        typed_orders: list[tuple[TradeData | dict[str, object], Order]] = [
+            (t, o) for t, o in orders_data
+        ]
         return write_csv_orders_file(
-            orders_data,
+            typed_orders,
             date_string,
             self._ibkr_account_id,
             self._resolve_strategy_name,
         )
+
+
+def _extract_anchor_date(trade: dict[str, object]) -> str | None:
+    """Extracts the anchor date string from trade record or signal context."""
+    entry_date = trade.get("entry_date")
+    if entry_date:
+        return str(entry_date).split(" ")[0]
+
+    signal_context = trade.get("signal_context")
+    if signal_context:
+        try:
+            context_dict = (
+                json.loads(str(signal_context))
+                if isinstance(signal_context, str)
+                else signal_context
+            )
+            if isinstance(context_dict, dict) and "date" in context_dict:
+                return str(context_dict["date"]).split(" ")[0]
+        except (json.JSONDecodeError, TypeError) as parse_error:
+            logger.warning("Failed to parse date from signal_context: %s", parse_error)
+
+    for date_key in ("created_at", "signal_date"):
+        date_value = trade.get(date_key)
+        if date_value:
+            return str(date_value).split(" ")[0]
+
+    return None
 
 
 def _resolve_history_start_date(
@@ -736,39 +802,7 @@ def _resolve_history_start_date(
     Returns:
         str: ISO date string (YYYY-MM-DD) to use as the history query start.
     """
-    anchor_date_str: str | None = None
-
-    # 1. Prefer entry_date if available
-    entry_date = trade.get("entry_date")
-    if entry_date:
-        anchor_date_str = str(entry_date).split(" ")[0]
-
-    # 2. Prefer date from signal_context if available (crucial for CREATED trades)
-    if not anchor_date_str:
-        signal_context = trade.get("signal_context")
-        if signal_context:
-            try:
-                context_dict = (
-                    json.loads(signal_context)
-                    if isinstance(signal_context, str)
-                    else signal_context
-                )
-
-                if isinstance(context_dict, dict) and "date" in context_dict:
-                    anchor_date_str = str(context_dict["date"]).split(" ")[0]
-            except (json.JSONDecodeError, TypeError) as parse_error:
-                logger.warning(
-                    "Failed to parse date from signal_context: %s", parse_error
-                )
-
-    # 3. Fall back to other keys
-    if not anchor_date_str:
-        for date_key in ("created_at", "signal_date"):
-            date_value = trade.get(date_key)
-            if date_value:
-                anchor_date_str = str(date_value).split(" ")[0]
-                break
-
+    anchor_date_str = _extract_anchor_date(trade)
     if not anchor_date_str:
         return _HARDCODED_HISTORY_FALLBACK_DATE
 
@@ -778,6 +812,6 @@ def _resolve_history_start_date(
     try:
         anchor_dt = pd.Timestamp(anchor_date_str)
         start_dt = anchor_dt - pd.Timedelta(days=lookback_days)
-        return start_dt.strftime("%Y-%m-%d")
+        return str(start_dt.strftime("%Y-%m-%d"))
     except (ValueError, TypeError):
         return anchor_date_str

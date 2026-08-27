@@ -8,7 +8,7 @@ from ....const import Strategies
 from ....models import Order, OrderLeg, TradeParams
 from ....types import EntryReason, ExitReason, TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy
+from .abstract import BaseTradeStrategy, OrderPayload
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
     """
 
     name = Strategies.HoldTarget
+    MAX_EXPIRATION_CALENDAR_DAYS: int = 5
 
     @override
     def get_current_parameters(
@@ -48,6 +49,27 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 "current_size": float(trade.get("current_size") or 0.0),
             },
         )
+
+    def _is_signal_timing_valid(
+        self,
+        trade: TradeData,
+        current_date_obj: pd.Timestamp,
+        date_string: str,
+    ) -> tuple[bool, TradeTransition | None]:
+        """Validates signal timing and returns whether to continue and optional transition."""
+        signal_date = self._get_signal_date(trade)
+        if not signal_date:
+            return True, None
+
+        if current_date_obj.date() <= signal_date.date():
+            return False, None
+
+        if (
+            current_date_obj.date() - signal_date.date()
+        ).days > self.MAX_EXPIRATION_CALENDAR_DAYS:
+            return False, self._expire_trade(trade, date_string)
+
+        return True, None
 
     @override
     def check_entry(
@@ -78,46 +100,31 @@ class HoldTargetStrategy(BaseTradeStrategy):
         current_date_obj = pd.Timestamp(candle["date"])
         date_string = str(candle["date"])
 
-        # 1. Signal Date Validation
-        # Signal date is used to check entry timing
-        signal_date = self._get_signal_date(trade)
-        if signal_date:
-            # Entry must occur STRICTLY AFTER the signal date
-            if current_date_obj.date() <= signal_date.date():
-                return None
+        timing_valid, timing_transition = self._is_signal_timing_valid(
+            trade, current_date_obj, date_string
+        )
+        if not timing_valid:
+            return timing_transition
 
-            # Expiration Check (5 Calendar Days)
-            if (current_date_obj.date() - signal_date.date()).days > 5:
-                return self._expire_trade(trade, date_string)
-
-        # 2. Market Data
         high_price = float(candle["high"])
         low_price = float(candle["low"])
         open_price = float(candle["open"])
 
-        # 3. Entry Logic (Stop Buy)
         filled, fill_price, reason = False, 0.0, ""
-
         if open_price >= entry_price:
-            # Gapped over Entry
             filled, fill_price, reason = True, open_price, EntryReason.GAP_UP
         elif high_price >= entry_price:
-            # Intraday touched Entry
             filled, fill_price, reason = True, entry_price, EntryReason.BREAKOUT
 
-        # 4. Stop Loss / Invalidation Check
         is_stop_hit = stop_loss > 0 and low_price <= stop_loss
 
+        if filled and is_stop_hit:
+            return self._execute_immediate_loss(
+                trade, fill_price, reason, stop_loss, date_string
+            )
         if filled:
-            if is_stop_hit:
-                # Day 1 Turnaround: Filled then Stopped on same day
-                return self._execute_immediate_loss(
-                    trade, fill_price, reason, stop_loss, date_string
-                )
             return self._execute_activation(trade, fill_price, reason, date_string)
-
         if is_stop_hit:
-            # Setup Invalidated (Stop hit before Entry)
             return self._invalidate_trade(trade, low_price, stop_loss, date_string)
 
         return None
@@ -244,12 +251,14 @@ class HoldTargetStrategy(BaseTradeStrategy):
             )
 
         return self._create_order(
-            symbol=symbol,
-            quantity=quantity,
-            mode="BRACKET",
-            entry=entry_leg,
-            exits=exits,
-            order_id=f"{symbol}_{self.name}",
+            OrderPayload(
+                symbol=symbol,
+                quantity=quantity,
+                mode="BRACKET",
+                entry=entry_leg,
+                exits=exits,
+                order_id=f"{symbol}_{self.name}",
+            )
         )
 
     @override

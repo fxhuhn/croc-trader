@@ -9,7 +9,7 @@ from ....const import Strategies
 from ....models import Order, TradeParams
 from ....types import TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy
+from .abstract import BaseTradeStrategy, OrderOptions
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
     """NDX Momentum Strategy implementation for monthly rebalancing."""
 
     name = Strategies.NDXMomentum
+    MIN_HISTORY_FOR_MONTH_SWITCH: int = 2
     _rebalance_cache: _RebalanceCache | None = None
 
     @override
@@ -124,7 +125,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             bool: True if the current date is in a different month/year
                 than the previous date.
         """
-        if len(dataframe_history) < 2:
+        if len(dataframe_history) < self.MIN_HISTORY_FOR_MONTH_SWITCH:
             return False
 
         current_candle = dataframe_history.iloc[-1]
@@ -251,9 +252,11 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
                 symbol=symbol,
                 quantity=quantity,
                 price=Decimal("0.0"),
-                order_type="MKT",
-                time_in_force="OPG",
-                order_id=f"{symbol}_{self.name}_EXIT",
+                options=OrderOptions(
+                    order_type="MKT",
+                    time_in_force="OPG",
+                    order_id=f"{symbol}_{self.name}_EXIT",
+                ),
             )
         return None
 
@@ -287,7 +290,9 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
             symbol=symbol,
             quantity=shares_quantity,
             entry_price=Decimal("0.0"),
-            order_type="MKT",
-            time_in_force="OPG",
-            order_id=f"{symbol}_{self.name}",
+            options=OrderOptions(
+                order_type="MKT",
+                time_in_force="OPG",
+                order_id=f"{symbol}_{self.name}",
+            ),
         )

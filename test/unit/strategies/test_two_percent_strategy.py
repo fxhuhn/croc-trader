@@ -895,13 +895,19 @@ def test_two_percent_process_day_two_entry_no_fill(
     manager_strategy: ManagerStrategy,
 ) -> None:
     """Tests _process_day_two_entry rejects setup when low > limit."""
+    from app.services.trade_manager.strategies.two_percent_strategy import (
+        TwoPercentEntryContext,
+    )
+
     trade = {"id": "D2_FAIL", "symbol": "AAPL"}
     transition = manager_strategy._process_day_two_entry(
-        trade,
-        open_price=105.0,
-        low_price=102.0,
-        limit_price=100.0,
-        date_string="2026-02-10",
+        TwoPercentEntryContext(
+            trade=trade,
+            open_price=105.0,
+            low_price=102.0,
+            limit_price=100.0,
+            date_string="2026-02-10",
+        )
     )
     assert transition is not None
     assert transition.updates["status"] == TradeStatus.INVALID.value

@@ -20,9 +20,11 @@ from ....const import ExitReason, Strategies
 from ....models import Order, TradeParams
 from ....types import TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy
+from .abstract import BaseTradeStrategy, OrderOptions
 
 logger = logging.getLogger(__name__)
+
+MAX_TGIM_HOLDING_BARS: int = 2
 
 
 def evaluate_tgim_exit(
@@ -41,7 +43,7 @@ def evaluate_tgim_exit(
     if current_close > previous_close:
         return ExitReason.TAKE_PROFIT
 
-    if bars_held >= 2:
+    if bars_held >= MAX_TGIM_HOLDING_BARS:
         return ExitReason.TIME_STOP
 
     return None
@@ -118,7 +120,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
             symbol=trade["symbol"],
             quantity=quantity,
             entry_price=entry_price,
-            order_type="MKT",
+            options=OrderOptions(order_type="MKT"),
         )
 
     @override
@@ -134,8 +136,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         return self._generate_standard_exit_order(
             trade=trade,
             dataframe_history=dataframe_history,
-            order_type="MKT",
-            time_in_force="DAY",
+            options=OrderOptions(order_type="MKT", time_in_force="DAY"),
         )
 
     @override

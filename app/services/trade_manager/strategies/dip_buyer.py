@@ -8,7 +8,7 @@ from ....const import ExitReason, Strategies
 from ....models import Order, OrderLeg, TradeParams
 from ....types import TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy
+from .abstract import BaseTradeStrategy, OrderPayload
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
     name: Strategies = Strategies.DipBuyer
     TIME_STOP_DAYS: int = 8
+    MIN_HISTORY_FOR_PREVIOUS_CANDLE: int = 2
 
     @override
     def get_current_parameters(
@@ -152,7 +153,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
         # 3. LOC (Limit On Close) Logic
         # Rule: Only Limit on Close is possible for same day.
-        if len(dataframe_history) >= 2:
+        if len(dataframe_history) >= self.MIN_HISTORY_FOR_PREVIOUS_CANDLE:
             previous_candle = dataframe_history.iloc[-2]
             previous_day_high = float(previous_candle["high"])
             close_price = float(current_candle["close"])
@@ -262,12 +263,14 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 )
 
         return self._create_order(
-            symbol=symbol,
-            quantity=quantity,
-            mode="BRACKET",
-            entry=entry_leg,
-            exits=exits,
-            order_id=f"{symbol}_{self.name}",
+            OrderPayload(
+                symbol=symbol,
+                quantity=quantity,
+                mode="BRACKET",
+                entry=entry_leg,
+                exits=exits,
+                order_id=f"{symbol}_{self.name}",
+            )
         )
 
     @override
@@ -341,10 +344,12 @@ class DipBuyerStrategy(BaseTradeStrategy):
             return None
 
         return self._create_order(
-            symbol=symbol,
-            quantity=quantity,
-            mode="Exit",
-            entry=None,
-            exits=exits,
-            order_id=f"{symbol}_{self.name}_EXIT",
+            OrderPayload(
+                symbol=symbol,
+                quantity=quantity,
+                mode="Exit",
+                entry=None,
+                exits=exits,
+                order_id=f"{symbol}_{self.name}_EXIT",
+            )
         )

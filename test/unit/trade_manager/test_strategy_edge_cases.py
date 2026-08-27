@@ -66,12 +66,13 @@ def test_base_trade_strategy_create_entry_order(
     dummy_strategy: DummyConcreteStrategy,
 ) -> None:
     """Tests _create_entry_order constructs a valid Order object."""
+    from app.services.trade_manager.strategies.abstract import OrderOptions
+
     order = dummy_strategy._create_entry_order(
         symbol="AAPL",
         quantity=10,
         entry_price=Decimal("150.0"),
-        order_type="LMT",
-        time_in_force="GTC",
+        options=OrderOptions(order_type="LMT", time_in_force="GTC"),
     )
     assert isinstance(order, Order)
     assert order.symbol == "AAPL"
@@ -85,12 +86,13 @@ def test_base_trade_strategy_create_exit_order(
     dummy_strategy: DummyConcreteStrategy,
 ) -> None:
     """Tests _create_exit_order constructs a valid exit Order object."""
+    from app.services.trade_manager.strategies.abstract import OrderOptions
+
     order = dummy_strategy._create_exit_order(
         symbol="AAPL",
         quantity=10,
         price=Decimal("160.0"),
-        order_type="LMT",
-        time_in_force="GTC",
+        options=OrderOptions(order_type="LMT", time_in_force="GTC"),
     )
     assert isinstance(order, Order)
     assert order.symbol == "AAPL"

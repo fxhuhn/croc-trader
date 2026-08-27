@@ -19,7 +19,7 @@ from ....const import ExitReason, Strategies
 from ....models import Order, TradeParams
 from ....types import TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy
+from .abstract import BaseTradeStrategy, OrderOptions
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +67,7 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
         return self._generate_budget_entry_order(
             trade=trade,
             budget=budget,
-            order_type="MKT",
-            time_in_force="DAY",
+            options=OrderOptions(order_type="MKT", time_in_force="DAY"),
         )
 
     @override
@@ -84,8 +83,7 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
         return self._generate_standard_exit_order(
             trade=trade,
             dataframe_history=dataframe_history,
-            order_type="MKT",
-            time_in_force="DAY",
+            options=OrderOptions(order_type="MKT", time_in_force="DAY"),
         )
 
     @override

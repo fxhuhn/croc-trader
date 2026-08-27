@@ -9,7 +9,7 @@ from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
 from ....types import TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy, HolidayCheckerProtocol
+from .abstract import BaseTradeStrategy, HolidayCheckerProtocol, OrderOptions
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,9 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
     DEFAULT_SLIPPAGE: float = 0.0
     """Default slippage applied to executions."""
+
+    MIN_GREEN_CANDLES_FOR_EXIT: int = 2
+    """Threshold of consecutive green candles to trigger early exit."""
 
     def __init__(
         self,
@@ -103,8 +106,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         return self._generate_budget_entry_order(
             trade=trade,
             budget=budget,
-            order_type="LMT",
-            time_in_force="DAY",
+            options=OrderOptions(order_type="LMT", time_in_force="DAY"),
         )
 
     @override
@@ -124,12 +126,11 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             return None
 
         # a) Green Sequence Exit (TRIGGERED)
-        if green_candle_count >= 2:
+        if green_candle_count >= self.MIN_GREEN_CANDLES_FOR_EXIT:
             return self._create_exit_order(
                 trade["symbol"],
                 quantity,
-                order_type="MKT",
-                time_in_force="OPG",
+                options=OrderOptions(order_type="MKT", time_in_force="OPG"),
             )
 
         # b) Friday Time Stop (holiday-adjusted)
@@ -256,7 +257,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         green_candle_count = int(str(context.get("green_candle_count") or 0))
 
         # Check for Exit Trigger (Next Open)
-        if green_candle_count >= 2:
+        if green_candle_count >= self.MIN_GREEN_CANDLES_FOR_EXIT:
             return self._close_trade(
                 trade,
                 float(current_candle["open"]),

@@ -3,17 +3,41 @@ import json
 import logging
 import uuid
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Protocol, final
+from typing import Protocol, cast, final
 
 import pandas as pd
 
 from ....config import settings
+from ....const import Strategies
 from ....models import Order, OrderLeg, TradeParams
-from ....types import ExitReason, TradeData, TradeStatus
+from ....types import ExitReason, OrderType, TimeInForce, TradeData, TradeStatus
 from ..types import TradeTransition
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class OrderOptions:
+    """Options for customizing order generation."""
+
+    order_type: OrderType = "LMT"
+    time_in_force: TimeInForce = "DAY"
+    order_id: str | None = None
+    price_override: float | None = None
+
+
+@dataclass(frozen=True)
+class OrderPayload:
+    """Encapsulates fields required to construct a domain Order."""
+
+    symbol: str
+    quantity: int
+    mode: str
+    entry: OrderLeg | None = None
+    exits: list[OrderLeg] | None = None
+    order_id: str | None = None
 
 
 class HolidayCheckerProtocol(Protocol):
@@ -28,6 +52,7 @@ class BaseTradeStrategy(ABC):
     Provides shared logic for trade activation, exit management, and position sizing.
     """
 
+    name: str | Strategies = ""
     FRIDAY_INDEX: int = 4
     THURSDAY_INDEX: int = 3
 
@@ -87,8 +112,7 @@ class BaseTradeStrategy(ABC):
                 symbol=trade["symbol"],
                 quantity=quantity,
                 price=Decimal("0.0"),
-                order_type="MOC",
-                time_in_force="DAY",
+                options=OrderOptions(order_type="MOC", time_in_force="DAY"),
             )
 
         return None
@@ -266,23 +290,15 @@ class BaseTradeStrategy(ABC):
 
     # --- Shared Logic & Helpers (DRY) ---
 
-    def _create_order(
-        self,
-        symbol: str,
-        quantity: int,
-        mode: str,
-        entry: OrderLeg | None = None,
-        exits: list[OrderLeg] | None = None,
-        order_id: str | None = None,
-    ) -> Order:
+    def _create_order(self, payload: OrderPayload) -> Order:
         """Universal order factory helper to construct an Order object."""
         return Order(
-            id=order_id or str(uuid.uuid4()),
-            symbol=symbol,
-            quantity=quantity,
-            mode=mode,
-            entry=entry,
-            exits=exits or [],
+            id=payload.order_id or str(uuid.uuid4()),
+            symbol=payload.symbol,
+            quantity=payload.quantity,
+            mode=payload.mode,
+            entry=payload.entry,
+            exits=payload.exits or [],
         )
 
     def _create_entry_order(
@@ -290,24 +306,25 @@ class BaseTradeStrategy(ABC):
         symbol: str,
         quantity: int,
         entry_price: Decimal,
-        order_type: str = "LMT",
-        time_in_force: str = "DAY",
-        order_id: str | None = None,
+        options: OrderOptions | None = None,
     ) -> Order:
         """Generates a standard Buy Entry Order."""
+        opts = options or OrderOptions()
         return self._create_order(
-            symbol=symbol,
-            quantity=quantity,
-            mode="Entry",
-            entry=OrderLeg(
-                action="BUY",
-                type=order_type,
-                price=entry_price,
+            OrderPayload(
+                symbol=symbol,
                 quantity=quantity,
-                time_in_force=time_in_force,
-            ),
-            exits=[],
-            order_id=order_id,
+                mode="Entry",
+                entry=OrderLeg(
+                    action="BUY",
+                    type=opts.order_type,
+                    price=entry_price,
+                    quantity=quantity,
+                    time_in_force=opts.time_in_force,
+                ),
+                exits=[],
+                order_id=opts.order_id,
+            )
         )
 
     def _create_exit_order(
@@ -315,26 +332,27 @@ class BaseTradeStrategy(ABC):
         symbol: str,
         quantity: int,
         price: Decimal | None = None,
-        order_type: str = "MKT",
-        time_in_force: str = "OPG",
-        order_id: str | None = None,
+        options: OrderOptions | None = None,
     ) -> Order:
         """Generates a standard Sell Exit Order."""
+        opts = options or OrderOptions(order_type="MKT", time_in_force="OPG")
         return self._create_order(
-            symbol=symbol,
-            quantity=quantity,
-            mode="Exit",
-            entry=None,
-            exits=[
-                OrderLeg(
-                    action="SELL",
-                    type=order_type,
-                    price=price if price is not None else Decimal("0.0"),
-                    quantity=quantity,
-                    time_in_force=time_in_force,
-                )
-            ],
-            order_id=order_id,
+            OrderPayload(
+                symbol=symbol,
+                quantity=quantity,
+                mode="Exit",
+                entry=None,
+                exits=[
+                    OrderLeg(
+                        action="SELL",
+                        type=opts.order_type,
+                        price=price if price is not None else Decimal("0.0"),
+                        quantity=quantity,
+                        time_in_force=opts.time_in_force,
+                    )
+                ],
+                order_id=opts.order_id,
+            )
         )
 
     def _get_signal_date(self, trade: TradeData) -> pd.Timestamp | None:
@@ -365,7 +383,7 @@ class BaseTradeStrategy(ABC):
         if not raw_date:
             return None
         try:
-            return pd.Timestamp(str(raw_date)).date()
+            return cast(datetime.date, pd.Timestamp(str(raw_date)).date())
         except (ValueError, TypeError) as error:
             logger.warning(
                 "Failed to parse setup date '%s' for trade %s: %s",
@@ -379,15 +397,13 @@ class BaseTradeStrategy(ABC):
         self,
         trade: TradeData,
         budget: float,
-        order_type: str = "LMT",
-        time_in_force: str = "DAY",
-        order_id: str | None = None,
-        price_override: float | None = None,
+        options: OrderOptions | None = None,
     ) -> Order | None:
         """Universal DRY helper to generate budget-allocated entry orders."""
+        opts = options or OrderOptions()
         entry_price = (
-            price_override
-            if price_override is not None
+            opts.price_override
+            if opts.price_override is not None
             else self._extract_entry_price(trade)
         )
         trade_budget = self._get_strategy_budget(trade, budget)
@@ -403,18 +419,14 @@ class BaseTradeStrategy(ABC):
             symbol=trade["symbol"],
             quantity=quantity,
             entry_price=Decimal(str(entry_price)),
-            order_type=order_type,
-            time_in_force=time_in_force,
-            order_id=order_id,
+            options=opts,
         )
 
     def _generate_standard_exit_order(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
-        order_type: str = "MKT",
-        time_in_force: str = "DAY",
-        order_id: str | None = None,
+        options: OrderOptions | None = None,
     ) -> Order | None:
         """Universal DRY helper to generate standard exit orders for active positions."""
         quantity = int(trade.get("current_size") or 0)
@@ -423,14 +435,13 @@ class BaseTradeStrategy(ABC):
 
         last_candle = dataframe_history.iloc[-1]
         close_price = float(last_candle["close"])
+        opts = options or OrderOptions(order_type="MKT", time_in_force="DAY")
 
         return self._create_exit_order(
             symbol=trade["symbol"],
             quantity=quantity,
             price=Decimal(str(close_price)),
-            order_type=order_type,
-            time_in_force=time_in_force,
-            order_id=order_id,
+            options=opts,
         )
 
     @staticmethod
@@ -469,7 +480,8 @@ class BaseTradeStrategy(ABC):
         if isinstance(context_data, dict):
             return context_data
         try:
-            return json.loads(context_data)
+            parsed = json.loads(str(context_data))
+            return parsed if isinstance(parsed, dict) else {}
         except (json.JSONDecodeError, TypeError) as error:
             logger.warning(
                 "Failed to parse signal_context for trade %s: %s",
