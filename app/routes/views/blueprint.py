@@ -2,6 +2,8 @@
 
 from flask import Blueprint, g
 
+from .dependencies import _get_trade_view_service
+
 views_bp = Blueprint("views", __name__)
 
 
@@ -9,8 +11,6 @@ views_bp = Blueprint("views", __name__)
 def set_global_last_updated() -> None:
     """Sets the latest signal timestamp on g before each view request."""
     try:
-        from .dependencies import _get_trade_view_service
-
         service = _get_trade_view_service()
         g.last_updated = service.get_latest_signal_date()
     except Exception:

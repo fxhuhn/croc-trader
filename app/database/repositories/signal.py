@@ -3,6 +3,8 @@ import logging
 import sqlite3
 from typing import Any
 
+import pandas
+
 from ...const import Strategies, TradeStatus
 from .base import BaseRepository
 
@@ -181,8 +183,6 @@ class SignalRepository(BaseRepository):
             params.append(analysis_date)
         elif days_lookback > 0:
             # Time range (Lookback)
-            import pandas
-
             start_date = (
                 pandas.Timestamp.now() - pandas.Timedelta(days=days_lookback)
             ).strftime("%Y-%m-%d")

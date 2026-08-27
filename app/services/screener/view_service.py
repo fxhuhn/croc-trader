@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import Any
 
 from ...const import Strategies, TradeStatus
 from ...database.repositories.signal import SignalRepository
@@ -18,19 +19,20 @@ class ScreenerViewService:
     def __init__(self, signal_repository: SignalRepository) -> None:
         self.signal_repository = signal_repository
 
-    def _parse_context(
-        self, raw_signal_context: str | None | dict[str, object]
-    ) -> dict[str, object]:
+    def _parse_context(self, raw_signal_context: object) -> dict[str, Any]:
         """Safely parses signal context from JSON string or returns dictionary."""
         if isinstance(raw_signal_context, dict):
-            return raw_signal_context
+            return dict(raw_signal_context)
 
         if not raw_signal_context:
             return {}
 
         if isinstance(raw_signal_context, str):
             try:
-                return json.loads(raw_signal_context)
+                parsed = json.loads(raw_signal_context)
+                if isinstance(parsed, dict):
+                    return parsed
+                return {}
             except (json.JSONDecodeError, TypeError) as error:
                 logger.warning(
                     "Failed to parse signal context: %s. Error: %s",
@@ -42,16 +44,16 @@ class ScreenerViewService:
         return {}
 
     def get_candidates(
-        self, strategy: str | Strategies, limit: int = 100
-    ) -> list[dict[str, object]]:
+        self, strategy: str | Strategies | list[str], limit: int = 100
+    ) -> list[dict[str, Any]]:
         """Fetches and prepares trade candidates for a given strategy.
 
         Args:
-            strategy: The strategy identifier (Enum or string).
+            strategy: The strategy identifier (Enum or string or list).
             limit: Maximum number of candidates to return.
 
         Returns:
-            list[dict[str, object]]: List of processed candidate dictionaries.
+            list[dict[str, Any]]: List of processed candidate dictionaries.
         """
         # Ensure we pass the string value of the Enum if it's an Enum
         strategy_value = str(strategy)
@@ -63,7 +65,7 @@ class ScreenerViewService:
         else:
             results = self._fetch_standard_candidates(strategy, strategy_value, limit)
 
-        processed_results = []
+        processed_results: list[dict[str, Any]] = []
         for row in results:
             candidate = dict(row)
 
@@ -94,7 +96,9 @@ class ScreenerViewService:
         if strategy_value == Strategies.NDXMomentum:
             processed_results.sort(
                 key=lambda x: extract_safe_float(
-                    x.get("context", {}).get("momentum_score")
+                    x["context"].get("momentum_score")
+                    if isinstance(x.get("context"), dict)
+                    else None
                 ),
                 reverse=True,
             )
@@ -103,22 +107,24 @@ class ScreenerViewService:
         if strategy_value == Strategies.DipBuyer:
             processed_results.sort(
                 key=lambda x: extract_safe_float(
-                    x.get("context", {}).get("setup_score")
+                    x["context"].get("setup_score")
+                    if isinstance(x.get("context"), dict)
+                    else None
                 ),
                 reverse=True,
             )
 
         return processed_results
 
-    def _fetch_croc_candidates(self, limit: int) -> list[dict[str, object]]:
+    def _fetch_croc_candidates(self, limit: int) -> list[dict[str, Any]]:
         """Fetches unique trade candidates for Croc strategies."""
         strategies_to_fetch = [
             str(Strategies.HoldTarget),
             str(Strategies.SplitTarget),
             "Croc_",  # Legacy
         ]
-        all_results = []
-        seen_ids = set()
+        all_results: list[dict[str, Any]] = []
+        seen_ids: set[str | int] = set()
 
         for strategy_name in strategies_to_fetch:
             rows = self.signal_repository.get_trade_candidates(
@@ -128,14 +134,14 @@ class ScreenerViewService:
 
         # Sort by created_at descending and limit to strict 3
         return sorted(
-            all_results, key=lambda x: x.get("created_at") or "", reverse=True
+            all_results, key=lambda x: str(x.get("created_at") or ""), reverse=True
         )[:3]
 
     def _filter_new_candidates(
         self,
-        candidates: list[dict[str, object]],
+        candidates: list[dict[str, Any]],
         seen_ids: set[str | int],
-        destination: list[dict[str, object]],
+        destination: list[dict[str, Any]],
     ) -> None:
         """Filters out duplicate candidates based on their unique ID.
 
@@ -145,13 +151,18 @@ class ScreenerViewService:
             destination: Target list to append unique candidates to.
         """
         for candidate in candidates:
-            if candidate["id"] not in seen_ids:
+            cand_id = candidate.get("id")
+            if (
+                cand_id is not None
+                and isinstance(cand_id, str | int)
+                and cand_id not in seen_ids
+            ):
                 destination.append(candidate)
-                seen_ids.add(candidate["id"])
+                seen_ids.add(cand_id)
 
     def _fetch_standard_candidates(
-        self, strategy: str | Strategies, strategy_value: str, limit: int
-    ) -> list[dict[str, object]]:
+        self, strategy: str | Strategies | list[str], strategy_value: str, limit: int
+    ) -> list[dict[str, Any]]:
         """Fetches candidates for standard non-Croc strategies.
 
         Args:
@@ -160,7 +171,7 @@ class ScreenerViewService:
             limit: Maximum candidates to fetch.
 
         Returns:
-            list[dict[str, object]]: Raw database candidate records.
+            list[dict[str, Any]]: Raw database candidate records.
         """
         if strategy_value == str(Strategies.NDXMomentum):
             return self.signal_repository.get_trade_candidates(
@@ -204,7 +215,7 @@ class ScreenerViewService:
 
         return ", ".join(mapped_index_parts)
 
-    def get_turnover_candidates(self, limit: int = 200) -> list[dict[str, object]]:
+    def get_turnover_candidates(self, limit: int = 200) -> list[dict[str, Any]]:
         """Fetches and aggregates Turnover Timing candidates.
 
         Aggregates multiple signal variations (e.g., 0.5 vs 1.0) for the same symbol.
@@ -214,17 +225,17 @@ class ScreenerViewService:
             limit: Maximum number of candidates to fetch.
 
         Returns:
-            list[dict[str, object]]: List of aggregated candidate dictionaries.
+            list[dict[str, Any]]: List of aggregated candidate dictionaries.
         """
         # Fetch raw candidates using the base strategy name to catch variants
         results = self.signal_repository.get_trade_candidates(
             str(Strategies.TurnOverTiming), limit=limit, statuses=[TradeStatus.CREATED]
         )
 
-        aggregated_results: dict[str, dict[str, object]] = {}
+        aggregated_results: dict[str, dict[str, Any]] = {}
 
         for row in results:
-            symbol = row["symbol"]
+            symbol = str(row["symbol"])
 
             # Initialize aggregation bucket if needed
             if symbol not in aggregated_results:
@@ -242,16 +253,14 @@ class ScreenerViewService:
             self._aggregate_turnover_row(aggregated_results[symbol], row)
 
         # Sort by Dollar Volume (Turnover SMA 20) descending
-        sorted_candidates = sorted(
+        return sorted(
             aggregated_results.values(),
-            key=lambda x: float(x.get("dollar_volume") or 0.0),
+            key=lambda x: float(str(x.get("dollar_volume") or 0.0)),
             reverse=True,
         )
 
-        return sorted_candidates
-
     def _aggregate_turnover_row(
-        self, candidate_dict: dict[str, object], row: dict[str, object]
+        self, candidate_dict: dict[str, Any], row: dict[str, Any]
     ) -> None:
         """Aggregates metrics and pricing from a single candidate row.
 
@@ -265,11 +274,13 @@ class ScreenerViewService:
 
             # Update common metrics
             if context.get("setup_close"):
-                candidate_dict["close"] = float(context["setup_close"])
+                candidate_dict["close"] = float(str(context["setup_close"]))
             if context.get("setup_atr"):
-                candidate_dict["atr"] = float(context["setup_atr"])
+                candidate_dict["atr"] = float(str(context["setup_atr"]))
             if context.get("setup_turnover_sma"):
-                candidate_dict["dollar_volume"] = float(context["setup_turnover_sma"])
+                candidate_dict["dollar_volume"] = float(
+                    str(context["setup_turnover_sma"])
+                )
 
             # Strict Date Extraction (No created_at fallback)
             date_value = context.get("date") or context.get("setup_date")
@@ -284,8 +295,8 @@ class ScreenerViewService:
                 candidate_dict["index"] = self.harmonize_indices(str(raw_indices))
 
             # Identify variant
-            strategy_name = row["strategy"]
-            entry_price = float(row.get("entry_price") or 0.0)
+            strategy_name = row.get("strategy")
+            entry_price = float(str(row.get("entry_price") or 0.0))
 
             # Strict Strategy Matching
             if strategy_name == Strategies.TurnOverTiming_05:

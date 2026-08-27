@@ -3,7 +3,7 @@
 import logging
 import uuid
 from threading import Thread
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
@@ -19,6 +19,8 @@ from .views.dependencies import cache
 
 logger = logging.getLogger(__name__)
 api_blueprint = Blueprint("api", __name__)
+
+type ApiResponse = Response | tuple[Response, int]
 
 
 class WebhookPayload(TypedDict, total=False):
@@ -71,22 +73,22 @@ def _extract_webhook_symbol(payload: WebhookPayload) -> str | None:
 
 
 @api_blueprint.route("/health", methods=["GET"])
-def health_check() -> Response:
+def health_check() -> ApiResponse:
     """Simple health check endpoint.
 
     Returns:
-        Response: JSON status OK.
+        ApiResponse: JSON status OK.
     """
     return jsonify({"status": "ok"})
 
 
 @api_blueprint.route("/", methods=["GET"])
 @require_ip_whitelist
-def root_check() -> Response:
+def root_check() -> ApiResponse:
     """Authenticated root check endpoint.
 
     Returns:
-        Response: JSON status OK.
+        ApiResponse: JSON status OK.
     """
     return jsonify({"status": "ok"})
 
@@ -96,7 +98,7 @@ def root_check() -> Response:
 
 @api_blueprint.route("/webhook", methods=["POST"])
 @require_ip_whitelist
-def ingest_webhook() -> Response:
+def ingest_webhook() -> ApiResponse:
     """Ingests signal webhooks and persists them to the signal database.
 
     Returns:
@@ -159,18 +161,18 @@ def ingest_webhook() -> Response:
 
 @api_blueprint.route("/pipeline/run", methods=["POST"])
 @require_ip_whitelist
-def trigger_eod_pipeline() -> Response:
+def trigger_eod_pipeline() -> ApiResponse:
     """Triggers a synchronous End-of-Day (EOD) pipeline run.
 
     Sequential Execution:
     TradeManager -> Screener Engine -> Order Generation -> Cache Pre-warming.
 
     Returns:
-        Response: JSON status and execution summary.
+        ApiResponse: JSON status and execution summary.
     """
     try:
         logger.info("API Trigger: Manual EOD pipeline run initiated.")
-        app_instance = current_app._get_current_object()  # type: ignore[attr-defined]
+        app_instance = cast(Any, current_app)._get_current_object()
         summary = run_daily_eod_pipeline(app_instance)
         return jsonify(summary), 200
     except Exception as error:
@@ -180,11 +182,11 @@ def trigger_eod_pipeline() -> Response:
 
 @api_blueprint.route("/screener/run", methods=["POST"])
 @require_ip_whitelist
-def trigger_screener() -> Response:
+def trigger_screener() -> ApiResponse:
     """Triggers a manual run of all active screeners.
 
     Returns:
-        Response: JSON status success with statistics.
+        ApiResponse: JSON status success with statistics.
     """
     try:
         days_lookback = request.args.get("days", default=0, type=int)
@@ -211,7 +213,7 @@ def trigger_screener() -> Response:
 
 @api_blueprint.route("/screener/run/<strategy_name>", methods=["POST"])
 @require_ip_whitelist
-def run_strategy_screener(strategy_name: str) -> Response:
+def run_strategy_screener(strategy_name: str) -> ApiResponse:
     """Executes screening for a specific strategy by strategy_name parameter.
 
     Args:
@@ -275,11 +277,11 @@ def run_strategy_screener(strategy_name: str) -> Response:
 
 @api_blueprint.route("/screener/dip-buyer", methods=["POST"])
 @require_ip_whitelist
-def analyze_dip_buyer() -> Response:
+def analyze_dip_buyer() -> ApiResponse:
     """Detailed debugging for DipBuyer strategy on a single symbol.
 
     Returns:
-        Response: JSON analysis result or error.
+        ApiResponse: JSON analysis result or error.
     """
     try:
         symbol = _extract_symbol_from_request()
@@ -319,11 +321,11 @@ def analyze_dip_buyer() -> Response:
 
 @api_blueprint.route("/screener/turnover", methods=["POST"])
 @require_ip_whitelist
-def analyze_turnover() -> Response:
+def analyze_turnover() -> ApiResponse:
     """Detailed debugging for TurnoverTiming strategy on a single symbol.
 
     Returns:
-        Response: JSON analysis result or error.
+        ApiResponse: JSON analysis result or error.
     """
     try:
         symbol = _extract_symbol_from_request()
@@ -358,11 +360,11 @@ def analyze_turnover() -> Response:
 
 @api_blueprint.route("/screener/croc", methods=["POST"])
 @require_ip_whitelist
-def analyze_croc() -> Response:
+def analyze_croc() -> ApiResponse:
     """Returns the full list of recommended signals for CrocSetup.
 
     Returns:
-        Response: JSON analysis result or error.
+        ApiResponse: JSON analysis result or error.
     """
     try:
         days_lookback = request.args.get("days", default=0, type=int)
@@ -406,11 +408,11 @@ def analyze_croc() -> Response:
 
 @api_blueprint.route("/screener/ndx-momentum", methods=["POST"])
 @require_ip_whitelist
-def analyze_ndx_momentum() -> Response:
+def analyze_ndx_momentum() -> ApiResponse:
     """Returns the current market regime and top momentum leaders for NDX.
 
     Returns:
-        Response: JSON with regime status and top symbols.
+        ApiResponse: JSON with regime status and top symbols.
     """
     try:
         analysis_date = request.args.get("date")
@@ -457,7 +459,7 @@ def analyze_ndx_momentum() -> Response:
 
 @api_blueprint.route("/orders/generate", methods=["POST"])
 @require_ip_whitelist
-def trigger_orders() -> Response:
+def trigger_orders() -> ApiResponse:
     """Triggers the daily order generation process.
 
     Returns:
@@ -482,13 +484,13 @@ def trigger_orders() -> Response:
 
 @api_blueprint.route("/trades/backfill", methods=["POST"])
 @require_ip_whitelist
-def trigger_trades_backfill() -> Response:
+def trigger_trades_backfill() -> ApiResponse:
     """Triggers a backfill or retry of trade processing.
 
     If strategy query parameter is specified, runs backfill for that strategy.
 
     Returns:
-        Response: JSON confirmation.
+        ApiResponse: JSON confirmation.
     """
     strategy = (request.args.get("strategy") or "").lower()
 
@@ -514,14 +516,14 @@ def trigger_trades_backfill() -> Response:
 
 @api_blueprint.route("/trades/backfill/<strategy_name>", methods=["POST"])
 @require_ip_whitelist
-def execute_strategy_backfill(strategy_name: str) -> Response:
+def execute_strategy_backfill(strategy_name: str) -> ApiResponse:
     """Executes historical backfill simulation for a given strategy_name.
 
     Args:
         strategy_name: Identifier of strategy (e.g. 'tgim', 'bridge_scout', 'bounce_bandit').
 
     Returns:
-        Response: JSON containing backfill summary metrics and trades list.
+        ApiResponse: JSON containing backfill summary metrics and trades list.
     """
     canonical_strategy = strategy_name.lower().replace("-", "_")
     start_date = (
@@ -563,12 +565,12 @@ def execute_strategy_backfill(strategy_name: str) -> Response:
 
 
 def _parse_market_update_params() -> tuple[str, bool]:
-    json_data = request.get_json(silent=True) or {}
+    json_data: dict[str, object] = request.get_json(silent=True) or {}
 
     provider_param = request.args.get("provider") or json_data.get("provider") or "auto"
     provider_mode = str(provider_param).lower()
 
-    raw_ignore = request.args.get("ignore_today")
+    raw_ignore: object = request.args.get("ignore_today")
     if raw_ignore is None:
         raw_ignore = json_data.get("ignore_today")
 
@@ -582,11 +584,11 @@ def _parse_market_update_params() -> tuple[str, bool]:
 
 @api_blueprint.route("/market/sync", methods=["POST"])
 @require_ip_whitelist
-def sync_market_data() -> Response:
+def sync_market_data() -> ApiResponse:
     """Triggers background market data synchronization.
 
     Returns:
-        Response: JSON status accepted.
+        ApiResponse: JSON status accepted.
     """
     should_full_sync = request.args.get("full", "false").lower() == "true"
     provider_mode, ignore_today = _parse_market_update_params()
@@ -598,7 +600,7 @@ def sync_market_data() -> Response:
     database_path = configuration.get_db_path("stocks")
     signals_database_path = configuration.get_db_path("signals")
     telegram_bot = current_app.extensions.get("telegram")
-    app = current_app._get_current_object()
+    app = cast(Any, current_app)._get_current_object()
 
     def _execute_sync_task() -> None:
         """Background task for market synchronization."""
@@ -627,11 +629,11 @@ def sync_market_data() -> Response:
 
 @api_blueprint.route("/market/reload", methods=["POST"])
 @require_ip_whitelist
-def reload_market_data() -> Response:
+def reload_market_data() -> ApiResponse:
     """Triggers a full manual reload of market data in the background.
 
     Returns:
-        Response: JSON status queued.
+        ApiResponse: JSON status queued.
     """
     provider_mode, ignore_today = _parse_market_update_params()
 
@@ -642,7 +644,7 @@ def reload_market_data() -> Response:
     database_path = configuration.get_db_path("stocks")
     signals_database_path = configuration.get_db_path("signals")
     telegram_bot = current_app.extensions.get("telegram")
-    app = current_app._get_current_object()
+    app = cast(Any, current_app)._get_current_object()
 
     def _execute_reload_task() -> None:
         """Background task for full market reload."""

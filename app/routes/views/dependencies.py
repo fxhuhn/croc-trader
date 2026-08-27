@@ -5,13 +5,30 @@ from pathlib import Path
 import plotly.graph_objects as go
 from flask import current_app
 
+from ...database.repositories.broker import BrokerRepository
+from ...database.repositories.market import MarketRepository
 from ...database.repositories.signal import SignalRepository
+from ...database.repositories.trade import TradeRepository
 from ...database.session import DatabaseSession
-
-# Re-expose classes used by views sub-modules for clean importing
-from ...extensions import cache  # noqa
+from ...extensions import cache
 from ...services.screener.view_service import ScreenerViewService
 from ...services.trade_manager.view_service import TradeViewService
+
+__all__ = [
+    "BrokerRepository",
+    "MarketRepository",
+    "ScreenerViewService",
+    "SignalRepository",
+    "TradeRepository",
+    "TradeViewService",
+    "_get_database_path",
+    "_get_screener_view_service",
+    "_get_signal_repository",
+    "_get_trade_view_service",
+    "cache",
+    "generate_donut_chart",
+    "generate_sparkline",
+]
 
 
 def _get_database_path(name: str = "signals") -> Path:
@@ -55,10 +72,6 @@ def _get_trade_view_service() -> TradeViewService:
     Returns:
         TradeViewService: Instantiated trade view service.
     """
-    from ...database.repositories.broker import BrokerRepository
-    from ...database.repositories.market import MarketRepository
-    from ...database.repositories.trade import TradeRepository
-
     signals_session = DatabaseSession(str(_get_database_path("signals")))
     stocks_session = DatabaseSession(str(_get_database_path("stocks")))
     trading_session = DatabaseSession(

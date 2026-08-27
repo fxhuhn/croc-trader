@@ -5,6 +5,10 @@ import numpy as np
 
 from ...const import Strategies
 
+# Capacity utilization thresholds for position sizing aggression zones
+UTILIZATION_LOW_THRESHOLD: float = 0.5
+UTILIZATION_MEDIUM_THRESHOLD: float = 0.75
+
 
 @dataclass
 class CapacityMonitor:
@@ -51,7 +55,11 @@ class CapacityMonitor:
         if strategy not in self._concurrent_trades:
             return 0.0
 
-        counts = [entry["count"] for entry in self._concurrent_trades[strategy]]
+        counts = [
+            int(str(entry["count"]))
+            for entry in self._concurrent_trades[strategy]
+            if "count" in entry
+        ]
         if not counts:
             return 0.0
 
@@ -104,9 +112,9 @@ class DynamicPositionSizer:
             strategy, current_concurrent_trades
         )
 
-        if utilization < 0.5:
+        if utilization < UTILIZATION_LOW_THRESHOLD:
             return self.max_multiplier
-        elif utilization < 0.75:
+        elif utilization < UTILIZATION_MEDIUM_THRESHOLD:
             return 1.5
         elif utilization < 1.0:
             return 1.0

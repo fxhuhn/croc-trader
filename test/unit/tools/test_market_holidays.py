@@ -12,8 +12,11 @@ from app.tools.market_holidays import MarketHolidayChecker
 
 
 @pytest.fixture(autouse=True)
-def reset_singleton() -> None:
-    """Reset singleton instance before each test."""
+def reset_singleton():
+    """Reset singleton instance before and after each test."""
+    MarketHolidayChecker._instance = None
+    MarketHolidayChecker._initialized = False
+    yield
     MarketHolidayChecker._instance = None
     MarketHolidayChecker._initialized = False
 

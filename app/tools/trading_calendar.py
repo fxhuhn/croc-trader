@@ -4,6 +4,9 @@ import pandas as pd
 
 from app.tools.market_holidays import MarketHolidayChecker
 
+# Monday=0 ... Saturday=5, Sunday=6 per datetime.weekday()
+SATURDAY: int = 5
+
 
 def get_last_completed_trading_day(
     reference_date: datetime.date,
@@ -25,7 +28,7 @@ def get_last_completed_trading_day(
     checker = holiday_checker or MarketHolidayChecker()
 
     candidate_date = reference_date - datetime.timedelta(days=1)
-    while candidate_date.weekday() >= 5 or checker.is_holiday(candidate_date):
+    while candidate_date.weekday() >= SATURDAY or checker.is_holiday(candidate_date):
         candidate_date -= datetime.timedelta(days=1)
 
     return candidate_date

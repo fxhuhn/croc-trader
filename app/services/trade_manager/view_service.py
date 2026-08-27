@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, TypedDict, cast
@@ -118,6 +119,7 @@ class TradeViewData(TradeData, total=False):
     take_profit: float | None
     tws_status: str | None
     tws_orders: list[object]
+    green_candle_count: int | None
 
     # Context (overrides str | None from TradeData for parsed dict)
     context: dict[str, object]
@@ -169,7 +171,7 @@ class TradeViewService:
         return resolved if resolved else raw_strategy_name
 
     def is_strategy_match(
-        self, trade: dict[str, object], target: str | list[str]
+        self, trade: dict[str, object], target: str | Sequence[str]
     ) -> bool:
         """Checks if a trade belongs to a strategy or list of strategies.
 
@@ -182,7 +184,7 @@ class TradeViewService:
         """
         resolved_strategy = self.resolve_strategy(trade)
 
-        if isinstance(target, list):
+        if not isinstance(target, str):
             return resolved_strategy in target
 
         return resolved_strategy == target
@@ -686,9 +688,9 @@ class TradeViewService:
 
     def get_trades(
         self,
-        strategies: list[str] | str | None = None,
+        strategies: Sequence[str] | str | None = None,
         status: str = TradeStatus.ACTIVE,
-        exclude_exit_reasons: list[str] | None = None,
+        exclude_exit_reasons: Sequence[str] | None = None,
     ) -> list[TradeViewData]:
         """
         Fetches and prepares trades, optionally filtering by strategy and exclusion criteria.

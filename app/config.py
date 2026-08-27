@@ -9,6 +9,8 @@ from typing import Any, TypedDict
 import yaml
 from dotenv import load_dotenv
 
+from .const import STRATEGY_ALIASES
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 CONFIG_FILE = BASE_DIR / "settings.yaml"
 
@@ -142,20 +144,18 @@ class PortfolioConfig:
         normalized_key = strategy_key.replace(".", "_").lower()
         if normalized_key.startswith("turnover_timing"):
             normalized_key = "turnover_timing"
-        from .const import STRATEGY_ALIASES
 
         canonical = STRATEGY_ALIASES.get(normalized_key)
-        target_name = canonical.value if hasattr(canonical, "value") else normalized_key
+        target_name = canonical.value if canonical is not None else normalized_key
         config = getattr(self, str(target_name), None)
         return config.budget if config else 0.0
 
     def get_risk_amount(self, strategy_key: str) -> float:
         """Returns the risk amount for a strategy. 0.0 if not risk-based."""
         normalized_key = strategy_key.replace(".", "_").lower()
-        from .const import STRATEGY_ALIASES
 
         canonical = STRATEGY_ALIASES.get(normalized_key)
-        target_name = canonical.value if hasattr(canonical, "value") else normalized_key
+        target_name = canonical.value if canonical is not None else normalized_key
         config = getattr(self, str(target_name), None)
         return config.risk_amount if config else 0.0
 
@@ -216,14 +216,11 @@ def _parse_strategy_config_entry(strat_val: Any) -> PortfolioStrategyConfig:
     return PortfolioStrategyConfig()
 
 
-def _parse_portfolio_config(portfolio_data: dict[str, Any]) -> PortfolioConfig:
-    """Parses portfolio strategy budgets from raw dictionary."""
-    if not portfolio_data or "strategies" not in portfolio_data:
-        return PortfolioConfig()
-
-    strategies_data = portfolio_data["strategies"]
+def _extract_strategy_configs(
+    strategies_data: Any,
+) -> dict[str, PortfolioStrategyConfig]:
+    """Parses raw strategy dictionary or list entries into typed strategy configs."""
     strat_configs: dict[str, PortfolioStrategyConfig] = {}
-
     if isinstance(strategies_data, dict):
         for strat_name, strat_val in strategies_data.items():
             if isinstance(strat_val, dict | list):
@@ -233,6 +230,15 @@ def _parse_portfolio_config(portfolio_data: dict[str, Any]) -> PortfolioConfig:
             if isinstance(entry, dict):
                 for strat_name, strat_val in entry.items():
                     strat_configs[strat_name] = _parse_strategy_config_entry(strat_val)
+    return strat_configs
+
+
+def _parse_portfolio_config(portfolio_data: dict[str, Any]) -> PortfolioConfig:
+    """Parses portfolio strategy budgets from raw dictionary."""
+    if not portfolio_data or "strategies" not in portfolio_data:
+        return PortfolioConfig()
+
+    strat_configs = _extract_strategy_configs(portfolio_data["strategies"])
 
     def get_strat_config(
         name: str, default_budget: float = 0.0, default_risk: float = 0.0
@@ -256,7 +262,7 @@ def _parse_portfolio_config(portfolio_data: dict[str, Any]) -> PortfolioConfig:
 
 
 def _parse_order_overrides(
-    order_overrides_data: dict[str, Any],
+    order_overrides_data: Any,
 ) -> dict[str, SymbolOverride]:
     """Parses symbol override definitions."""
     order_overrides: dict[str, SymbolOverride] = {}

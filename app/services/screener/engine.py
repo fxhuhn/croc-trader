@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 from typing import TypedDict
 
 import pandas as pd
@@ -32,7 +33,7 @@ class ScreenerEngine:
         trade_repository: TradeRepository,
         signal_repository: SignalRepository,
         data_provider: MarketDataProvider,
-        strategies: list[StrategyProtocol] | None = None,
+        strategies: Sequence[StrategyProtocol] | None = None,
         configuration: ScreenerConfiguration | None = None,
         telegram_bot: TelegramBot | None = None,
     ) -> None:

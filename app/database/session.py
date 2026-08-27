@@ -8,6 +8,7 @@ import logging
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +33,6 @@ class DatabaseSession:
     def connect(self) -> Generator[sqlite3.Connection, None, None]:
         """Yields a configured SQLite connection with automatic commit/rollback."""
         if self.read_only:
-            from pathlib import Path
-
             abs_path = Path(self.db_path).resolve().as_posix()
             connection = sqlite3.connect(f"file:{abs_path}?mode=ro", uri=True)
         else:

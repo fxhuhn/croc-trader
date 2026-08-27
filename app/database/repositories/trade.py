@@ -1,12 +1,37 @@
 import json
 import logging
+import math
 import sqlite3
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TradeCreationParams:
+    """Immutable parameter container for creating or resetting a trade setup."""
+
+    symbol: str
+    strategy: str
+    size: float
+    entry: float
+    stop_loss: float
+    target: float
+    context: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TradeLogEntry:
+    """Audit log entry parameters for trade state transitions."""
+
+    event_type: object
+    old_value: object
+    new_value: object
+    reason: str | None = None
 
 
 class TradeRepository(BaseRepository):
@@ -115,7 +140,7 @@ class TradeRepository(BaseRepository):
 
     def get_trade(
         self,
-        trade_id: int,
+        trade_id: int | str,
         connection: sqlite3.Connection | None = None,
     ) -> dict[str, Any] | None:
         row = self.fetch_one(
@@ -179,8 +204,6 @@ class TradeRepository(BaseRepository):
         self, symbol: str, entry: float, stop_loss: float, target: float
     ) -> None:
         """Security Hardening: Validate financial inputs."""
-        import math
-
         for value, name in [
             (entry, "entry"),
             (stop_loss, "stop_loss"),
@@ -218,14 +241,12 @@ class TradeRepository(BaseRepository):
         self,
         connection: sqlite3.Connection,
         trade_id: int,
-        quantity: int,
-        entry: float,
-        stop_loss: float,
-        target: float,
+        params: TradeCreationParams,
         context_json: str,
         current_status: str,
     ) -> None:
         """Resets a non-active trade candidate's fields."""
+        quantity = int(params.size)
         update_sql = """
             UPDATE trades SET
                 status = 'CREATED',
@@ -242,9 +263,9 @@ class TradeRepository(BaseRepository):
             (
                 quantity,
                 quantity,
-                entry,
-                stop_loss,
-                target,
+                params.entry,
+                params.stop_loss,
+                params.target,
                 context_json,
                 trade_id,
             ),
@@ -264,15 +285,11 @@ class TradeRepository(BaseRepository):
     def _insert_new_trade(
         self,
         connection: sqlite3.Connection,
-        symbol: str,
-        strategy: str,
-        quantity: int,
-        entry: float,
-        stop_loss: float,
-        target: float,
+        params: TradeCreationParams,
         context_json: str,
     ) -> int:
         """Inserts a new trade candidate into the trades table."""
+        quantity = int(params.size)
         sql = """
             INSERT INTO trades (
                 symbol, strategy, status,
@@ -284,13 +301,13 @@ class TradeRepository(BaseRepository):
         cursor = connection.execute(
             sql,
             (
-                symbol,
-                strategy,
+                params.symbol,
+                params.strategy,
                 quantity,
                 quantity,
-                entry,
-                stop_loss,
-                target,
+                params.entry,
+                params.stop_loss,
+                params.target,
                 context_json,
             ),
         )
@@ -302,7 +319,7 @@ class TradeRepository(BaseRepository):
                 trade_id,
                 "ENTRY",
                 None,
-                f"Quantity: {quantity} @ {entry}",
+                f"Quantity: {quantity} @ {params.entry}",
                 "Setup Found",
             ),
         )
@@ -318,10 +335,10 @@ class TradeRepository(BaseRepository):
         target: float,
         context: dict[str, object],
     ) -> int:
+        """Creates a new trade setup or resets an existing non-active candidate."""
         self._validate_financial_inputs(symbol, entry, stop_loss, target)
 
         context_json = json.dumps(context, default=str, ensure_ascii=False)
-        quantity = int(size)
         signal_date = context.get("date")
 
         with self.session.connect() as connection:
@@ -346,10 +363,15 @@ class TradeRepository(BaseRepository):
                     self._reset_existing_trade(
                         connection,
                         trade_id,
-                        quantity,
-                        entry,
-                        stop_loss,
-                        target,
+                        TradeCreationParams(
+                            symbol=symbol,
+                            strategy=strategy,
+                            size=size,
+                            entry=entry,
+                            stop_loss=stop_loss,
+                            target=target,
+                            context=context,
+                        ),
                         context_json,
                         current_status,
                     )
@@ -357,27 +379,21 @@ class TradeRepository(BaseRepository):
 
             return self._insert_new_trade(
                 connection,
-                symbol,
-                strategy,
-                quantity,
-                entry,
-                stop_loss,
-                target,
+                TradeCreationParams(
+                    symbol=symbol,
+                    strategy=strategy,
+                    size=size,
+                    entry=entry,
+                    stop_loss=stop_loss,
+                    target=target,
+                    context=context,
+                ),
                 context_json,
             )
 
-    def update_trade(
-        self,
-        trade_id: int,
-        updates: dict[str, object],
-        reason: str | None = None,
-    ) -> None:
-        """Generic update."""
-        if not updates:
-            return
-
-        # Enums in updates behandeln
-        safe_updates = {}
+    def _sanitize_updates(self, updates: dict[str, object]) -> dict[str, object]:
+        """Validates columns and normalizes enum and date values for updates."""
+        safe_updates: dict[str, object] = {}
         for key, value in updates.items():
             if key not in self.VALID_COLUMNS:
                 logger.error("❌ SECURITY: Attempted update to invalid column: %s", key)
@@ -387,7 +403,6 @@ class TradeRepository(BaseRepository):
             safe_value = value.value if isinstance(value, Enum) else value
 
             # Robust Date Normalization for entry_date and exit_date
-            # Ensures "YYYY-MM-DD" instead of "YYYY-MM-DD HH:MM:SS"
             if key in ("entry_date", "exit_date"):
                 if isinstance(safe_value, str) and " " in safe_value:
                     safe_value = safe_value.split(" ")[0]
@@ -395,24 +410,45 @@ class TradeRepository(BaseRepository):
                     safe_value = safe_value.strftime("%Y-%m-%d")
 
             safe_updates[key] = safe_value
+        return safe_updates
+
+    def _collect_trade_changes(
+        self, safe_updates: dict[str, object], trade: dict[str, Any]
+    ) -> tuple[list[str], list[object], list[tuple[str, object, object]]]:
+        """Compares new vs old values and builds SQL set clauses and change logs."""
+        set_clauses: list[str] = []
+        values: list[object] = []
+        changes: list[tuple[str, object, object]] = []
+
+        for key, new_value in safe_updates.items():
+            old_value = trade.get(key)
+            if str(old_value) != str(new_value):
+                set_clauses.append(f"{key} = ?")
+                values.append(new_value)
+                changes.append((key, old_value, new_value))
+
+        return set_clauses, values, changes
+
+    def update_trade(
+        self,
+        trade_id: int | str,
+        updates: dict[str, object],
+        reason: str | None = None,
+    ) -> None:
+        """Generic update."""
+        if not updates:
+            return
+
+        safe_updates = self._sanitize_updates(updates)
 
         with self.session.connect() as connection:
             trade = self.get_trade(trade_id, connection=connection)
             if not trade:
                 return
 
-            set_clauses = []
-            values = []
-            changes = []
-
-            for key, new_value in safe_updates.items():
-                old_value = trade.get(key)
-                # Compare as string to avoid type issues
-                if str(old_value) != str(new_value):
-                    set_clauses.append(f"{key} = ?")
-                    values.append(new_value)
-                    changes.append((key, old_value, new_value))
-
+            set_clauses, values, changes = self._collect_trade_changes(
+                safe_updates, trade
+            )
             if not set_clauses:
                 return
 
@@ -424,37 +460,45 @@ class TradeRepository(BaseRepository):
                 self._log_event_conn(
                     connection,
                     trade_id,
-                    f"UPDATE_{key.upper()}",
-                    old_value,
-                    new_value,
-                    reason,
+                    TradeLogEntry(
+                        event_type=f"UPDATE_{key.upper()}",
+                        old_value=old_value,
+                        new_value=new_value,
+                        reason=reason,
+                    ),
                 )
 
     def _log_event(
         self,
-        trade_id: int,
-        event_type: object,
-        old_value: object,
-        new_value: object,
-        reason: str | None,
+        trade_id: int | str,
+        entry: TradeLogEntry,
     ) -> None:
         self.execute(
             "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
-            (trade_id, str(event_type), str(old_value), str(new_value), reason),
+            (
+                trade_id,
+                str(entry.event_type),
+                str(entry.old_value),
+                str(entry.new_value),
+                entry.reason,
+            ),
         )
 
     def _log_event_conn(
         self,
         connection: sqlite3.Connection,
-        trade_id: int,
-        event_type: object,
-        old_value: object,
-        new_value: object,
-        reason: str | None,
+        trade_id: int | str,
+        entry: TradeLogEntry,
     ) -> None:
         self.execute(
             "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
-            (trade_id, str(event_type), str(old_value), str(new_value), reason),
+            (
+                trade_id,
+                str(entry.event_type),
+                str(entry.old_value),
+                str(entry.new_value),
+                entry.reason,
+            ),
             connection=connection,
         )
 

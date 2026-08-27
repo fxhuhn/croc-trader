@@ -3,6 +3,7 @@
 Follows the Functional Core pattern: deterministic calculations without side effects or I/O.
 """
 
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
@@ -350,7 +351,7 @@ def _compute_mv_strategy_statistics(
 
 def calculate_concurrent_exposure(
     strat_df: pd.DataFrame,
-    strat_active: list[dict[str, Any]],
+    strat_active: Sequence[dict[str, Any]],
 ) -> tuple[int, int]:
     """Calculates max concurrent open positions and the 95th percentile utilization."""
     events = _collect_trade_events(strat_df, strat_active)
@@ -368,7 +369,7 @@ def calculate_concurrent_exposure(
 
 
 def _collect_trade_events(
-    strat_df: pd.DataFrame, strat_active: list[dict[str, Any]]
+    strat_df: pd.DataFrame, strat_active: Sequence[dict[str, Any]]
 ) -> list[tuple[pd.Timestamp, int]]:
     """Gathers datetime entry (+1) and exit (-1) events."""
     events: list[tuple[pd.Timestamp, int]] = []
@@ -629,7 +630,7 @@ def calculate_strategy_risk_and_expectancy(
 
 
 def calculate_kelly_metrics(
-    roi_series: pd.Series, strategy_active_trades: list[dict[str, Any]]
+    roi_series: pd.Series, strategy_active_trades: Sequence[dict[str, Any]]
 ) -> tuple[float, float, float]:
     """Calculates Win Rate, Risk Reward Ratio, and Kelly Criterion from closed & active ROIs.
 

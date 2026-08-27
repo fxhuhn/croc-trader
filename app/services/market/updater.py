@@ -2,6 +2,8 @@ import logging
 import time
 from datetime import datetime, timedelta
 
+import pandas as pd
+
 from app.database.repositories.market import MarketRepository
 from app.database.repositories.trade import TradeRepository
 from app.database.session import DatabaseSession
@@ -135,6 +137,59 @@ class MarketDataUpdater:
         final_list = list(candidates - ignored)
         return final_list
 
+    def _extract_symbol_market_prices(
+        self,
+        df_sym: pd.DataFrame,
+        symbol: str,
+        ignore_today: bool,
+        today_str: str,
+    ) -> tuple[list[MarketPrice], str]:
+        """Extracts and cleans market prices for a single symbol from DataFrame."""
+        df_sym.columns = df_sym.columns.str.lower()
+        df_sym = df_sym.dropna(subset=["close"])
+        if df_sym.empty:
+            return [], ""
+
+        df_sym = df_sym.reset_index().rename(columns={"index": "date"})
+        symbol_prices: list[MarketPrice] = []
+        symbol_max_date = ""
+
+        for row_dict in df_sym.to_dict("records"):
+            try:
+                price_model = MarketPrice.from_yahoo(symbol, row_dict)
+                if ignore_today and price_model.date == today_str:
+                    logger.debug(
+                        "Skipping current day record for %s due to ignore_today flag",
+                        symbol,
+                    )
+                    continue
+                symbol_prices.append(price_model)
+                symbol_max_date = max(symbol_max_date, price_model.date)
+            except ValueError as value_error:
+                logger.debug("Skipping row for %s: %s", symbol, value_error)
+                continue
+
+        return symbol_prices, symbol_max_date
+
+    def _handle_batch_failures(
+        self,
+        failures: list[str],
+        provider_mode: str,
+        full_reload: bool,
+        ignore_today: bool,
+    ) -> int:
+        """Handles symbol failures according to the active provider mode."""
+        if not failures:
+            return 0
+        if provider_mode == "auto":
+            return self._fallback_to_tradingview(
+                failures, full_reload, ignore_today=ignore_today
+            )
+        if provider_mode == "yahoo" and full_reload:
+            for symbol in failures:
+                self.repo.ignore_symbol(symbol, "No Data (Full Reload)")
+        return 0
+
     def _process_batch(
         self,
         batch: list[str],
@@ -143,81 +198,49 @@ class MarketDataUpdater:
         provider_mode: str = "auto",
         ignore_today: bool = False,
     ) -> int:
-        """
-        Fetches and saves a single batch. Returns count of saved records.
-        """
+        """Fetches and saves a single batch. Returns count of saved records."""
         today_str = datetime.now().strftime("%Y-%m-%d")
 
-        # If provider_mode is strictly 'tradingview', bypass Yahoo entirely
         if provider_mode == "tradingview":
             return self._fallback_to_tradingview(
                 batch, full_reload, ignore_today=ignore_today
             )
 
-        # Fetch Raw Data from Yahoo
         df_batch, raw_failures = self.provider.fetch_batch_raw(batch, start_date)
         failures = list(raw_failures)
 
         if df_batch.empty:
-            if provider_mode == "yahoo":
-                if failures and full_reload:
-                    for f in failures:
-                        self.repo.ignore_symbol(f, "No Data (Full Reload)")
-                return 0
-            # Otherwise trigger fallback for all batch symbols
-            return self._fallback_to_tradingview(
-                batch, full_reload, ignore_today=ignore_today
+            return self._handle_batch_failures(
+                batch if provider_mode != "yahoo" else failures,
+                provider_mode,
+                full_reload,
+                ignore_today,
             )
 
-        # Determine expected last completed trading day for recency check
         target_trading_day = get_last_completed_trading_day(
             datetime.now().date(), MarketHolidayChecker()
         ).strftime("%Y-%m-%d")
 
-        # Transform & Collect
         bulk_data: list[MarketPrice] = []
 
         for symbol in batch:
             if symbol in raw_failures:
                 continue
 
-            # Extract single symbol DataFrame
             df_sym = self.provider.extract_symbol_data(df_batch, symbol)
-
             if df_sym.empty:
                 failures.append(symbol)
                 continue
 
-            # Standardize column names and clean data
-            df_sym.columns = df_sym.columns.str.lower()
-            df_sym = df_sym.dropna(subset=["close"])
-
-            if df_sym.empty:
+            symbol_prices, symbol_max_date = self._extract_symbol_market_prices(
+                df_sym, symbol, ignore_today, today_str
+            )
+            if not symbol_prices:
                 failures.append(symbol)
                 continue
 
-            # Vectorized: reset index to make date a column
-            df_sym = df_sym.reset_index().rename(columns={"index": "date"})
+            bulk_data.extend(symbol_prices)
 
-            symbol_max_date = ""
-
-            # Batch-construct MarketPrice objects from dict records
-            for row_dict in df_sym.to_dict("records"):
-                try:
-                    price_model = MarketPrice.from_yahoo(symbol, row_dict)
-                    if ignore_today and price_model.date == today_str:
-                        logger.debug(
-                            "Skipping current day record for %s due to ignore_today flag",
-                            symbol,
-                        )
-                        continue
-                    bulk_data.append(price_model)
-                    symbol_max_date = max(symbol_max_date, price_model.date)
-                except ValueError as value_error:
-                    logger.debug("Skipping row for %s: %s", symbol, value_error)
-                    continue
-
-            # If Yahoo did not yield data for the latest expected trading day, queue for fallback
             if (
                 provider_mode == "auto"
                 and symbol_max_date
@@ -232,21 +255,63 @@ class MarketDataUpdater:
                 )
                 failures.append(symbol)
 
-        # Persist Yahoo batch
         if bulk_data:
             self.repo.save_bulk_prices(bulk_data)
 
-        # Handle Failures via TradingView On-Demand Fallback
-        fallback_count = 0
-        if failures and provider_mode == "auto":
-            fallback_count = self._fallback_to_tradingview(
-                failures, full_reload, ignore_today=ignore_today
-            )
-        elif failures and provider_mode == "yahoo" and full_reload:
-            for f in failures:
-                self.repo.ignore_symbol(f, "No Data (Full Reload)")
-
+        fallback_count = self._handle_batch_failures(
+            failures, provider_mode, full_reload, ignore_today
+        )
         return len(bulk_data) + fallback_count
+
+    def _process_single_tradingview_symbol(
+        self,
+        symbol: str,
+        n_bars: int,
+        *,
+        full_reload: bool,
+        ignore_today: bool,
+        today_str: str,
+    ) -> int:
+        """Fetches and saves historical data for a single symbol via TradingView."""
+        records = self.tv_provider.fetch_symbol_history(symbol, number_of_bars=n_bars)
+        if not records:
+            logger.warning(
+                "TradingView fallback yielded no records for symbol %s", symbol
+            )
+            if full_reload:
+                self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")
+                logger.warning(
+                    "Ignoring symbol %s (No Data from Yahoo or TradingView)", symbol
+                )
+            return 0
+
+        tv_prices: list[MarketPrice] = []
+        for row in records:
+            try:
+                price_model = MarketPrice.from_tradingview(symbol, row)
+                if ignore_today and price_model.date == today_str:
+                    logger.debug(
+                        "Skipping current day TradingView record for %s due to ignore_today flag",
+                        symbol,
+                    )
+                    continue
+                tv_prices.append(price_model)
+            except ValueError as err:
+                logger.debug("Skipping TradingView row for %s: %s", symbol, err)
+                continue
+
+        if tv_prices:
+            self.repo.save_bulk_prices(tv_prices)
+            logger.debug(
+                "TradingView saved %d records for %s",
+                len(tv_prices),
+                symbol,
+            )
+            return len(tv_prices)
+
+        if full_reload:
+            self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")
+        return 0
 
     def _fallback_to_tradingview(
         self,
@@ -265,8 +330,8 @@ class MarketDataUpdater:
         )
         saved_count = 0
         n_bars = 1200 if full_reload else 15
-
         total_symbols = len(failed_symbols)
+
         for idx, symbol in enumerate(failed_symbols, start=1):
             if idx % 25 == 1 or idx == total_symbols:
                 logger.info(
@@ -274,45 +339,12 @@ class MarketDataUpdater:
                     idx,
                     total_symbols,
                 )
-
-            records = self.tv_provider.fetch_symbol_history(
-                symbol, number_of_bars=n_bars
+            saved_count += self._process_single_tradingview_symbol(
+                symbol,
+                n_bars,
+                full_reload=full_reload,
+                ignore_today=ignore_today,
+                today_str=today_str,
             )
-            if not records:
-                logger.warning(
-                    "TradingView fallback yielded no records for symbol %s", symbol
-                )
-                if full_reload:
-                    self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")
-                    logger.warning(
-                        "Ignoring symbol %s (No Data from Yahoo or TradingView)", symbol
-                    )
-                continue
-
-            tv_prices: list[MarketPrice] = []
-            for row in records:
-                try:
-                    price_model = MarketPrice.from_tradingview(symbol, row)
-                    if ignore_today and price_model.date == today_str:
-                        logger.debug(
-                            "Skipping current day TradingView record for %s due to ignore_today flag",
-                            symbol,
-                        )
-                        continue
-                    tv_prices.append(price_model)
-                except ValueError as err:
-                    logger.debug("Skipping TradingView row for %s: %s", symbol, err)
-                    continue
-
-            if tv_prices:
-                self.repo.save_bulk_prices(tv_prices)
-                saved_count += len(tv_prices)
-                logger.debug(
-                    "TradingView saved %d records for %s",
-                    len(tv_prices),
-                    symbol,
-                )
-            elif full_reload:
-                self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")
 
         return saved_count

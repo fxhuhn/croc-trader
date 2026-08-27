@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from flask import Flask
+from flask import Flask, current_app, has_app_context
 
 from .config import ConfigManager
 from .database.session import DatabaseSession
@@ -15,6 +15,8 @@ from .services.market.updater import MarketDataUpdater
 from .services.telegram import TelegramBot
 
 logger = logging.getLogger(__name__)
+
+HTTP_OK: int = 200
 
 
 def run_daily_eod_pipeline(app: Flask) -> dict[str, Any]:
@@ -133,8 +135,6 @@ def run_market_data_update(
     try:
         if telegram_bot is None:
             try:
-                from flask import current_app, has_app_context
-
                 if has_app_context():
                     telegram_bot = current_app.extensions.get("telegram")
             except Exception:
@@ -310,7 +310,7 @@ def _warm_single_route(test_client: object, route_path: str) -> None:
     """
     try:
         response = test_client.get(route_path)  # type: ignore[attr-defined]
-        if response.status_code == 200:
+        if response.status_code == HTTP_OK:
             logger.info("  ✓ Pre-warmed: %s", route_path)
             return
 

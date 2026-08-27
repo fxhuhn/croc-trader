@@ -13,6 +13,9 @@ from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
 
+# Minimum parts after splitting "YYYY-MM-DD HH:MM:SS" → [date, time]
+MIN_TIMESTAMP_PARTS: int = 2
+
 
 class MarketRepository(BaseRepository):
     """Repository for querying and persisting market price data and symbol blacklist records."""
@@ -167,7 +170,7 @@ class MarketRepository(BaseRepository):
         if latest_timestamp:
             raw_timestamp = str(latest_timestamp).strip()
             timestamp_parts = raw_timestamp.replace("T", " ").split(" ")
-            if len(timestamp_parts) >= 2:
+            if len(timestamp_parts) >= MIN_TIMESTAMP_PARTS:
                 date_part = timestamp_parts[0]
                 time_part = timestamp_parts[1].split(".")[0][:5]
                 return f"{date_part} {time_part}"
@@ -196,7 +199,8 @@ class MarketRepository(BaseRepository):
             )
             SELECT close FROM ranked WHERE rank_idx = 1 ORDER BY date DESC LIMIT 1
         """
-        return self.fetch_value(sql_query, (symbol,))
+        raw_price = self.fetch_value(sql_query, (symbol,))
+        return float(raw_price) if raw_price is not None else None
 
     def get_trading_days_count(
         self,
@@ -219,10 +223,10 @@ class MarketRepository(BaseRepository):
         start_date_string = str(start_date).split(" ")[0]
         end_date_string = str(end_date).split(" ")[0]
         sql_query = "SELECT COUNT(DISTINCT date) FROM market_prices WHERE symbol = ? AND date >= ? AND date <= ? AND timeframe = '1D'"
-        return (
-            self.fetch_value(sql_query, (symbol, start_date_string, end_date_string))
-            or 0
+        raw_count = self.fetch_value(
+            sql_query, (symbol, start_date_string, end_date_string)
         )
+        return int(raw_count) if raw_count is not None else 0
 
     # --- Helper for Validation ---
 

@@ -1,6 +1,6 @@
-"""Routes and views for performance analytics and allocation dashboard."""
-
 import logging
+from collections.abc import Sequence
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -192,7 +192,7 @@ def _render_empty_dashboard(current_month_name: str) -> str:
 
 
 def _prepare_closed_trades_dataframe(
-    closed_trades: list[TradeData] | list[dict[str, object]],
+    closed_trades: Sequence[TradeData | dict[str, object]],
 ) -> pd.DataFrame:
     """Normalizes and prepares closed trades DataFrame."""
     if not closed_trades:
@@ -290,7 +290,7 @@ def _calculate_summary_metrics(
 
 def _build_strategies_dashboard(
     dataframe: pd.DataFrame,
-    active_trades: list[TradeData] | list[dict[str, object]],
+    active_trades: Sequence[TradeData | dict[str, object]],
     service: TradeViewService,
     initial_capital: float,
 ) -> list[dict[str, object]]:
@@ -304,9 +304,9 @@ def _build_strategies_dashboard(
             else pd.DataFrame()
         )
         strategy_active_trades = [
-            trade
+            cast(dict[str, object], trade)
             for trade in active_trades
-            if service.resolve_strategy(trade) in filters
+            if service.resolve_strategy(cast(dict[str, object], trade)) in filters
             or trade.get("strategy") in filters
         ]
         if strategy_dataframe.empty and not strategy_active_trades:
@@ -318,19 +318,19 @@ def _build_strategies_dashboard(
         strategies_data.append(item)
 
     apply_depot_and_ev_allocations(strategies_data, initial_capital)
-    strategies_data.sort(key=lambda x: float(x["pnl"]), reverse=True)
+    strategies_data.sort(key=lambda x: float(str(x.get("pnl", 0.0))), reverse=True)
     return strategies_data
 
 
 def _compute_strategy_item(
     name: str,
     strategy_dataframe: pd.DataFrame,
-    strategy_active_trades: list[dict[str, object]],
+    strategy_active_trades: Sequence[dict[str, object]],
     initial_capital: float,
 ) -> dict[str, object]:
     """Calculates all metrics for a single strategy."""
     open_pnl = sum(
-        float(trade.get("unrealized_pnl", 0.0) or 0.0)
+        float(str(trade.get("unrealized_pnl") or 0.0))
         for trade in strategy_active_trades
     )
     roi_series = extract_roi_series(strategy_dataframe)
@@ -507,7 +507,7 @@ def _build_weekly_trend_data(
         else pd.DataFrame()
     )
     if chart_dataframe.empty:
-        empty_trend = {
+        empty_trend: dict[str, object] = {
             "dates": dates_formatted,
             "week_labels": week_labels,
             "date_range_label": date_range_label,

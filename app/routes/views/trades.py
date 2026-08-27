@@ -1,10 +1,11 @@
-"""Routes and views for trade history, active positions, and broker dashboard."""
-
+import logging
+from collections.abc import Sequence
 from typing import Any
 
 from flask import render_template, request
 
 from ...const import ExitReason, Strategies
+from ...services.trade_manager.view_service import TradeViewData
 from ...types import TradeStatus
 from .blueprint import views_bp
 from .dependencies import _get_trade_view_service, cache
@@ -23,14 +24,10 @@ STRATEGY_DISPLAY_MAP: dict[Strategies | str, str] = {
     Strategies.BridgeScout: "Bridge Scout",
     Strategies.BounceBandit: "Bounce Bandit",
 }
+logger = logging.getLogger(__name__)
 
-CROC_STRATEGIES: list[Strategies] = [
-    Strategies.CrocSetup,
-    Strategies.HoldTarget,
-    Strategies.SplitTarget,
-]
-
-TURNOVER_STRATEGIES: list[Strategies] = [
+CROC_STRATEGIES = [Strategies.HoldTarget, Strategies.SplitTarget]
+TURNOVER_STRATEGIES = [
     Strategies.TurnOverTiming,
     Strategies.TurnOverTiming_05,
     Strategies.TurnOverTiming_10,
@@ -71,7 +68,7 @@ def view_trades_overview() -> str:
 
 
 def _build_strategy_overview_stats(
-    active_trades: list[dict[str, Any]], service: Any
+    active_trades: Sequence[TradeViewData | dict[str, Any]], service: Any
 ) -> dict[str, dict[str, float]]:
     """Builds aggregated trade counts, PnL, and invested volume per strategy group."""
     stats: dict[str, dict[str, float]] = {
@@ -177,37 +174,34 @@ def view_trades_croc() -> str:
 
 
 def _aggregate_croc_signals(
-    closed_trades: list[dict[str, Any]], service: Any
-) -> dict[str, Any]:
-    """Aggregates win/loss and PnL performance per Croc signal name."""
-    signal_stats: dict[str, dict[str, Any]] = {}
+    closed_trades: Sequence[TradeViewData | dict[str, Any]], service: Any
+) -> dict[str, dict[str, Any]]:
+    """Aggregates trade count, win/loss, and PnL by specific Croc entry signal."""
+    signals: dict[str, dict[str, Any]] = {
+        "Breakout (L20)": {"count": 0, "win": 0, "loss": 0, "pnl": 0.0},
+        "Pullback (SMA20)": {"count": 0, "win": 0, "loss": 0, "pnl": 0.0},
+        "Trend Continuation": {"count": 0, "win": 0, "loss": 0, "pnl": 0.0},
+        "Early Entry (L10)": {"count": 0, "win": 0, "loss": 0, "pnl": 0.0},
+        "Other": {"count": 0, "win": 0, "loss": 0, "pnl": 0.0},
+    }
     for trade in closed_trades:
-        raw_signal = (
-            trade["context"].get("original_signal")
-            or trade["context"].get("match_rule", {}).get("Signal")
-            or trade["strategy"]
+        ctx = trade.get("context")
+        match_rule = ctx.get("match_rule") if isinstance(ctx, dict) else None
+        raw_name = match_rule.get("name") if isinstance(match_rule, dict) else None
+        signal_name = str(raw_name) if raw_name else "Other"
+        if signal_name not in signals:
+            signal_name = "Other"
+
+        service._update_statistics(
+            signals[signal_name], float(trade["realized_pnl"] or 0.0)
         )
-        signal_name = str(raw_signal).replace("Croc_", "") if raw_signal else "Unknown"
-        if signal_name not in signal_stats:
-            signal_stats[signal_name] = {"count": 0, "win": 0, "loss": 0, "pnl": 0.0}
-
-        realized_pnl = float(trade["realized_pnl"] or 0.0)
-        service._update_statistics(signal_stats[signal_name], realized_pnl)
-
-    for value in signal_stats.values():
-        value["average_pnl"] = (
-            value["pnl"] / value["count"] if value["count"] > 0 else 0.0
-        )
-
-    return dict(
-        sorted(signal_stats.items(), key=lambda item: item[1]["count"], reverse=True)
-    )
+    return signals
 
 
 @views_bp.route("/trades/dip-buyer", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_dip_buyer() -> str:
-    """Displays the Dip Buyer trade history and active positions dashboard."""
+    """Displays the Dip Buyer trade history and active positions."""
     limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
 
@@ -215,9 +209,6 @@ def view_trades_dip_buyer() -> str:
         strategies=Strategies.DipBuyer, status=TradeStatus.ACTIVE
     )
     active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
-
-    for trade in active:
-        trade["max_days"] = 7
 
     closed = service.get_trades(
         strategies=Strategies.DipBuyer, status=TradeStatus.CLOSED
@@ -228,18 +219,18 @@ def view_trades_dip_buyer() -> str:
     summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
     index_stats = service.get_index_stats(closed)
-    weekday_stats = service.get_weekday_stats(closed)
+    active_groups = service.group_trades_by_symbol(active)
     history_groups = service.group_trades_history(closed)
 
     return render_template(
         "trades_dip_buyer.html",
         active_trades=active,
+        active_groups=active_groups,
         closed_trades=closed,
         history_groups=history_groups,
         summary=summary_metrics,
         closed_summary=closed_summary,
         index_stats=index_stats,
-        weekday_stats=weekday_stats,
     )
 
 
@@ -247,32 +238,31 @@ def view_trades_dip_buyer() -> str:
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_turnover() -> str:
     """Displays the Turnover Timing trade history and active positions."""
-    limit = request.args.get("limit", 200, type=int)
+    limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
 
     active = service.get_trades(
         strategies=TURNOVER_STRATEGIES, status=TradeStatus.ACTIVE
     )
+    active.sort(key=lambda x: x["entry_date"] or "", reverse=True)
     for trade in active:
-        trade["max_days"] = 5
-        trade["green_candle_count"] = trade.get("context", {}).get(
-            "green_candle_count", 0
-        )
+        cnt_val = trade.get("context", {}).get("green_candle_count")
+        trade["green_candle_count"] = int(str(cnt_val)) if cnt_val is not None else None
 
     closed = service.get_trades(
         strategies=TURNOVER_STRATEGIES,
         status=TradeStatus.CLOSED,
-        exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
+        exclude_exit_reasons=[ExitReason.EXPIRED],
     )
-    closed.sort(key=lambda x: (x["exit_date"] or "", x["symbol"]), reverse=True)
+    closed.sort(key=lambda x: x["exit_date"] or "", reverse=True)
     closed = closed[:limit]
 
-    active_groups = service.group_trades_by_symbol(active)
     summary_metrics = service.get_portfolio_summary(active, closed_trades=closed)
     closed_summary = service.get_closed_summary(closed)
     index_stats = service.get_index_stats(closed)
-    variant_stats = _aggregate_turnover_variants(closed, service)
+    active_groups = service.group_trades_by_symbol(active)
     history_groups = service.group_trades_history(closed)
+    variant_stats = _aggregate_turnover_variants(closed, service)
 
     return render_template(
         "trades_turnover.html",
@@ -287,12 +277,12 @@ def view_trades_turnover() -> str:
 
 
 def _aggregate_turnover_variants(
-    closed_trades: list[dict[str, Any]], service: Any
+    closed_trades: Sequence[TradeViewData | dict[str, Any]], service: Any
 ) -> dict[str, dict[str, Any]]:
-    """Aggregates Turnover 0.5 vs Turnover 1.0 performance."""
-    variants = {
+    """Aggregates performance statistics by Turnover timing variant."""
+    variants: dict[str, dict[str, Any]] = {
         "Turnover 0.5": {
-            "name": "Turnover",
+            "name": "Turnover 0.5",
             "version": "0.5",
             "count": 0,
             "win": 0,
@@ -300,7 +290,7 @@ def _aggregate_turnover_variants(
             "pnl": 0.0,
         },
         "Turnover 1.0": {
-            "name": "Turnover",
+            "name": "Turnover 1.0",
             "version": "1.0",
             "count": 0,
             "win": 0,
@@ -321,7 +311,9 @@ def _aggregate_turnover_variants(
             )
 
     for item in variants.values():
-        item["average_pnl"] = item["pnl"] / item["count"] if item["count"] > 0 else 0.0
+        pnl_val = float(item["pnl"])
+        count_val = int(item["count"])
+        item["average_pnl"] = pnl_val / count_val if count_val > 0 else 0.0
 
     return variants
 

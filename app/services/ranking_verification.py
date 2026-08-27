@@ -57,7 +57,7 @@ def verify_ranking_system(
 
 
 def check_ranking_attributes(
-    ranking_data: list[Any] | dict[str, Any],
+    ranking_data: object,
     database_attributes: dict[str, set[str]],
 ) -> list[RankingVerificationResult]:
     """Checks if values defined in the ranking configuration exist in the database.

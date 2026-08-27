@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 
 from ..database.repositories.market_data_provider import MarketDataProvider
 from ..services.screener import ScreenerEngine
+from ..services.screener.engine import ScreenerConfiguration
+from ..services.screener.protocols import StrategyProtocol
 from ..services.telegram import TelegramBot
 from ..services.trade_manager import TradeManager
 
@@ -31,6 +33,8 @@ from ..tasks import (
     run_order_generation,
 )
 from ..tools.market_holidays import MarketHolidayChecker
+from ..tools.symbol_exchange import SymbolExchange
+from ..tools.symbol_filter import SymbolFilter
 from .ranking_verification import verify_ranking_system
 
 # Strategies
@@ -67,9 +71,6 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
     app.extensions["holiday_checker"] = holiday_checker
 
     # 1.6 Symbol Filter (Background Init)
-    from ..tools.symbol_exchange import SymbolExchange
-    from ..tools.symbol_filter import SymbolFilter
-
     # Initialize singletons to start background thread/cache loading
     symbol_filter = SymbolFilter()
     app.extensions["symbol_filter"] = symbol_filter
@@ -97,14 +98,19 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
 
     # 4. Load screener configuration
     yaml_path = config.get_strategy_path()
-    loaded_config = {}
+    loaded_config: ScreenerConfiguration = {}
     if yaml_path.exists():
         try:
             with open(yaml_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-            loaded_config = (
-                data if isinstance(data, dict) else {"strategy_ranking": data}
-            )
+            if isinstance(data, dict):
+                loaded_config = {
+                    "strategy_ranking": [
+                        str(x) for x in data.get("strategy_ranking", [])
+                    ]
+                }
+            elif isinstance(data, list):
+                loaded_config = {"strategy_ranking": [str(x) for x in data]}
             logging.info("Strategy config loaded.")
         except Exception as e:
             logging.error("Failed to load strategy YAML: %s", e)
@@ -116,7 +122,7 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
     )
 
     # 5. Screener Engine (DI: Repos and Strategies)
-    active_strategies = [
+    active_strategies: list[StrategyProtocol] = [
         DipBuyerStrategy(
             trade_repository=trade_repository,
             data_provider=md_provider,

@@ -1,6 +1,8 @@
+import datetime
 import logging.config
 
-from flask import Flask, send_from_directory
+import pytz
+from flask import Flask, Response, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import ConfigManager, settings
@@ -30,7 +32,7 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
 
     # Enable ProxyFix to trust standard headers (X-Forwarded-For, etc.)
     # Configured for 1 trusted upstream proxy (e.g. Synology Nginx proxy).
-    app.wsgi_app = ProxyFix(
+    app.wsgi_app = ProxyFix(  # type: ignore[method-assign]
         app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=0, x_prefix=0
     )
 
@@ -42,8 +44,8 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
     app.config["SECRET_KEY"] = config_object.env.SECRET_KEY
     app.config["APP_CONFIG"] = config_object
 
-    app.json.compact = False
-    app.json.ensure_ascii = False
+    app.json.compact = False  # type: ignore[attr-defined]
+    app.json.ensure_ascii = False  # type: ignore[attr-defined]
 
     cache.init_app(app)
 
@@ -58,10 +60,6 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
         if not utc_str:
             return "-"
         try:
-            import datetime
-
-            import pytz
-
             dt = datetime.datetime.fromisoformat(str(utc_str))
             if dt.tzinfo is None:
                 dt = pytz.utc.localize(dt)
@@ -127,15 +125,17 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
 
     # 6. Static file root routes
     @app.route("/favicon.ico")
-    def favicon():
+    def favicon() -> Response:
+        static_dir = app.static_folder or "static"
         return send_from_directory(
-            app.static_folder, "favicon.ico", mimetype="image/vnd.microsoft.icon"
+            static_dir, "favicon.ico", mimetype="image/vnd.microsoft.icon"
         )
 
     @app.route("/apple-touch-icon-precomposed.png")
-    def apple_touch_icon_precomposed():
+    def apple_touch_icon_precomposed() -> Response:
+        static_dir = app.static_folder or "static"
         return send_from_directory(
-            app.static_folder, "apple-touch-icon-precomposed.png", mimetype="image/png"
+            static_dir, "apple-touch-icon-precomposed.png", mimetype="image/png"
         )
 
     @app.route("/apple-touch-icon.png")
@@ -145,14 +145,16 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
     @app.route("/apple-touch-icon-152x152-precomposed.png")
     @app.route("/apple-touch-icon-180x180.png")
     @app.route("/apple-touch-icon-180x180-precomposed.png")
-    def apple_touch_icon():
+    def apple_touch_icon() -> Response:
+        static_dir = app.static_folder or "static"
         return send_from_directory(
-            app.static_folder, "apple-touch-icon.png", mimetype="image/png"
+            static_dir, "apple-touch-icon.png", mimetype="image/png"
         )
 
     @app.route("/robots.txt")
-    def robots_txt():
-        return send_from_directory(app.static_folder, "robots.txt")
+    def robots_txt() -> Response:
+        static_dir = app.static_folder or "static"
+        return send_from_directory(static_dir, "robots.txt")
 
     # 7. Scheduler & Startup Tasks (configured after all routes are registered)
     configure_scheduler(app, config_object)

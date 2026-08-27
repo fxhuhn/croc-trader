@@ -12,6 +12,7 @@ import pandas as pd
 
 # Constants for maintainability
 EPSILON: float = 1e-6
+MIN_SAMPLE_SIZE: int = 2
 
 
 def calculate_win_rate(trades_pnl: pd.Series) -> float:
@@ -187,7 +188,7 @@ def calculate_sharpe_ratio(
     Returns:
         float: Annualized Sharpe Ratio.
     """
-    if len(trades_pnl) < 2 or initial_capital < EPSILON:
+    if len(trades_pnl) < MIN_SAMPLE_SIZE or initial_capital < EPSILON:
         return 0.0
 
     returns = trades_pnl / initial_capital
@@ -246,7 +247,7 @@ def calculate_sharpe_ratio_from_roi(
         float: Annualized Sharpe Ratio.
     """
     clean_roi = roi_series.dropna()
-    if len(clean_roi) < 2 or trades_per_year <= EPSILON:
+    if len(clean_roi) < MIN_SAMPLE_SIZE or trades_per_year <= EPSILON:
         return 0.0
 
     standard_deviation = float(clean_roi.std(ddof=1))
@@ -274,7 +275,7 @@ def calculate_sortino_ratio_from_roi(
         float: Annualized Sortino Ratio.
     """
     clean_roi = roi_series.dropna()
-    if len(clean_roi) < 2 or trades_per_year <= EPSILON:
+    if len(clean_roi) < MIN_SAMPLE_SIZE or trades_per_year <= EPSILON:
         return 0.0
 
     underperformance = np.minimum(0.0, clean_roi.to_numpy() - target_return)
@@ -303,7 +304,7 @@ def calculate_sqn(r_multiples: pd.Series) -> float:
         float: SQN value.
     """
     total_trades = len(r_multiples)
-    if total_trades < 2:
+    if total_trades < MIN_SAMPLE_SIZE:
         return 0.0
 
     mean_r = r_multiples.mean()

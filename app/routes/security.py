@@ -54,7 +54,7 @@ def _is_ip_whitelisted(client_ip: str, whitelist: list[str] | tuple[str, ...]) -
 
 def require_ip_whitelist[**P, R: Response | object](
     func: Callable[P, R],
-) -> Callable[P, Response | R]:
+) -> Callable[P, Response | tuple[Response, int] | R]:
     """Decorator to restrict access to whitelisted IP addresses.
 
     Checks the client IP against the whitelist defined in the application
@@ -62,7 +62,9 @@ def require_ip_whitelist[**P, R: Response | object](
     """
 
     @wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Response | R:
+    def wrapper(
+        *args: P.args, **kwargs: P.kwargs
+    ) -> Response | tuple[Response, int] | R:
         configuration = current_app.config.get("APP_CONFIG")
 
         if not configuration:

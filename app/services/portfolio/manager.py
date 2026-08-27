@@ -50,8 +50,11 @@ class PortfolioManager:
             allocated_count = 0
 
             for trade in candidates:
-                symbol = trade["symbol"]
-                current_size = float(trade.get("initial_size") or 0.0)
+                trade_id = trade.get("id")
+                if not isinstance(trade_id, int | str):
+                    continue
+                symbol = str(trade.get("symbol") or "")
+                current_size = float(str(trade.get("initial_size") or 0.0))
 
                 if current_size > 0:
                     logger.debug(
@@ -68,13 +71,13 @@ class PortfolioManager:
                     context = (
                         raw_context
                         if isinstance(raw_context, dict)
-                        else json.loads(raw_context or "{}")
+                        else json.loads(str(raw_context or "{}"))
                     )
                     context["budget"] = allocation.budget_used
                     context["risk_amount"] = allocation.risk_amount
 
                     self.trade_repository.update_trade(
-                        trade["id"],
+                        trade_id,
                         {
                             "initial_size": allocation.size,
                             "current_size": allocation.size,  # Synced for initial state
