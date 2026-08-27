@@ -56,7 +56,7 @@ class TurnoverConfiguration:
     minimum_lookback_days: int = 800
 
 
-class TurnoverTimingStrategy(BaseStrategy):
+class TurnoverTimingStrategy(BaseStrategy[int]):
     name: str = str(Strategies.TurnOverTiming)
 
     def __init__(
@@ -230,7 +230,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         days_diff = (pd.Timestamp.now() - analysis_timestamp).days
 
         if days_diff > (base_lookback - 100):
-            return days_diff + 500  # Buffer for historical runs
+            return int(days_diff + 500)  # Buffer for historical runs
         return base_lookback
 
     def _identify_strategy_candidates(
@@ -386,7 +386,7 @@ class TurnoverTimingStrategy(BaseStrategy):
         setup_date_str = str(setup_date.date())
 
         # Deduplicate candidates across indices
-        merged_candidates: dict[str, dict[str, object]] = {}
+        merged_candidates: dict[str, TurnoverCandidate] = {}
         for candidate in candidates:
             symbol = str(candidate["symbol"])
             if symbol not in merged_candidates:
@@ -409,7 +409,7 @@ class TurnoverTimingStrategy(BaseStrategy):
 
     def _store_turnover_signals_for_candidate(
         self,
-        candidate: dict[str, object],
+        candidate: TurnoverCandidate,
         data_frames: dict[str, pd.DataFrame],
         setup_date: pd.Timestamp,
         setup_date_str: str,
@@ -468,14 +468,14 @@ class TurnoverTimingStrategy(BaseStrategy):
         return created_signals
 
     def _report_signals_to_telegram(
-        self, candidates: list[dict[str, object]], setup_date: pd.Timestamp
+        self, candidates: list[TurnoverCandidate], setup_date: pd.Timestamp
     ) -> None:
         """Sends a consolidated signal report to Telegram."""
         if not self.telegram_bot or not candidates:
             return
 
         # Deduplicate for reporting
-        unique_symbols: dict[str, dict[str, object]] = {}
+        unique_symbols: dict[str, TurnoverCandidate] = {}
         for candidate in candidates:
             symbol = str(candidate["symbol"])
             if symbol not in unique_symbols:
@@ -574,4 +574,4 @@ class TurnoverTimingStrategy(BaseStrategy):
         """Safely extracts a float value from a potentially null/NaN object."""
         if pd.isna(value):
             return default
-        return float(value)
+        return float(str(value))

@@ -4,10 +4,10 @@ from typing import TypedDict, final, override
 
 import pandas as pd
 
-from ....const import Strategies
+from ....const import ExitReason, Strategies
 from ....models import Order, TradeParams
 from ....tools.market_holidays import MarketHolidayChecker
-from ....types import ExitReason, TradeData
+from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, HolidayCheckerProtocol
 
@@ -33,7 +33,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
        - Time: Friday Close.
     """
 
-    name = Strategies.TurnOverTiming
+    name: str = str(Strategies.TurnOverTiming)
     """Unique identifier for the strategy."""
 
     DEFAULT_SLIPPAGE: float = 0.0
@@ -117,7 +117,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         reference_date: str | None = None,
     ) -> Order | None:
         context = self._get_full_context(trade)
-        green_candle_count = context.get("green_candle_count", 0)
+        green_candle_count = int(str(context.get("green_candle_count") or 0))
         quantity = int(trade.get("current_size") or 0)
 
         if quantity <= 0:
@@ -253,7 +253,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         if last_processed_date == date_string:
             return None
 
-        green_candle_count = context.get("green_candle_count", 0)
+        green_candle_count = int(str(context.get("green_candle_count") or 0))
 
         # Check for Exit Trigger (Next Open)
         if green_candle_count >= 2:
@@ -298,7 +298,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         if last_processed_date == date_string:
             return {}
 
-        green_candle_count = context.get("green_candle_count", 0)
+        green_candle_count = int(str(context.get("green_candle_count") or 0))
 
         # Track consecutive green candles
         if self._is_green_candle(
