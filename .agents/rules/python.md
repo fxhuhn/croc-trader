@@ -57,7 +57,10 @@ Every code decision must be evaluated against these four quality dimensions, in 
 - **Modern Syntax:**
     - Use `list[str]` instead of `List[str]`.
     - Use `str | int` instead of `Union[str, int]`.
+    - Use `isinstance(obj, TypeA | TypeB)` instead of `isinstance(obj, (TypeA, TypeB))` (UP038).
     - Use `type PriceMap = dict[str, float]` for type aliases.
+- **Protocol Attributes & Covariance:**
+    - In `typing.Protocol` classes, declare read-only attributes using `@property def attribute(self) -> Type: ...` rather than mutable variables (`attribute: Type`) to ensure subtype covariance for subclasses and Enums.
 - **Controlled `Any`:**
     - Avoid `Any` in application, domain, and business logic.
     - Use `Any` only at a verified untyped external boundary when no accurate
@@ -99,6 +102,7 @@ Execution commands:
 - `.venv/bin/ruff format --check .`
 - `.venv/bin/ruff check .`
 - `.venv/bin/mypy`
+- `.venv/bin/pre-commit run --all-files`
 - `.venv/bin/pytest`
 
 ### 3.3 Prohibited Patterns
@@ -368,7 +372,8 @@ configuration actually enforce it.
 | Readability | Maximum indentation depth | ≤ 3 levels | Audit |
 | Readability | Function length | approximately ≤ 50 logical lines | Audit; not a Ruff-enforced line metric |
 | Maintainability | Function arguments | ≤ 5 | Ruff Pylint rules for enforced scope |
-| Maintainability | Static typing | No new MyPy errors in the effective checked scope | MyPy strict configuration |
+| Maintainability | Static typing | 0 MyPy errors across all app source files; 0 `ignore_errors` overrides | MyPy strict configuration |
+| Maintainability | Pre-Commit compliance | 0 failures across all hooks (ruff, vulture, bandit, gitleaks, sync) | `.venv/bin/pre-commit run --all-files` |
 | Maintainability | Functional-core branch coverage | ≥ 90% for materially changed logic | Measured Pytest coverage |
 | Correctness | Bare `except:` clauses | 0 | Ruff `E722` |
 | Correctness | Unjustified `# type: ignore` | 0 | MyPy and audit |

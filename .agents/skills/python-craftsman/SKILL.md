@@ -62,18 +62,9 @@ report which rule families were not effectively enforced.
 .venv/bin/mypy <changed-python-paths-or-configured-scope>
 ```
 
-Do not report this gate as passed when MyPy globally suppresses errors or when
-the changed modules are excluded. Report the effective checked scope.
+Do not introduce new `ignore_errors = true` overrides in `pyproject.toml`. All changed and refactored application files must pass `mypy --strict` directly without type suppressions.
 
-A package-wide override such as `app.*` with `ignore_errors = true` means the
-application scope is not statically validated. In that state:
-
-- report the gate as `Not validated`,
-- do not describe MyPy as strict for application code,
-- and identify the suppressing override in the completion report.
-
-A file or module may count as checked only when MyPy analyzes it without an
-`ignore_errors = true` override.
+A file or module may count as checked only when MyPy analyzes it without an `ignore_errors = true` override.
 
 ### Gate 3: Behavior Verification — required for behavior changes
 
@@ -87,20 +78,28 @@ Run relevant tests first. Run the full suite when available and proportionate.
 
 Coverage is reported only when explicitly measured.
 
-### Gate 4: Architecture and Quality Audit — conditional
+### Gate 4: Pre-Commit Pipeline — mandatory before completion
+
+Execute the full repository pre-commit suite to verify linter auto-fixes, vulture dead-code scans, bandit security scans, gitleaks secret detection, and architecture sync:
+
+```bash
+.venv/bin/pre-commit run --all-files
+```
+
+### Gate 5: Architecture and Quality Audit — conditional
 
 Use `python-auditor` for non-trivial code changes, architecture-sensitive
 changes, or an explicit review request. Documentation-only, comment-only, and
 mechanical formatting changes do not require this gate.
 
-### Gate 5: Security and Financial-Integrity Audit — conditional
+### Gate 6: Security and Financial-Integrity Audit — conditional
 
 Use `python-security` when the change affects trust boundaries, external input,
 files, paths, subprocesses, network access, persistence, serialization,
 secrets, dependencies, monetary calculations, orders, scheduling, or retry and
 idempotency behavior. Refer to the full security audit vectors defined in `python-security`.
 
-### Gate 6: Architecture Documentation Sync — conditional
+### Gate 7: Architecture Documentation Sync — conditional
 
 Use `architecture-sync` only for its declared triggers. Do not trigger it for
 small public helpers or implementation details without architectural impact.

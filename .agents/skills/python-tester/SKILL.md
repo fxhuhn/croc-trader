@@ -64,6 +64,7 @@ assumption as a test.
 - Tests must never access production services, production databases, user data,
   or uncontrolled external networks.
 - Use mocks only at actual boundaries, not for internal implementation details.
+- **Singleton & Global State Isolation:** Every test fixture that initializes, mocks, or resets singleton instances (e.g. `MarketHolidayChecker`, `SymbolFilter`), caches, or global singletons MUST use `yield` and restore clean state during teardown to prevent inter-test pollution across full test runs.
 
 
 ### STEP 2: COVERAGE & TIME RULES

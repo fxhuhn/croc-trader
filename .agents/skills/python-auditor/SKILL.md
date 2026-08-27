@@ -58,9 +58,7 @@ Evaluate code in **pyramid order** according to `python.md` (Layer 1 Correctness
    complexity from Ruff when available, cognitive complexity only when a
    compatible tool is configured, indentation depth, function length, and
    appropriate use of early returns.
-3. **🔧 Maintainability Scan**: Check effective MyPy coverage of the changed
-   scope, introduced typing errors, DRY, SRP, public documentation, existence of Tier 1 & Tier 2 tests (BVA, Hypothesis fuzzing), and whether
-   broad tool exclusions hide changed code.
+3. **🔧 Maintainability Scan**: Check effective MyPy coverage without `ignore_errors` overrides, full pre-commit pipeline compliance (`.venv/bin/pre-commit run --all-files`), test fixture state isolation (teardown resets), introduced typing errors, DRY, SRP, public documentation, existence of Tier 1 & Tier 2 tests (BVA, Hypothesis fuzzing), and whether broad tool exclusions hide changed code.
 4. **🔄 Changeability & Mutation Scan**: Verify DIP, OCP, orthogonality, boundary validation, and test-assertiveness against code mutations (Mutation Score $\ge 85\,\%$ on modified core algorithms).
 
 
