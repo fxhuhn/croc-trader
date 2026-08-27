@@ -355,6 +355,84 @@ class BaseTradeStrategy(ABC):
                 return None
         return None
 
+    def _get_setup_date(self, trade: TradeData) -> datetime.date | None:
+        """Extracts the setup date from signal context or trade entry date as a standard date."""
+        raw_date = (
+            self._get_context_value(trade, "setup_date")
+            or self._get_context_value(trade, "date")
+            or trade.get("entry_date")
+        )
+        if not raw_date:
+            return None
+        try:
+            return pd.Timestamp(str(raw_date)).date()
+        except (ValueError, TypeError) as error:
+            logger.warning(
+                "Failed to parse setup date '%s' for trade %s: %s",
+                raw_date,
+                trade.get("id"),
+                error,
+            )
+            return None
+
+    def _generate_budget_entry_order(
+        self,
+        trade: TradeData,
+        budget: float,
+        order_type: str = "LMT",
+        time_in_force: str = "DAY",
+        order_id: str | None = None,
+        price_override: float | None = None,
+    ) -> Order | None:
+        """Universal DRY helper to generate budget-allocated entry orders."""
+        entry_price = (
+            price_override
+            if price_override is not None
+            else self._extract_entry_price(trade)
+        )
+        trade_budget = self._get_strategy_budget(trade, budget)
+
+        if entry_price <= 0 or trade_budget <= 0:
+            return None
+
+        quantity = int(trade_budget / entry_price)
+        if quantity < 1:
+            return None
+
+        return self._create_entry_order(
+            symbol=trade["symbol"],
+            quantity=quantity,
+            entry_price=Decimal(str(entry_price)),
+            order_type=order_type,
+            time_in_force=time_in_force,
+            order_id=order_id,
+        )
+
+    def _generate_standard_exit_order(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+        order_type: str = "MKT",
+        time_in_force: str = "DAY",
+        order_id: str | None = None,
+    ) -> Order | None:
+        """Universal DRY helper to generate standard exit orders for active positions."""
+        quantity = int(trade.get("current_size") or 0)
+        if quantity <= 0 or dataframe_history.empty:
+            return None
+
+        last_candle = dataframe_history.iloc[-1]
+        close_price = float(last_candle["close"])
+
+        return self._create_exit_order(
+            symbol=trade["symbol"],
+            quantity=quantity,
+            price=Decimal(str(close_price)),
+            order_type=order_type,
+            time_in_force=time_in_force,
+            order_id=order_id,
+        )
+
     @staticmethod
     def _get_context_value(
         trade: TradeData | dict[str, object], key: str

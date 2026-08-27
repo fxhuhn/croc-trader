@@ -196,11 +196,7 @@ class HoldTargetStrategy(BaseTradeStrategy):
             return None
 
         # 1. Centralized Quantity Calculation
-        database_size = float(trade.get("initial_size") or 0.0)
-        if database_size > 0:
-            quantity = int(database_size)
-        else:
-            quantity = self._resolve_position_size(trade, entry_price, stop_loss)
+        quantity = self._resolve_position_size(trade, entry_price, stop_loss)
 
         if quantity <= 0:
             logger.warning(
@@ -247,14 +243,13 @@ class HoldTargetStrategy(BaseTradeStrategy):
                 )
             )
 
-        return Order(
-            id=f"{symbol}_{self.name}",
+        return self._create_order(
             symbol=symbol,
             quantity=quantity,
             mode="BRACKET",
             entry=entry_leg,
             exits=exits,
-            last_status="CREATED",
+            order_id=f"{symbol}_{self.name}",
         )
 
     @override

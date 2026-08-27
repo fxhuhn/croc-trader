@@ -11,7 +11,6 @@ Execution Rules:
 """
 
 import logging
-from decimal import Decimal
 from typing import final, override
 
 import pandas as pd
@@ -65,21 +64,11 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
         reference_date: str | None = None,
     ) -> Order | None:
         """Generates MOC entry order for CREATED trades."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-        trade_budget = self._get_strategy_budget(trade, budget)
-
-        if entry_price <= 0 or trade_budget <= 0:
-            return None
-
-        quantity = int(trade_budget / entry_price)
-        if quantity < 1:
-            return None
-
-        return self._create_entry_order(
-            symbol=trade["symbol"],
-            quantity=quantity,
-            entry_price=Decimal(str(entry_price)),
+        return self._generate_budget_entry_order(
+            trade=trade,
+            budget=budget,
             order_type="MKT",
+            time_in_force="DAY",
         )
 
     @override
@@ -92,17 +81,9 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
         reference_date: str | None = None,
     ) -> Order | None:
         """Generates exit orders for ACTIVE trades."""
-        quantity = int(trade.get("current_size") or 0)
-        if quantity <= 0 or dataframe_history.empty:
-            return None
-
-        last_candle = dataframe_history.iloc[-1]
-        close_price = float(last_candle["close"])
-
-        return self._create_exit_order(
-            symbol=trade["symbol"],
-            quantity=quantity,
-            price=Decimal(str(close_price)),
+        return self._generate_standard_exit_order(
+            trade=trade,
+            dataframe_history=dataframe_history,
             order_type="MKT",
             time_in_force="DAY",
         )
@@ -128,11 +109,7 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
         candle_date = pd.Timestamp(candle["date"]).date()
         date_string = candle_date.strftime("%Y-%m-%d")
 
-        setup_date_value = (
-            self._get_context_value(trade, "setup_date")
-            or self._get_context_value(trade, "date")
-            or trade.get("entry_date")
-        )
+        setup_date = self._get_setup_date(trade)
 
         req_close_val = self._get_context_value(trade, "req_close_rsi40")
         if req_close_val is not None:
@@ -141,8 +118,7 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
             except (ValueError, TypeError):
                 pass
 
-        if setup_date_value:
-            setup_date = pd.Timestamp(str(setup_date_value)).date()
+        if setup_date:
             if candle_date < setup_date:
                 return None
             if candle_date > setup_date:

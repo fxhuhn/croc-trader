@@ -80,20 +80,11 @@ class TwoPercentStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        entry_price = float(trade.get("entry_price") or 0.0)
-        trade_budget = self._get_strategy_budget(trade, budget)
-
-        if entry_price <= 0 or trade_budget <= 0:
-            return None
-
-        quantity = int(trade_budget / entry_price)
-        if quantity < 1:
-            return None
-
-        return self._create_entry_order(
-            symbol=trade["symbol"],
-            quantity=quantity,
-            entry_price=Decimal(str(entry_price)),
+        return self._generate_budget_entry_order(
+            trade=trade,
+            budget=budget,
+            order_type="LMT",
+            time_in_force="DAY",
         )
 
     @override
@@ -218,32 +209,17 @@ class TwoPercentStrategy(BaseTradeStrategy):
         is_today_holiday: bool,
     ) -> TradeTransition | None:
         """Handles entry logic for the primary entry window (Day 1)."""
-        if open_price < limit_price:
-            target_price = float(self._calculate_target_price(Decimal(str(open_price))))
-            return self._execute_activation(
-                trade,
-                open_price,
-                "Gap Down (Open < Limit)",
-                date_string,
-                extra_updates={"current_target": target_price},
-            )
-
-        if low_price <= limit_price:
-            target_price = float(
-                self._calculate_target_price(Decimal(str(limit_price)))
-            )
-            return self._execute_activation(
-                trade,
-                limit_price,
-                "Limit Hit",
-                date_string,
-                extra_updates={"current_target": target_price},
-            )
-
-        if is_today_holiday:
-            return None
-
-        return self._reject_setup(trade, date_string, "Missed Entry Window (Day 1)")
+        return self._process_limit_entry(
+            trade=trade,
+            open_price=open_price,
+            low_price=low_price,
+            limit_price=limit_price,
+            date_string=date_string,
+            gap_reason="Gap Down (Open < Limit)",
+            limit_reason="Limit Hit",
+            missed_reason="Missed Entry Window (Day 1)",
+            skip_invalidation=is_today_holiday,
+        )
 
     def _process_day_two_entry(
         self,
@@ -254,12 +230,37 @@ class TwoPercentStrategy(BaseTradeStrategy):
         date_string: str,
     ) -> TradeTransition | None:
         """Handles fallback entry logic if Day 1 was a holiday."""
+        return self._process_limit_entry(
+            trade=trade,
+            open_price=open_price,
+            low_price=low_price,
+            limit_price=limit_price,
+            date_string=date_string,
+            gap_reason="Gap Down (Tuesday-after-Holiday)",
+            limit_reason="Limit Hit (Tuesday-after-Holiday)",
+            missed_reason="Missed Entry Window (Day 2)",
+            skip_invalidation=False,
+        )
+
+    def _process_limit_entry(
+        self,
+        trade: TradeData,
+        open_price: float,
+        low_price: float,
+        limit_price: float,
+        date_string: str,
+        gap_reason: str,
+        limit_reason: str,
+        missed_reason: str,
+        skip_invalidation: bool = False,
+    ) -> TradeTransition | None:
+        """Consolidated DRY helper to evaluate limit entry fill conditions."""
         if open_price < limit_price:
             target_price = float(self._calculate_target_price(Decimal(str(open_price))))
             return self._execute_activation(
                 trade,
                 open_price,
-                "Gap Down (Tuesday-after-Holiday)",
+                gap_reason,
                 date_string,
                 extra_updates={"current_target": target_price},
             )
@@ -271,12 +272,15 @@ class TwoPercentStrategy(BaseTradeStrategy):
             return self._execute_activation(
                 trade,
                 limit_price,
-                "Limit Hit (Tuesday-after-Holiday)",
+                limit_reason,
                 date_string,
                 extra_updates={"current_target": target_price},
             )
 
-        return self._reject_setup(trade, date_string, "Missed Entry Window (Day 2)")
+        if skip_invalidation:
+            return None
+
+        return self._reject_setup(trade, date_string, missed_reason)
 
     @override
     def _do_manage_active_trade(

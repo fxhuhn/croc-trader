@@ -1,6 +1,5 @@
 import json
 import logging
-from decimal import Decimal
 from typing import TypedDict, final, override
 
 import pandas as pd
@@ -101,17 +100,11 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        entry_price = self._extract_entry_price(trade)
-        trade_budget = self._get_strategy_budget(trade, budget)
-        if entry_price <= 0 or trade_budget <= 0:
-            return None
-
-        quantity = int(trade_budget / entry_price)
-        if quantity < 1:
-            return None
-
-        return self._create_entry_order(
-            trade["symbol"], quantity, Decimal(str(entry_price))
+        return self._generate_budget_entry_order(
+            trade=trade,
+            budget=budget,
+            order_type="LMT",
+            time_in_force="DAY",
         )
 
     @override

@@ -131,17 +131,9 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         reference_date: str | None = None,
     ) -> Order | None:
         """Generates exit orders for ACTIVE trades."""
-        quantity = int(trade.get("current_size") or 0)
-        if quantity <= 0 or dataframe_history.empty:
-            return None
-
-        last_candle = dataframe_history.iloc[-1]
-        close_price = Decimal(str(last_candle["close"]))
-
-        return self._create_exit_order(
-            symbol=trade["symbol"],
-            quantity=quantity,
-            price=close_price,
+        return self._generate_standard_exit_order(
+            trade=trade,
+            dataframe_history=dataframe_history,
             order_type="MKT",
             time_in_force="DAY",
         )
@@ -166,14 +158,8 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         candle_date = pd.Timestamp(candle["date"]).date()
         date_string = candle_date.strftime("%Y-%m-%d")
 
-        setup_date_value = (
-            self._get_context_value(trade, "setup_date")
-            or self._get_context_value(trade, "date")
-            or trade.get("entry_date")
-        )
-
-        if setup_date_value:
-            setup_date = pd.Timestamp(str(setup_date_value)).date()
+        setup_date = self._get_setup_date(trade)
+        if setup_date:
             if candle_date < setup_date:
                 return None
             if candle_date > setup_date:

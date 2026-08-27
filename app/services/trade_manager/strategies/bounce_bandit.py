@@ -11,9 +11,7 @@ Execution Rules:
    - Evaluated starting on the entry day close (t+1).
 """
 
-import json
 import logging
-from decimal import Decimal
 from typing import final, override
 
 import pandas as pd
@@ -26,6 +24,55 @@ from ..types import TradeTransition
 from .abstract import BaseTradeStrategy
 
 logger = logging.getLogger(__name__)
+
+
+def calculate_required_sma_exit(close_series: pd.Series) -> float:
+    """Pure calculation: computes minimum close price required to exceed 8-period SMA on current candle."""
+    last_7_closes = close_series.iloc[-7:]
+    return float(last_7_closes.mean()) + 0.01
+
+
+def calculate_required_rsi_exit(close_series: pd.Series) -> float:
+    """Pure calculation: computes minimum close price required to exceed RSI(2) > 75 on current candle."""
+    delta = close_series.diff()
+    gain = (delta.where(delta > 0, 0)).fillna(0)
+    loss = (-delta.where(delta < 0, 0)).fillna(0)
+    avg_gain_series = gain.ewm(alpha=0.5, adjust=False).mean()
+    avg_loss_series = loss.ewm(alpha=0.5, adjust=False).mean()
+
+    last_avg_gain = float(avg_gain_series.iloc[-1])
+    last_avg_loss = float(avg_loss_series.iloc[-1])
+    last_close = float(close_series.iloc[-1])
+
+    required_delta_rsi = max(0.0, (3.0 * last_avg_loss) - last_avg_gain)
+    return last_close + required_delta_rsi + 0.01
+
+
+def calculate_bounce_bandit_targets(
+    close_series: pd.Series, exit_sma_length: int = 8
+) -> dict[str, float]:
+    """Pure calculation: computes dynamic daily indicators and exit target prices for Bounce Bandit."""
+    sma_8_series = calculate_sma(close_series, exit_sma_length)
+    rsi_2_series = calculate_rsi(close_series, 2)
+
+    if sma_8_series.empty or rsi_2_series.empty:
+        return {}
+
+    current_sma_8 = float(sma_8_series.iloc[-1])
+    current_rsi_2 = float(rsi_2_series.iloc[-1])
+
+    required_sma_exit = calculate_required_sma_exit(close_series)
+    required_rsi_exit = calculate_required_rsi_exit(close_series)
+    target_price = min(required_sma_exit, required_rsi_exit)
+
+    return {
+        "sma_8": round(current_sma_8, 2),
+        "rsi_2": round(current_rsi_2, 2),
+        "target": round(target_price, 2),
+        "target_price": round(target_price, 2),
+        "required_sma_exit": round(required_sma_exit, 2),
+        "required_rsi_exit": round(required_rsi_exit, 2),
+    }
 
 
 @final
@@ -74,45 +121,8 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
             return {}
 
         close_series = dataframe_history["close"].astype(float)
-        sma_8_series = calculate_sma(close_series, self.EXIT_SMA_LEN)
-        rsi_2_series = calculate_rsi(close_series, 2)
-
-        if sma_8_series.empty or rsi_2_series.empty:
-            return {}
-
-        current_sma_8 = float(sma_8_series.iloc[-1])
-        current_rsi_2 = float(rsi_2_series.iloc[-1])
-
-        # Calculate required Close price for MOC Exit on current trading session
-        # 1. SMA Exit: Close > SMA_8 requires Close > SMA_7 of the preceding 7 closes
-        last_7_closes = close_series.iloc[-7:]
-        required_sma_exit = float(last_7_closes.mean()) + 0.01
-
-        # 2. RSI(2) Exit: RSI_2 > 75 requires RS > 3
-        delta = close_series.diff()
-        gain = (delta.where(delta > 0, 0)).fillna(0)
-        loss = (-delta.where(delta < 0, 0)).fillna(0)
-        avg_gain_series = gain.ewm(alpha=0.5, adjust=False).mean()
-        avg_loss_series = loss.ewm(alpha=0.5, adjust=False).mean()
-
-        last_avg_gain = float(avg_gain_series.iloc[-1])
-        last_avg_loss = float(avg_loss_series.iloc[-1])
-        last_close = float(close_series.iloc[-1])
-
-        required_delta_rsi = max(0.0, (3.0 * last_avg_loss) - last_avg_gain)
-        required_rsi_exit = last_close + required_delta_rsi + 0.01
-
-        # Combined minimum required exit price (earliest trigger target)
-        target_price = min(required_sma_exit, required_rsi_exit)
-
-        return {
-            "sma_8": round(current_sma_8, 2),
-            "rsi_2": round(current_rsi_2, 2),
-            "target": round(target_price, 2),
-            "target_price": round(target_price, 2),
-            "required_sma_exit": round(required_sma_exit, 2),
-            "required_rsi_exit": round(required_rsi_exit, 2),
-        }
+        targets = calculate_bounce_bandit_targets(close_series, self.EXIT_SMA_LEN)
+        return dict(targets)
 
     @override
     def _generate_entry_order(
@@ -123,22 +133,12 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        """Generates MOO entry order for CREATED trades."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-        trade_budget = self._get_strategy_budget(trade, budget)
-
-        if entry_price <= 0 or trade_budget <= 0:
-            return None
-
-        quantity = int(trade_budget / entry_price)
-        if quantity < 1:
-            return None
-
-        return self._create_entry_order(
-            symbol=trade["symbol"],
-            quantity=quantity,
-            entry_price=Decimal(str(entry_price)),
+        """Generates MOO entry order for CREATED trades with OPG time-in-force."""
+        return self._generate_budget_entry_order(
+            trade=trade,
+            budget=budget,
             order_type="MKT",
+            time_in_force="OPG",
         )
 
     @override
@@ -151,17 +151,9 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         reference_date: str | None = None,
     ) -> Order | None:
         """Generates exit orders for ACTIVE trades."""
-        quantity = int(trade.get("current_size") or 0)
-        if quantity <= 0 or dataframe_history.empty:
-            return None
-
-        last_candle = dataframe_history.iloc[-1]
-        close_price = float(last_candle["close"])
-
-        return self._create_exit_order(
-            symbol=trade["symbol"],
-            quantity=quantity,
-            price=Decimal(str(close_price)),
+        return self._generate_standard_exit_order(
+            trade=trade,
+            dataframe_history=dataframe_history,
             order_type="MKT",
             time_in_force="DAY",
         )
@@ -181,20 +173,10 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
             else candle["date"].date()
         )
 
-        try:
-            ctx = json.loads(trade.get("signal_context") or "{}")
-            sig_date_str = ctx.get("date") or ctx.get("setup_date")
-            if sig_date_str:
-                sig_date = pd.Timestamp(sig_date_str).date()
-                if candle_date <= sig_date:
-                    # Entry setup candle is bar t; MOO entry executes on bar t+1
-                    return None
-        except (json.JSONDecodeError, ValueError, TypeError) as error:
-            logger.warning(
-                "Failed to parse signal context for trade %s: %s",
-                trade.get("id"),
-                error,
-            )
+        setup_date = self._get_setup_date(trade)
+        if setup_date and candle_date <= setup_date:
+            # Entry setup candle is bar t; MOO entry executes on bar t+1
+            return None
 
         open_price = float(candle.get("open") or trade.get("entry_price") or 0.0)
         if open_price <= 0:

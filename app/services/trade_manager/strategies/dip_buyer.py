@@ -201,23 +201,14 @@ class DipBuyerStrategy(BaseTradeStrategy):
         return updates
 
     def _determine_order_quantity(self, trade: TradeData, budget: float) -> int:
-        """Calculates order quantity based on database size or strategy budget."""
+        """Calculates order quantity based on database size or strategy budget using base sizing."""
         entry_price = self._extract_entry_price(trade)
         if entry_price <= 0:
             return 0
-
-        database_size = float(trade.get("initial_size") or 0.0)
-        if database_size > 0:
-            return int(database_size)
-
         trade_budget = self._get_strategy_budget(trade, budget)
-        if trade_budget <= 0:
-            logger.warning(
-                "[%s] Sizing Fallback: No budget found. Check settings.yaml.",
-                trade.get("symbol"),
-            )
-            return 0
-        return int(trade_budget / entry_price)
+        return self._resolve_position_size(
+            trade, entry_price, fallback_budget=trade_budget
+        )
 
     def _calculate_threshold_loc(self, dataframe_history: pd.DataFrame) -> float | None:
         """Calculates the dynamic LOC threshold based on the previous day's high."""
