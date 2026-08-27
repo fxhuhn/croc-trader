@@ -3,6 +3,7 @@ import logging
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import yfinance as yf
@@ -38,9 +39,6 @@ class SymbolFilter:
         return cls._instance
 
     def __init__(self) -> None:
-        if SymbolFilter._initialized:
-            return
-
         with SymbolFilter._lock:
             if SymbolFilter._initialized:
                 return
@@ -166,12 +164,12 @@ class SymbolFilter:
             )
             return {}
 
-        raw_metadata_list: list[dict] = []
+        raw_metadata_list: list[dict[str, Any]] = []
         processed_count: int = 0
 
         for symbol in symbols:
             try:
-                ticker_metadata: dict = yf.Ticker(symbol).info
+                ticker_metadata: dict[str, Any] = yf.Ticker(symbol).info
                 raw_metadata_list.append(
                     {
                         "symbol": symbol,

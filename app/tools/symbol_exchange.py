@@ -32,9 +32,6 @@ class SymbolExchange:
         return cls._instance
 
     def __init__(self) -> None:
-        if SymbolExchange._initialized:
-            return
-
         with SymbolExchange._lock:
             if SymbolExchange._initialized:
                 return

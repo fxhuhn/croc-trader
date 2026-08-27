@@ -294,7 +294,7 @@ class TradeRepository(BaseRepository):
                 context_json,
             ),
         )
-        trade_id = cursor.lastrowid
+        trade_id = int(cursor.lastrowid or 0)
 
         connection.execute(
             "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
@@ -418,7 +418,7 @@ class TradeRepository(BaseRepository):
 
             values.append(trade_id)
             sql = f"UPDATE trades SET {', '.join(set_clauses)}, updated_at = CURRENT_TIMESTAMP WHERE id = ?"  # nosec B608
-            self.execute(sql, values, connection=connection)
+            self.execute(sql, tuple(values), connection=connection)
 
             for key, old_value, new_value in changes:
                 self._log_event_conn(

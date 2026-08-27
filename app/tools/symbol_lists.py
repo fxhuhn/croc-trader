@@ -33,11 +33,6 @@ class ExchangeSymbol:
         return cls._instance
 
     def __init__(self) -> None:
-        # Quick check without lock (Performance)
-        if ExchangeSymbol._initialized:
-            return
-
-        # Critical section: Only one thread initializes
         with ExchangeSymbol._lock:
             if ExchangeSymbol._initialized:
                 return

@@ -23,7 +23,7 @@ class TradeParams:
     take_profit_1: float | None = None
     take_profit_2: float | None = None
     take_profit_3: float | None = None
-    extras: dict = field(default_factory=dict)
+    extras: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -156,32 +156,21 @@ class CrocSignal:
     strategy_id: str | None = None
     reference: str | None = None
     # Factory default ensures correct timestamp at instantiation time
-    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    timestamp: datetime | str = field(default_factory=lambda: datetime.now(UTC))
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Sanitizes data and sets defaults after initialization."""
-        # String sanitization
+        self._sanitize_strings()
+        self._parse_timestamp()
+        self._resolve_exchange()
+        self._generate_reference()
+
+    def _sanitize_strings(self) -> None:
         for key, value in self.__dict__.items():
             if isinstance(value, str):
                 setattr(self, key, value.strip())
 
-        # Fallback logic
-        if not self.exchange and self.full_symbol:
-            self.exchange = self.full_symbol
-
-        if self.exchange is None:
-            self.exchange = self.full_symbol or self.symbol  # Last resort fallback
-
-        mapped_exchange = mapper.get_exchange(self.symbol)
-
-        if mapped_exchange:
-            # Match found in JSON -> override
-            self.exchange = mapped_exchange
-        elif self.exchange == "BATS" or self.exchange is None:
-            # No match in JSON, and BATS or empty -> set to unknown
-            self.exchange = "UNKNOWN"
-
-        # Timestamp parsing (handles string input)
+    def _parse_timestamp(self) -> None:
         if isinstance(self.timestamp, str):
             try:
                 self.timestamp = datetime.fromisoformat(self.timestamp)
@@ -192,16 +181,41 @@ class CrocSignal:
                 )
                 self.timestamp = datetime.now(UTC)
 
-        # Unique ID generation
+    def _resolve_exchange(self) -> None:
+        if not self.exchange and self.full_symbol:
+            self.exchange = self.full_symbol
+
+        if self.exchange is None:
+            self.exchange = self.full_symbol or self.symbol
+
+        mapped_exchange = mapper.get_exchange(self.symbol)
+        if mapped_exchange:
+            self.exchange = mapped_exchange
+        elif self.exchange == "BATS" or self.exchange is None:
+            self.exchange = "UNKNOWN"
+
+    def _generate_reference(self) -> None:
         if self.reference is None:
-            ts_str = self.timestamp.strftime("%Y%m%d%H%M%S")
+            if isinstance(self.timestamp, datetime):
+                ts_str = self.timestamp.strftime("%Y%m%d%H%M%S")
+            else:
+                ts_str = (
+                    str(self.timestamp)
+                    .replace("-", "")
+                    .replace(":", "")
+                    .replace("T", "")[:14]
+                )
             self.reference = f"{self.symbol}_{ts_str}"
 
     def to_db_row(self) -> dict[str, Any]:
         """Converts the object for SQLite storage."""
         d = asdict(self)
         # SQLite requires ISO strings for datetime
-        d["timestamp"] = self.timestamp.isoformat()
+        d["timestamp"] = (
+            self.timestamp.isoformat()
+            if isinstance(self.timestamp, datetime)
+            else str(self.timestamp)
+        )
         return d
 
 
@@ -228,7 +242,7 @@ class SignalStat:
     # Metadata
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         try:
             self.total = float(self.total)
             self.win = float(self.win)
@@ -285,11 +299,13 @@ class MarketPrice:
         # Ensure date format is correct (Yahoo often gives Timestamp)
         date_value = row.get("date")
         if hasattr(date_value, "strftime"):
-            date_string = date_value.strftime("%Y-%m-%d")
+            date_string = str(date_value.strftime("%Y-%m-%d"))  # type: ignore[union-attr]
         else:
             # Fallback for string or index-based date passed as column
             date_string = (
-                str(date_value) if date_value else datetime.now().strftime("%Y-%m-%d")
+                str(date_value)
+                if date_value
+                else datetime.now(UTC).strftime("%Y-%m-%d")
             )
 
         return cls(
@@ -305,33 +321,33 @@ class MarketPrice:
     @classmethod
     def from_tradingview(cls, symbol: str, row: Mapping[str, object]) -> MarketPrice:
         """Factory method to create a MarketPrice from a TradingView row dictionary."""
-        close_price = float(row.get("close", 0.0))
+        close_price = float(str(row.get("close") or 0.0))
         if close_price < 0:
             raise ValueError(f"Negative close price for {symbol}")
 
         date_value = row.get("date") or row.get("datetime")
         if hasattr(date_value, "strftime"):
-            date_string = date_value.strftime("%Y-%m-%d")
+            date_string = str(date_value.strftime("%Y-%m-%d"))
         else:
             date_string = (
                 str(date_value)[:10]
                 if date_value
-                else datetime.now().strftime("%Y-%m-%d")
+                else datetime.now(UTC).strftime("%Y-%m-%d")
             )
 
         return cls(
             symbol=symbol,
             date=date_string,
-            open=float(row.get("open", 0.0)),
-            high=float(row.get("high", 0.0)),
-            low=float(row.get("low", 0.0)),
+            open=float(str(row.get("open") or 0.0)),
+            high=float(str(row.get("high") or 0.0)),
+            low=float(str(row.get("low") or 0.0)),
             close=close_price,
-            volume=int(row.get("volume", 0)),
+            volume=int(float(str(row.get("volume") or 0))),
             provider="tradingview",
             timeframe="1D",
         )
 
-    def to_db_row(self) -> tuple:
+    def to_db_row(self) -> tuple[object, ...]:
         """Optimized for executemany (tuple based)."""
         return (
             self.symbol,

@@ -176,40 +176,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.database.repositories.market_data_provider",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.database.repositories.signal",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.database.repositories.trade",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.mapping",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.models",
-]
-ignore_errors = true
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
@@ -324,12 +290,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.telegram",
-]
-ignore_errors = true
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
@@ -370,47 +330,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.tools.indicators",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.tools.market_holidays",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.tools.metrics",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.tools.symbol_exchange",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.tools.symbol_filter",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.tools.symbol_lists",
-]
-ignore_errors = true
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

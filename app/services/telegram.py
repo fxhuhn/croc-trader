@@ -75,7 +75,7 @@ class TelegramBot:
             return None
 
         url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
-        payload: dict[str, object] = {
+        payload: dict[str, str | bool] = {
             "chat_id": self.chat_id,
             "text": text,
             "parse_mode": parse_mode,

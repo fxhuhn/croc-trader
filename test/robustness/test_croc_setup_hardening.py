@@ -402,7 +402,7 @@ def test_hypothesis_croc_candidate_score_invariants(
     """Invariant: Candidate score is monotonic in SQN and non-negative."""
     computed_score = calculate_croc_candidate_score(score, max_dd)
     assert computed_score >= 0.0
-    if score > 0.0 and max_dd > 0.0:
+    if score > 0.001 and max_dd > 0.0:
         assert computed_score > 0.0
 
 

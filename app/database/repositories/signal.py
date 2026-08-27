@@ -97,7 +97,7 @@ class SignalRepository(BaseRepository):
                 json.dumps(data, ensure_ascii=False),
             ),
         )
-        return cursor.lastrowid
+        return int(cursor.lastrowid or 0)
 
     def get_unprocessed_signals(self, limit: int = 100) -> list[sqlite3.Row]:
         """Fetches unprocessed signals from the croc table."""
@@ -113,7 +113,7 @@ class SignalRepository(BaseRepository):
                 signal,
                 data
             FROM croc
-            WHERE data IS NOT NULL OR signal IS NOT NULL
+            WHERE data IS NOT NULL
         """
         rows = self.fetch_all(sql)
 
@@ -168,7 +168,7 @@ class SignalRepository(BaseRepository):
         return dict(row) if row else None
 
     def get_signals_by_date(
-        self, analysis_date: str = None, days_lookback: int = 0
+        self, analysis_date: str | None = None, days_lookback: int = 0
     ) -> list[dict[str, object]]:
         """Reads signals from the view, filtered by date."""
         # Base query on the view

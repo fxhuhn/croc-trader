@@ -25,7 +25,7 @@ class MarketHolidayChecker:
     _initialized: bool = False
     _lock = threading.Lock()
 
-    def __new__(cls, *args, **kwargs) -> "MarketHolidayChecker":
+    def __new__(cls, *args: object, **kwargs: object) -> "MarketHolidayChecker":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -40,9 +40,6 @@ class MarketHolidayChecker:
             yaml_path: Optional path to the holidays.yaml file.
                        If None, attempts to locate it relative to this file.
         """
-        if self._initialized:
-            return
-
         with self._lock:
             if self._initialized:
                 return
@@ -73,26 +70,27 @@ class MarketHolidayChecker:
         try:
             if not self.yaml_path.exists():
                 logger.error("Holidays file not found at: %s", self.yaml_path)
-                # We do not raise here to allow the app to run (maybe without holiday checks),
-                # but in strict mode we might want to raise. For now, log error.
-                # Per user rules: Critical errors -> Raise. Missing config file IS critical if we rely on it.
                 raise FileNotFoundError(
                     f"Critical: Holidays configuration file missing at {self.yaml_path}"
                 )
 
             with open(self.yaml_path, encoding="utf-8") as f:
-                data: HolidayConfig = yaml.safe_load(f)
+                raw_data = yaml.safe_load(f)
 
-            if not data or "holidays" not in data:
+            if not isinstance(raw_data, dict) or "holidays" not in raw_data:
                 logger.warning("Holidays file is empty or missing 'holidays' key")
                 return
 
-            for date_string, holiday_name in data["holidays"].items():
+            holidays_dict = raw_data.get("holidays")
+            if not isinstance(holidays_dict, dict):
+                return
+
+            for date_string, holiday_name in holidays_dict.items():
                 try:
                     date_object = datetime.datetime.strptime(
-                        date_string, "%Y-%m-%d"
+                        str(date_string), "%Y-%m-%d"
                     ).date()
-                    self._holidays[date_object] = holiday_name
+                    self._holidays[date_object] = str(holiday_name)
                 except ValueError as error:
                     logger.warning(
                         "Invalid date format in holidays file for '%s': %s",
@@ -136,9 +134,10 @@ class MarketHolidayChecker:
             return date_check.date()
         if isinstance(date_check, datetime.date):
             return date_check
-        if hasattr(date_check, "date") and callable(date_check.date):
-            # Handles pandas Timestamp and similar objects
-            return date_check.date()
+        if hasattr(date_check, "date"):
+            res = date_check.date()
+            if isinstance(res, datetime.date):
+                return res
         if isinstance(date_check, str):
             try:
                 return datetime.datetime.strptime(date_check, "%Y-%m-%d").date()
