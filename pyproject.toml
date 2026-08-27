@@ -46,27 +46,20 @@ ignore = [
     "PLR0913", "PLR0915", "PLR0917", "PLR2004"
 ]
 ".agents/*" = ["C901", "PLR0912", "PLR0915"]
-"app/config.py" = ["C901", "PLC0415", "PLR0912", "PLR0915", "PLR2004"]
-"app/tasks.py" = ["C901", "PLC0415", "PLR0912", "PLR0915", "PLR2004"]
-"app/__init__.py" = ["E402", "PLC0415", "PLR2004"]
-"vulture_whitelist.py" = ["F401", "E402"]
+"app/config.py" = ["C901", "PLC0415"]
+"app/tasks.py" = ["PLC0415", "PLR2004"]
+"app/__init__.py" = ["PLC0415"]
 # Targeted legacy ruff ignores, verified 2026-07-30
 "app/database/repositories/market.py" = ["PLR2004"]
 "app/database/repositories/signal.py" = ["PLC0415"]
 "app/database/repositories/trade.py" = ["C901", "PLC0415", "PLR0913", "PLR0917"]
 "app/database/session.py" = ["PLC0415"]
-"app/routes/views/analytics.py" = ["C901", "PLR0912", "PLR0915"]
-"app/routes/views/backtest.py" = ["PLC0415", "PLR0913", "PLR0917"]
 "app/routes/views/blueprint.py" = ["PLC0415"]
 "app/routes/views/dependencies.py" = ["PLC0415"]
-"app/routes/views/trades.py" = ["C901"]
 "app/services/backfill_engine.py" = ["C901", "PLR0912", "PLR0913", "PLR0915"]
-"app/services/bounce_bandit_backfill.py" = ["PLR0913", "PLR0917"]
-"app/services/bridge_scout_backfill.py" = ["PLR0913", "PLR0917"]
 "app/services/market/updater.py" = ["C901", "PLR0912"]
 "app/services/portfolio/allocator.py" = ["C901", "PLR0911", "PLR0912", "PLR0915"]
 "app/services/portfolio/dynamic_sizing.py" = ["PLR2004"]
-"app/services/portfolio/simulation.py" = ["C901", "PLR0912", "PLR0915"]
 "app/services/screener/engine.py" = ["PLR0913", "PLR0917"]
 "app/services/screener/strategies/bounce_bandit.py" = ["PLR0915"]
 "app/services/screener/strategies/bridge_scout.py" = ["PLR0911", "PLR2004"]
@@ -77,7 +70,6 @@ ignore = [
 "app/services/screener/strategies/turnover_timing.py" = ["PLR0913", "PLR0917", "PLR2004"]
 "app/services/screener/strategies/two_percent_strategy.py" = ["PLR0911", "PLR2004"]
 "app/services/setup.py" = ["PLC0415"]
-"app/services/tgim_backfill.py" = ["PLR0913", "PLR0917"]
 "app/services/trade_manager/manager.py" = ["C901", "PLR0911", "PLR0912"]
 "app/services/trade_manager/strategies/abstract.py" = ["PLR0913", "PLR0917"]
 "app/services/trade_manager/strategies/dip_buyer.py" = ["PLR2004"]
@@ -95,7 +87,6 @@ ignore = [
 "scripts/debug_croc_fills.py" = ["C901"]
 "scripts/debug_turnover_2026.py" = ["E402", "PLR2004"]
 "scripts/find_unused_ast.py" = ["C901", "PLR0912"]
-"scripts/generate_golden_master.py" = ["PLR0911", "PLR0915", "PLR2004"]
 "scripts/manual_backtest_croc.py" = ["C901", "E402", "PLR0912", "PLR0915", "PLR2004"]
 "scripts/manual_backtest_dip_buyer.py" = ["C901", "E402", "PLR0912", "PLR0915"]
 "scripts/manual_backtest_tgim.py" = ["C901", "PLR0912", "PLR0915"]
@@ -242,12 +233,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.routes.views.backtest",
-]
-ignore_errors = true
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
@@ -299,12 +284,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.portfolio.simulation",
-]
-ignore_errors = true
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
