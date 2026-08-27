@@ -367,3 +367,37 @@ def test_bridge_scout_trade_manager_lifecycle() -> None:
     assert transition_exit.updates["status"] == "CLOSED"
     assert transition_exit.updates["exit_price"] == 490.0
     assert transition_exit.updates["exit_reason"] == ExitReason.TIME_STOP
+
+
+def test_evaluate_bridge_scout_setup_pure_core() -> None:
+    """Tests evaluate_bridge_scout_setup Functional Core logic directly without side effects."""
+    from app.services.screener.strategies.bridge_scout import (
+        BridgeScoutParameters,
+        evaluate_bridge_scout_setup,
+    )
+
+    # Insufficient data
+    short_series = pd.Series([100.0] * 5)
+    params = BridgeScoutParameters(is_live_same_day=True)
+    assert (
+        evaluate_bridge_scout_setup(
+            short_series, short_series, short_series, params=params
+        )
+        is None
+    )
+
+    # Valid data - post market (same day)
+    closes = pd.Series([500.0] * 18 + [495.0, 480.0])
+    highs = closes + 1.0
+    lows = closes - 1.0
+
+    result = evaluate_bridge_scout_setup(
+        close_series=closes,
+        high_series=highs,
+        low_series=lows,
+        params=params,
+    )
+    assert result is not None
+    assert result.is_signal is True
+    assert result.setup_close == 480.0
+    assert result.rsi_2 is not None and result.rsi_2 < 40.0

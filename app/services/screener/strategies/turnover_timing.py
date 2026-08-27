@@ -8,6 +8,7 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....tools import indicators
+from ....tools.indicators import extract_safe_float
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
@@ -151,40 +152,9 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         if historical_closes.empty:
             return None
 
-        if analysis_timestamp in historical_closes.index:
-            return analysis_timestamp
-
-        # 1. Post-Data Case (Data lag)
-        if analysis_timestamp > historical_closes.index[-1]:
-            logger.warning(
-                "[%s] Requested analysis timestamp %s but data ends "
-                "%s. Falling back to last available data.",
-                self.name,
-                analysis_timestamp.date(),
-                historical_closes.index[-1].date(),
-            )
-            return historical_closes.index[-1]
-
-        # 2. Gap Case (Holiday)
-        available_dates = historical_closes.index[
-            historical_closes.index < analysis_timestamp
-        ]
-        if available_dates.empty:
-            logger.error(
-                "[%s] No data found before %s",
-                self.name,
-                analysis_timestamp.date(),
-            )
-            return None
-
-        fallback_date = available_dates[-1]
-        logger.info(
-            "[%s] %s is holiday/missing. Using: %s",
-            self.name,
-            analysis_timestamp.date(),
-            fallback_date.date(),
+        return self._resolve_effective_trading_date(
+            historical_closes.index, analysis_timestamp
         )
-        return fallback_date
 
     def _get_analysis_timestamp(
         self, days: int, analysis_date: str | None
@@ -431,7 +401,12 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         created_signals = 0
 
         for factor in self.configuration.entry_factors:
-            strategy_name = f"{self.name}_{factor}"
+            if factor == 0.5:
+                strategy_name = str(Strategies.TurnOverTiming_05)
+            elif factor == 1.0:
+                strategy_name = str(Strategies.TurnOverTiming_10)
+            else:
+                strategy_name = f"{self.name}_{factor}"
 
             # Calculate Limit Entry: Close - (Factor * ATR)
             limit_price = round(close_price - (atr_value * factor), 2)
@@ -560,18 +535,14 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
             "data_valid": True,
             "checks": {"uptrend_sma150": uptrend, "data_sufficient": True},
             "values": {
-                "close": round(self._extract_safe_float_value(current_close), 2),
-                "sma150": round(self._extract_safe_float_value(current_sma150), 2),
-                "turnover_sma20": int(
-                    self._extract_safe_float_value(current_turnover_sma, 0)
-                ),
-                "atr": round(self._extract_safe_float_value(current_atr), 2),
+                "close": round(extract_safe_float(current_close), 2),
+                "sma150": round(extract_safe_float(current_sma150), 2),
+                "turnover_sma20": int(extract_safe_float(current_turnover_sma, 0)),
+                "atr": round(extract_safe_float(current_atr), 2),
             },
             "note": "Rank logic (Top 20) requires full market scan.",
         }
 
     def _extract_safe_float_value(self, value: object, default: float = 0.0) -> float:
         """Safely extracts a float value from a potentially null/NaN object."""
-        if pd.isna(value):
-            return default
-        return float(str(value))
+        return extract_safe_float(value, default)

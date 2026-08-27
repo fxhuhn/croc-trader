@@ -98,3 +98,33 @@ def test_bounce_bandit_screener_handles_missing_holiday_data() -> None:
 
     assert hits == 0
     trade_repository.create_trade.assert_not_called()
+
+
+def test_evaluate_bounce_bandit_setup_pure_core() -> None:
+    """Tests evaluate_bounce_bandit_setup Functional Core logic directly without side effects."""
+    from app.services.screener.strategies.bounce_bandit import (
+        evaluate_bounce_bandit_setup,
+    )
+
+    # Insufficient data returns None
+    short_series = pd.Series([100.0] * 50)
+    assert (
+        evaluate_bounce_bandit_setup(short_series, short_series, short_series) is None
+    )
+
+    # Valid data
+    close_list = [400.0 + (i * 0.5) for i in range(247)]
+    close_list.extend([524.0, 523.0, 515.0])
+    close_s = pd.Series(close_list)
+    high_s = close_s + 1.0
+    low_s = close_s - 1.0
+
+    result = evaluate_bounce_bandit_setup(
+        close_series=close_s,
+        high_series=high_s,
+        low_series=low_s,
+    )
+    assert result is not None
+    assert result.is_signal is True
+    assert result.current_close == 515.0
+    assert result.target_price > 0.0

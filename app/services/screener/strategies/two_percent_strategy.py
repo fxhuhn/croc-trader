@@ -176,7 +176,7 @@ class TwoPercentStrategy(BaseStrategy[int]):
 
         if weekday < 4:
             if self._is_fallback_weekday_end_of_week(
-                candle_date, weekday, set(date_column)
+                candle_date, weekday, set(date_column), reference_date=analysis_date
             ):
                 return last_candle
 
@@ -187,6 +187,7 @@ class TwoPercentStrategy(BaseStrategy[int]):
         candle_date: datetime.date,
         weekday: int,
         existing_dates: set[datetime.date],
+        reference_date: datetime.date | None = None,
     ) -> bool:
         """Helper to determine if a non-Friday weekday is the weekly EOD due to holiday.
 
@@ -194,6 +195,7 @@ class TwoPercentStrategy(BaseStrategy[int]):
             candle_date: Date of the current candle.
             weekday: Weekday index (0=Monday, etc.).
             existing_dates: Set of all trading dates in the history.
+            reference_date: Optional evaluation reference date (for historical backtesting).
 
         Returns:
             bool: True if this is the last trading day of the week.

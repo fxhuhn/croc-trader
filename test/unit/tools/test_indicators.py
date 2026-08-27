@@ -1,7 +1,12 @@
 import pandas as pd
 import pytest
 
-from app.tools.indicators import calculate_max_close_for_rsi, calculate_rsi
+from app.tools.indicators import (
+    calculate_max_close_for_rsi,
+    calculate_rsi,
+    calculate_rsi_exit_target,
+    extract_safe_float,
+)
 
 
 def test_calculate_max_close_for_rsi_falling_case():
@@ -33,3 +38,22 @@ def test_calculate_max_close_for_rsi_insufficient_data():
     prices = pd.Series([100.0, 105.0])
     max_c = calculate_max_close_for_rsi(prices, window=2, rsi_target=40.0)
     assert pd.isna(max_c)
+
+
+def test_calculate_rsi_exit_target():
+    """Tests calculate_rsi_exit_target returns expected minimum exit target."""
+    prices = pd.Series([100.0, 95.0, 90.0, 85.0])
+    target = calculate_rsi_exit_target(prices, window=2, rsi_target=75.0)
+    assert target > 85.0
+    # Extending series with target price should achieve RSI >= 75
+    extended = pd.concat([prices, pd.Series([target])], ignore_index=True)
+    assert calculate_rsi(extended, window=2).iloc[-1] >= 74.99
+
+
+def test_extract_safe_float():
+    """Tests extract_safe_float handles normal, string, NaN, and None values."""
+    assert extract_safe_float(42.5) == 42.5
+    assert extract_safe_float("123.45") == 123.45
+    assert extract_safe_float(None, default=0.0) == 0.0
+    assert extract_safe_float(float("nan"), default=-1.0) == -1.0
+    assert extract_safe_float("invalid", default=99.0) == 99.0

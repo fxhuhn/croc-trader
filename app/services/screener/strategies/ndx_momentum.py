@@ -302,18 +302,11 @@ class NDXMomentumScreener(BaseStrategy[int]):
             pd.Timestamp or NDXAnalysisResult error dict.
         """
         try:
-            if target_date > close_index[-1]:
-                effective_date = close_index[-1]
-                logger.info(
-                    "[%s] Requested %s but data ends at %s. Using last available.",
-                    self.name,
-                    analysis_date,
-                    effective_date,
-                )
-            else:
-                effective_date = close_index.asof(target_date)
+            effective_date = self._resolve_effective_trading_date(
+                close_index, target_date
+            )
 
-            if pd.isna(effective_date):
+            if effective_date is None or pd.isna(effective_date):
                 logger.warning(
                     "[%s] No price data available at or before %s.",
                     self.name,
@@ -324,6 +317,14 @@ class NDXMomentumScreener(BaseStrategy[int]):
                     "date": analysis_date,
                     "error": "No price data found",
                 }
+
+            if target_date > close_index[-1]:
+                logger.info(
+                    "[%s] Requested %s but data ends at %s. Using last available.",
+                    self.name,
+                    analysis_date,
+                    effective_date,
+                )
 
             if not force_run and effective_date != target_date:
                 logger.warning(
@@ -453,11 +454,10 @@ class NDXMomentumScreener(BaseStrategy[int]):
     ) -> int:
         """Writes the selected leaders to the trades table as CREATED status."""
         date_iso_string = analysis_date.strftime("%Y-%m-%d")
-        self.trade_repository.execute(
-            "DELETE FROM trades WHERE strategy = ? AND status = 'CREATED'", (self.name,)
-        )
+        self.trade_repository.clear_created_trades(self.name)
 
         created_count = 0
+
         created_trades: list[SignalReportItem] = []
         for symbol in symbols:
             try:

@@ -8,6 +8,7 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
+from ....tools.indicators import extract_safe_float
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
 from ..models import SignalReportItem
@@ -194,34 +195,7 @@ class DipBuyerStrategy(BaseStrategy[int]):
             logger.error("Invalid analysis date: %s", analysis_date)
             return None
 
-        if target_date in closes.index:
-            return target_date
-
-        # 1. Post-Data Case (Data lag)
-        if target_date > closes.index[-1]:
-            logger.warning(
-                "[%s] Requested %s but data ends %s. Falling back to last available data.",
-                self.name,
-                target_date.date(),
-                closes.index[-1].date(),
-            )
-            return closes.index[-1]
-
-        # 2. Gap Case (Holiday)
-        available_dates = closes.index[closes.index < target_date]
-        if available_dates.empty:
-            logger.error("[%s] No data found before %s", self.name, target_date.date())
-            return None
-
-        # Fallback date
-        fallback_date = available_dates[-1]
-        logger.info(
-            "[%s] %s is holiday/missing. Using: %s",
-            self.name,
-            target_date.date(),
-            fallback_date.date(),
-        )
-        return fallback_date
+        return self._resolve_effective_trading_date(closes.index, target_date)
 
     def _execute_screening_pipeline(
         self, market_data: dict[str, pd.DataFrame], target_date: pd.Timestamp
@@ -378,7 +352,8 @@ class DipBuyerStrategy(BaseStrategy[int]):
 
         # D) Dip Metrics
         price_drop_3day = closes - closes.shift(3)
-        atr_ratio_3day = price_drop_3day / atr
+        atr_safe = atr.replace(0.0, float("nan"))
+        atr_ratio_3day = price_drop_3day / atr_safe
 
         # E) IBS
         ibs = indicators.calculate_ibs(highs, lows, closes)
@@ -695,23 +670,12 @@ class DipBuyerStrategy(BaseStrategy[int]):
         volatility_ratio: float,
     ) -> dict[str, float]:
         """Builds the values dictionary for a single symbol analysis."""
-
-        def _extract_safe_numeric_value(
-            raw_metric_value: object, default_fallback_value: float = 0.0
-        ) -> float:
-            """Safely extracts a float from a potentially NaN value."""
-            return (
-                default_fallback_value
-                if pd.isna(raw_metric_value)
-                else float(str(raw_metric_value))
-            )
-
         return {
-            "close": round(_extract_safe_numeric_value(current_close), 2),
-            "sma200": round(_extract_safe_numeric_value(sma200), 2),
-            "volume_sma": float(int(_extract_safe_numeric_value(volume_sma, 0))),
-            "atr": round(_extract_safe_numeric_value(atr), 2),
-            "atr_ratio_3day": round(_extract_safe_numeric_value(atr_ratio_3day), 2),
-            "ibs": round(_extract_safe_numeric_value(ibs), 2),
-            "volatility_ratio": round(_extract_safe_numeric_value(volatility_ratio), 3),
+            "close": round(extract_safe_float(current_close), 2),
+            "sma200": round(extract_safe_float(sma200), 2),
+            "volume_sma": float(int(extract_safe_float(volume_sma, 0))),
+            "atr": round(extract_safe_float(atr), 2),
+            "atr_ratio_3day": round(extract_safe_float(atr_ratio_3day), 2),
+            "ibs": round(extract_safe_float(ibs), 2),
+            "volatility_ratio": round(extract_safe_float(volatility_ratio), 3),
         }

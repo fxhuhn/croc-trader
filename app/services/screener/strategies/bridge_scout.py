@@ -7,6 +7,7 @@ trading day of the next month.
 
 import datetime
 import logging
+from dataclasses import dataclass
 from typing import TypedDict, override
 
 import pandas as pd
@@ -25,6 +26,27 @@ from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class BridgeScoutParameters:
+    """Configuration parameters for Bridge Scout setup evaluation."""
+
+    is_live_same_day: bool = False
+    rsi_threshold: float = 40.0
+    max_atr_pct: float = 3.5
+
+
+@dataclass(frozen=True)
+class BridgeScoutSetupResult:
+    """Immutable outcome of pure Bridge Scout setup evaluation."""
+
+    is_signal: bool
+    setup_close: float
+    entry_price: float
+    rsi_2: float | None
+    atr_pct: float
+    req_close_rsi40: float
 
 
 class BridgeScoutStrategyContext(TypedDict, total=False):
@@ -95,6 +117,86 @@ def is_in_end_of_month_window(
     return 1 <= remaining_days <= (days_before + 1)
 
 
+def evaluate_bridge_scout_setup(
+    close_series: pd.Series,
+    high_series: pd.Series,
+    low_series: pd.Series,
+    params: BridgeScoutParameters | None = None,
+) -> BridgeScoutSetupResult | None:
+    """Pure calculation: Evaluates Bridge Scout setup conditions without side effects."""
+    cfg = params or BridgeScoutParameters()
+    if close_series.empty or len(close_series) < 15:
+        return None
+
+    atr_series = calculate_atr(high_series, low_series, close_series, 10)
+    current_atr = float(atr_series.iloc[-1])
+
+    if cfg.is_live_same_day:
+        current_close = float(close_series.iloc[-1])
+        if current_close <= 0:
+            return None
+        rsi_series = calculate_rsi(close_series, 2)
+        current_rsi = float(rsi_series.iloc[-1])
+        atr_pct = (current_atr / current_close) * 100.0
+
+        if current_rsi >= cfg.rsi_threshold or atr_pct >= cfg.max_atr_pct:
+            return BridgeScoutSetupResult(
+                is_signal=False,
+                setup_close=current_close,
+                entry_price=current_close,
+                rsi_2=round(current_rsi, 2),
+                atr_pct=round(atr_pct, 2),
+                req_close_rsi40=0.0,
+            )
+
+        req_close_rsi40 = calculate_max_close_for_rsi(
+            close_series.iloc[:-1],
+            window=2,
+            rsi_target=cfg.rsi_threshold,
+        )
+        return BridgeScoutSetupResult(
+            is_signal=True,
+            setup_close=current_close,
+            entry_price=current_close,
+            rsi_2=round(current_rsi, 2),
+            atr_pct=round(atr_pct, 2),
+            req_close_rsi40=round(req_close_rsi40, 2),
+        )
+
+    # Pre-market / live screening: candle for target_date is not in DB yet
+    last_close = float(close_series.iloc[-1])
+    if last_close <= 0:
+        return None
+    atr_pct = (current_atr / last_close) * 100.0
+
+    if atr_pct >= cfg.max_atr_pct:
+        return BridgeScoutSetupResult(
+            is_signal=False,
+            setup_close=last_close,
+            entry_price=0.0,
+            rsi_2=None,
+            atr_pct=round(atr_pct, 2),
+            req_close_rsi40=0.0,
+        )
+
+    req_close_rsi40 = calculate_max_close_for_rsi(
+        close_series,
+        window=2,
+        rsi_target=cfg.rsi_threshold,
+    )
+    rsi_series = calculate_rsi(close_series, 2)
+    rsi_2_val = round(float(rsi_series.iloc[-1]), 2)
+
+    return BridgeScoutSetupResult(
+        is_signal=True,
+        setup_close=last_close,
+        entry_price=float(req_close_rsi40),
+        rsi_2=rsi_2_val,
+        atr_pct=round(atr_pct, 2),
+        req_close_rsi40=round(req_close_rsi40, 2),
+    )
+
+
 class BridgeScoutStrategy(BaseStrategy[int]):
     """Implementation of the Bridge Scout trading strategy.
 
@@ -128,7 +230,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """Executes Bridge Scout screening logic for the specified date."""
-        target_date = self._resolve_target_date(days, analysis_date)
+        target_date = self._resolve_analysis_date(days, analysis_date)
         target_date_str = target_date.strftime("%Y-%m-%d")
 
         if not is_in_end_of_month_window(
@@ -182,79 +284,36 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         high_series = price_history["high"].astype(float)
         low_series = price_history["low"].astype(float)
 
-        atr_series = calculate_atr(high_series, low_series, close_series, 10)
-        current_atr = float(atr_series.iloc[-1])
+        params = BridgeScoutParameters(
+            is_live_same_day=(candle_date == target_date),
+            rsi_threshold=self.DEFAULT_RSI_THRESHOLD,
+            max_atr_pct=self.DEFAULT_MAX_ATR_PCT,
+        )
+        setup_result = evaluate_bridge_scout_setup(
+            close_series=close_series,
+            high_series=high_series,
+            low_series=low_series,
+            params=params,
+        )
 
-        if candle_date == target_date:
-            # Post-market / backtest evaluation: candle for target_date is in DB
-            current_close = float(close_series.iloc[-1])
-            rsi_series = calculate_rsi(close_series, 2)
-            current_rsi = float(rsi_series.iloc[-1])
-            atr_pct = (current_atr / current_close) * 100.0
-
-            if current_rsi >= self.DEFAULT_RSI_THRESHOLD:
-                logger.debug(
-                    "Bridge Scout setup failed for QQQ on %s: RSI(2)=%.2f >= %.2f.",
-                    target_date_str,
-                    current_rsi,
-                    self.DEFAULT_RSI_THRESHOLD,
-                )
-                return 0
-
-            if atr_pct >= self.DEFAULT_MAX_ATR_PCT:
-                logger.debug(
-                    "Bridge Scout setup failed for QQQ on %s: ATR%%=%.2f%% >= %.2f%%.",
-                    target_date_str,
-                    atr_pct,
-                    self.DEFAULT_MAX_ATR_PCT,
-                )
-                return 0
-
-            req_close_rsi40 = calculate_max_close_for_rsi(
-                close_series.iloc[:-1],
-                window=2,
-                rsi_target=self.DEFAULT_RSI_THRESHOLD,
-            )
-            entry_price = current_close
-            rsi_2_val = round(current_rsi, 2)
-        else:
-            # Pre-market / live screening: candle for target_date is not in DB yet
-            last_close = float(close_series.iloc[-1])
-            atr_pct = (current_atr / last_close) * 100.0
-
-            if atr_pct >= self.DEFAULT_MAX_ATR_PCT:
-                logger.debug(
-                    "Bridge Scout pre-market setup skipped for QQQ on %s: ATR%%=%.2f%% >= %.2f%%.",
-                    target_date_str,
-                    atr_pct,
-                    self.DEFAULT_MAX_ATR_PCT,
-                )
-                return 0
-
-            req_close_rsi40 = calculate_max_close_for_rsi(
-                close_series,
-                window=2,
-                rsi_target=self.DEFAULT_RSI_THRESHOLD,
-            )
-            entry_price = float(req_close_rsi40)
-            rsi_series = calculate_rsi(close_series, 2)
-            rsi_2_val = round(float(rsi_series.iloc[-1]), 2)
+        if setup_result is None or not setup_result.is_signal:
+            return 0
 
         context: BridgeScoutStrategyContext = {
             "date": target_date_str,
             "setup_date": target_date_str,
-            "setup_close": last_close if candle_date != target_date else current_close,
-            "rsi_2": rsi_2_val,
-            "atr_pct": round(atr_pct, 2),
-            "req_close_rsi40": round(req_close_rsi40, 2),
+            "setup_close": setup_result.setup_close,
+            "rsi_2": setup_result.rsi_2,
+            "atr_pct": setup_result.atr_pct,
+            "req_close_rsi40": setup_result.req_close_rsi40,
             "source": "ScreenerEngine",
         }
 
         trade_id = self.trade_repository.create_trade(
             symbol=self.TARGET_SYMBOL,
-            strategy=self.STRATEGY_IDENTIFIER.value,
+            strategy=self.STRATEGY_IDENTIFIER,
             size=0.0,
-            entry=entry_price,
+            entry=setup_result.entry_price,
             stop_loss=0.0,
             target=0.0,
             context=dict(context),
@@ -265,7 +324,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             self.TARGET_SYMBOL,
             target_date_str,
             trade_id,
-            req_close_rsi40,
+            setup_result.req_close_rsi40,
         )
 
         if self.telegram_bot:
@@ -275,10 +334,12 @@ class BridgeScoutStrategy(BaseStrategy[int]):
                     SignalReportItem(
                         symbol=self.TARGET_SYMBOL,
                         action="BUY MOC",
-                        entry_price=entry_price,
+                        entry_price=setup_result.entry_price,
                         details={
-                            "Max Close (RSI<40)": round(req_close_rsi40, 2),
-                            "ATR%": round(atr_pct, 2),
+                            "Max Close (RSI<40)": round(
+                                setup_result.req_close_rsi40, 2
+                            ),
+                            "ATR%": round(setup_result.atr_pct, 2),
                         },
                     )
                 ],
@@ -286,12 +347,3 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             )
 
         return 1
-
-    def _resolve_target_date(
-        self, days: int = 0, analysis_date: str | None = None
-    ) -> datetime.date:
-        """Resolves target analysis date into a clean datetime.date object."""
-        if analysis_date:
-            return datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
-        reference_date = datetime.date.today()
-        return reference_date - datetime.timedelta(days=days)

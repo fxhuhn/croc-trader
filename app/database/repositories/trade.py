@@ -484,3 +484,19 @@ class TradeRepository(BaseRepository):
         if row and row[0]:
             return str(row[0]).strip()
         return None
+
+    def clear_created_trades(self, strategy: str) -> int:
+        """Deletes pending trades in CREATED status for a given strategy.
+
+        Args:
+            strategy: Strategy identifier (e.g. 'ndx_momentum').
+
+        Returns:
+            int: Number of deleted trade records.
+        """
+        with self.session.connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM trades WHERE strategy = ? AND status = 'CREATED'",
+                (strategy,),
+            )
+            return cursor.rowcount if cursor.rowcount is not None else 0

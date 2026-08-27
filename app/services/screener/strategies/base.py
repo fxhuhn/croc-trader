@@ -9,6 +9,7 @@ from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
 from ....tools.symbol_lists import ExchangeSymbol
+from ....tools.trading_calendar import resolve_effective_trading_date
 from ....types import TradeStatus
 from ..models import SignalReportItem
 
@@ -42,6 +43,17 @@ class BaseStrategy[T](ABC):
             return datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
         reference_date = datetime.date.today()
         return reference_date - datetime.timedelta(days=days)
+
+    def _resolve_effective_trading_date(
+        self,
+        available_dates: pd.Index,
+        target_date: pd.Timestamp | datetime.date | str,
+        max_fallback_days: int = 10,
+    ) -> pd.Timestamp | None:
+        """Resolves target trading date against available market price dates with gap fallback."""
+        return resolve_effective_trading_date(
+            available_dates, target_date, max_fallback_days
+        )
 
     def _has_existing_trade_or_position(
         self,

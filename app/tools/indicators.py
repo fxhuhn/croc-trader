@@ -114,3 +114,40 @@ def calculate_max_close_for_rsi(
         return close_prev + al_prev - ag_prev * (100.0 / rsi_target - 1.0)
 
     return close_prev + rs_target * al_prev - ag_prev
+
+
+def calculate_rsi_exit_target(
+    close_series: pd.Series, window: int = 2, rsi_target: float = 75.0
+) -> float:
+    """Calculates the minimum Close price required to exceed rsi_target today.
+
+    Uses Wilder's EWM smoothing matching calculate_rsi.
+    """
+    min_required_len = window + 1
+    if close_series.empty or len(close_series) < min_required_len:
+        return float("nan")
+
+    delta = close_series.diff()
+    gain = (delta.where(delta > 0, 0)).fillna(0)
+    loss = (-delta.where(delta < 0, 0)).fillna(0)
+
+    avg_gain_series = gain.ewm(alpha=1 / window, adjust=False).mean()
+    avg_loss_series = loss.ewm(alpha=1 / window, adjust=False).mean()
+
+    last_avg_gain = float(avg_gain_series.iloc[-1])
+    last_avg_loss = float(avg_loss_series.iloc[-1])
+    last_close = float(close_series.iloc[-1])
+
+    rs_multiplier = rsi_target / (100.0 - rsi_target)
+    required_delta_rsi = max(0.0, (rs_multiplier * last_avg_loss) - last_avg_gain)
+    return last_close + required_delta_rsi + 0.01
+
+
+def extract_safe_float(value: object, default: float = 0.0) -> float:
+    """Safely extracts a float value from a potentially null, NaN, or non-numeric object."""
+    if pd.isna(value) or value is None:
+        return default
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return default

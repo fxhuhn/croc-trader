@@ -3,6 +3,7 @@ import logging
 
 from ...const import Strategies, TradeStatus
 from ...database.repositories.signal import SignalRepository
+from ...tools.indicators import extract_safe_float
 
 logger = logging.getLogger(__name__)
 
@@ -92,15 +93,17 @@ class ScreenerViewService:
         # Sort by Momentum Score DESC for NDX Momentum
         if strategy_value == Strategies.NDXMomentum:
             processed_results.sort(
-                key=lambda x: float(x.get("context", {}).get("momentum_score", 0.0)),
+                key=lambda x: extract_safe_float(
+                    x.get("context", {}).get("momentum_score")
+                ),
                 reverse=True,
             )
 
         # Sort by Setup Score DESC for Dip Buyer
         if strategy_value == Strategies.DipBuyer:
             processed_results.sort(
-                key=lambda x: float(
-                    x.get("context", {}).get("setup_score", 0.0) or 0.0
+                key=lambda x: extract_safe_float(
+                    x.get("context", {}).get("setup_score")
                 ),
                 reverse=True,
             )
