@@ -343,13 +343,6 @@ module = [
 ]
 ignore_errors = true
 
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.screener.strategies.ndx_momentum",
-]
-ignore_errors = true
-
 
 # Legacy typing debt: un-typed legacy code, verified 2026-07-30.
 [[tool.mypy.overrides]]
@@ -414,13 +407,6 @@ ignore_errors = true
 [[tool.mypy.overrides]]
 module = [
     "app.services.trade_manager.strategies.hold_target",
-]
-ignore_errors = true
-
-# Legacy typing debt: un-typed legacy code, verified 2026-07-30.
-[[tool.mypy.overrides]]
-module = [
-    "app.services.trade_manager.strategies.ndx_momentum",
 ]
 ignore_errors = true
 
@@ -503,16 +489,19 @@ source_paths = [
     "app/services/market/updater.py",
     "app/services/screener/strategies/bounce_bandit.py",
     "app/services/screener/strategies/bridge_scout.py",
+    "app/services/screener/strategies/ndx_momentum.py",
     "app/services/screener/strategies/tgim.py",
     "app/services/screener/strategies/two_percent_strategy.py",
     "app/services/trade_manager/strategies/bounce_bandit.py",
     "app/services/trade_manager/strategies/bridge_scout.py",
+    "app/services/trade_manager/strategies/ndx_momentum.py",
     "app/services/trade_manager/strategies/tgim.py",
     "app/services/trade_manager/strategies/two_percent_strategy.py",
     "app/tools/indicators.py",
 ]
 backup = false
 runner = "pytest"
+
 
 
 

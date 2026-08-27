@@ -45,7 +45,7 @@ class NDXAnalysisResult(TypedDict, total=False):
     error: str
 
 
-class NDXMomentumScreener(BaseStrategy):
+class NDXMomentumScreener(BaseStrategy[int]):
     """
     Screener for the NASDAQ-100 Momentum strategy.
 
@@ -193,7 +193,7 @@ class NDXMomentumScreener(BaseStrategy):
         effective_date_result = self._resolve_effective_date(
             pivoted_data["close"].index, target_date, force_run, analysis_date
         )
-        if isinstance(effective_date_result, dict):
+        if not isinstance(effective_date_result, pd.Timestamp):
             return effective_date_result
 
         return pivoted_data, effective_date_result, nasdaq_100_symbols
@@ -458,7 +458,7 @@ class NDXMomentumScreener(BaseStrategy):
         )
 
         created_count = 0
-        created_trades: list[dict[str, object]] = []
+        created_trades: list[SignalReportItem] = []
         for symbol in symbols:
             try:
                 closing_price = float(price_data["close"].at[analysis_date, symbol])

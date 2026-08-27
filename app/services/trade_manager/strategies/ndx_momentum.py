@@ -132,7 +132,7 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         current_date = pd.Timestamp(current_candle["date"])
         previous_date = pd.Timestamp(previous_candle["date"])
 
-        return (
+        return bool(
             current_date.month != previous_date.month
             or current_date.year != previous_date.year
         )
@@ -157,10 +157,11 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         if reference_date:
             try:
                 reference_timestamp = pd.Timestamp(reference_date)
-                return (
+                return bool(
                     reference_timestamp.month != last_date.month
                     or reference_timestamp.year != last_date.year
                 )
+
             except (ValueError, TypeError) as error:
                 logger.warning(
                     "Failed to parse reference_date '%s' for month switch check: %s",
