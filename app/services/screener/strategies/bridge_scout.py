@@ -128,7 +128,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """Executes Bridge Scout screening logic for the specified date."""
-        target_date = self._resolve_analysis_date(days, analysis_date)
+        target_date = self._resolve_target_date(days, analysis_date)
         target_date_str = target_date.strftime("%Y-%m-%d")
 
         if not is_in_end_of_month_window(
@@ -286,3 +286,12 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             )
 
         return 1
+
+    def _resolve_target_date(
+        self, days: int = 0, analysis_date: str | None = None
+    ) -> datetime.date:
+        """Resolves target analysis date into a clean datetime.date object."""
+        if analysis_date:
+            return datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
+        reference_date = datetime.date.today()
+        return reference_date - datetime.timedelta(days=days)

@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.trade import TradeRepository
@@ -235,7 +235,8 @@ def test_dip_buyer_report_signals_to_telegram() -> None:
     df = mock_telegram.send_dataframe.call_args[0][0]
     title = mock_telegram.send_dataframe.call_args[1].get("title", "")
 
-    assert "dip_buyer" in title
+    assert "Dip Buyer" in title
+    assert "_" not in title
     assert df.iloc[0]["Symbol"] == "AAPL"
     assert df.iloc[0]["Action"] == "BUY LMT"
     assert df.iloc[0]["Entry"] == "146.50"

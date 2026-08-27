@@ -215,14 +215,15 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
         replace_existing=True,
     )
 
-    # --- JOB 3: Trade Manager (Active Positions / Orders) ---
+    # --- JOB 3: Trade Manager (Active Positions / Orders - 06:00) ---
+    # Must run BEFORE screener to resolve yesterday's pending entries and free position slots
     tm = app.extensions.get("trade_manager")
     if tm:
         scheduler.add_job(
             func=tm.run_daily_process,
             trigger=CronTrigger(
                 day_of_week="mon-sat",
-                hour=7,
+                hour=6,
                 minute=0,
                 timezone=pytz.timezone("Europe/Berlin"),
             ),
@@ -230,21 +231,8 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
             replace_existing=True,
         )
 
-        # --- JOB 3.5: Order Generation (NACH Trade Manager) ---
-        scheduler.add_job(
-            func=run_order_generation,
-            args=[app],
-            trigger=CronTrigger(
-                day_of_week="mon-sat",
-                hour=7,
-                minute=5,
-                timezone=pytz.timezone("Europe/Berlin"),
-            ),
-            id="order_generation",
-            replace_existing=True,
-        )
-
-    # --- JOB 4: Strategy Check (Screener) ---
+    # --- JOB 4: Strategy Check (Screener - 06:30) ---
+    # Runs AFTER TradeManager on a guaranteed clean state
     scheduler.add_job(
         func=run_daily_strategy_check,
         args=[app],
@@ -258,7 +246,23 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
         replace_existing=True,
     )
 
-    # --- JOB 4.5: Cache Pre-warming (NACH Trade Manager) ---
+    # --- JOB 4.5: Order Generation (07:00) ---
+    # Generates orders for active positions and new screener trades
+    if tm:
+        scheduler.add_job(
+            func=run_order_generation,
+            args=[app],
+            trigger=CronTrigger(
+                day_of_week="mon-sat",
+                hour=7,
+                minute=0,
+                timezone=pytz.timezone("Europe/Berlin"),
+            ),
+            id="order_generation",
+            replace_existing=True,
+        )
+
+    # --- JOB 4.6: Cache Pre-warming (07:15) ---
     scheduler.add_job(
         func=run_cache_prewarm,
         args=[app],

@@ -11,6 +11,7 @@ from app.tasks import (
     _enforce_backup_retention,
     _warm_single_route,
     run_cache_prewarm,
+    run_daily_eod_pipeline,
     run_daily_strategy_check,
     run_db_backup,
     run_db_maintenance,
@@ -250,3 +251,53 @@ def test_enforce_backup_retention_unlink_error(tmp_path: Path) -> None:
 
     with patch.object(Path, "unlink", side_effect=PermissionError("Permission denied")):
         _enforce_backup_retention(backup_dir, "stocks.db", max_backups=5)
+
+
+def test_run_daily_eod_pipeline_success() -> None:
+    """Verifies that run_daily_eod_pipeline executes all 4 steps sequentially."""
+    app = Flask(__name__)
+    mock_tm = MagicMock()
+    mock_tm.generate_daily_orders.return_value = Path(
+        "data/orders/orders_2026_08_27.csv"
+    )
+    mock_engine = MagicMock()
+    mock_engine.run_all.return_value = {"bridge_scout": 1, "tgim": 0}
+
+    app.extensions["trade_manager"] = mock_tm
+    app.extensions["screener_engine"] = mock_engine
+
+    with patch("app.tasks._clear_and_prewarm_cache") as mock_cache_prewarm:
+        summary = run_daily_eod_pipeline(app)
+
+    assert summary["status"] == "success"
+    assert summary["trade_manager"] == "completed"
+    assert summary["screener"] == {"bridge_scout": 1, "tgim": 0}
+    assert "orders_2026_08_27.csv" in summary["orders"]
+
+    mock_tm.run_daily_process.assert_called_once()
+    mock_engine.run_all.assert_called_once_with(days=0)
+    mock_tm.generate_daily_orders.assert_called_once()
+    mock_cache_prewarm.assert_called_once_with(app)
+
+
+def test_run_daily_eod_pipeline_handles_errors() -> None:
+    """Verifies that run_daily_eod_pipeline catches errors without crashing."""
+    app = Flask(__name__)
+    mock_tm = MagicMock()
+    mock_tm.run_daily_process.side_effect = RuntimeError("TM failed")
+    mock_tm.generate_daily_orders.side_effect = RuntimeError("Order gen failed")
+    mock_engine = MagicMock()
+    mock_engine.run_all.side_effect = RuntimeError("Screener failed")
+
+    app.extensions["trade_manager"] = mock_tm
+    app.extensions["screener_engine"] = mock_engine
+
+    with patch(
+        "app.tasks._clear_and_prewarm_cache", side_effect=RuntimeError("Cache fail")
+    ):
+        summary = run_daily_eod_pipeline(app)
+
+    assert summary["status"] == "success"
+    assert "error: TM failed" in summary["trade_manager"]
+    assert "error: Screener failed" in summary["screener"]
+    assert "error: Order gen failed" in summary["orders"]

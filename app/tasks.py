@@ -3,6 +3,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from flask import Flask
 
@@ -14,6 +15,75 @@ from .services.market.updater import MarketDataUpdater
 from .services.telegram import TelegramBot
 
 logger = logging.getLogger(__name__)
+
+
+def run_daily_eod_pipeline(app: Flask) -> dict[str, Any]:
+    """Orchestrates the synchronous End-of-Day (EOD) processing pipeline.
+
+    Sequential Execution Order:
+    1. TradeManager (evaluates last EOD market candle against active positions and pending setups)
+    2. Screener Engine (scans for new trade setups with clean state)
+    3. Order Generation (creates CSV order exports for entries and exits)
+    4. Cache Pre-warming (refreshes UI caches)
+
+    Args:
+        app: The Flask application instance.
+
+    Returns:
+        dict[str, Any]: Summary status of pipeline execution.
+    """
+    with app.app_context():
+        logger.info("🚀 Pipeline: Starting daily EOD execution pipeline...")
+        summary: dict[str, Any] = {
+            "status": "success",
+            "trade_manager": None,
+            "screener": None,
+            "orders": None,
+        }
+
+        # 1. TradeManager
+        trade_manager = app.extensions.get("trade_manager")
+        if trade_manager:
+            try:
+                logger.info("🚀 Pipeline Step 1/4: Running TradeManager...")
+                trade_manager.run_daily_process()
+                summary["trade_manager"] = "completed"
+            except Exception as error:
+                logger.error("TradeManager pipeline error: %s", error, exc_info=True)
+                summary["trade_manager"] = f"error: {error}"
+
+        # 2. Screener Engine
+        screener_engine = app.extensions.get("screener_engine")
+        if screener_engine:
+            try:
+                logger.info("🚀 Pipeline Step 2/4: Running Screener Engine...")
+                screener_stats = screener_engine.run_all(days=0)
+                summary["screener"] = screener_stats
+            except Exception as error:
+                logger.error("Screener pipeline error: %s", error, exc_info=True)
+                summary["screener"] = f"error: {error}"
+
+        # 3. Order Generation
+        if trade_manager:
+            try:
+                logger.info("🚀 Pipeline Step 3/4: Generating Orders...")
+                order_path = trade_manager.generate_daily_orders()
+                summary["orders"] = str(order_path) if order_path else "none"
+            except Exception as error:
+                logger.error(
+                    "Order generation pipeline error: %s", error, exc_info=True
+                )
+                summary["orders"] = f"error: {error}"
+
+        # 4. Cache Pre-warming
+        try:
+            logger.info("🚀 Pipeline Step 4/4: Pre-warming Cache...")
+            _clear_and_prewarm_cache(app)
+        except Exception as error:
+            logger.error("Cache pre-warming pipeline error: %s", error)
+
+        logger.info("✅ Pipeline: Daily EOD execution completed.")
+        return summary
 
 
 def run_daily_strategy_check(app: Flask) -> None:

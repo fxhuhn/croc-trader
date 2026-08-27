@@ -3,6 +3,7 @@ from typing import TypedDict
 
 import pandas as pd
 
+from ...const import Strategies
 from ...database.repositories.market_data_provider import MarketDataProvider
 from ...database.repositories.signal import SignalRepository
 from ...database.repositories.trade import TradeRepository
@@ -116,34 +117,59 @@ class ScreenerEngine:
             )
 
         for strategy in self.active_strategies:
-            if strategy_filter and strategy.name != strategy_filter:
-                continue
+            strat_name = getattr(strategy, "name", "")
+            strat_ident = getattr(strategy, "STRATEGY_IDENTIFIER", "")
+            strat_key = (
+                getattr(strat_name, "value", str(strat_name)).lower().replace("-", "_")
+            )
+            ident_key = (
+                getattr(strat_ident, "value", str(strat_ident))
+                .lower()
+                .replace("-", "_")
+            )
+
+            if strategy_filter:
+                filter_key = (
+                    getattr(strategy_filter, "value", str(strategy_filter))
+                    .lower()
+                    .replace("-", "_")
+                )
+                if filter_key not in (strat_key, ident_key):
+                    continue
 
             try:
                 hits = strategy.run(days=days, analysis_date=global_analysis_date)
-                results[strategy.name] = hits
+                results[str(strat_name)] = hits
             except (ValueError, KeyError, RuntimeError) as error:
-                logger.error("Error executing strategy %s: %s", strategy.name, error)
-                results[strategy.name] = 0
+                logger.error("Error executing strategy %s: %s", strat_name, error)
+                results[str(strat_name)] = 0
             except Exception:
-                logger.exception(
-                    "Critical unexpected error in strategy %s", strategy.name
-                )
-                results[strategy.name] = 0
+                logger.exception("Critical unexpected error in strategy %s", strat_name)
+                results[str(strat_name)] = 0
 
         return results
 
-    def get_strategy(self, name: str) -> StrategyProtocol | None:
-        """
-        Finds a registered strategy by its name.
+    def get_strategy(self, name: str | Strategies) -> StrategyProtocol | None:
+        """Finds a registered strategy by its name or canonical enum identifier.
 
         Args:
-            name: The name of the strategy to find.
+            name: The name or enum of the strategy to find.
 
         Returns:
             StrategyProtocol | None: The found strategy or None if not registered.
         """
+        search_key = getattr(name, "value", str(name)).lower().replace("-", "_")
         for strategy in self.active_strategies:
-            if strategy.name == name:
+            strat_name = getattr(strategy, "name", "")
+            strat_ident = getattr(strategy, "STRATEGY_IDENTIFIER", "")
+            strat_key = (
+                getattr(strat_name, "value", str(strat_name)).lower().replace("-", "_")
+            )
+            ident_key = (
+                getattr(strat_ident, "value", str(strat_ident))
+                .lower()
+                .replace("-", "_")
+            )
+            if search_key in (strat_key, ident_key):
                 return strategy
         return None

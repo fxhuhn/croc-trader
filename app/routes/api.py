@@ -13,6 +13,7 @@ from ..database.session import DatabaseSession
 from ..services.backfill_engine import run_strategy_backfill
 from ..services.market.quality import MarketQualityService
 from ..services.market.updater import MarketDataUpdater
+from ..tasks import run_daily_eod_pipeline
 from .security import require_ip_whitelist
 from .views.dependencies import cache
 
@@ -154,6 +155,27 @@ def ingest_webhook() -> Response:
 
 
 # --- SCREENER & TRADING ---
+
+
+@api_blueprint.route("/pipeline/run", methods=["POST"])
+@require_ip_whitelist
+def trigger_eod_pipeline() -> Response:
+    """Triggers a synchronous End-of-Day (EOD) pipeline run.
+
+    Sequential Execution:
+    TradeManager -> Screener Engine -> Order Generation -> Cache Pre-warming.
+
+    Returns:
+        Response: JSON status and execution summary.
+    """
+    try:
+        logger.info("API Trigger: Manual EOD pipeline run initiated.")
+        app_instance = current_app._get_current_object()  # type: ignore[attr-defined]
+        summary = run_daily_eod_pipeline(app_instance)
+        return jsonify(summary), 200
+    except Exception as error:
+        logger.exception("Error during EOD pipeline run: %s", error)
+        return jsonify({"status": "error", "error": str(error)}), 500
 
 
 @api_blueprint.route("/screener/run", methods=["POST"])
