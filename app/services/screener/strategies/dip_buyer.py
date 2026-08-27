@@ -71,7 +71,7 @@ class SymbolAnalysisResult(TypedDict):
     error: str | None
 
 
-class DipBuyerStrategy(BaseStrategy):
+class DipBuyerStrategy(BaseStrategy[int]):
     """
     Identifies mean-reversion opportunities in uptrending stocks.
 
@@ -441,7 +441,7 @@ class DipBuyerStrategy(BaseStrategy):
 
     def _process_signals(self, signals: pd.DataFrame, date_obj: pd.Timestamp) -> int:
         """Creates trade objects and reports results."""
-        created_trades = []
+        created_trades: list[SignalReportItem] = []
         saved_count = 0
         date_str = date_obj.strftime("%Y-%m-%d")
 
@@ -703,7 +703,7 @@ class DipBuyerStrategy(BaseStrategy):
             return (
                 default_fallback_value
                 if pd.isna(raw_metric_value)
-                else float(raw_metric_value)
+                else float(str(raw_metric_value))
             )
 
         return {

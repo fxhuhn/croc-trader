@@ -4,9 +4,9 @@ from typing import final, override
 
 import pandas as pd
 
-from ....const import Strategies
+from ....const import ExitReason, Strategies
 from ....models import Order, OrderLeg, TradeParams
-from ....types import ExitReason, TradeData
+from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy
 
@@ -248,8 +248,8 @@ class DipBuyerStrategy(BaseTradeStrategy):
         if threshold_loc is None:
             threshold_loc = self._calculate_threshold_loc(dataframe_history)
         exit_price = threshold_loc if threshold_loc else trade.get("current_target")
-        if exit_price:
-            exit_value = float(exit_price)
+        if exit_price is not None:
+            exit_value = float(str(exit_price))
             if exit_value > 0:
                 exits.append(
                     OrderLeg(
@@ -324,8 +324,8 @@ class DipBuyerStrategy(BaseTradeStrategy):
             threshold_loc = context.get("threshold_loc")
             if threshold_loc is None:
                 threshold_loc = self._calculate_threshold_loc(dataframe_history)
-            if threshold_loc:
-                threshold_value = float(threshold_loc)
+            if threshold_loc is not None:
+                threshold_value = float(str(threshold_loc))
                 if threshold_value > 0:
                     exits.append(
                         OrderLeg(
