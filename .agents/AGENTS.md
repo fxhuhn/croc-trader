@@ -22,6 +22,8 @@ lower-level rule, local convention, or implementation preference:
    services.
 8. Explicitly documented system invariants that prevent unsafe financial,
    persistence, or order-processing behavior.
+9. **ZERO UNREQUESTED SCOPE EXPANSION (HARD SCOPE LOCK):** Never modify, add to, or touch any file, configuration, parameter, whitelist (e.g. strategy order exports), or public interface not explicitly required by the user prompt. Proactive additions are strictly forbidden.
+10. **MANDATORY END-TO-END ROOT CAUSE TRACE BEFORE CODE MODIFICATION:** Before modifying production code, trace the full data flow from trigger to persistence across all involved functions and verify the hypothesis against real repository evidence or a failing test. Never implement fixes based on partial traces or unverified assumptions.
 
 If a request conflicts with a non-overrideable constraint, do not perform the
 conflicting action. Report the conflict directly.
