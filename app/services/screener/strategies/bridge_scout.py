@@ -253,7 +253,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """Executes Bridge Scout screening logic for the specified date."""
-        target_date = self._resolve_analysis_date(days, analysis_date)
+        target_date = self._resolve_target_date(days, analysis_date)
         target_date_str = target_date.strftime("%Y-%m-%d")
 
         if not is_in_end_of_month_window(
@@ -370,3 +370,33 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             )
 
         return 1
+
+    def _resolve_target_date(
+        self, days: int = 0, analysis_date: str | None = None
+    ) -> datetime.date:
+        """Resolves target analysis date into a clean datetime.date object.
+
+        In live execution (days=0), if the analysis date matches the latest available
+        EOD bar in market data (yesterday) and today is an active trading session,
+        the target setup date rolls forward to today.
+        """
+        if analysis_date:
+            parsed_date = datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
+        else:
+            parsed_date = datetime.date.today() - datetime.timedelta(days=days)
+
+        if days == 0:
+            today = datetime.date.today()
+            if (
+                today > parsed_date
+                and today.weekday() < SATURDAY_WEEKDAY
+                and not self.holiday_checker.is_holiday(today)
+            ):
+                latest_market_date = self.data_provider.get_latest_date()
+                if (
+                    latest_market_date
+                    and parsed_date.strftime("%Y-%m-%d") == latest_market_date
+                ):
+                    return today
+
+        return parsed_date
