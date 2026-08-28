@@ -96,8 +96,6 @@ module = [
     "apscheduler.*",
     "yaml.*",
     "yaml",
-    "tabulate.*",
-    "tabulate",
 ]
 ignore_missing_imports = true
 

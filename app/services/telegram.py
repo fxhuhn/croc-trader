@@ -1,13 +1,172 @@
+import html
 import logging
 
 import pandas as pd
 import requests
-from tabulate import tabulate
 
 logger = logging.getLogger(__name__)
 
 # Default network timeout in seconds
 DEFAULT_TELEGRAM_TIMEOUT_SECONDS: float = 10.0
+
+COLUMN_HEADER_MAPPINGS: dict[str, str] = {
+    "symbol": "SYM",
+    "sym": "SYM",
+    "action": "ACTION",
+    "act": "ACTION",
+    "signal": "ACTION",
+    "entry": "ENTRY",
+    "entry_price": "ENTRY",
+    "limit entry": "ENTRY",
+    "tp": "TP",
+    "target": "TP",
+    "target_profit": "TP",
+    "sl": "SL",
+    "stop": "SL",
+    "stop_loss": "SL",
+    "max close (rsi<40)": "MAX_CL",
+    "req_close_rsi40": "MAX_CL",
+    "setup close": "CLOSE",
+}
+
+OMIT_SECONDARY_COLUMNS: set[str] = {
+    "score",
+    "setup_score",
+    "loc",
+    "threshold_loc",
+    "atr",
+    "atr5",
+    "atr%",
+    "atr_pct",
+    "atr_ratio_3day",
+    "rsi",
+    "rsi(2)",
+    "ibs",
+    "volume",
+    "sma200",
+    "indices",
+    "close",
+}
+
+
+MAX_UNFILTERED_COLUMNS: int = 4
+
+
+def format_compact_table(
+    headers: list[str],
+    rows: list[list[str]],
+    alignments: list[str] | None = None,
+) -> str:
+    """Formats headers and string rows into a monospaced ASCII table with matching separator.
+
+    Args:
+        headers: List of column header names.
+        rows: List of data rows where each row has strings matching headers length.
+        alignments: Optional list specifying alignment per column ('left' or 'right').
+
+    Returns:
+        str: Monospaced aligned table string.
+    """
+    if not headers:
+        return ""
+
+    num_columns = len(headers)
+    resolved_alignments = (
+        alignments
+        if alignments and len(alignments) == num_columns
+        else ["left"] * num_columns
+    )
+
+    column_widths = [len(header) for header in headers]
+    for row in rows:
+        for column_index in range(min(num_columns, len(row))):
+            column_widths[column_index] = max(
+                column_widths[column_index], len(str(row[column_index]))
+            )
+
+    header_cells = []
+    for column_index, header in enumerate(headers):
+        width = column_widths[column_index]
+        if resolved_alignments[column_index] == "right":
+            header_cells.append(header.rjust(width))
+        else:
+            header_cells.append(header.ljust(width))
+
+    spacing = "  "
+    header_line = spacing.join(header_cells)
+    separator_line = "-" * len(header_line)
+
+    formatted_row_lines = []
+    for row in rows:
+        row_cells = []
+        for column_index in range(num_columns):
+            value = str(row[column_index]) if column_index < len(row) else ""
+            width = column_widths[column_index]
+            if resolved_alignments[column_index] == "right":
+                row_cells.append(value.rjust(width))
+            else:
+                row_cells.append(value.ljust(width))
+        formatted_row_lines.append(spacing.join(row_cells))
+
+    return f"{header_line}\n{separator_line}\n" + "\n".join(formatted_row_lines)
+
+
+def format_dataframe_to_compact_table(dataframe: pd.DataFrame) -> str:
+    """Converts a pandas DataFrame into a compact monospaced table string."""
+    if dataframe.empty:
+        return ""
+
+    available_columns = list(dataframe.columns)
+    if len(available_columns) > MAX_UNFILTERED_COLUMNS:
+        filtered_columns = [
+            column
+            for column in available_columns
+            if str(column).lower() not in OMIT_SECONDARY_COLUMNS
+        ]
+        if filtered_columns:
+            available_columns = filtered_columns
+
+    headers = [
+        COLUMN_HEADER_MAPPINGS.get(str(column).lower(), str(column))
+        for column in available_columns
+    ]
+
+    alignments = []
+    for column in available_columns:
+        col_lower = str(column).lower()
+        if pd.api.types.is_numeric_dtype(dataframe[column]) or col_lower in {
+            "entry",
+            "entry_price",
+            "limit entry",
+            "tp",
+            "target",
+            "target_profit",
+            "sl",
+            "stop",
+            "stop_loss",
+            "close",
+            "setup close",
+            "max close (rsi<40)",
+            "req_close_rsi40",
+        }:
+            alignments.append("right")
+        else:
+            alignments.append("left")
+
+    rows: list[list[str]] = []
+    for _, row in dataframe.iterrows():
+        row_values: list[str] = []
+        for column in available_columns:
+            value = row[column]
+            if pd.isna(value):
+                row_values.append("-")
+            elif isinstance(value, float):
+                row_values.append(f"{value:.2f}")
+            else:
+                row_values.append(str(value))
+        rows.append(row_values)
+
+    return format_compact_table(headers, rows, alignments)
 
 
 class TelegramBot:
@@ -96,14 +255,10 @@ class TelegramBot:
             logger.error("Telegram network error: %s", error_message)
             return None
 
-    def _escape_markdown_title(self, title: str) -> str:
-        """Escapes markdown formatting characters in plain text titles."""
-        return title.replace("_", "\\_").replace("*", "\\*")
-
     def send_dataframe(
         self, dataframe: pd.DataFrame, title: str = ""
     ) -> dict[str, object] | None:
-        """Formats a pandas DataFrame into a monospaced ASCII code block table.
+        """Formats a pandas DataFrame into a monospaced ASCII table in Telegram HTML format.
 
         Args:
             dataframe: Tabular data to be displayed.
@@ -115,13 +270,20 @@ class TelegramBot:
         if not self.enabled:
             return None
 
-        escaped_title = self._escape_markdown_title(title)
+        escaped_title = html.escape(title)
 
         if dataframe.empty:
-            return self.send_message(f"*{escaped_title}*\n_(No Data)_")
+            message = (
+                f"<b>{escaped_title}</b>\n<i>(No Data)</i>"
+                if escaped_title
+                else "<i>(No Data)</i>"
+            )
+            return self.send_message(message, parse_mode="HTML")
 
-        table_string = tabulate(
-            dataframe, tablefmt="simple", showindex=False, headers="keys"
+        table_string = format_dataframe_to_compact_table(dataframe)
+        message = (
+            f"<b>{escaped_title}</b>\n<pre>{table_string}</pre>"
+            if escaped_title
+            else f"<pre>{table_string}</pre>"
         )
-        message = f"*{escaped_title}*\n```\n{table_string}\n```"
-        return self.send_message(message, parse_mode="Markdown")
+        return self.send_message(message, parse_mode="HTML")
