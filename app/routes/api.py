@@ -2,12 +2,12 @@
 
 import logging
 import uuid
-from threading import Thread
+from threading import Lock, Thread
 from typing import Any, TypedDict, cast
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
-from ..const import Strategies
+from ..const import STRATEGY_ALIASES, Strategies
 from ..database.repositories.signal import SignalRepository
 from ..database.session import DatabaseSession
 from ..services.backfill_engine import run_strategy_backfill
@@ -19,6 +19,8 @@ from .views.dependencies import cache
 
 logger = logging.getLogger(__name__)
 api_blueprint = Blueprint("api", __name__)
+
+_market_sync_lock: Lock = Lock()
 
 type ApiResponse = Response | tuple[Response, int]
 
@@ -211,67 +213,119 @@ def trigger_screener() -> ApiResponse:
         return jsonify({"error": str(error)}), 500
 
 
+def _resolve_strategy_enum(strategy_name: str) -> Strategies | None:
+    """Resolves a strategy name or alias into a canonical Strategies enum member."""
+    raw_name = strategy_name.lower().strip()
+    canonical_name = raw_name.replace("-", "_")
+    resolved = STRATEGY_ALIASES.get(raw_name) or STRATEGY_ALIASES.get(canonical_name)
+    if resolved:
+        return resolved
+    for item in Strategies:
+        if (
+            item.value.lower().replace("-", "_") == canonical_name
+            or item.name.lower() == canonical_name
+        ):
+            return item
+    return None
+
+
+def _get_active_strategy(
+    strategy_enum: Strategies, display_name: str | None = None
+) -> tuple[Any | None, ApiResponse | None]:
+    """Retrieves an active strategy from the screener engine extension."""
+    screener_engine = current_app.extensions.get("screener_engine")
+    if not screener_engine:
+        return None, (
+            jsonify({"status": "error", "message": "Engine not initialized"}),
+            503,
+        )
+    strategy = screener_engine.get_strategy(strategy_enum)
+    if not strategy:
+        name_str = display_name or strategy_enum.name
+        return None, (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Strategy '{name_str}' not initialized in engine"
+                    if display_name
+                    else f"{name_str} strategy not found",
+                }
+            ),
+            404,
+        )
+    return strategy, None
+
+
 @api_blueprint.route("/screener/run/<strategy_name>", methods=["POST"])
 @require_ip_whitelist
 def run_strategy_screener(strategy_name: str) -> ApiResponse:
     """Executes screening for a specific strategy by strategy_name parameter.
 
     Args:
-        strategy_name: Name of the strategy (e.g., 'tgim', 'bridge-scout', 'bounce-bandit').
+        strategy_name: Name or alias of the strategy.
 
     Returns:
-        Response: JSON with signal status.
+        ApiResponse: JSON with signal status.
     """
     try:
         analysis_date = request.args.get("date")
         days = request.args.get("days", default=0, type=int)
-        canonical_name = strategy_name.lower().replace("-", "_")
-
-        screener_engine = current_app.extensions.get("screener_engine")
-        if not screener_engine:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Engine not initialized",
-                }
-            ), 503
-
-        strategy_enum = None
-        for item in Strategies:
-            if (
-                item.value.lower().replace("-", "_") == canonical_name
-                or item.name.lower() == canonical_name
-            ):
-                strategy_enum = item
-                break
+        strategy_enum = _resolve_strategy_enum(strategy_name)
 
         if not strategy_enum:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": f"Strategy '{strategy_name}' not found",
-                }
-            ), 404
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": f"Strategy '{strategy_name}' not found",
+                    }
+                ),
+                404,
+            )
 
-        strategy = screener_engine.get_strategy(strategy_enum)
-        if not strategy:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": f"Strategy '{strategy_name}' not initialized in engine",
-                }
-            ), 404
+        strategy, err_resp = _get_active_strategy(
+            strategy_enum, display_name=strategy_name
+        )
+        if err_resp or strategy is None:
+            return err_resp or (jsonify({"status": "error"}), 500)
 
         candidates_count = strategy.run(days=days, analysis_date=analysis_date)
-        return jsonify(
-            {
-                "status": "success",
-                "strategy": canonical_name,
-                "signals_found": candidates_count,
-            }
-        ), 200
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "strategy": strategy_name.lower().replace("-", "_"),
+                    "signals_found": candidates_count,
+                }
+            ),
+            200,
+        )
     except Exception as error:
         logger.exception("Error analyzing strategy '%s': %s", strategy_name, error)
+        return jsonify({"status": "error", "message": str(error)}), 500
+
+
+def _debug_single_symbol(strategy_enum: Strategies) -> ApiResponse:
+    """Helper for single-symbol debug analysis on strategies implementing analyze_single_symbol."""
+    try:
+        symbol = _extract_symbol_from_request()
+        if not symbol:
+            message = (
+                "Symbol required (query param or JSON)"
+                if strategy_enum == Strategies.DipBuyer
+                else "Symbol required"
+            )
+            return jsonify({"status": "error", "message": message}), 400
+
+        strategy, err_resp = _get_active_strategy(strategy_enum)
+        if err_resp or strategy is None:
+            return err_resp or (jsonify({"status": "error"}), 500)
+
+        analysis_result = strategy.analyze_single_symbol(symbol)
+        return jsonify(analysis_result), 200
+
+    except Exception as error:
+        logger.exception("Error analyzing symbol: %s", error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -283,40 +337,7 @@ def analyze_dip_buyer() -> ApiResponse:
     Returns:
         ApiResponse: JSON analysis result or error.
     """
-    try:
-        symbol = _extract_symbol_from_request()
-        if not symbol:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Symbol required (query param or JSON)",
-                }
-            ), 400
-
-        screener_engine = current_app.extensions.get("screener_engine")
-        if not screener_engine:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Engine not initialized",
-                }
-            ), 503
-
-        strategy = screener_engine.get_strategy(Strategies.DipBuyer)
-        if not strategy:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "DipBuyer strategy not found",
-                }
-            ), 404
-
-        analysis_result = strategy.analyze_single_symbol(symbol)
-        return jsonify(analysis_result), 200
-
-    except Exception as error:
-        logger.exception("Error analyzing symbol: %s", error)
-        return jsonify({"status": "error", "message": str(error)}), 500
+    return _debug_single_symbol(Strategies.DipBuyer)
 
 
 @api_blueprint.route("/screener/turnover", methods=["POST"])
@@ -327,35 +348,7 @@ def analyze_turnover() -> ApiResponse:
     Returns:
         ApiResponse: JSON analysis result or error.
     """
-    try:
-        symbol = _extract_symbol_from_request()
-        if not symbol:
-            return jsonify({"status": "error", "message": "Symbol required"}), 400
-
-        screener_engine = current_app.extensions.get("screener_engine")
-        if not screener_engine:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Engine not initialized",
-                }
-            ), 503
-
-        strategy = screener_engine.get_strategy(Strategies.TurnOverTiming)
-        if not strategy:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "TurnoverTiming strategy not found",
-                }
-            ), 404
-
-        analysis_result = strategy.analyze_single_symbol(symbol)
-        return jsonify(analysis_result), 200
-
-    except Exception as error:
-        logger.exception("Error analyzing turnover symbol: %s", error)
-        return jsonify({"status": "error", "message": str(error)}), 500
+    return _debug_single_symbol(Strategies.TurnOverTiming)
 
 
 @api_blueprint.route("/screener/croc", methods=["POST"])
@@ -370,36 +363,25 @@ def analyze_croc() -> ApiResponse:
         days_lookback = request.args.get("days", default=0, type=int)
         analysis_date = request.args.get("date")
 
-        screener_engine = current_app.extensions.get("screener_engine")
-        if not screener_engine:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Engine not initialized",
-                }
-            ), 503
-
-        strategy = screener_engine.get_strategy(Strategies.CrocSetup)
-        if not strategy:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "CrocSetup strategy not found",
-                }
-            ), 404
+        strategy, err_resp = _get_active_strategy(Strategies.CrocSetup)
+        if err_resp or strategy is None:
+            return err_resp or (jsonify({"status": "error"}), 500)
 
         signals = strategy.get_all_recommendations(
             days=days_lookback, analysis_date=analysis_date
         )
 
-        return jsonify(
-            {
-                "status": "success",
-                "date": analysis_date,
-                "days_lookback": days_lookback,
-                "signals": signals,
-            }
-        ), 200
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "date": analysis_date,
+                    "days_lookback": days_lookback,
+                    "signals": signals,
+                }
+            ),
+            200,
+        )
 
     except Exception as error:
         logger.exception("Error analyzing Croc setup: %s", error)
@@ -417,43 +399,118 @@ def analyze_ndx_momentum() -> ApiResponse:
     try:
         analysis_date = request.args.get("date")
 
-        screener_engine = current_app.extensions.get("screener_engine")
-        if not screener_engine:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Engine not initialized",
-                }
-            ), 503
-
-        strategy = screener_engine.get_strategy(Strategies.NDXMomentum)
-
-        if not strategy:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "NDXMomentum strategy not found",
-                }
-            ), 404
+        strategy, err_resp = _get_active_strategy(Strategies.NDXMomentum)
+        if err_resp or strategy is None:
+            return err_resp or (jsonify({"status": "error"}), 500)
 
         analysis = strategy.calculate_analysis(
             analysis_date=analysis_date, force_run=True
         )
 
-        return jsonify(
-            {
-                "status": "success",
-                "date": analysis.get("date"),
-                "requested_date": analysis.get("requested_date"),
-                "is_rebalance_day": analysis.get("is_rebalance_day", False),
-                "regime": analysis.get("regime_indicators"),
-                "top_leaders": analysis.get("top_symbols", []),
-                "error": analysis.get("error"),
-            }
-        ), 200
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "date": analysis.get("date"),
+                    "requested_date": analysis.get("requested_date"),
+                    "is_rebalance_day": analysis.get("is_rebalance_day", False),
+                    "regime": analysis.get("regime_indicators"),
+                    "top_leaders": analysis.get("top_symbols", []),
+                    "error": analysis.get("error"),
+                }
+            ),
+            200,
+        )
 
     except Exception as error:
         logger.exception("Error analyzing NDX Momentum: %s", error)
+        return jsonify({"status": "error", "message": str(error)}), 500
+
+
+def _dispatch_strategy_debug(
+    strategy: Any,
+    strategy_name: str,
+    symbol: str | None,
+    days_lookback: int,
+    analysis_date: str | None,
+) -> ApiResponse:
+    """Invokes available debug inspection method on strategy instance."""
+    if symbol and hasattr(strategy, "analyze_single_symbol"):
+        return jsonify(strategy.analyze_single_symbol(symbol)), 200
+
+    if hasattr(strategy, "get_all_recommendations"):
+        signals = strategy.get_all_recommendations(
+            days=days_lookback, analysis_date=analysis_date
+        )
+        return (
+            jsonify(
+                {
+                    "status": "success",
+                    "date": analysis_date,
+                    "days_lookback": days_lookback,
+                    "signals": signals,
+                }
+            ),
+            200,
+        )
+
+    if hasattr(strategy, "calculate_analysis"):
+        analysis = strategy.calculate_analysis(
+            analysis_date=analysis_date, force_run=True
+        )
+        return jsonify({"status": "success", **analysis}), 200
+
+    return (
+        jsonify(
+            {
+                "status": "error",
+                "message": f"No debug inspection method available for '{strategy_name}'",
+            }
+        ),
+        400,
+    )
+
+
+@api_blueprint.route("/screener/<strategy_name>/debug", methods=["POST"])
+@require_ip_whitelist
+def debug_strategy(strategy_name: str) -> ApiResponse:
+    """Unified debug and inspection endpoint for any screener strategy.
+
+    Args:
+        strategy_name: Name or alias of strategy.
+
+    Returns:
+        ApiResponse: JSON debug inspection data or error.
+    """
+    strategy_enum = _resolve_strategy_enum(strategy_name)
+    if not strategy_enum:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": f"Strategy '{strategy_name}' not found",
+                }
+            ),
+            404,
+        )
+
+    strategy, err_resp = _get_active_strategy(strategy_enum, display_name=strategy_name)
+    if err_resp or strategy is None:
+        return err_resp or (jsonify({"status": "error"}), 500)
+
+    try:
+        symbol = _extract_symbol_from_request()
+        days_lookback = request.args.get("days", default=0, type=int)
+        analysis_date = request.args.get("date")
+        return _dispatch_strategy_debug(
+            strategy=strategy,
+            strategy_name=strategy_name,
+            symbol=symbol,
+            days_lookback=days_lookback,
+            analysis_date=analysis_date,
+        )
+    except Exception as error:
+        logger.exception("Error debugging strategy '%s': %s", strategy_name, error)
         return jsonify({"status": "error", "message": str(error)}), 500
 
 
@@ -556,6 +613,13 @@ def execute_strategy_backfill(strategy_name: str) -> ApiResponse:
         except Exception as cache_err:
             logger.debug("Cache clear skipped: %s", cache_err)
         return jsonify({"status": "success", "result": result})
+    except ValueError as validation_error:
+        logger.warning(
+            "Strategy '%s' backfill validation error: %s",
+            strategy_name,
+            validation_error,
+        )
+        return jsonify({"status": "error", "message": str(validation_error)}), 400
     except Exception as error:
         logger.error("Strategy '%s' backfill failed: %s", strategy_name, error)
         return jsonify({"status": "error", "message": str(error)}), 500
@@ -588,8 +652,19 @@ def sync_market_data() -> ApiResponse:
     """Triggers background market data synchronization.
 
     Returns:
-        ApiResponse: JSON status accepted.
+        ApiResponse: JSON status accepted or 409 if sync is already running.
     """
+    if _market_sync_lock.locked():
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Market synchronization already in progress",
+                }
+            ),
+            409,
+        )
+
     should_full_sync = request.args.get("full", "false").lower() == "true"
     provider_mode, ignore_today = _parse_market_update_params()
 
@@ -604,24 +679,30 @@ def sync_market_data() -> ApiResponse:
 
     def _execute_sync_task() -> None:
         """Background task for market synchronization."""
-        with app.app_context():
-            try:
-                market_session = DatabaseSession(str(database_path))
-                signals_session = DatabaseSession(str(signals_database_path))
-                updater = MarketDataUpdater(market_session, signals_session)
-                updater.run_update(
-                    full_reload=should_full_sync,
-                    provider_mode=provider_mode,
-                    ignore_today=ignore_today,
-                )
+        if not _market_sync_lock.acquire(blocking=False):
+            logger.warning("Market sync skipped: Synchronization already running")
+            return
+        try:
+            with app.app_context():
+                try:
+                    market_session = DatabaseSession(str(database_path))
+                    signals_session = DatabaseSession(str(signals_database_path))
+                    updater = MarketDataUpdater(market_session, signals_session)
+                    updater.run_update(
+                        full_reload=should_full_sync,
+                        provider_mode=provider_mode,
+                        ignore_today=ignore_today,
+                    )
 
-                quality_service = MarketQualityService(
-                    updater, telegram_bot=telegram_bot
-                )
-                quality_service.perform_gap_check()
-                quality_service.check_last_trading_day_completeness()
-            except (RuntimeError, ValueError) as sync_error:
-                logger.error("Market Sync Task Error: %s", sync_error)
+                    quality_service = MarketQualityService(
+                        updater, telegram_bot=telegram_bot
+                    )
+                    quality_service.perform_gap_check()
+                    quality_service.check_last_trading_day_completeness()
+                except (RuntimeError, ValueError) as sync_error:
+                    logger.error("Market Sync Task Error: %s", sync_error)
+        finally:
+            _market_sync_lock.release()
 
     Thread(target=_execute_sync_task, daemon=True).start()
     return jsonify({"status": "accepted", "message": "Sync started"}), 202
@@ -633,8 +714,19 @@ def reload_market_data() -> ApiResponse:
     """Triggers a full manual reload of market data in the background.
 
     Returns:
-        ApiResponse: JSON status queued.
+        ApiResponse: JSON status queued or 409 if sync is already running.
     """
+    if _market_sync_lock.locked():
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Market synchronization already in progress",
+                }
+            ),
+            409,
+        )
+
     provider_mode, ignore_today = _parse_market_update_params()
 
     configuration = current_app.config.get("APP_CONFIG")
@@ -648,25 +740,31 @@ def reload_market_data() -> ApiResponse:
 
     def _execute_reload_task() -> None:
         """Background task for full market reload."""
-        with app.app_context():
-            try:
-                logger.info("Manual full reload via API started...")
-                market_session = DatabaseSession(str(database_path))
-                signals_session = DatabaseSession(str(signals_database_path))
-                updater = MarketDataUpdater(market_session, signals_session)
-                updater.run_update(
-                    full_reload=True,
-                    provider_mode=provider_mode,
-                    ignore_today=ignore_today,
-                )
+        if not _market_sync_lock.acquire(blocking=False):
+            logger.warning("Market reload skipped: Synchronization already running")
+            return
+        try:
+            with app.app_context():
+                try:
+                    logger.info("Manual full reload via API started...")
+                    market_session = DatabaseSession(str(database_path))
+                    signals_session = DatabaseSession(str(signals_database_path))
+                    updater = MarketDataUpdater(market_session, signals_session)
+                    updater.run_update(
+                        full_reload=True,
+                        provider_mode=provider_mode,
+                        ignore_today=ignore_today,
+                    )
 
-                quality_service = MarketQualityService(
-                    updater, telegram_bot=telegram_bot
-                )
-                quality_service.perform_gap_check()
-                quality_service.check_last_trading_day_completeness()
-            except (RuntimeError, ValueError) as reload_error:
-                logger.error("Market Reload Task Error: %s", reload_error)
+                    quality_service = MarketQualityService(
+                        updater, telegram_bot=telegram_bot
+                    )
+                    quality_service.perform_gap_check()
+                    quality_service.check_last_trading_day_completeness()
+                except (RuntimeError, ValueError) as reload_error:
+                    logger.error("Market Reload Task Error: %s", reload_error)
+        finally:
+            _market_sync_lock.release()
 
     Thread(target=_execute_reload_task, daemon=True).start()
     return jsonify({"status": "queued", "message": "Full reload triggered"}), 200
