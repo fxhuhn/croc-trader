@@ -1075,7 +1075,12 @@ class TradeViewService:
         }
 
         for trade in trades:
-            pnl = float(trade.get("realized_pnl") or 0.0)
+            raw_pnl = trade.get("realized_pnl")
+            try:
+                pnl = float(raw_pnl) if raw_pnl is not None else 0.0
+            except (ValueError, TypeError):
+                pnl = 0.0
+
             entry_date_str = trade.get("entry_date")
             if not entry_date_str:
                 continue

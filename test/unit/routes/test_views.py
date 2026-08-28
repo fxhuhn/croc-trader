@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from flask import Flask
+from flask import Flask, template_rendered
 from flask.testing import FlaskClient
 
 from app.const import Strategies
@@ -38,6 +38,25 @@ def test_application() -> Generator[Flask, None, None]:
 def test_client(test_application: Flask) -> FlaskClient:
     """Provides a test client for the configured Flask application."""
     return test_application.test_client()
+
+
+@pytest.fixture
+def captured_templates(
+    test_application: Flask,
+) -> Generator[list[tuple[Any, dict[str, Any]]], None, None]:
+    """Captures all rendered Jinja2 templates and their passed contexts."""
+    recorded: list[tuple[Any, dict[str, Any]]] = []
+
+    def record(
+        sender: Any, template: Any, context: dict[str, Any], **extra: Any
+    ) -> None:
+        recorded.append((template, context))
+
+    template_rendered.connect(record, test_application)
+    try:
+        yield recorded
+    finally:
+        template_rendered.disconnect(record, test_application)
 
 
 def test_view_screener_overview_returns_correct_response(
@@ -136,7 +155,7 @@ def test_view_trades_strategy_specific_routes(
     test_client: FlaskClient, trades_route: str, expected_title: bytes
 ) -> None:
     """Verifies that each strategy-specific trades dashboard renders correctly with active and history trades."""
-    mock_active_trade = {
+    mock_active_trade: dict[str, Any] = {
         "id": "trade-1",
         "symbol": "AAPL",
         "entry_date": "2026-06-01",
@@ -159,7 +178,7 @@ def test_view_trades_strategy_specific_routes(
         "executions": [],
         "exit_reason": None,
     }
-    mock_history_group = {
+    mock_history_group: dict[str, Any] = {
         "symbol": "MSFT",
         "trades": [
             {
@@ -185,7 +204,7 @@ def test_view_trades_strategy_specific_routes(
             }
         ],
     }
-    mock_active_group = {
+    mock_active_group: dict[str, Any] = {
         "symbol": "AAPL",
         "total_pnl": 500.0,
         "total_invested": 15000.0,
@@ -229,6 +248,597 @@ def test_view_trades_strategy_specific_routes(
         # Assert
         assert response.status_code == 200
         assert expected_title in response.data
+
+
+@pytest.mark.parametrize(
+    "trades_route, expected_title",
+    [
+        ("/trades/croc", b"Croc Setup"),
+        ("/trades/dip-buyer", b"Dip Buyer"),
+        ("/trades/turnover", b"Turnover"),
+        ("/trades/ndx-momentum", b"NDX Momentum"),
+        ("/trades/twopercent", b"Two Percent"),
+        ("/trades/tgim", b"TGIM"),
+        ("/trades/bridge-scout", b"Bridge Scout"),
+        ("/trades/bounce-bandit", b"Bounce Bandit"),
+        ("/trades", b"Strategies"),
+    ],
+)
+def test_view_trades_all_strategies_empty_data_renders_gracefully(
+    test_client: FlaskClient, trades_route: str, expected_title: bytes
+) -> None:
+    """Verifies that all strategy trade views render gracefully when trade datasets are empty."""
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
+        mock_service_instance = mock_trade_service.return_value
+        mock_service_instance.get_trades.return_value = []
+        mock_service_instance.get_portfolio_summary.return_value = {
+            "invested": 0.0,
+            "open_pnl": 0.0,
+            "win_rate": 0.0,
+            "total_pnl": 0.0,
+        }
+        mock_service_instance.get_closed_summary.return_value = {
+            "count": 0,
+            "average_pnl": 0.0,
+            "total_pnl": 0.0,
+            "win_rate": 0.0,
+        }
+        mock_service_instance.get_index_stats.return_value = {}
+        mock_service_instance.get_weekday_stats.return_value = {
+            i: {
+                "name": [
+                    "Monday",
+                    "Tuesday",
+                    "Wednesday",
+                    "Thursday",
+                    "Friday",
+                    "Saturday",
+                    "Sunday",
+                ][i],
+                "count": 0,
+                "win": 0,
+                "loss": 0,
+                "pnl": 0.0,
+                "average_pnl": 0.0,
+            }
+            for i in range(7)
+        }
+        mock_service_instance.group_trades_by_symbol.return_value = []
+        mock_service_instance.group_trades_history.return_value = []
+        mock_service_instance.generate_donut_chart.return_value = (
+            "<div>Mock Donut</div>"
+        )
+
+        response = test_client.get(trades_route)
+
+        assert response.status_code == 200
+        assert expected_title in response.data
+
+        if trades_route == "/trades/dip-buyer":
+            mock_service_instance.get_weekday_stats.assert_called_once_with([])
+            mock_service_instance.get_index_stats.assert_called_once_with([])
+        elif trades_route == "/trades/croc":
+            mock_service_instance.get_index_stats.assert_called_once_with([])
+        elif trades_route == "/trades/turnover":
+            mock_service_instance.get_index_stats.assert_called_once_with([])
+
+
+def test_view_trades_dip_buyer_weekday_stats_populated_and_rendered(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that Dip Buyer trade dashboard calculates and renders weekday stats breakdown in the DOM."""
+    mock_closed_trade = {
+        "id": "trade-dip-1",
+        "symbol": "AMD",
+        "entry_date": "2026-06-29",
+        "exit_date": "2026-07-02",
+        "display_entry": "2026-06-29",
+        "days_held": 3,
+        "initial_size": 100,
+        "current_size": 0,
+        "entry_price": 150.0,
+        "exit_price": 160.0,
+        "realized_pnl": 1000.0,
+        "unrealized_pnl": 0.0,
+        "pnl_percentage": 6.67,
+        "exit_reason": "PROFIT_TARGET",
+        "strategy": "DipBuyer",
+        "version": "1.0",
+        "variant": "1.0",
+        "context": {},
+        "executions": [],
+    }
+    mock_weekday_stats = {
+        0: {
+            "name": "Monday",
+            "count": 1,
+            "win": 1,
+            "loss": 0,
+            "pnl": 1000.0,
+            "average_pnl": 1000.0,
+        },
+        1: {
+            "name": "Tuesday",
+            "count": 0,
+            "win": 0,
+            "loss": 0,
+            "pnl": 0.0,
+            "average_pnl": 0.0,
+        },
+        2: {
+            "name": "Wednesday",
+            "count": 0,
+            "win": 0,
+            "loss": 0,
+            "pnl": 0.0,
+            "average_pnl": 0.0,
+        },
+        3: {
+            "name": "Thursday",
+            "count": 0,
+            "win": 0,
+            "loss": 0,
+            "pnl": 0.0,
+            "average_pnl": 0.0,
+        },
+        4: {
+            "name": "Friday",
+            "count": 0,
+            "win": 0,
+            "loss": 0,
+            "pnl": 0.0,
+            "average_pnl": 0.0,
+        },
+        5: {
+            "name": "Saturday",
+            "count": 0,
+            "win": 0,
+            "loss": 0,
+            "pnl": 0.0,
+            "average_pnl": 0.0,
+        },
+        6: {
+            "name": "Sunday",
+            "count": 0,
+            "win": 0,
+            "loss": 0,
+            "pnl": 0.0,
+            "average_pnl": 0.0,
+        },
+    }
+
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.side_effect = lambda strategies, status, **kwargs: (
+            [] if status == TradeStatus.ACTIVE else [mock_closed_trade]
+        )
+        mock_service.get_portfolio_summary.return_value = {
+            "invested": 0.0,
+            "open_pnl": 0.0,
+            "win_rate": 100.0,
+            "total_pnl": 1000.0,
+        }
+        mock_service.get_closed_summary.return_value = {
+            "count": 1,
+            "average_pnl": 1000.0,
+            "total_pnl": 1000.0,
+            "win_rate": 100.0,
+        }
+        mock_service.get_index_stats.return_value = {
+            "NASDAQ": {
+                "name": "NASDAQ 100",
+                "count": 1,
+                "win": 1,
+                "loss": 0,
+                "pnl": 1000.0,
+                "average_pnl": 1000.0,
+            }
+        }
+        mock_service.get_weekday_stats.return_value = mock_weekday_stats
+        mock_service.group_trades_by_symbol.return_value = []
+        mock_service.group_trades_history.return_value = [
+            {"symbol": "AMD", "trades": [mock_closed_trade]}
+        ]
+
+        response = test_client.get("/trades/dip-buyer")
+
+        assert response.status_code == 200
+        mock_service.get_weekday_stats.assert_called_once_with([mock_closed_trade])
+        mock_service.get_index_stats.assert_called_once_with([mock_closed_trade])
+
+        # Assert Weekday card header and populated weekday row are present in HTML
+        assert b"Weekday" in response.data
+        assert b"Monday" in response.data
+        assert b"+1000" in response.data
+        assert b"1W" in response.data
+
+
+@pytest.mark.parametrize(
+    "trades_route, expected_context_keys",
+    [
+        (
+            "/trades/croc",
+            {
+                "active_trades",
+                "active_groups",
+                "closed_trades",
+                "history_groups",
+                "summary",
+                "closed_summary",
+                "index_stats",
+                "signal_stats",
+            },
+        ),
+        (
+            "/trades/dip-buyer",
+            {
+                "active_trades",
+                "active_groups",
+                "closed_trades",
+                "history_groups",
+                "summary",
+                "closed_summary",
+                "index_stats",
+                "weekday_stats",
+            },
+        ),
+        (
+            "/trades/turnover",
+            {
+                "summary",
+                "active_trades",
+                "history_groups",
+                "closed_trades",
+                "closed_summary",
+                "performance_index",
+                "performance_variants",
+            },
+        ),
+        (
+            "/trades/ndx-momentum",
+            {
+                "active_trades",
+                "active_groups",
+                "closed_trades",
+                "history_groups",
+                "summary",
+                "closed_summary",
+            },
+        ),
+        (
+            "/trades/twopercent",
+            {
+                "active_trades",
+                "active_groups",
+                "closed_trades",
+                "history_groups",
+                "summary",
+                "closed_summary",
+                "index_stats",
+            },
+        ),
+        (
+            "/trades/tgim",
+            {
+                "active_trades",
+                "active_groups",
+                "closed_trades",
+                "history_groups",
+                "summary",
+                "closed_summary",
+                "index_stats",
+            },
+        ),
+        (
+            "/trades/bridge-scout",
+            {
+                "active_trades",
+                "active_groups",
+                "closed_trades",
+                "history_groups",
+                "summary",
+                "closed_summary",
+                "index_stats",
+            },
+        ),
+        (
+            "/trades/bounce-bandit",
+            {
+                "active_trades",
+                "active_groups",
+                "closed_trades",
+                "history_groups",
+                "summary",
+                "closed_summary",
+                "index_stats",
+            },
+        ),
+        (
+            "/trades",
+            {
+                "active_trades",
+                "summary",
+                "strategy_stats",
+                "donut_html",
+            },
+        ),
+        (
+            "/broker",
+            {
+                "metrics",
+                "active_orders",
+                "error_orders",
+                "settlements",
+                "discrepancies",
+                "active_trades",
+            },
+        ),
+    ],
+)
+def test_view_trades_template_context_contract_enforced(
+    test_client: FlaskClient,
+    captured_templates: list[tuple[Any, dict[str, Any]]],
+    trades_route: str,
+    expected_context_keys: set[str],
+) -> None:
+    """Strictly enforces that all view routes pass every expected template variable."""
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.return_value = []
+        mock_service.get_portfolio_summary.return_value = {
+            "invested": 0.0,
+            "open_pnl": 0.0,
+            "win_rate": 0.0,
+            "total_pnl": 0.0,
+        }
+        mock_service.get_closed_summary.return_value = {
+            "count": 0,
+            "average_pnl": 0.0,
+            "total_pnl": 0.0,
+            "win_rate": 0.0,
+        }
+        mock_service.get_index_stats.return_value = {}
+        mock_service.get_weekday_stats.return_value = {}
+        mock_service.group_trades_by_symbol.return_value = []
+        mock_service.group_trades_history.return_value = []
+        mock_service.generate_donut_chart.return_value = "<div>Mock Donut</div>"
+        default_broker_metric = {
+            "pnl": 0.0,
+            "pnlText": "0",
+            "winrate": "0.0%",
+            "slippage": "0.00",
+            "fees": 0.0,
+            "win_count": 0,
+            "total_count": 0,
+            "slippage_sum": 0.0,
+        }
+        mock_service.get_broker_summary.return_value = {
+            strat: default_broker_metric.copy()
+            for strat in [
+                "all",
+                "DipBuyer",
+                "TurnoverTiming",
+                "TwoPercent",
+                "NDXMomentum",
+            ]
+        }
+        mock_service.get_broker_active_orders.return_value = []
+        mock_service.get_broker_error_orders.return_value = []
+        mock_service.get_broker_settlements.return_value = []
+        mock_service.get_reconciliation_discrepancies.return_value = []
+        mock_service.get_broker_active_trades.return_value = []
+
+        response = test_client.get(trades_route)
+
+        assert response.status_code == 200
+        assert len(captured_templates) > 0
+        _template, context = captured_templates[-1]
+        for key in expected_context_keys:
+            assert key in context, (
+                f"Route '{trades_route}' missing required template variable '{key}'"
+            )
+
+
+@pytest.mark.parametrize(
+    "trades_route, expected_snippets",
+    [
+        (
+            "/trades/croc",
+            [b"Signals", b"Breakout (L20)", b"Index"],
+        ),
+        (
+            "/trades/dip-buyer",
+            [b"Weekday", b"Monday", b"Performance"],
+        ),
+        (
+            "/trades/turnover",
+            [b"Variants", b"Turnover 0.5", b"Performance"],
+        ),
+        (
+            "/trades/ndx-momentum",
+            [b"NDX Momentum", b"Positions", b"AAPL"],
+        ),
+        (
+            "/trades/twopercent",
+            [b"Two Percent", b"Positions", b"AAPL"],
+        ),
+        (
+            "/trades/tgim",
+            [b"TGIM", b"Positions", b"AAPL"],
+        ),
+        (
+            "/trades/bridge-scout",
+            [b"Bridge Scout", b"Positions", b"AAPL"],
+        ),
+        (
+            "/trades/bounce-bandit",
+            [b"Bounce Bandit", b"Positions", b"AAPL"],
+        ),
+    ],
+)
+def test_view_trades_all_strategies_populated_data_renders_specific_breakdowns(
+    test_client: FlaskClient, trades_route: str, expected_snippets: list[bytes]
+) -> None:
+    """Verifies that populated data renders all strategy-specific breakdown tables and content."""
+    mock_trade_active: dict[str, Any] = {
+        "id": "trade-act-1",
+        "symbol": "AAPL",
+        "entry_date": "2026-06-01",
+        "display_entry": "2026-06-01",
+        "days_held": 2,
+        "initial_size": 50,
+        "current_size": 50,
+        "entry_price": 200.0,
+        "current_price": 210.0,
+        "current_stop_loss": 190.0,
+        "current_target": 220.0,
+        "unrealized_pnl": 500.0,
+        "realized_pnl": 0.0,
+        "pnl_percentage": 5.0,
+        "strategy": "hold_target",
+        "variant": "Hold",
+        "context": {"match_rule": {"name": "Breakout (L20)"}},
+        "executions": [],
+        "exit_reason": None,
+    }
+    mock_trade_closed: dict[str, Any] = {
+        "id": "trade-cls-1",
+        "symbol": "MSFT",
+        "entry_date": "2026-06-29",
+        "exit_date": "2026-07-02",
+        "display_entry": "2026-06-29",
+        "days_held": 3,
+        "initial_size": 25,
+        "current_size": 0,
+        "entry_price": 400.0,
+        "current_price": 420.0,
+        "exit_price": 420.0,
+        "current_stop_loss": 390.0,
+        "current_target": 420.0,
+        "realized_pnl": 500.0,
+        "unrealized_pnl": 0.0,
+        "pnl_percentage": 5.0,
+        "exit_reason": "TARGET",
+        "strategy": "turnover_timing_0.5",
+        "variant": "0.5",
+        "context": {"match_rule": {"name": "Breakout (L20)"}},
+        "executions": [],
+    }
+
+    def _update_stats_mock(stats_dict: dict[str, Any], pnl: float) -> None:
+        stats_dict["count"] = int(stats_dict.get("count", 0)) + 1
+        stats_dict["pnl"] = float(stats_dict.get("pnl", 0.0)) + pnl
+        if pnl > 0:
+            stats_dict["win"] = int(stats_dict.get("win", 0)) + 1
+        else:
+            stats_dict["loss"] = int(stats_dict.get("loss", 0)) + 1
+
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service._update_statistics.side_effect = _update_stats_mock
+        mock_service.get_trades.side_effect = lambda strategies, status, **kwargs: (
+            [mock_trade_active] if status == TradeStatus.ACTIVE else [mock_trade_closed]
+        )
+        mock_service.get_portfolio_summary.return_value = {
+            "invested": 10000.0,
+            "open_pnl": 500.0,
+            "win_rate": 100.0,
+            "total_pnl": 500.0,
+        }
+        mock_service.get_closed_summary.return_value = {
+            "count": 1,
+            "average_pnl": 500.0,
+            "total_pnl": 500.0,
+            "win_rate": 100.0,
+        }
+        mock_service.get_index_stats.return_value = {
+            "NASDAQ": {
+                "name": "NASDAQ 100",
+                "count": 1,
+                "win": 1,
+                "loss": 0,
+                "pnl": 500.0,
+                "average_pnl": 500.0,
+            }
+        }
+        mock_service.get_weekday_stats.return_value = {
+            0: {
+                "name": "Monday",
+                "count": 1,
+                "win": 1,
+                "loss": 0,
+                "pnl": 500.0,
+                "average_pnl": 500.0,
+            },
+            1: {
+                "name": "Tuesday",
+                "count": 0,
+                "win": 0,
+                "loss": 0,
+                "pnl": 0.0,
+                "average_pnl": 0.0,
+            },
+            2: {
+                "name": "Wednesday",
+                "count": 0,
+                "win": 0,
+                "loss": 0,
+                "pnl": 0.0,
+                "average_pnl": 0.0,
+            },
+            3: {
+                "name": "Thursday",
+                "count": 0,
+                "win": 0,
+                "loss": 0,
+                "pnl": 0.0,
+                "average_pnl": 0.0,
+            },
+            4: {
+                "name": "Friday",
+                "count": 0,
+                "win": 0,
+                "loss": 0,
+                "pnl": 0.0,
+                "average_pnl": 0.0,
+            },
+            5: {
+                "name": "Saturday",
+                "count": 0,
+                "win": 0,
+                "loss": 0,
+                "pnl": 0.0,
+                "average_pnl": 0.0,
+            },
+            6: {
+                "name": "Sunday",
+                "count": 0,
+                "win": 0,
+                "loss": 0,
+                "pnl": 0.0,
+                "average_pnl": 0.0,
+            },
+        }
+        mock_service.group_trades_by_symbol.return_value = [
+            {
+                "symbol": "AAPL",
+                "total_pnl": 500.0,
+                "total_invested": 10000.0,
+                "total_pnl_percentage": 5.0,
+                "variants": [mock_trade_active],
+            }
+        ]
+        mock_service.group_trades_history.return_value = [
+            {"symbol": "MSFT", "trades": [mock_trade_closed]}
+        ]
+
+        response = test_client.get(trades_route)
+
+        assert response.status_code == 200
+        for snippet in expected_snippets:
+            assert snippet in response.data, (
+                f"Route '{trades_route}' missing snippet '{snippet.decode()}' in response"
+            )
 
 
 def test_view_analytics_dashboard_handles_empty_data_gracefully(
@@ -1038,12 +1648,20 @@ def test_build_weekly_trend_data_generates_correct_labels_and_series() -> None:
 
     assert "week_labels" in weekly_trend
     assert "week_labels" in weekly_pnl
-    assert len(weekly_trend["week_labels"]) == len(weekly_trend["dates"])
-    assert any("KW" in label for label in weekly_trend["week_labels"])
-    assert weekly_trend["week_labels"][0] == "03.01.2026 · KW 1"
+    week_labels = weekly_trend["week_labels"]
+    dates = weekly_trend["dates"]
+    assert isinstance(week_labels, list)
+    assert isinstance(dates, list)
+    assert len(week_labels) == len(dates)
+    assert any("KW" in str(label) for label in week_labels)
+    assert week_labels[0] == "03.01.2026 · KW 1"
 
     # Lookback 3 months
     eval_date = pd.Timestamp("2026-04-20")
     _, pnl_3m = _build_weekly_trend_data(sample_trades, eval_date, lookback_months=3)
-    assert len(pnl_3m["dates"]) <= 15
-    assert len(pnl_3m["week_labels"]) == len(pnl_3m["dates"])
+    pnl_3m_dates = pnl_3m["dates"]
+    pnl_3m_labels = pnl_3m["week_labels"]
+    assert isinstance(pnl_3m_dates, list)
+    assert isinstance(pnl_3m_labels, list)
+    assert len(pnl_3m_dates) <= 15
+    assert len(pnl_3m_labels) == len(pnl_3m_dates)
