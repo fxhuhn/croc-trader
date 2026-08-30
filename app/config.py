@@ -97,6 +97,13 @@ class TelegramConfig:
 
 
 @dataclass(frozen=True)
+class MCPConfig:
+    """Model Context Protocol (MCP) server configuration."""
+
+    enabled: bool = False
+
+
+@dataclass(frozen=True)
 class PortfolioStrategyConfig:
     """Sizing parameters for a single strategy."""
 
@@ -297,6 +304,7 @@ class AppConfig:
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     portfolio: PortfolioConfig = field(default_factory=PortfolioConfig)
     order_overrides: dict[str, SymbolOverride] = field(default_factory=dict)
+    mcp: MCPConfig = field(default_factory=MCPConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "AppConfig":
@@ -334,6 +342,13 @@ class AppConfig:
         portfolio_config = _parse_portfolio_config(data.get("portfolio", {}))
         order_overrides = _parse_order_overrides(data.get("order_overrides", {}))
 
+        mcp_data = data.get("mcp", {})
+        mcp_config = (
+            MCPConfig(enabled=bool(mcp_data.get("enabled", False)))
+            if isinstance(mcp_data, dict)
+            else MCPConfig()
+        )
+
         return cls(
             database=db_config,
             webserver=web_config,
@@ -343,6 +358,7 @@ class AppConfig:
             telegram=telegram_config,
             portfolio=portfolio_config,
             order_overrides=order_overrides,
+            mcp=mcp_config,
         )
 
 

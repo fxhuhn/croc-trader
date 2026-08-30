@@ -109,6 +109,7 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
             "werkzeug": {"level": "WARNING"},
             "urllib3": {"level": "WARNING"},
             "yfinance": {"level": "ERROR"},
+            "asyncio": {"level": "WARNING"},
         },
     }
     logging.config.dictConfig(logging_config)

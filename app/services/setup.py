@@ -183,6 +183,19 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
     )
     app.extensions["trade_manager"] = tm
 
+    # 7. MCP Domain Server
+    if getattr(config.app, "mcp", None) and config.app.mcp.enabled:
+        try:
+            # Lazy import to avoid hard dependency on optional mcp package in production
+            from ..mcp import create_mcp_server  # noqa: PLC0415
+
+            app.extensions["mcp_server"] = create_mcp_server()
+            logger.info("MCP Domain Server registered in app extensions.")
+        except ImportError as import_err:
+            logger.warning(
+                "MCP package not available, skipping MCP server: %s", import_err
+            )
+
 
 def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
     """Configures the APScheduler background jobs."""
