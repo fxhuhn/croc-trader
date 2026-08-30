@@ -377,8 +377,8 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         """Resolves target analysis date into a clean datetime.date object.
 
         In live execution (days=0), if the analysis date matches the latest available
-        EOD bar in market data (yesterday) and today is an active trading session,
-        the target setup date rolls forward to today.
+        EOD bar in market data (yesterday), the target setup date rolls forward to
+        the next active trading session.
         """
         if analysis_date:
             parsed_date = datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
@@ -386,17 +386,17 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             parsed_date = datetime.date.today() - datetime.timedelta(days=days)
 
         if days == 0:
-            today = datetime.date.today()
+            latest_market_date = self.data_provider.get_latest_date()
             if (
-                today > parsed_date
-                and today.weekday() < SATURDAY_WEEKDAY
-                and not self.holiday_checker.is_holiday(today)
+                latest_market_date
+                and parsed_date.strftime("%Y-%m-%d") == latest_market_date
             ):
-                latest_market_date = self.data_provider.get_latest_date()
-                if (
-                    latest_market_date
-                    and parsed_date.strftime("%Y-%m-%d") == latest_market_date
+                next_trading_day = parsed_date + datetime.timedelta(days=1)
+                while (
+                    next_trading_day.weekday() >= SATURDAY_WEEKDAY
+                    or self.holiday_checker.is_holiday(next_trading_day)
                 ):
-                    return today
+                    next_trading_day += datetime.timedelta(days=1)
+                return next_trading_day
 
         return parsed_date
