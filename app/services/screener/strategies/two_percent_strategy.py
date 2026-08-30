@@ -7,6 +7,7 @@ import pandas as pd
 from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
+from ....tools.market_holidays import MarketHolidayChecker
 from ...telegram import TelegramBot
 from ..models import SignalReportItem
 from .base import BaseStrategy
@@ -60,6 +61,7 @@ class TwoPercentStrategy(BaseStrategy[int]):
         super().__init__(data_provider, telegram_bot)
         self.name = self.STRATEGY_IDENTIFIER
         self.trade_repository = trade_repository
+        self.holiday_checker = MarketHolidayChecker()
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
@@ -174,7 +176,7 @@ class TwoPercentStrategy(BaseStrategy[int]):
             return True
         if weekday < FRIDAY_WEEKDAY:
             return self._is_fallback_weekday_end_of_week(
-                candle_date, weekday, set(date_column), reference_date=analysis_date
+                candle_date, weekday, set(date_column)
             )
         return False
 
@@ -192,7 +194,6 @@ class TwoPercentStrategy(BaseStrategy[int]):
         candle_date: datetime.date,
         weekday: int,
         existing_dates: set[datetime.date],
-        reference_date: datetime.date | None = None,
     ) -> bool:
         """Helper to determine if a non-Friday weekday is the weekly EOD due to holiday.
 
@@ -200,13 +201,10 @@ class TwoPercentStrategy(BaseStrategy[int]):
             candle_date: Date of the current candle.
             weekday: Weekday index (0=Monday, etc.).
             existing_dates: Set of all trading dates in the history.
-            reference_date: Optional evaluation reference date (for historical backtesting).
 
         Returns:
             bool: True if this is the last trading day of the week.
         """
-        friday = candle_date + datetime.timedelta(days=FRIDAY_WEEKDAY - weekday)
-
         # Check for any future days in the same week using standard python set membership
         future_days = [
             candle_date + datetime.timedelta(days=i)
@@ -218,8 +216,13 @@ class TwoPercentStrategy(BaseStrategy[int]):
                 # Therefore, this candle is NOT the end of the week.
                 return False
 
-        # Ensure those missing days have actually happened in real time
+        # If all subsequent days in this week are market holidays, this candle is the weekly EOD
+        if future_days and all(self.holiday_checker.is_holiday(d) for d in future_days):
+            return True
+
+        # Ensure those missing days have actually happened in real time (or mocked time)
         real_today = self._get_real_today()
+        friday = candle_date + datetime.timedelta(days=FRIDAY_WEEKDAY - weekday)
         return friday < real_today
 
     def _extract_timestamp(self, candle: pd.Series) -> pd.Timestamp:
