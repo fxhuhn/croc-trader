@@ -1,6 +1,6 @@
-"""System status and strategy configuration inspection tools for Croc-Trader MCP."""
-
+import collections
 import logging
+from pathlib import Path
 from typing import Any
 
 from flask import current_app
@@ -95,6 +95,73 @@ def get_strategy_list() -> list[dict[str, Any]]:
         return []
 
 
+def get_system_logs(
+    lines: int = 100,
+    level: str | None = None,
+    module: str | None = None,
+) -> dict[str, Any]:
+    """Reads the most recent log entries from the application log file.
+
+    Args:
+        lines: Maximum number of log lines to return (clamped between 1 and 1000).
+        level: Optional log level filter (e.g. 'ERROR', 'WARNING', 'INFO', 'DEBUG').
+        module: Optional module name substring filter (e.g. 'app.routes.mcp').
+
+    Returns:
+        Dictionary containing log file metadata and list of log entries.
+    """
+    try:
+        config = current_app.config.get("APP_CONFIG")
+        if not config:
+            return {"status": "error", "error": "Application configuration unavailable"}
+
+        log_path = Path(config.get_log_path())
+        if not log_path.exists():
+            return {
+                "status": "ok",
+                "log_file": str(log_path),
+                "exists": False,
+                "total_lines": 0,
+                "lines": [],
+            }
+
+        max_lines = max(1, min(lines, 1000))
+        target_level = level.strip().upper() if level else None
+        target_module = module.strip() if module else None
+
+        collected_lines: collections.deque[str] = collections.deque(maxlen=max_lines)
+
+        with open(log_path, encoding="utf-8", errors="replace") as file_handle:
+            for raw_line in file_handle:
+                line_text = raw_line.rstrip("\r\n")
+                if not line_text:
+                    continue
+
+                if target_level and f"[{target_level}]" not in line_text:
+                    continue
+
+                if target_module and target_module not in line_text:
+                    continue
+
+                collected_lines.append(line_text)
+
+        return {
+            "status": "ok",
+            "log_file": str(log_path),
+            "exists": True,
+            "filter": {
+                "level": target_level,
+                "module": target_module,
+                "requested_lines": max_lines,
+            },
+            "returned_lines": len(collected_lines),
+            "lines": list(collected_lines),
+        }
+    except Exception as error:
+        logger.error("Error reading system logs: %s", error)
+        return {"status": "error", "error": str(error)}
+
+
 def register(server: MCPServer) -> None:
     """Registers system health and strategy registry tools on the MCP server."""
     server.tool(
@@ -112,3 +179,12 @@ def register(server: MCPServer) -> None:
             "with their configured allocation budgets and risk amounts."
         ),
     )(get_strategy_list)
+
+    server.tool(
+        name="get_system_logs",
+        description=(
+            "Retrieves the most recent application and server log lines from disk, "
+            "with optional filtering by log level (e.g. 'ERROR', 'WARNING', 'INFO', 'DEBUG') "
+            "or logger module name (e.g. 'app.routes.mcp')."
+        ),
+    )(get_system_logs)

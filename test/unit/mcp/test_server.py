@@ -37,6 +37,7 @@ def test_mcp_server_tools_registered() -> None:
         "list_order_csv_files",
         "get_system_health",
         "get_strategy_list",
+        "get_system_logs",
         "trigger_screener",
         "trigger_single_symbol_debug",
         "trigger_order_generation",
@@ -62,6 +63,7 @@ def test_mcp_server_resources_registered() -> None:
         "croc://portfolio/summary",
         "croc://system/health",
         "croc://strategies",
+        "croc://system/logs",
     ]
 
     for expected in expected_uris:

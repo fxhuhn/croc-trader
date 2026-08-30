@@ -181,6 +181,13 @@ Der Endpunkt akzeptiert standardkonforme JSON-RPC 2.0 Anfragen:
 * **Beschreibung**: Liste aller im System registrierten Handelsstrategien (`Strategies` Enum) mit ihren konfigurierten Allokationsbudgets und Risikobeträgen aus `settings.yaml`.
 * **Argumente**: Keine.
 
+#### `get_system_logs`
+* **Beschreibung**: Liest die neuesten Zeilen der Anwendungs- und Serverlogdatei (`logs/app.log`) von der Festplatte, mit optionaler Filterung nach Log-Level oder Logger-Modulname.
+* **Argumente**:
+  * `lines` *(int, optional, Standard: `100`)*: Maximale Anzahl zurückzugebender Zeilen (begrenzt auf 1–1000).
+  * `level` *(str, optional)*: Filter nach Log-Level (z. B. `"ERROR"`, `"WARNING"`, `"INFO"`, `"DEBUG"`).
+  * `module` *(str, optional)*: Substring-Filter nach Logger-Modul (z. B. `"app.routes.mcp"`).
+
 ---
 
 ### 6. Aktionen & Workflow-Steuerung (`app/mcp/tools/actions.py`)
@@ -226,6 +233,7 @@ Ressourcen bieten passive JSON-Snapshots, die über standardisierte URIs abgeruf
 | **`croc://portfolio/summary`** | `portfolio_summary` | Gesamtbilanz: Strategien, Budgets, gebundenes Kapital, offener PnL |
 | **`croc://system/health`** | `system_health` | Datenbankstatus, Dateigrößen und Aktualitätszeitstempel |
 | **`croc://strategies`** | `strategy_registry` | Vollständige Strategieliste inklusive Allokationsbudgets |
+| **`croc://system/logs`** | `system_logs` | Die letzten 100 Zeilen der Anwendungs- und Serverlogdatei |
 
 ---
 

@@ -6,7 +6,7 @@ import logging
 from mcp.server import MCPServer
 
 from .tools.portfolio import get_active_positions, get_portfolio_summary
-from .tools.system import get_strategy_list, get_system_health
+from .tools.system import get_strategy_list, get_system_health, get_system_logs
 
 logger = logging.getLogger(__name__)
 
@@ -57,3 +57,14 @@ def register_resources(server: MCPServer) -> None:
         """Returns JSON text of strategy configurations."""
         strategies = get_strategy_list()
         return json.dumps(strategies, indent=2, default=str)
+
+    @server.resource(
+        "croc://system/logs",
+        name="system_logs",
+        description="Recent application server log entries (last 100 lines).",
+        mime_type="application/json",
+    )
+    def resource_system_logs() -> str:
+        """Returns JSON text of recent system logs."""
+        logs = get_system_logs(lines=100)
+        return json.dumps(logs, indent=2, default=str)
