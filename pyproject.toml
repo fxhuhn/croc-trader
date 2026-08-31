@@ -96,8 +96,15 @@ module = [
     "apscheduler.*",
     "yaml.*",
     "yaml",
+    "mcp.*",
 ]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "app.mcp.*",
+]
+disallow_untyped_decorators = false
 
 
 
