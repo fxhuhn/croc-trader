@@ -33,12 +33,17 @@ def mock_updater(mock_market_repo: MagicMock, mock_trade_repo: MagicMock) -> Mag
 # --- TradingViewDataProvider Tests ---
 
 
-def test_tv_provider_download_exception_resets_connection() -> None:
+@patch("app.services.market.tv_provider.time.sleep")
+@patch("app.services.market.tv_provider.TvDatafeed")
+def test_tv_provider_download_exception_resets_connection(
+    mock_tv_cls: MagicMock, mock_sleep: MagicMock
+) -> None:
     """Tests fetch_symbol_history resets _tv to None when an exception occurs."""
-    provider = TradingViewDataProvider()
-    provider._tv = MagicMock()
-    provider._tv.get_hist.side_effect = RuntimeError("Connection dropped")
+    mock_instance = MagicMock()
+    mock_instance.get_hist.side_effect = RuntimeError("Connection dropped")
+    mock_tv_cls.return_value = mock_instance
 
+    provider = TradingViewDataProvider(retry_delay_seconds=0.0)
     result = provider.fetch_symbol_history("AAPL", number_of_bars=15)
     assert result == []
     assert provider._tv is None

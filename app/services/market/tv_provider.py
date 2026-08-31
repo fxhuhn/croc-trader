@@ -35,10 +35,17 @@ class TradingViewDataProvider:
     and rate-limiting.
     """
 
-    def __init__(self, exchange_mapper: ExchangeMapper | None = None) -> None:
+    def __init__(
+        self,
+        exchange_mapper: ExchangeMapper | None = None,
+        max_retries: int = 2,
+        retry_delay_seconds: float = 1.0,
+    ) -> None:
         """Initializes the TradingView provider with an optional ExchangeMapper instance."""
         self._exchange_mapper: ExchangeMapper = exchange_mapper or mapper
         self._tv: TvDatafeed | None = None
+        self._max_retries: int = max_retries
+        self._retry_delay_seconds: float = retry_delay_seconds
 
     def _get_instance(self) -> TvDatafeed:
         """Lazily instantiates and returns the TvDatafeed client connection."""
@@ -113,31 +120,60 @@ class TradingViewDataProvider:
             Pandas DataFrame containing raw price bars, or None if download failed.
         """
         for exchange_name in exchanges_to_try:
-            try:
-                datafeed_instance = self._get_instance()
-                dataframe = datafeed_instance.get_hist(
-                    symbol=tv_symbol,
-                    exchange=exchange_name,
-                    interval=Interval.in_daily,
-                    n_bars=number_of_bars,
-                )
-                if dataframe is not None and not dataframe.empty:
-                    return dataframe
-                logger.warning(
-                    "TradingView returned no data for symbol %s (TV: %s) on exchange %s",
-                    standard_symbol,
-                    tv_symbol,
-                    exchange_name,
-                )
-            except Exception as error:
-                logger.warning(
-                    "TradingView download error for symbol %s (%s): %s",
-                    standard_symbol,
-                    exchange_name,
-                    error,
-                )
-                # Force auto-reconnect on next request if connection dropped
-                self._tv = None
+            for attempt in range(1, self._max_retries + 1):
+                try:
+                    datafeed_instance = self._get_instance()
+                    dataframe = datafeed_instance.get_hist(
+                        symbol=tv_symbol,
+                        exchange=exchange_name,
+                        interval=Interval.in_daily,
+                        n_bars=number_of_bars,
+                    )
+                    if dataframe is not None and not dataframe.empty:
+                        return dataframe
+
+                    # Reset connection on empty/None response and retry if attempts remain
+                    self._tv = None
+                    if attempt < self._max_retries:
+                        logger.debug(
+                            "TradingView returned no data for %s on %s (attempt %d/%d), retrying in %.1fs...",
+                            tv_symbol,
+                            exchange_name,
+                            attempt,
+                            self._max_retries,
+                            self._retry_delay_seconds,
+                        )
+                        time.sleep(self._retry_delay_seconds)
+                    else:
+                        logger.warning(
+                            "TradingView returned no data for symbol %s (TV: %s) on exchange %s after %d attempts",
+                            standard_symbol,
+                            tv_symbol,
+                            exchange_name,
+                            self._max_retries,
+                        )
+                except Exception as error:
+                    # Force auto-reconnect on next request if connection dropped
+                    self._tv = None
+                    if attempt < self._max_retries:
+                        logger.warning(
+                            "TradingView download error for symbol %s (%s) on attempt %d/%d: %s. Retrying in %.1fs...",
+                            standard_symbol,
+                            exchange_name,
+                            attempt,
+                            self._max_retries,
+                            error,
+                            self._retry_delay_seconds,
+                        )
+                        time.sleep(self._retry_delay_seconds)
+                    else:
+                        logger.warning(
+                            "TradingView download error for symbol %s (%s) after %d attempts: %s",
+                            standard_symbol,
+                            exchange_name,
+                            self._max_retries,
+                            error,
+                        )
 
         return None
 
