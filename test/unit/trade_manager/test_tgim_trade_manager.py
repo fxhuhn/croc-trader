@@ -249,12 +249,38 @@ def test_tgim_time_exit_on_wednesday_close_if_c1exit_false(
 def test_tgim_get_current_parameters(
     trade_strategy: TGIMTradeStrategy,
 ) -> None:
-    """Tests get_current_parameters returns TradeParams with correct extras."""
+    """Tests get_current_parameters returns TradeParams with correct extras for Bar 0/1."""
     trade = {"entry_price": 500.0, "current_size": 20}
     params = trade_strategy.get_current_parameters(trade)
     assert params is not None
+    assert params.take_profit_1 == 500.0
+    assert params.stop_loss == 0.0
     assert params.extras["entry_price"] == 500.0
     assert params.extras["current_size"] == 20.0
+    assert params.extras["exit_rule_label"] == "LOC: > 500.00"
+    assert params.extras["max_holding_bars"] == 2
+
+
+def test_tgim_get_current_parameters_bar2_time_exit(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests get_current_parameters returns Time Exit for Bar 2 (Wednesday)."""
+    trade = {
+        "entry_price": 500.0,
+        "current_size": 20,
+        "entry_date": "2026-07-20",
+    }
+    monday_candle = {"date": pd.Timestamp("2026-07-20"), "close": 500.0}
+    tuesday_candle = {"date": pd.Timestamp("2026-07-21"), "close": 497.0}
+    wednesday_candle = {"date": pd.Timestamp("2026-07-22"), "close": 495.0}
+    df_history = pd.DataFrame([monday_candle, tuesday_candle, wednesday_candle])
+
+    params = trade_strategy.get_current_parameters(trade, df_history)
+    assert params is not None
+    assert params.take_profit_1 == 0.0
+    assert params.stop_loss == 0.0
+    assert params.extras["exit_rule_label"] == "Time Exit (Wed MOC)"
+    assert params.extras["max_holding_bars"] == 2
 
 
 def test_tgim_generate_entry_order(

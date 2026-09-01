@@ -86,13 +86,33 @@ class TGIMTradeStrategy(BaseTradeStrategy):
     ) -> TradeParams | None:
         """Calculates current strategy parameters for display."""
         entry_price = float(trade.get("entry_price") or 0.0)
+        current_size = float(trade.get("current_size") or 0.0)
+
+        bars_held = 0
+        entry_date_string = trade.get("entry_date")
+        if (
+            entry_date_string
+            and dataframe_history is not None
+            and not dataframe_history.empty
+        ):
+            entry_date = pd.Timestamp(entry_date_string).date()
+            dates = pd.to_datetime(dataframe_history["date"]).dt.date
+            history_from_entry = dataframe_history[dates >= entry_date]
+            bars_held = max(0, len(history_from_entry) - 1)
+
+        take_profit = entry_price if bars_held <= 1 else 0.0
+        exit_rule_label = (
+            f"LOC: > {entry_price:,.2f}" if bars_held <= 1 else "Time Exit (Wed MOC)"
+        )
 
         return TradeParams(
             stop_loss=0.0,
-            take_profit_1=0.0,
+            take_profit_1=take_profit,
             extras={
                 "entry_price": entry_price,
-                "current_size": float(trade.get("current_size") or 0.0),
+                "current_size": current_size,
+                "exit_rule_label": exit_rule_label,
+                "max_holding_bars": MAX_TGIM_HOLDING_BARS,
             },
         )
 
