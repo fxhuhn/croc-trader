@@ -360,3 +360,75 @@ class MarketPrice:
             self.provider,
             self.timeframe,
         )
+
+
+@dataclass(frozen=True)
+class FuturesPrice:
+    """Immutable representation of a 30-minute futures price bar.
+
+    Timestamps are in exchange time (US Eastern) as returned by TradingView.
+    """
+
+    symbol: str  # Internal base symbol, e.g. "MNQ"
+    contract: str  # Full TradingView contract, e.g. "MNQU2026"
+    bar_time: str  # ISO 8601 exchange time, e.g. "2026-08-29T14:00:00"
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+    timeframe: str = "30min"
+    provider: str = "tradingview"
+
+    @classmethod
+    def from_tradingview(
+        cls,
+        symbol: str,
+        contract: str,
+        row: Mapping[str, object],
+    ) -> FuturesPrice:
+        """Factory method to create a FuturesPrice from a TradingView row dictionary.
+
+        Args:
+            symbol: Internal base symbol (e.g. "MNQ").
+            contract: Full contract identifier (e.g. "MNQU2026").
+            row: Dictionary record from TvDatafeed containing OHLCV and datetime.
+
+        Raises:
+            ValueError: If the close price is negative.
+        """
+        close_price = float(str(row.get("close") or 0.0))
+        if close_price < 0:
+            raise ValueError(f"Negative close price for {contract}")
+
+        datetime_value = row.get("datetime") or row.get("date")
+        if hasattr(datetime_value, "strftime"):
+            bar_time_string = str(datetime_value.strftime("%Y-%m-%dT%H:%M:%S"))
+        else:
+            bar_time_string = str(datetime_value) if datetime_value else ""
+
+        return cls(
+            symbol=symbol,
+            contract=contract,
+            bar_time=bar_time_string,
+            open=float(str(row.get("open") or 0.0)),
+            high=float(str(row.get("high") or 0.0)),
+            low=float(str(row.get("low") or 0.0)),
+            close=close_price,
+            volume=int(float(str(row.get("volume") or 0))),
+        )
+
+    def to_db_row(self) -> tuple[object, ...]:
+        """Serializes to a tuple for executemany insertion."""
+        return (
+            self.symbol,
+            self.contract,
+            self.bar_time,
+            self.open,
+            self.high,
+            self.low,
+            self.close,
+            self.volume,
+            self.timeframe,
+            self.provider,
+        )

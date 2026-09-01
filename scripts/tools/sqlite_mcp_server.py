@@ -29,6 +29,7 @@ DATABASE_MAP: dict[str, Path] = {
     "stocks": PROJECT_ROOT / "data" / "stocks.db",
     "signals": PROJECT_ROOT / "data" / "signals.db",
     "trading": PROJECT_ROOT / "data" / "trading.db",
+    "futures": PROJECT_ROOT / "data" / "futures.db",
 }
 
 # Forbidden SQL keywords to prevent mutations even if query_only pragma is bypassed
