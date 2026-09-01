@@ -2,11 +2,14 @@ import json
 import logging
 from typing import Any
 
-from ...const import Strategies, TradeStatus
+from ...const import STRATEGY_ALIASES, Strategies, TradeStatus
 from ...database.repositories.signal import SignalRepository
 from ...tools.indicators import extract_safe_float
 
 logger = logging.getLogger(__name__)
+
+
+MAX_NDX_MOMENTUM_LEADERS: int = 5
 
 
 class ScreenerViewService:
@@ -55,15 +58,22 @@ class ScreenerViewService:
         Returns:
             list[dict[str, Any]]: List of processed candidate dictionaries.
         """
-        # Ensure we pass the string value of the Enum if it's an Enum
-        strategy_value = str(strategy)
+        # Ensure canonical strategy resolution (e.g. NDXMomentum, ndx-momentum -> ndx_momentum)
+        normalized_key = str(strategy).replace(".", "_").replace("-", "_").lower()
+        canonical_strategy = STRATEGY_ALIASES.get(normalized_key)
+        resolved_strategy = (
+            canonical_strategy if canonical_strategy is not None else strategy
+        )
+        strategy_value = str(resolved_strategy)
 
         if strategy_value.lower().startswith(
             str(Strategies.CrocSetup).lower()
-        ) or Strategies.CrocSetup in (strategy, strategy_value):
+        ) or Strategies.CrocSetup in (strategy, resolved_strategy, strategy_value):
             results = self._fetch_croc_candidates(limit)
         else:
-            results = self._fetch_standard_candidates(strategy, strategy_value, limit)
+            results = self._fetch_standard_candidates(
+                resolved_strategy, strategy_value, limit
+            )
 
         processed_results: list[dict[str, Any]] = []
         for row in results:
@@ -174,11 +184,7 @@ class ScreenerViewService:
             list[dict[str, Any]]: Raw database candidate records.
         """
         if strategy_value == str(Strategies.NDXMomentum):
-            return self.signal_repository.get_trade_candidates(
-                strategy_value,
-                limit=limit,
-                statuses=[TradeStatus.CREATED, TradeStatus.ACTIVE],
-            )
+            return self._fetch_ndx_momentum_candidates(limit)
         if isinstance(strategy, list):
             # Using the newly updated repository method that supports lists
             return self.signal_repository.get_trade_candidates(
@@ -187,6 +193,96 @@ class ScreenerViewService:
         return self.signal_repository.get_trade_candidates(
             strategy_value, limit=limit, statuses=[TradeStatus.CREATED]
         )
+
+    def _fetch_ndx_momentum_candidates(self, limit: int) -> list[dict[str, Any]]:
+        """Fetches and deduplicates NDX Momentum candidates to unique symbols.
+
+        If a complete set of CREATED signals (>= 5) exists for the monthly rebalance,
+        these define the authoritative Top 5 for the new month. Symbols already held
+        in the active portfolio are marked as HOLD, while newly entering symbols are
+        marked as NEW.
+        If fewer than 5 CREATED signals exist, remaining ACTIVE positions are included.
+        """
+        rows = self.signal_repository.get_trade_candidates(
+            str(Strategies.NDXMomentum),
+            limit=limit,
+            statuses=[TradeStatus.CREATED, TradeStatus.ACTIVE],
+        )
+
+        (
+            created_map,
+            active_map,
+            created_order,
+            active_order,
+        ) = self._group_momentum_rows(rows)
+
+        return self._build_ndx_candidates(
+            created_map, active_map, created_order, active_order, limit
+        )
+
+    def _group_momentum_rows(
+        self, rows: list[dict[str, Any]]
+    ) -> tuple[
+        dict[str, dict[str, Any]],
+        dict[str, dict[str, Any]],
+        list[str],
+        list[str],
+    ]:
+        """Groups candidate rows into CREATED and ACTIVE symbol mappings."""
+        created_map: dict[str, dict[str, Any]] = {}
+        active_map: dict[str, dict[str, Any]] = {}
+        created_order: list[str] = []
+        active_order: list[str] = []
+
+        for row in rows:
+            symbol = str(row.get("symbol", "")).strip().upper()
+            if not symbol:
+                continue
+
+            status_str = str(row.get("status", "")).upper()
+            if (
+                status_str == str(TradeStatus.CREATED).upper()
+                and symbol not in created_map
+            ):
+                created_map[symbol] = dict(row)
+                created_order.append(symbol)
+            elif (
+                status_str == str(TradeStatus.ACTIVE).upper()
+                and symbol not in active_map
+            ):
+                active_map[symbol] = dict(row)
+                active_order.append(symbol)
+
+        return created_map, active_map, created_order, active_order
+
+    def _build_ndx_candidates(
+        self,
+        created_map: dict[str, dict[str, Any]],
+        active_map: dict[str, dict[str, Any]],
+        created_order: list[str],
+        active_order: list[str],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Builds deduplicated Top 5 candidates, prioritizing CREATED rebalance signals."""
+        results: list[dict[str, Any]] = []
+
+        for symbol in created_order:
+            candidate = dict(created_map[symbol])
+            candidate["status"] = (
+                str(TradeStatus.ACTIVE)
+                if symbol in active_map
+                else str(TradeStatus.CREATED)
+            )
+            results.append(candidate)
+
+        if len(results) < MAX_NDX_MOMENTUM_LEADERS:
+            for symbol in active_order:
+                if symbol not in created_map:
+                    results.append(dict(active_map[symbol]))
+                    if len(results) >= MAX_NDX_MOMENTUM_LEADERS:
+                        break
+
+        return results[:limit]
 
     @staticmethod
     def harmonize_indices(raw_indices: str) -> str:
