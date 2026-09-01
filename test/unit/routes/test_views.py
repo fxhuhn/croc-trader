@@ -1711,13 +1711,15 @@ def test_view_trades_tgim_rendered_content_and_progress_max(
     with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
         mock_service = mock_trade_service.return_value
         mock_service.get_trades.side_effect = lambda strategies, status, **kwargs: (
-            [mock_active_trade_day1] if status == TradeStatus.ACTIVE else []
+            [mock_active_trade_day1, mock_active_trade_day2]
+            if status == TradeStatus.ACTIVE
+            else []
         )
         mock_service.get_portfolio_summary.return_value = {
             "invested": 10000.0,
-            "open_pnl": 100.0,
-            "win_rate": 100.0,
-            "total_pnl": 100.0,
+            "open_pnl": 0.0,
+            "win_rate": 50.0,
+            "total_pnl": 0.0,
         }
         mock_service.get_closed_summary.return_value = {
             "count": 0,
@@ -1729,21 +1731,12 @@ def test_view_trades_tgim_rendered_content_and_progress_max(
         mock_service.group_trades_by_symbol.return_value = []
         mock_service.group_trades_history.return_value = []
 
-        # Day 1 render test
-        response_day1 = test_client.get("/trades/tgim")
-        assert response_day1.status_code == 200
-        assert b"repeat(2, minmax(0, 1fr))" in response_day1.data
-        assert b"LOC Limit" in response_day1.data
-        assert b"LOC: &gt; 500.00" in response_day1.data
-        assert b"2 Days Limit" in response_day1.data
-        assert b"Tue MOC" not in response_day1.data
-        assert b"Monday MOC / Fri EOD" not in response_day1.data
-
-        # Day 2 render test
-        mock_service.get_trades.side_effect = lambda strategies, status, **kwargs: (
-            [mock_active_trade_day2] if status == TradeStatus.ACTIVE else []
-        )
-        response_day2 = test_client.get("/trades/tgim")
-        assert response_day2.status_code == 200
-        assert b"Time Exit (Wed MOC)" in response_day2.data
-        assert b"Monday MOC / Fri EOD" not in response_day2.data
+        response = test_client.get("/trades/tgim")
+        assert response.status_code == 200
+        assert b"repeat(2, minmax(0, 1fr))" in response.data
+        assert b"LOC Limit" in response.data
+        assert b"LOC: &gt; 500.00" in response.data
+        assert b"2 Days Limit" in response.data
+        assert b"Time Exit (Wed MOC)" in response.data
+        assert b"Tue MOC" not in response.data
+        assert b"Monday MOC / Fri EOD" not in response.data
