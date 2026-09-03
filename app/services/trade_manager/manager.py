@@ -130,6 +130,37 @@ class TradeManager:
                 "Failed targeted market data update for %s: %s", symbol, error
             )
 
+    def _load_trade_history(
+        self,
+        symbol: str,
+        trade: dict[str, object],
+        lookback_days: int = 60,
+    ) -> pd.DataFrame:
+        """Loads price history for a trade with pre-entry lookback buffer."""
+        start_date = _resolve_history_start_date(trade, lookback_days=lookback_days)
+        return self.market_repository.get_symbol_history_raw(
+            symbol, start_date=start_date
+        )
+
+    def _get_ndx_momentum_leaders(self) -> set[str]:
+        """Loads current leader symbols for NDXMomentum strategy."""
+        try:
+            ndx_trades = self.trade_repository.get_all_by_strategy(
+                Strategies.NDXMomentum
+            )
+            if isinstance(ndx_trades, list):
+                return NDXMomentumTradeStrategy.extract_latest_leaders(ndx_trades)
+        except (
+            sqlite3.OperationalError,
+            sqlite3.DatabaseError,
+            Exception,
+        ) as database_error:
+            logger.warning(
+                "Database error loading NDX leaders. Defaulting to empty set: %s",
+                database_error,
+            )
+        return set()
+
     def _resolve_strategy_name(self, name: str) -> Strategies | None:
         """Resolves a string (legacy or canonical) to a strict Strategies Enum member.
 
@@ -211,17 +242,7 @@ class TradeManager:
             ) from database_error
 
         # Get latest leaders for NDXMomentum strategy
-        try:
-            ndx_trades = self.trade_repository.get_all_by_strategy(
-                Strategies.NDXMomentum
-            )
-            latest_leaders = NDXMomentumTradeStrategy.extract_latest_leaders(ndx_trades)
-        except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
-            logger.warning(
-                "Database error loading NDX leaders. Defaulting to empty set: %s",
-                database_error,
-            )
-            latest_leaders = set()
+        latest_leaders = self._get_ndx_momentum_leaders()
 
         logger.info("Checking %d active trades for exits.", len(active_trades))
         for trade in active_trades:
@@ -329,24 +350,11 @@ class TradeManager:
             cast(TradeData, trade), history_dataframe
         )
         if daily_updates:
-            try:
-                signal_context_raw = trade.get("signal_context") or "{}"
-                context_dict = (
-                    json.loads(str(signal_context_raw))
-                    if isinstance(signal_context_raw, str)
-                    else signal_context_raw
-                )
-                if isinstance(context_dict, dict):
-                    context_dict.update(daily_updates)
-                    updates["signal_context"] = json.dumps(
-                        context_dict, ensure_ascii=False
-                    )
-            except (json.JSONDecodeError, TypeError) as parse_error:
-                logger.warning(
-                    "Failed to parse signal_context JSON for trade %s: %s",
-                    trade.get("id"),
-                    parse_error,
-                )
+            merged_context = _merge_signal_context(
+                trade.get("signal_context"), daily_updates, trade_id=trade.get("id")
+            )
+            if merged_context is not None:
+                updates["signal_context"] = merged_context
 
         trade_id = int(str(trade["id"]))
         if transition:
@@ -383,14 +391,14 @@ class TradeManager:
             return
 
         try:
-            start_date = _resolve_history_start_date(trade, lookback_days=60)
-            history_dataframe = self.market_repository.get_symbol_history_raw(
-                symbol, start_date=start_date
+            history_dataframe = self._load_trade_history(
+                symbol, trade, lookback_days=60
             )
             if history_dataframe.empty:
                 return
 
             if verify_recency:
+                start_date = _resolve_history_start_date(trade, lookback_days=60)
                 is_valid, history_dataframe = self._verify_and_sync_recency(
                     symbol, history_dataframe, start_date, reference_date
                 )
@@ -436,9 +444,8 @@ class TradeManager:
             return
 
         try:
-            start_date = _resolve_history_start_date(trade, lookback_days=60)
-            history_dataframe = self.market_repository.get_symbol_history_raw(
-                symbol, start_date=start_date
+            history_dataframe = self._load_trade_history(
+                symbol, trade, lookback_days=60
             )
             if history_dataframe.empty:
                 return
@@ -450,45 +457,18 @@ class TradeManager:
                 history_dataframe,
                 active_symbols=active_symbols,
             )
+            if not transition:
+                return
 
-            if transition:
-                status_val = transition.updates.get("status")
-                status_str = (
-                    status_val.value if hasattr(status_val, "value") else status_val
-                )
-                if status_str == "ACTIVE":
-                    daily_updates = strategy.get_daily_updates(
-                        cast(TradeData, trade), history_dataframe
-                    )
-                    if daily_updates:
-                        try:
-                            signal_context_raw = (
-                                transition.updates.get("signal_context")
-                                or trade.get("signal_context")
-                                or "{}"
-                            )
-                            context_dict = (
-                                json.loads(str(signal_context_raw))
-                                if isinstance(signal_context_raw, str)
-                                else signal_context_raw
-                            )
-                            if isinstance(context_dict, dict):
-                                context_dict.update(daily_updates)
-                                transition.updates["signal_context"] = json.dumps(
-                                    context_dict, ensure_ascii=False
-                                )
-                        except (json.JSONDecodeError, TypeError) as parse_error:
-                            logger.warning(
-                                "Failed to parse signal_context JSON for trade %s: %s",
-                                trade.get("id"),
-                                parse_error,
-                            )
+            self._enrich_activation_context(
+                trade, strategy, history_dataframe, transition
+            )
 
-                trade_id = int(str(trade["id"]))
-                self.trade_repository.update_trade(
-                    trade_id, transition.updates, reason=transition.reason
-                )
-                logger.info("Entry check [%s]: %s", symbol, transition.message)
+            trade_id = int(str(trade["id"]))
+            self.trade_repository.update_trade(
+                trade_id, transition.updates, reason=transition.reason
+            )
+            logger.info("Entry check [%s]: %s", symbol, transition.message)
 
         except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
             raise RuntimeError(
@@ -498,6 +478,32 @@ class TradeManager:
             logger.warning(
                 "Data error during entry check for [%s]: %s", symbol, data_error
             )
+
+    def _enrich_activation_context(
+        self,
+        trade: dict[str, object],
+        strategy: BaseTradeStrategy,
+        history_dataframe: pd.DataFrame,
+        transition: TradeTransition,
+    ) -> None:
+        """Enriches transition updates with initial daily updates if status transitions to ACTIVE."""
+        status_val = transition.updates.get("status")
+        status_str = status_val.value if hasattr(status_val, "value") else status_val
+        if status_str != "ACTIVE":
+            return
+
+        daily_updates = strategy.get_daily_updates(
+            cast(TradeData, trade), history_dataframe
+        )
+        if daily_updates:
+            raw_context = transition.updates.get("signal_context") or trade.get(
+                "signal_context"
+            )
+            merged_context = _merge_signal_context(
+                raw_context, daily_updates, trade_id=trade.get("id")
+            )
+            if merged_context is not None:
+                transition.updates["signal_context"] = merged_context
 
     def generate_daily_orders(self, reference_date: str | None = None) -> str | None:
         """Generates daily order file in CSV format for CREATED and ACTIVE trades.
@@ -577,20 +583,7 @@ class TradeManager:
         active_exit_orders: list[tuple[dict[str, object], Order]] = []
 
         # Get latest leaders for NDXMomentum strategy to avoid exiting active leaders on month switch
-        ndx_leaders: set[str] = set()
-        try:
-            ndx_trades = self.trade_repository.get_all_by_strategy(
-                Strategies.NDXMomentum
-            )
-            if isinstance(ndx_trades, list):
-                ndx_leaders = NDXMomentumTradeStrategy.extract_latest_leaders(
-                    ndx_trades
-                )
-        except Exception as database_error:
-            logger.warning(
-                "Failed to load NDX leaders during exit collection: %s. Using empty set.",
-                database_error,
-            )
+        ndx_leaders = self._get_ndx_momentum_leaders()
 
         for active_trade in active_trades:
             resolved_strategy = self._resolve_strategy_name(
@@ -718,10 +711,7 @@ class TradeManager:
             )
             return None
 
-        start_date = _resolve_history_start_date(trade, lookback_days=60)
-        history_dataframe = self.market_repository.get_symbol_history_raw(
-            symbol, start_date=start_date
-        )
+        history_dataframe = self._load_trade_history(symbol, trade, lookback_days=60)
 
         resolved_strategy = self._resolve_strategy_name(strategy_name)
         config_budget = 0.0
@@ -815,3 +805,39 @@ def _resolve_history_start_date(
         return str(start_dt.strftime("%Y-%m-%d"))
     except (ValueError, TypeError):
         return anchor_date_str
+
+
+def _merge_signal_context(
+    raw_context: object,
+    daily_updates: dict[str, object],
+    trade_id: object = None,
+) -> str | None:
+    """Merges daily updates into the trade's signal_context JSON string.
+
+    Args:
+        raw_context: Current raw signal context (JSON string, dict, or None).
+        daily_updates: Dictionary of new key-value updates to merge.
+        trade_id: Optional trade identifier for diagnostic logging.
+
+    Returns:
+        str | None: Serialized updated JSON string, or None if parsing failed.
+    """
+    if not daily_updates:
+        return None
+
+    try:
+        raw_source = raw_context or "{}"
+        context_dict = (
+            json.loads(str(raw_source)) if isinstance(raw_source, str) else raw_source
+        )
+        if isinstance(context_dict, dict):
+            context_dict.update(daily_updates)
+            return json.dumps(context_dict, ensure_ascii=False)
+    except (json.JSONDecodeError, TypeError) as parse_error:
+        logger.warning(
+            "Failed to parse signal_context JSON for trade %s: %s",
+            trade_id,
+            parse_error,
+        )
+
+    return None
