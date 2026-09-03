@@ -40,6 +40,7 @@ _CSV_SUPPORTED_STRATEGIES: frozenset[Strategies] = frozenset(
         Strategies.TurnOverTiming_05,
         Strategies.TwoPercent,
         Strategies.DipBuyer,
+        Strategies.BounceBandit,
     }
 )
 
@@ -52,6 +53,7 @@ _STRATEGY_DISPLAY_NAMES: dict[Strategies, str] = {
     Strategies.TwoPercent: "TwoPercent",
     Strategies.HoldTarget: "HoldTarget",
     Strategies.SplitTarget: "SplitTarget",
+    Strategies.BounceBandit: "BounceBandit",
 }
 
 

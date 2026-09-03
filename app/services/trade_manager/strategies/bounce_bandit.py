@@ -12,6 +12,7 @@ Execution Rules:
 """
 
 import logging
+from decimal import Decimal
 from typing import final, override
 
 import pandas as pd
@@ -149,11 +150,31 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        """Generates exit orders for ACTIVE trades."""
-        return self._generate_standard_exit_order(
-            trade=trade,
-            dataframe_history=dataframe_history,
-            options=OrderOptions(order_type="MKT", time_in_force="DAY"),
+        """Generates dynamic LOC exit orders for ACTIVE trades.
+
+        Uses calculate_bounce_bandit_targets to determine the required threshold
+        for Close > SMA_8 or RSI_2 > 75 and places a Limit On Close (LOC) order.
+        """
+        quantity = int(trade.get("current_size") or 0)
+        if (
+            quantity <= 0
+            or dataframe_history.empty
+            or len(dataframe_history) < self.EXIT_SMA_LEN
+        ):
+            return None
+
+        close_series = dataframe_history["close"].astype(float)
+        targets = calculate_bounce_bandit_targets(close_series, self.EXIT_SMA_LEN)
+        target_price = targets.get("target_price")
+
+        if not target_price or target_price <= 0:
+            return None
+
+        return self._create_exit_order(
+            symbol=trade["symbol"],
+            quantity=quantity,
+            price=Decimal(str(target_price)),
+            options=OrderOptions(order_type="LOC", time_in_force="DAY"),
         )
 
     @override

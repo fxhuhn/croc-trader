@@ -1,6 +1,7 @@
 """Unit tests for the Bounce Bandit trade manager execution strategy."""
 
 import json
+from decimal import Decimal
 
 import pandas as pd
 import pytest
@@ -300,22 +301,23 @@ def test_bounce_bandit_generate_entry_order(
 def test_bounce_bandit_generate_exit_order(
     trade_strategy: BounceBanditTradeStrategy,
 ) -> None:
-    """Tests _generate_exit_order creates valid MOC exit order and handles invalid inputs."""
+    """Tests _generate_exit_order creates valid LOC exit order and handles invalid inputs."""
     trade = {
         "id": 1,
         "symbol": "QQQ",
         "current_size": 20,
     }
-    df_history = pd.DataFrame([{"close": 510.0}])
+    df_history = pd.DataFrame([{"close": 500.0 + i} for i in range(10)])
     order = trade_strategy._generate_exit_order(trade, df_history, budget=10000.0)
     assert order is not None
     assert order.symbol == "QQQ"
     assert order.quantity == 20
     assert len(order.exits) > 0
-    assert order.exits[0].type == "MKT"
+    assert order.exits[0].type == "LOC"
     assert order.exits[0].time_in_force == "DAY"
+    assert order.exits[0].price > Decimal("0")
 
-    # Quantity <= 0
+    # Quantity <= 0 (Short-Schutz)
     zero_trade = {"id": 1, "symbol": "QQQ", "current_size": 0}
     assert (
         trade_strategy._generate_exit_order(zero_trade, df_history, budget=10000.0)
@@ -327,6 +329,10 @@ def test_bounce_bandit_generate_exit_order(
         trade_strategy._generate_exit_order(trade, pd.DataFrame(), budget=10000.0)
         is None
     )
+
+    # History too short (< EXIT_SMA_LEN)
+    short_df = pd.DataFrame([{"close": 500.0 + i} for i in range(5)])
+    assert trade_strategy._generate_exit_order(trade, short_df, budget=10000.0) is None
 
 
 def test_bounce_bandit_get_daily_updates_empty(
