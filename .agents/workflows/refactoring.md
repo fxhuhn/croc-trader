@@ -77,7 +77,7 @@ Dieses Dokument definiert den Standardablauf für die sichere, schrittweise und 
 ---
 
 ## Phase 4: Final Verification & Quality Gates (Validierung)
-**Verantwortliche Skills:** `python-tester`, `python-auditor`, `python-security`
+**Verantwortliche Skills:** `python-tester`, `python-auditor`, `python-security`, `architecture-sync` (konditional)
 
 1. **Regressionstest & Snapshot-Vergleich (`python-tester`):**
    - Erneutes Ausführen der gesamten Test-Suite via `.venv/bin/pytest`.
@@ -89,16 +89,23 @@ Dieses Dokument definiert den Standardablauf für die sichere, schrittweise und 
    - `.venv/bin/ruff format --check .` (Formatierung konform).
 3. **Security Gate (`python-security`):**
    - Verifikation von SQL-Parametrisierung, Decimal-Präzision und I/O-Sicherheit (0 kritische Befunde).
+4. **Pre-Commit Pipeline Gate:**
+   - Ausführung der vollständigen Pre-Commit-Suite via `.venv/bin/pre-commit run --all-files` (Vulture, Bandit, Gitleaks, Root-Clean, Architecture-Sync-Check).
+5. **Architecture Sync Gate (konditional via `architecture-sync`):**
+   - *Trigger:* Wenn das Refactoring Modul-/Paketgrenzen, public Services, Schemata, Invarianten oder Datenflüsse berührt hat.
+   - Mechanischer Check: `.venv/bin/python .agents/skills/architecture-sync/scripts/check_sync.py` (bereits im Pre-Commit enthalten).
+   - Semantischer Abgleich: Verifikation, dass `architecture.md` und `references/architecture.md` die geänderten Schnittstellen und Datenflüsse konsistent abbilden.
 
 ---
 
 ## Phase 5: Documentation & Diff Generation
-**Verantwortlicher Skill:** `python-craftsman`
+**Verantwortlicher Skill:** `python-craftsman`, `architecture-sync` (konditional)
 
 1. **Diff-Inspektion (`git diff`):**
    - Strikte Prüfung gegen Scope Leaks oder unabsichtliche Formatierungsänderungen außerhalb des Refactorings.
-2. **Dokumentation:**
+2. **Dokumentation & Architektur-Sync:**
    - Aktualisierung oder Neuerstellung aller Docstrings im Google-Style für öffentliche Klassen und Funktionen.
+   - Falls architekturrelevante Komponenten verändert wurden: Synchronisation von `architecture.md` und ggf. `references/architecture.md` gemäß Skill `architecture-sync`.
 3. **Zusammenfassung (Completion Report):**
    - Erstellung des standardisierten Abschlussberichts gemäß `.agents/AGENTS.md`:
      - `Changed`: Umgesetztes Ergebnis.
