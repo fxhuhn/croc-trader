@@ -1,32 +1,59 @@
 import csv
 import logging
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from ...config import settings
 from ...const import Strategies
-from ...models import Order
+from ...models import Order, OrderLeg
 from ...types import TradeData
 
 logger = logging.getLogger(__name__)
 
 
-def _get_override_for_symbol(symbol: str) -> dict[str, str]:
+def _get_override_for_symbol(
+    symbol: str, overrides: dict[str, Any] | None = None
+) -> dict[str, str]:
     """Retrieves order configuration overrides for a given symbol.
 
     Args:
         symbol: The original symbol to look up.
+        overrides: Optional override mapping. If omitted, fetched from settings.app.
 
     Returns:
         dict[str, str]: The dictionary of overrides, or empty if none found.
     """
-    overrides = getattr(settings.app, "order_overrides", {})
-    if isinstance(overrides, dict):
-        val = overrides.get(symbol, {})
-        if isinstance(val, dict):
-            return cast(dict[str, str], val)
+    if overrides is None:
+        raw_overrides = getattr(settings.app, "order_overrides", {})
+        overrides = raw_overrides if isinstance(raw_overrides, dict) else {}
+
+    val = overrides.get(symbol, {})
+    if isinstance(val, dict):
+        return cast(dict[str, str], val)
     return {}
+
+
+def _resolve_output_directory(output_directory: Path | None = None) -> Path:
+    """Resolves target orders directory, prioritizing explicit parameter over settings."""
+    if output_directory is not None:
+        return output_directory
+
+    database_config = getattr(settings.app, "database", None)
+    if database_config is not None:
+        folders = getattr(database_config, "folders", {})
+        if isinstance(folders, dict) and "orders" in folders:
+            orders_folder = str(folders["orders"])
+            orders_path = Path(orders_folder)
+            if orders_path.is_absolute():
+                return orders_path
+            base_folder = str(getattr(database_config, "base_folder", "data"))
+            if orders_folder.startswith(base_folder):
+                return orders_path
+            return Path(base_folder) / orders_folder
+
+    return Path("data/orders")
 
 
 # Strategies whose orders are written to the daily CSV export.
@@ -56,6 +83,22 @@ _STRATEGY_DISPLAY_NAMES: dict[Strategies, str] = {
     Strategies.BounceBandit: "BounceBandit",
 }
 
+CSV_ORDER_HEADER: tuple[str, ...] = (
+    "trade_group_id",
+    "bracket_role",
+    "symbol",
+    "sec_type",
+    "exchange",
+    "account_id",
+    "action",
+    "quantity",
+    "order_type",
+    "target_price",
+    "tif",
+    "strategy_name",
+    "currency",
+)
+
 
 def get_strategy_display_name(strategy_enum: Strategies) -> str:
     """Returns the standardized display name of a strategy for order reporting.
@@ -77,6 +120,7 @@ def write_csv_orders_file(
     date_string: str,
     ibkr_account_id: str,
     resolve_strategy_fn: Callable[[str], Strategies | None],
+    output_directory: Path | None = None,
 ) -> Path | None:
     """Transforms and saves generated orders to a CSV file in bracket layout."""
     filtered_orders_data: list[
@@ -97,7 +141,7 @@ def write_csv_orders_file(
         strategy_display_name = get_strategy_display_name(resolved_strategy)
         trade_database_id = trade.get("id")
 
-        # Resolve override for symbol
+        # Resolve override for symbol once
         override = _get_override_for_symbol(order.symbol)
         resolved_symbol = override.get("target_symbol", order.symbol)
         trade_group_id = (
@@ -105,41 +149,64 @@ def write_csv_orders_file(
         )
 
         rows = map_order_to_csv_rows(
-            trade, order, trade_group_id, strategy_display_name, ibkr_account_id
+            trade,
+            order,
+            trade_group_id,
+            strategy_display_name,
+            ibkr_account_id,
         )
         csv_rows.extend(rows)
 
     if not csv_rows:
         return None
 
-    output_directory = Path("data/orders")
-    output_directory.mkdir(parents=True, exist_ok=True)
+    target_directory = _resolve_output_directory(output_directory)
+    target_directory.mkdir(parents=True, exist_ok=True)
     csv_filename = f"orders_{date_string.replace('-', '_')}.csv"
-    csv_file_path = output_directory / csv_filename
-
-    header = [
-        "trade_group_id",
-        "bracket_role",
-        "symbol",
-        "sec_type",
-        "exchange",
-        "account_id",
-        "action",
-        "quantity",
-        "order_type",
-        "target_price",
-        "tif",
-        "strategy_name",
-        "currency",
-    ]
+    csv_file_path = target_directory / csv_filename
 
     with open(csv_file_path, "w", newline="") as csv_file_handle:
-        writer = csv.DictWriter(csv_file_handle, fieldnames=header)
+        writer = csv.DictWriter(csv_file_handle, fieldnames=list(CSV_ORDER_HEADER))
         writer.writeheader()
         writer.writerows(csv_rows)
 
     logger.info("CSV Orders saved to: %s", csv_file_path)
     return csv_file_path
+
+
+@dataclass(frozen=True)
+class OrderExportContext:
+    """Context parameters for formatting CSV order rows."""
+
+    trade_group_id: str
+    strategy_display_name: str
+    ibkr_account_id: str
+    symbol: str
+    override: dict[str, str]
+
+
+def _format_leg_row(
+    context: OrderExportContext,
+    leg: OrderLeg,
+    bracket_role: str,
+    fallback_quantity: int,
+) -> dict[str, object]:
+    """Formats an individual OrderLeg into a 13-column CSV row dictionary."""
+    return {
+        "trade_group_id": context.trade_group_id,
+        "bracket_role": bracket_role,
+        "symbol": context.symbol,
+        "sec_type": context.override.get("sec_type", "STK"),
+        "exchange": context.override.get("exchange", "SMART"),
+        "account_id": context.ibkr_account_id,
+        "action": leg.action,
+        "quantity": leg.quantity if leg.quantity is not None else fallback_quantity,
+        "order_type": leg.type,
+        "target_price": f"{leg.price:.2f}",
+        "tif": leg.time_in_force,
+        "strategy_name": context.strategy_display_name,
+        "currency": context.override.get("currency", ""),
+    }
 
 
 def map_order_to_csv_rows(
@@ -152,60 +219,38 @@ def map_order_to_csv_rows(
     """Maps an order model and its legs to structured CSV row dictionaries."""
     override = _get_override_for_symbol(order.symbol)
     symbol = override.get("target_symbol", order.symbol)
-    sec_type = override.get("sec_type", "STK")
-    exchange = override.get("exchange", "SMART")
-    currency = override.get("currency", "")
+    context = OrderExportContext(
+        trade_group_id=trade_group_id,
+        strategy_display_name=strategy_display_name,
+        ibkr_account_id=ibkr_account_id,
+        symbol=symbol,
+        override=override,
+    )
 
-    rows = []
+    rows: list[dict[str, object]] = []
     if order.entry:
-        entry_leg = order.entry
         rows.append(
-            {
-                "trade_group_id": trade_group_id,
-                "bracket_role": "ENTRY",
-                "symbol": symbol,
-                "sec_type": sec_type,
-                "exchange": exchange,
-                "account_id": ibkr_account_id,
-                "action": entry_leg.action,
-                "quantity": (
-                    entry_leg.quantity
-                    if entry_leg.quantity is not None
-                    else order.quantity
-                ),
-                "order_type": entry_leg.type,
-                "target_price": f"{entry_leg.price:.2f}",
-                "tif": entry_leg.time_in_force,
-                "strategy_name": strategy_display_name,
-                "currency": currency,
-            }
+            _format_leg_row(
+                context=context,
+                leg=order.entry,
+                bracket_role="ENTRY",
+                fallback_quantity=order.quantity,
+            )
         )
 
     for exit_leg in order.exits:
-        if order.entry is None:
-            bracket_role = "EXIT"
-        else:
-            bracket_role = "SL" if exit_leg.type == "STP" else "TP"
+        bracket_role = (
+            "EXIT"
+            if order.entry is None
+            else ("SL" if exit_leg.type == "STP" else "TP")
+        )
         rows.append(
-            {
-                "trade_group_id": trade_group_id,
-                "bracket_role": bracket_role,
-                "symbol": symbol,
-                "sec_type": sec_type,
-                "exchange": exchange,
-                "account_id": ibkr_account_id,
-                "action": exit_leg.action,
-                "quantity": (
-                    exit_leg.quantity
-                    if exit_leg.quantity is not None
-                    else order.quantity
-                ),
-                "order_type": exit_leg.type,
-                "target_price": f"{exit_leg.price:.2f}",
-                "tif": exit_leg.time_in_force,
-                "strategy_name": strategy_display_name,
-                "currency": currency,
-            }
+            _format_leg_row(
+                context=context,
+                leg=exit_leg,
+                bracket_role=bracket_role,
+                fallback_quantity=order.quantity,
+            )
         )
 
     return rows
