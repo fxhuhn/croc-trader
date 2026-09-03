@@ -19,6 +19,7 @@ from ...const import (
 from ...database.repositories.broker import (
     ActivePositionRecord,
     BrokerRepository,
+    ExecutionRecord,
     SettlementRecord,
 )
 from ...database.repositories.market import MarketRepository
@@ -60,6 +61,147 @@ class StrategyMetricAccumulator:
     slippage_sum: float = 0.0
 
 
+def _resolve_settlement_strategy_keys(
+    trade_group_id: str, available_keys: set[str]
+) -> list[str]:
+    """Resolves mapped accumulator keys for a trade group identifier."""
+    parts = trade_group_id.split("_")
+    raw_strat = parts[1] if len(parts) > 1 else ""
+    mapped = _map_order_strategy_filter(raw_strat)
+    keys = ["all"]
+    if mapped in available_keys and mapped != "all":
+        keys.append(mapped)
+    return keys
+
+
+def _accumulate_settlement(
+    accumulators: dict[str, StrategyMetricAccumulator],
+    settlement: SettlementRecord,
+) -> None:
+    """Accumulates PnL, fees, and slippage for a settlement into strategy accumulators."""
+    trade_group_identifier = str(settlement.get("trade_group_id") or "")
+    mapped_keys = _resolve_settlement_strategy_keys(
+        trade_group_identifier, set(accumulators)
+    )
+
+    net_pnl = float(str(settlement.get("net_pnl") or 0.0))
+    slippage = float(str(settlement.get("price_diff_slippage") or 0.0))
+    commission = float(str(settlement.get("total_commissions") or 0.0))
+
+    for key in mapped_keys:
+        acc = accumulators[key]
+        acc.pnl += net_pnl
+        acc.fees += commission
+        acc.total_count += 1
+        acc.slippage_sum += slippage
+        if net_pnl > 0:
+            acc.win_count += 1
+
+
+def _format_accumulator_metrics(acc: StrategyMetricAccumulator) -> dict[str, Any]:
+    """Formats accumulated broker metrics into presentation dictionary."""
+    pnl_text = f"+{acc.pnl:,.0f}" if acc.pnl > 0 else f"{acc.pnl:,.0f}"
+    winrate = (
+        f"{(acc.win_count / acc.total_count) * 100:.1f}%"
+        if acc.total_count > 0
+        else "0.0%"
+    )
+    avg_slippage = acc.slippage_sum / acc.total_count if acc.total_count > 0 else 0.0
+    slippage_text = (
+        f"+{avg_slippage:.2f}" if avg_slippage > 0 else f"{avg_slippage:.2f}"
+    )
+    return {
+        "pnl": acc.pnl,
+        "pnlText": pnl_text,
+        "winrate": winrate,
+        "slippage": slippage_text,
+        "fees": acc.fees,
+        "win_count": acc.win_count,
+        "total_count": acc.total_count,
+        "slippage_sum": acc.slippage_sum,
+    }
+
+
+def _parse_trade_group_identifier(trade_group_id: str) -> tuple[str, str, str]:
+    """Extracts local_trade_id, symbol, and strategy_name from trade_group_id."""
+    parts = trade_group_id.split("_")
+    local_trade_id = parts[0] if parts else ""
+    symbol = parts[-1] if len(parts) > 1 else ""
+    if len(parts) > MIN_ROWS_FOR_PREVIOUS_CANDLE:
+        strategy_name = "_".join(parts[1:-1])
+    else:
+        strategy_name = parts[1] if len(parts) > 1 else ""
+    return local_trade_id, symbol, strategy_name
+
+
+def _extract_execution_timeline(
+    executions: list[ExecutionRecord],
+) -> tuple[str, int, int]:
+    """Extracts first entry date, holding period in days, and total buy quantity."""
+    if not executions:
+        return "", 0, 0
+
+    timestamps = []
+    buy_quantity = 0
+    for e in executions:
+        if e.get("executed_at"):
+            ts = pd.Timestamp(str(e["executed_at"]))
+            if ts.tzinfo is not None:
+                ts = ts.tz_convert(None).tz_localize(None)
+            timestamps.append(ts)
+        if e.get("action") == "BUY":
+            buy_quantity += int(e.get("qty") or 0)
+
+    if not timestamps:
+        return "", 0, buy_quantity
+
+    executed_dates = sorted(timestamps)
+    first_date = executed_dates[0].date()
+    last_date = executed_dates[-1].date()
+    entry_date_str = str(first_date)
+    days_held = max(0, (last_date - first_date).days)
+    return entry_date_str, days_held, buy_quantity
+
+
+def _enrich_single_settlement(
+    settlement: SettlementRecord, executions: list[ExecutionRecord]
+) -> None:
+    """Attaches execution lists and computes summary metrics on a single settlement."""
+    trade_group_identifier = str(settlement.get("trade_group_id") or "")
+    local_id, symbol, strat_name = _parse_trade_group_identifier(trade_group_identifier)
+    entry_date_str, days_held, buy_qty = _extract_execution_timeline(executions)
+
+    settlement["executions"] = executions
+    settlement["local_trade_id"] = local_id
+    settlement["symbol"] = symbol
+    settlement["strategy_name"] = strat_name
+    settlement["entry_date"] = entry_date_str
+    settlement["days_held"] = days_held
+    settlement["quantity"] = buy_qty
+
+    entry_price = float(str(settlement.get("avg_entry_price") or 0.0))
+    exit_price = float(str(settlement.get("avg_exit_price") or 0.0))
+    settlement["pnl_percentage"] = (
+        ((exit_price - entry_price) / entry_price * 100) if entry_price > 0 else 0.0
+    )
+    settlement["strategy_filter"] = _map_order_strategy_filter(strat_name)
+
+
+def _resolve_local_symbol_state(
+    symbol_trades: list[dict[str, object]],
+) -> tuple[str, float]:
+    """Resolves local trade status (ACTIVE or CLOSED) and position size for a symbol."""
+    active_trades = [t for t in symbol_trades if t.get("status") == "ACTIVE"]
+    if active_trades:
+        size_val = (
+            active_trades[0].get("current_size")
+            or active_trades[0].get("initial_size")
+            or 0.0
+        )
+        return "ACTIVE", float(str(size_val))
+    return "CLOSED", 0.0
+
+
 class SymbolTradeGroup(TypedDict):
     """Grouped active trades for a single symbol."""
 
@@ -80,18 +222,37 @@ class HistoryTradeGroup(TypedDict):
     trades: list["TradeViewData"]
 
 
+STRATEGY_FILTER_TOKEN_MAP: tuple[tuple[str, str], ...] = (
+    ("dip", "DipBuyer"),
+    ("turnover", "TurnoverTiming"),
+    ("twopercent", "TwoPercent"),
+    ("percent", "TwoPercent"),
+    ("ndx", "NDXMomentum"),
+    ("momentum", "NDXMomentum"),
+    ("tgim", "TGIM"),
+    ("bridge", "BridgeScout"),
+    ("scout", "BridgeScout"),
+    ("bounce", "BounceBandit"),
+    ("bandit", "BounceBandit"),
+)
+
+
+def map_strategy_filter_key(
+    strategy_name: str, fallback_to_unknown: bool = False
+) -> str:
+    """Maps a raw strategy name to a standardized UI filter key."""
+    strategy_lower = strategy_name.lower()
+    for token, label in STRATEGY_FILTER_TOKEN_MAP:
+        if token in strategy_lower:
+            return label
+    if fallback_to_unknown:
+        return strategy_name or "Unknown"
+    return strategy_name
+
+
 def _map_strategy_filter_name(raw_name: str) -> str:
     """Normalizes a raw strategy name into its UI filter representation."""
-    raw_lower = raw_name.lower()
-    if "dip" in raw_lower:
-        return "DipBuyer"
-    if "turnover" in raw_lower:
-        return "TurnoverTiming"
-    if "twopercent" in raw_lower or "percent" in raw_lower:
-        return "TwoPercent"
-    if "ndx" in raw_lower or "momentum" in raw_lower:
-        return "NDXMomentum"
-    return raw_name
+    return map_strategy_filter_key(raw_name, fallback_to_unknown=False)
 
 
 class TradeViewData(TradeData, total=False):
@@ -123,6 +284,151 @@ class TradeViewData(TradeData, total=False):
 
     # Context (overrides str | None from TradeData for parsed dict)
     context: dict[str, object]
+
+
+def _calculate_trade_risk(trade: TradeViewData) -> float:
+    """Calculates trade risk denominator for R-multiple calculations."""
+    entry = float(trade.get("entry_price") or 0.0)
+    size = float(trade.get("initial_size") or 0.0)
+    stop_val = trade.get("current_stop_loss") or trade.get("stop_loss") or 0.0
+    stop = float(str(stop_val))
+    if entry > 0 and stop > 0 and entry != stop:
+        return abs(entry - stop) * size
+    if entry > 0 and size > 0:
+        return entry * size * 0.05
+    return 1.0
+
+
+def calculate_closed_trades_portfolio_metrics(
+    closed_trades: list[TradeViewData],
+) -> tuple[float, float, float]:
+    """Computes win_rate, profit_factor, and SQN from closed trades.
+
+    Returns:
+        tuple[float, float, float]: (win_rate, profit_factor, sqn)
+    """
+    try:
+        pnl_series = pd.Series(
+            [float(t.get("realized_pnl") or 0.0) for t in closed_trades]
+        )
+        win_rate = (
+            metrics.calculate_win_rate(pnl_series) if not pnl_series.empty else 0.0
+        )
+        profit_factor = (
+            metrics.calculate_profit_factor(pnl_series) if not pnl_series.empty else 0.0
+        )
+
+        r_list: list[float] = []
+        for trade in closed_trades:
+            pnl = float(trade.get("realized_pnl") or 0.0)
+            risk = _calculate_trade_risk(trade)
+            r_list.append(pnl / risk if risk > 0 else 0.0)
+
+        sqn = (
+            metrics.calculate_sqn(pd.Series(r_list))
+            if len(r_list) >= MIN_SERIES_LENGTH_FOR_SQN
+            else 0.0
+        )
+        return win_rate, profit_factor, sqn
+    except Exception as err:
+        logger.debug(
+            "Failed to calculate closed trade metrics for portfolio summary: %s",
+            err,
+        )
+        return 0.0, 0.0, 0.0
+
+
+def _extract_past_price_and_date(rows: pd.DataFrame) -> tuple[float, str]:
+    """Extracts reference past price and ISO date string from historical rows."""
+    past_row = (
+        rows.iloc[-2] if len(rows) >= MIN_ROWS_FOR_PREVIOUS_CANDLE else rows.iloc[0]
+    )
+    past_date_str = str(past_row["date"]).split("T")[0].split(" ")[0]
+    return float(past_row["close"]), past_date_str
+
+
+def _calculate_directional_price_diff(
+    past_price: float, current_price: float, direction: str
+) -> float:
+    """Calculates price difference based on long or short trade direction."""
+    if direction == "short":
+        return past_price - current_price
+    return current_price - past_price
+
+
+def calculate_single_trade_5d_change(trade: TradeViewData, rows: pd.DataFrame) -> float:
+    """Calculates the 5-day Open PnL delta for a single trade given historical price rows."""
+    if rows.empty:
+        return float(trade.get("unrealized_pnl") or 0.0)
+
+    past_price, past_date_str = _extract_past_price_and_date(rows)
+
+    entry_date_str = str(trade.get("entry_date") or "").split("T")[0].split(" ")[0]
+    if entry_date_str and entry_date_str > past_date_str:
+        return float(trade.get("unrealized_pnl") or 0.0)
+
+    initial_size = float(trade.get("initial_size") or 0.0)
+    current_price_val = trade.get("current_price")
+    current_price = (
+        float(str(current_price_val)) if current_price_val is not None else past_price
+    )
+    direction = str(trade.get("context", {}).get("direction", "long")).lower()
+    return (
+        _calculate_directional_price_diff(past_price, current_price, direction)
+        * initial_size
+    )
+
+
+def _resolve_target_price_from_context(context_dict: dict[str, object]) -> float:
+    """Extracts target price using hierarchy of target columns."""
+    for key in (
+        TargetColumn.TARGET_PRICE,
+        TargetColumn.TP3,
+        TargetColumn.TAKE_PROFIT_3,
+        TargetColumn.TP1,
+        TargetColumn.TAKE_PROFIT_1,
+    ):
+        if value := context_dict.get(key):
+            try:
+                return float(str(value))
+            except (ValueError, TypeError):
+                continue
+    return 0.0
+
+
+def _calculate_target_progress(
+    current_price: float, stop_loss: float, target_price: float
+) -> float:
+    """Calculates trade progress from stop loss to target price (0-100%)."""
+    if stop_loss > 0.0 and target_price > 0.0 and stop_loss != target_price:
+        total_range = target_price - stop_loss
+        current_distance = current_price - stop_loss
+        percentage_value = (current_distance / total_range) * 100
+        return max(0.0, min(100.0, percentage_value))
+    return 0.0
+
+
+def _is_stop_loss_critical(current_price: float, stop_loss: float) -> bool:
+    """Determines whether current price is critically close to stop loss (< 1%)."""
+    if stop_loss > 0.0 and current_price > 0.0:
+        distance = abs(current_price - stop_loss)
+        return (distance / current_price) < CRITICAL_STOP_LOSS_THRESHOLD
+    return False
+
+
+def _resolve_lookback_start_date(anchor: object | None, lookback_days: int = 60) -> str:
+    """Computes lookback start date ISO string from anchor date or current time."""
+    now_dt = pd.Timestamp.now()
+    if not anchor:
+        return str((now_dt - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d"))
+    try:
+        return str(
+            (pd.Timestamp(anchor) - pd.Timedelta(days=lookback_days)).strftime(
+                "%Y-%m-%d"
+            )
+        )
+    except (ValueError, TypeError):
+        return str((now_dt - pd.Timedelta(days=lookback_days)).strftime("%Y-%m-%d"))
 
 
 class TradeViewService:
@@ -262,46 +568,20 @@ class TradeViewService:
             return 0.0, 0.0, False, 0.0
 
         direction = str(context_dict.get("direction", "long")).lower()
-        if direction == "short":
-            unrealized_pnl = (entry_price - current_price) * initial_size
-            pnl_percentage = ((entry_price - current_price) / entry_price) * 100
-        else:
-            unrealized_pnl = (current_price - entry_price) * initial_size
-            pnl_percentage = ((current_price - entry_price) / entry_price) * 100
+        price_diff = (
+            (entry_price - current_price)
+            if direction == "short"
+            else (current_price - entry_price)
+        )
+        unrealized_pnl = price_diff * initial_size
+        pnl_percentage = (price_diff / entry_price) * 100
 
         stop_loss_val = trade.get("current_stop_loss")
         stop_loss = float(str(stop_loss_val)) if stop_loss_val is not None else 0.0
-        target_price = 0.0
+        target_price = _resolve_target_price_from_context(context_dict)
 
-        # Target Hierarchy using Enums
-        for key in [
-            TargetColumn.TARGET_PRICE,
-            TargetColumn.TP3,
-            TargetColumn.TAKE_PROFIT_3,
-            TargetColumn.TP1,
-            TargetColumn.TAKE_PROFIT_1,
-        ]:
-            if value := context_dict.get(key):
-                target_price = float(value)  # type: ignore[arg-type]  # value is dynamically extracted and expected to be float-convertible
-                break
-
-        # Progress Calculation
-        progress = 0.0
-        if stop_loss > 0.0 and target_price > 0.0 and stop_loss != target_price:
-            total_range = target_price - stop_loss
-            current_distance = current_price - stop_loss
-            percentage_value = (current_distance / total_range) * 100
-            progress = max(0.0, min(100.0, percentage_value))
-
-        # Critical SL
-        is_critical = False
-        if stop_loss > 0.0:
-            distance = abs(current_price - stop_loss)
-            if (
-                current_price > 0
-                and (distance / current_price) < CRITICAL_STOP_LOSS_THRESHOLD
-            ):
-                is_critical = True
+        progress = _calculate_target_progress(current_price, stop_loss, target_price)
+        is_critical = _is_stop_loss_critical(current_price, stop_loss)
 
         return unrealized_pnl, pnl_percentage, is_critical, progress
 
@@ -365,15 +645,8 @@ class TradeViewService:
         if not symbol:
             return
 
-        start_date = (pd.Timestamp.now() - pd.Timedelta(days=60)).strftime("%Y-%m-%d")
         trade_entry = trade.get("entry_date") or trade.get("created_at")
-        if trade_entry:
-            try:
-                start_date = (
-                    pd.Timestamp(trade_entry) - pd.Timedelta(days=60)
-                ).strftime("%Y-%m-%d")
-            except (ValueError, TypeError):
-                pass
+        start_date = _resolve_lookback_start_date(trade_entry, lookback_days=60)
 
         df_hist = self.market_repository.get_symbol_history_raw(
             symbol, start_date=start_date
@@ -387,6 +660,84 @@ class TradeViewService:
             )
             if updates:
                 context_dict.update(updates)
+
+    def _extract_trade_prices(self, trade: dict[str, object]) -> dict[str, float]:
+        """Extracts and resolves entry, current, size, and exit prices for a trade."""
+        entry_price = float(str(trade.get("entry_price") or 0.0))
+        raw_current = float(str(trade.get("current_price") or 0.0))
+        current_price = self._resolve_current_price(
+            str(trade.get("symbol", "")),
+            trade.get("status"),
+            raw_current,
+        )
+        initial_size = float(str(trade.get("initial_size") or 0.0))
+        current_size = float(str(trade.get("current_size") or 0.0))
+        exit_price = float(str(trade.get("exit_price") or 0.0))
+        return {
+            "entry": entry_price,
+            "current": current_price,
+            "initial_size": initial_size,
+            "current_size": current_size,
+            "exit": exit_price,
+        }
+
+    def _compute_view_pnl_data(
+        self,
+        trade: dict[str, object],
+        context_dict: dict[str, object],
+        prices: dict[str, float],
+    ) -> dict[str, object]:
+        """Calculates realized or unrealized PnL fields based on trade status."""
+        status = trade.get("status")
+        realized_pnl_val = trade.get("realized_pnl")
+        realized_pnl = (
+            float(str(realized_pnl_val)) if realized_pnl_val is not None else 0.0
+        )
+
+        if status == TradeStatus.ACTIVE:
+            (
+                unrealized_pnl,
+                pnl_pct,
+                is_critical,
+                progress,
+            ) = self._prepare_active_trade_view_fields(
+                trade,
+                context_dict,
+                prices["entry"],
+                prices["current"],
+                prices["initial_size"],
+            )
+            return {
+                "unrealized_pnl": unrealized_pnl,
+                "realized_pnl": realized_pnl,
+                "pnl_percentage": pnl_pct,
+                "is_critical": is_critical,
+                "progress": progress,
+            }
+
+        if status == TradeStatus.CLOSED:
+            realized_pnl, pnl_pct = self._prepare_closed_trade_view_fields(
+                trade,
+                context_dict,
+                prices["entry"],
+                prices["exit"],
+                prices["initial_size"],
+            )
+            return {
+                "unrealized_pnl": 0.0,
+                "realized_pnl": realized_pnl,
+                "pnl_percentage": pnl_pct,
+                "is_critical": False,
+                "progress": 0.0,
+            }
+
+        return {
+            "unrealized_pnl": 0.0,
+            "realized_pnl": realized_pnl,
+            "pnl_percentage": 0.0,
+            "is_critical": False,
+            "progress": 0.0,
+        }
 
     def prepare_trade_view(self, trade: dict[str, object]) -> TradeViewData:
         """Transforms a raw trade dict into a strictly typed TradeViewData.
@@ -402,73 +753,9 @@ class TradeViewService:
             context_dict["indices"] = context_dict["bucket"]
 
         self._enrich_bounce_bandit_context(trade, context_dict)
-
         display_entry, display_exit, days_held = self._extract_dates_and_holding(trade)
-
-        entry_price_val = trade.get("entry_price")
-        entry_price = (
-            float(str(entry_price_val)) if entry_price_val is not None else 0.0
-        )
-        current_price_val = trade.get("current_price")
-        raw_current_price = (
-            float(str(current_price_val)) if current_price_val is not None else 0.0
-        )
-        current_price = self._resolve_current_price(
-            str(trade.get("symbol", "")),
-            trade.get("status"),
-            raw_current_price,
-        )
-        initial_size_val = trade.get("initial_size")
-        initial_size = (
-            float(str(initial_size_val)) if initial_size_val is not None else 0.0
-        )
-        current_size_val = trade.get("current_size")
-        current_size = (
-            float(str(current_size_val)) if current_size_val is not None else 0.0
-        )
-        exit_price_val = trade.get("exit_price")
-        exit_price = float(str(exit_price_val)) if exit_price_val is not None else 0.0
-
-        unrealized_pnl = 0.0
-        realized_pnl_val = trade.get("realized_pnl")
-        realized_pnl = (
-            float(str(realized_pnl_val)) if realized_pnl_val is not None else 0.0
-        )
-        pnl_percentage = 0.0
-        is_critical = False
-        progress = 0.0
-
-        if trade.get("status") == TradeStatus.ACTIVE:
-            (
-                unrealized_pnl,
-                pnl_percentage,
-                is_critical,
-                progress,
-            ) = self._prepare_active_trade_view_fields(
-                trade, context_dict, entry_price, current_price, initial_size
-            )
-        elif trade.get("status") == TradeStatus.CLOSED:
-            (
-                realized_pnl,
-                pnl_percentage,
-            ) = self._prepare_closed_trade_view_fields(
-                trade, context_dict, entry_price, exit_price, initial_size
-            )
-
-        prices = {
-            "entry": entry_price,
-            "current": current_price,
-            "initial_size": initial_size,
-            "current_size": current_size,
-            "exit": exit_price,
-        }
-        pnl_data: dict[str, object] = {
-            "unrealized_pnl": unrealized_pnl,
-            "realized_pnl": realized_pnl,
-            "pnl_percentage": pnl_percentage,
-            "is_critical": is_critical,
-            "progress": progress,
-        }
+        prices = self._extract_trade_prices(trade)
+        pnl_data = self._compute_view_pnl_data(trade, context_dict, prices)
 
         return self._build_view_data(
             ViewBuildParams(
@@ -748,44 +1035,12 @@ class TradeViewService:
             return 0.0
 
         total_5d_change = 0.0
-
         for trade in active_trades:
             symbol = trade["symbol"]
             rows = history_dataframe[history_dataframe["symbol"] == symbol].sort_values(
                 "date"
             )
-            if rows.empty:
-                total_5d_change += trade["unrealized_pnl"]
-                continue
-
-            past_row = (
-                rows.iloc[-2]
-                if len(rows) >= MIN_ROWS_FOR_PREVIOUS_CANDLE
-                else rows.iloc[0]
-            )
-            past_date_str = str(past_row["date"]).split("T")[0].split(" ")[0]
-            past_price = float(past_row["close"])
-
-            entry_date_str = (
-                str(trade.get("entry_date") or "").split("T")[0].split(" ")[0]
-            )
-            initial_size = float(trade.get("initial_size") or 0.0)
-            current_price_val = trade.get("current_price")
-            current_price = (
-                float(str(current_price_val))
-                if current_price_val is not None
-                else past_price
-            )
-            direction = str(trade.get("context", {}).get("direction", "long")).lower()
-
-            if entry_date_str and entry_date_str > past_date_str:
-                total_5d_change += float(trade.get("unrealized_pnl") or 0.0)
-            else:
-                if direction == "short":
-                    trade_5d_change = (past_price - current_price) * initial_size
-                else:
-                    trade_5d_change = (current_price - past_price) * initial_size
-                total_5d_change += trade_5d_change
+            total_5d_change += calculate_single_trade_5d_change(trade, rows)
 
         return total_5d_change
 
@@ -833,54 +1088,15 @@ class TradeViewService:
             active_trades, reference_date=reference_date
         )
 
-        try:
-            if closed_trades is None:
-                closed_trades = self.get_trades(
-                    status=TradeStatus.CLOSED,
-                    exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
-                )
-            pnl_series = pd.Series(
-                [float(t.get("realized_pnl") or 0.0) for t in closed_trades]
-            )
-            win_rate = (
-                metrics.calculate_win_rate(pnl_series) if not pnl_series.empty else 0.0
-            )
-            profit_factor = (
-                metrics.calculate_profit_factor(pnl_series)
-                if not pnl_series.empty
-                else 0.0
+        if closed_trades is None:
+            closed_trades = self.get_trades(
+                status=TradeStatus.CLOSED,
+                exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
             )
 
-            r_list: list[float] = []
-            for trade in closed_trades:
-                pnl = float(trade.get("realized_pnl") or 0.0)
-                entry = float(trade.get("entry_price") or 0.0)
-                size = float(trade.get("initial_size") or 0.0)
-                stop_val = (
-                    trade.get("current_stop_loss") or trade.get("stop_loss") or 0.0
-                )
-                stop = float(str(stop_val))
-                if entry > 0 and stop > 0 and entry != stop:
-                    risk = abs(entry - stop) * size
-                elif entry > 0 and size > 0:
-                    risk = entry * size * 0.05
-                else:
-                    risk = 1.0
-                r_list.append(pnl / risk if risk > 0 else 0.0)
-
-            sqn = (
-                metrics.calculate_sqn(pd.Series(r_list))
-                if len(r_list) >= MIN_SERIES_LENGTH_FOR_SQN
-                else 0.0
-            )
-        except Exception as err:
-            logger.debug(
-                "Failed to calculate closed trade metrics for portfolio summary: %s",
-                err,
-            )
-            win_rate = 0.0
-            profit_factor = 0.0
-            sqn = 0.0
+        win_rate, profit_factor, sqn = calculate_closed_trades_portfolio_metrics(
+            closed_trades
+        )
 
         return {
             "invested": total_invested,
@@ -1139,55 +1355,12 @@ class TradeViewService:
         }
 
         for settlement in settlements:
-            trade_group_identifier = settlement.get("trade_group_id") or ""
-            parts = trade_group_identifier.split("_")
-            raw_strat = parts[1] if len(parts) > 1 else ""
-            mapped_strategy = _map_order_strategy_filter(raw_strat)
+            _accumulate_settlement(accumulators, settlement)
 
-            mapped_keys = ["all"]
-            if mapped_strategy in accumulators and mapped_strategy != "all":
-                mapped_keys.append(mapped_strategy)
-
-            net_pnl = float(settlement.get("net_pnl") or 0.0)
-            slippage = float(settlement.get("price_diff_slippage") or 0.0)
-            commission = float(settlement.get("total_commissions") or 0.0)
-
-            for key in mapped_keys:
-                acc = accumulators[key]
-                acc.pnl += net_pnl
-                acc.fees += commission
-                acc.total_count += 1
-                acc.slippage_sum += slippage
-                if net_pnl > 0:
-                    acc.win_count += 1
-
-        result: dict[str, dict[str, Any]] = {}
-        for strat in strategies:
-            acc = accumulators[strat]
-            pnl_text = f"+{acc.pnl:,.0f}" if acc.pnl > 0 else f"{acc.pnl:,.0f}"
-            winrate = (
-                f"{(acc.win_count / acc.total_count) * 100:.1f}%"
-                if acc.total_count > 0
-                else "0.0%"
-            )
-            avg_slippage = (
-                acc.slippage_sum / acc.total_count if acc.total_count > 0 else 0.0
-            )
-            slippage_text = (
-                f"+{avg_slippage:.2f}" if avg_slippage > 0 else f"{avg_slippage:.2f}"
-            )
-            result[strat] = {
-                "pnl": acc.pnl,
-                "pnlText": pnl_text,
-                "winrate": winrate,
-                "slippage": slippage_text,
-                "fees": acc.fees,
-                "win_count": acc.win_count,
-                "total_count": acc.total_count,
-                "slippage_sum": acc.slippage_sum,
-            }
-
-        return result
+        return {
+            strat: _format_accumulator_metrics(accumulators[strat])
+            for strat in strategies
+        }
 
     def get_broker_settlements(self) -> list[SettlementRecord]:
         """Retrieves closed trade settlements with execution details attached.
@@ -1199,55 +1372,11 @@ class TradeViewService:
             return []
         settlements = self.broker_repository.get_settlements()
         for settlement in settlements:
-            trade_group_identifier = settlement.get("trade_group_id") or ""
+            trade_group_identifier = str(settlement.get("trade_group_id") or "")
             executions = self.broker_repository.get_executions_for_trade_group(
                 trade_group_identifier
             )
-            settlement["executions"] = executions
-
-            parts = trade_group_identifier.split("_")
-            settlement["local_trade_id"] = parts[0] if parts else ""
-            settlement["symbol"] = parts[-1] if len(parts) > 1 else ""
-            settlement["strategy_name"] = (
-                "_".join(parts[1:-1])
-                if len(parts) > MIN_ROWS_FOR_PREVIOUS_CANDLE
-                else (parts[1] if len(parts) > 1 else "")
-            )
-
-            # Calculate days_held, quantity and entry_date from executions
-            entry_date_str = ""
-            days_held = 0
-            if executions:
-                timestamps = []
-                for e in executions:
-                    if e.get("executed_at"):
-                        ts = pd.Timestamp(e["executed_at"])
-                        if ts.tzinfo is not None:
-                            ts = ts.tz_convert(None).tz_localize(None)
-                        timestamps.append(ts)
-                executed_dates = sorted(timestamps)
-                if executed_dates:
-                    entry_date_str = str(executed_dates[0].date())
-                    delta = executed_dates[-1].date() - executed_dates[0].date()
-                    days_held = max(0, delta.days)
-
-            settlement["entry_date"] = entry_date_str
-            settlement["days_held"] = days_held
-            settlement["quantity"] = sum(
-                e["qty"] for e in executions if e.get("action") == "BUY"
-            )
-
-            entry_price = float(settlement.get("avg_entry_price") or 0.0)
-            exit_price = float(settlement.get("avg_exit_price") or 0.0)
-            pnl_percentage = (
-                ((exit_price - entry_price) / entry_price * 100)
-                if entry_price > 0
-                else 0.0
-            )
-            settlement["pnl_percentage"] = pnl_percentage
-            settlement["strategy_filter"] = _map_order_strategy_filter(
-                settlement["strategy_name"]
-            )
+            _enrich_single_settlement(settlement, executions)
 
         return settlements
 
@@ -1259,20 +1388,9 @@ class TradeViewService:
     ) -> dict[str, Any] | None:
         """Checks for discrepancy between local trade record and broker position."""
         symbol_trades = [t for t in local_trades if t.get("symbol") == symbol]
-        active_trades = [t for t in symbol_trades if t.get("status") == "ACTIVE"]
-
-        local_status = "CLOSED"
-        local_position = 0.0
-        if active_trades:
-            local_status = "ACTIVE"
-            size_val = (
-                active_trades[0].get("current_size")
-                or active_trades[0].get("initial_size")
-                or 0.0
-            )
-            local_position = float(str(size_val))
-
+        local_status, local_position = _resolve_local_symbol_state(symbol_trades)
         tws_position = float(broker_positions.get(symbol, 0.0))
+
         trade_obj = symbol_trades[0] if symbol_trades else local_trades[0]
         strategy = _map_order_strategy_filter(self.resolve_strategy(trade_obj))
 
@@ -1326,6 +1444,17 @@ class TradeViewService:
             "strategy": strategy,
         }
 
+    def _filter_reconcilable_trades(
+        self, combined_trades: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        """Filters out manual strategies from reconciliation list."""
+        ignored = {Strategies.HoldTarget, Strategies.SplitTarget}
+        return [
+            trade
+            for trade in combined_trades
+            if self.resolve_strategy(trade) not in ignored
+        ]
+
     def get_reconciliation_discrepancies(self) -> list[dict[str, Any]]:
         """Compares local signals.db trades with TWS executions in trading.db.
 
@@ -1339,16 +1468,7 @@ class TradeViewService:
 
         local_active = self.trade_repository.get_by_status("ACTIVE")
         local_closed = self.trade_repository.get_by_status("CLOSED")
-        combined_local_trades = local_active + local_closed
-        local_trades = [
-            trade
-            for trade in combined_local_trades
-            if self.resolve_strategy(trade)
-            not in [
-                Strategies.HoldTarget,
-                Strategies.SplitTarget,
-            ]
-        ]
+        local_trades = self._filter_reconcilable_trades(local_active + local_closed)
 
         broker_positions = self.broker_repository.get_net_positions_by_symbol()
         discrepancies: list[dict[str, Any]] = []
@@ -1366,9 +1486,7 @@ class TradeViewService:
                 discrepancies.append(disc)
 
         for symbol, tws_position in broker_positions.items():
-            if symbol in checked_symbols:
-                continue
-            if tws_position > 0.0:
+            if symbol not in checked_symbols and tws_position > 0.0:
                 discrepancies.append(
                     self._check_broker_orphan_discrepancy(symbol, tws_position)
                 )
@@ -1466,20 +1584,4 @@ class TradeViewService:
 
 def _map_order_strategy_filter(strategy_name: str) -> str:
     """Maps a raw broker strategy name to a standardized UI filter key."""
-    strategy_lower = strategy_name.lower()
-    token_map = (
-        ("dip", "DipBuyer"),
-        ("turnover", "TurnoverTiming"),
-        ("twopercent", "TwoPercent"),
-        ("ndx", "NDXMomentum"),
-        ("momentum", "NDXMomentum"),
-        ("tgim", "TGIM"),
-        ("bridge", "BridgeScout"),
-        ("scout", "BridgeScout"),
-        ("bounce", "BounceBandit"),
-        ("bandit", "BounceBandit"),
-    )
-    for token, label in token_map:
-        if token in strategy_lower:
-            return label
-    return strategy_name or "Unknown"
+    return map_strategy_filter_key(strategy_name, fallback_to_unknown=True)
