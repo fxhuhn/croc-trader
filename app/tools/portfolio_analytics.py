@@ -784,6 +784,79 @@ def calculate_benchmark_monthly_returns(
     }
 
 
+def _build_ytd_monthly_timeline(
+    today: pd.Timestamp,
+) -> tuple[pd.DatetimeIndex, list[str], list[str]]:
+    """Generates monthly range, ISO date strings, and German month labels for YTD."""
+    start_of_year = pd.Timestamp(year=today.year, month=1, day=1)
+    date_range = pd.date_range(start=start_of_year, end=today, freq="MS")
+    dates_formatted = [date_val.strftime("%Y-%m-%d") for date_val in date_range]
+    month_labels = [
+        f"{GERMAN_MONTH_NAMES[date_val.month]} {date_val.year}"
+        for date_val in date_range
+    ]
+    return date_range, dates_formatted, month_labels
+
+
+def _resolve_month_slice_end(
+    month_start: pd.Timestamp, today: pd.Timestamp
+) -> pd.Timestamp:
+    """Returns today if month_start is in current active month, otherwise month end."""
+    if month_start.year == today.year and month_start.month == today.month:
+        return today
+    return month_start + pd.offsets.MonthEnd(0)
+
+
+def _sum_strategy_group_pnls(
+    month_slice: pd.DataFrame,
+    resolved_strategies: pd.Series,
+    strategy_groups: dict[str, list[Any]],
+) -> dict[str, float]:
+    """Calculates realized PnL sum for each strategy group in month_slice."""
+    results: dict[str, float] = {}
+    for name, filters in strategy_groups.items():
+        if month_slice.empty:
+            results[name] = 0.0
+            continue
+        matching_rows = resolved_strategies.loc[month_slice.index].isin(filters)
+        strat_slice = month_slice[matching_rows]
+        strat_pnl = (
+            float(pd.to_numeric(strat_slice["realized_pnl"], errors="coerce").sum())
+            if not strat_slice.empty
+            else 0.0
+        )
+        results[name] = strat_pnl
+    return results
+
+
+def _track_intramonth_trade_drawdowns(
+    month_trades: pd.DataFrame,
+    current_equity: float,
+    peak_equity: float,
+    initial_worst_dd: float,
+) -> tuple[float, float, float]:
+    """Tracks trade-by-trade equity and peak, returning (worst_dd, final_equity, final_peak)."""
+    worst_dd = initial_worst_dd
+    equity = current_equity
+    peak = peak_equity
+
+    for row in month_trades.itertuples(index=False):
+        raw_pnl = getattr(row, "realized_pnl", 0.0)
+        try:
+            pnl = (
+                float(raw_pnl) if raw_pnl is not None and not pd.isna(raw_pnl) else 0.0
+            )
+        except (ValueError, TypeError):
+            pnl = 0.0
+
+        equity += pnl
+        peak = max(peak, equity)
+        trade_dd = (equity - peak) / peak if peak > 0.0 else 0.0
+        worst_dd = min(worst_dd, trade_dd)
+
+    return worst_dd, equity, peak
+
+
 def calculate_monthly_trend_data(
     dataframe: pd.DataFrame,
     strategy_groups: dict[str, list[Any]],
@@ -802,13 +875,8 @@ def calculate_monthly_trend_data(
     Returns:
         dict[str, Any]: Formatted dictionary with 'dates', 'month_labels', 'aggregate', and 'strategies'.
     """
+    date_range, dates_formatted, month_labels = _build_ytd_monthly_timeline(today)
     start_of_year = pd.Timestamp(year=today.year, month=1, day=1)
-    date_range = pd.date_range(start=start_of_year, end=today, freq="MS")
-    dates_formatted = [date_val.strftime("%Y-%m-%d") for date_val in date_range]
-    month_labels = [
-        f"{GERMAN_MONTH_NAMES[date_val.month]} {date_val.year}"
-        for date_val in date_range
-    ]
 
     chart_dataframe = (
         dataframe[dataframe["exit_date_dt"] >= start_of_year].copy()
@@ -832,12 +900,7 @@ def calculate_monthly_trend_data(
     strategies_series: dict[str, list[float]] = {name: [] for name in strategy_groups}
 
     for month_start in date_range:
-        month_end = month_start + pd.offsets.MonthEnd(0)
-        slice_end = (
-            today
-            if month_start.year == today.year and month_start.month == today.month
-            else month_end
-        )
+        slice_end = _resolve_month_slice_end(month_start, today)
         month_slice = chart_dataframe[chart_dataframe["exit_date_dt"] <= slice_end]
         total_month_pnl = (
             float(pd.to_numeric(month_slice["realized_pnl"], errors="coerce").sum())
@@ -846,15 +909,11 @@ def calculate_monthly_trend_data(
         )
         aggregate_series.append(total_month_pnl)
 
-        for name, filters in strategy_groups.items():
-            matching_rows = resolved_strategies.loc[month_slice.index].isin(filters)
-            strat_slice = month_slice[matching_rows]
-            strat_pnl = (
-                float(pd.to_numeric(strat_slice["realized_pnl"], errors="coerce").sum())
-                if not strat_slice.empty
-                else 0.0
-            )
-            strategies_series[name].append(strat_pnl)
+        group_pnls = _sum_strategy_group_pnls(
+            month_slice, resolved_strategies, strategy_groups
+        )
+        for name, pnl_val in group_pnls.items():
+            strategies_series[name].append(pnl_val)
 
     return {
         "dates": dates_formatted,
@@ -882,13 +941,7 @@ def calculate_monthly_drawdown_max_intramonth(
     Returns:
         dict[str, Any]: Formatted dictionary with 'dates', 'month_labels', and 'aggregate' drawdown ratios.
     """
-    start_of_year = pd.Timestamp(year=today.year, month=1, day=1)
-    date_range = pd.date_range(start=start_of_year, end=today, freq="MS")
-    dates_formatted = [date_val.strftime("%Y-%m-%d") for date_val in date_range]
-    month_labels = [
-        f"{GERMAN_MONTH_NAMES[date_val.month]} {date_val.year}"
-        for date_val in date_range
-    ]
+    date_range, dates_formatted, month_labels = _build_ytd_monthly_timeline(today)
 
     if (
         dataframe.empty
@@ -901,6 +954,7 @@ def calculate_monthly_drawdown_max_intramonth(
             "aggregate": [0.0] * len(date_range),
         }
 
+    start_of_year = pd.Timestamp(year=today.year, month=1, day=1)
     ytd_trades = (
         dataframe[dataframe["exit_date_dt"] >= start_of_year]
         .sort_values("exit_date_dt")
@@ -912,13 +966,7 @@ def calculate_monthly_drawdown_max_intramonth(
     peak_equity = initial_capital
 
     for month_start in date_range:
-        month_end = month_start + pd.offsets.MonthEnd(0)
-        slice_end = (
-            today
-            if month_start.year == today.year and month_start.month == today.month
-            else month_end
-        )
-
+        slice_end = _resolve_month_slice_end(month_start, today)
         month_trades = ytd_trades[
             (ytd_trades["exit_date_dt"] >= month_start)
             & (ytd_trades["exit_date_dt"] <= slice_end)
@@ -930,16 +978,13 @@ def calculate_monthly_drawdown_max_intramonth(
         worst_month_dd = min(0.0, start_month_dd)
 
         if not month_trades.empty:
-            for _, row in month_trades.iterrows():
-                pnl = float(row.get("realized_pnl", 0.0) or 0.0)
-                current_equity += pnl
-                peak_equity = max(peak_equity, current_equity)
-                trade_dd = (
-                    (current_equity - peak_equity) / peak_equity
-                    if peak_equity > 0.0
-                    else 0.0
-                )
-                worst_month_dd = min(worst_month_dd, trade_dd)
+            (
+                worst_month_dd,
+                current_equity,
+                peak_equity,
+            ) = _track_intramonth_trade_drawdowns(
+                month_trades, current_equity, peak_equity, worst_month_dd
+            )
 
         monthly_max_drawdowns.append(round(worst_month_dd, 4))
 

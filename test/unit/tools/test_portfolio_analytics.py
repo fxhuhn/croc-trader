@@ -1,6 +1,6 @@
 from typing import Any
 
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 import pytest
 
 from app.const import Strategies
@@ -343,6 +343,63 @@ def test_calculate_monthly_drawdown_max_intramonth(
     assert res["aggregate"][1] == pytest.approx(-0.0194, abs=1e-4)
     # In Mar, entered at peak (106k), no trades -> DD = 0.0
     assert res["aggregate"][2] == 0.0
+
+
+def test_calculate_monthly_trend_data_edge_cases(
+    strategy_groups: dict[str, list[object]],
+) -> None:
+    """Verifies edge cases in calculate_monthly_trend_data."""
+    eval_date = pd.Timestamp("2026-02-15")
+
+    # Missing exit_date_dt column
+    df_no_dt = pd.DataFrame([{"strategy": "croc_setup", "realized_pnl": 100.0}])
+    res_no_dt = calculate_monthly_trend_data(df_no_dt, strategy_groups, eval_date)
+    assert res_no_dt["aggregate"] == [0.0, 0.0]
+
+    # Prior year trades excluded
+    df_prior = pd.DataFrame(
+        [
+            {
+                "strategy": "croc_setup",
+                "exit_date_dt": pd.Timestamp("2025-12-31"),
+                "realized_pnl": 100.0,
+            }
+        ]
+    )
+    res_prior = calculate_monthly_trend_data(df_prior, strategy_groups, eval_date)
+    assert res_prior["aggregate"] == [0.0, 0.0]
+
+
+def test_calculate_monthly_drawdown_max_intramonth_edge_cases() -> None:
+    """Verifies edge cases in calculate_monthly_drawdown_max_intramonth."""
+    eval_date = pd.Timestamp("2026-02-15")
+
+    # Zero or negative capital
+    res_zero_cap = calculate_monthly_drawdown_max_intramonth(
+        pd.DataFrame(
+            [{"exit_date_dt": pd.Timestamp("2026-01-10"), "realized_pnl": -50.0}]
+        ),
+        initial_capital=0.0,
+        today=eval_date,
+    )
+    assert res_zero_cap["aggregate"] == [0.0, 0.0]
+
+    # Missing exit_date_dt
+    res_no_col = calculate_monthly_drawdown_max_intramonth(
+        pd.DataFrame([{"realized_pnl": -50.0}]),
+        initial_capital=10_000.0,
+        today=eval_date,
+    )
+    assert res_no_col["aggregate"] == [0.0, 0.0]
+
+    # Trade with zero pnl
+    df_zero_pnl = pd.DataFrame(
+        [{"exit_date_dt": pd.Timestamp("2026-01-10"), "realized_pnl": 0.0}]
+    )
+    res_zero = calculate_monthly_drawdown_max_intramonth(
+        df_zero_pnl, initial_capital=10_000.0, today=eval_date
+    )
+    assert res_zero["aggregate"] == [0.0, 0.0]
 
 
 def test_calculate_rolling_3m_metrics_empty_and_valid() -> None:

@@ -150,6 +150,14 @@ class TechnicalIndicatorConfig:
         return handlers.get(condition_str)
 
 
+def _extract_safe_price(row: Mapping[str, object], key: str) -> float:
+    """Safely extracts a float price value or returns 0.0."""
+    val = row.get(key)
+    if val is None or val == "":
+        return 0.0
+    return float(str(val))
+
+
 @dataclass(frozen=True)
 class PriceData:
     """Validated price observations extracted from a webhook signal."""
@@ -169,23 +177,21 @@ class PriceData:
     def from_row(cls, row: Mapping[str, object]) -> "PriceData | None":
         """Factory creating PriceData from raw mapping with boundary validation."""
         try:
-            high_val = float(str(row.get("high") or 0.0))
-            low_val = float(str(row.get("low") or 0.0))
-            close_val = float(str(row.get("close") or 0.0))
-            sma_20_val = float(str(row.get("sma_20") or 0.0))
-            sma_200_val = float(str(row.get("sma_200") or 0.0))
+            close_val = _extract_safe_price(row, "close")
+            high_val = _extract_safe_price(row, "high")
             if close_val <= 0.0 and high_val <= 0.0:
                 return None
-            if high_val <= 0.0:
-                high_val = close_val
-            if low_val <= 0.0:
-                low_val = close_val
+
+            resolved_high = close_val if high_val <= 0.0 else high_val
+            low_val = _extract_safe_price(row, "low")
+            resolved_low = close_val if low_val <= 0.0 else low_val
+
             return cls(
-                high=high_val,
-                low=low_val,
+                high=resolved_high,
+                low=resolved_low,
                 close=close_val,
-                sma_20=sma_20_val,
-                sma_200=sma_200_val,
+                sma_20=_extract_safe_price(row, "sma_20"),
+                sma_200=_extract_safe_price(row, "sma_200"),
             )
         except (ValueError, TypeError):
             return None
@@ -333,41 +339,38 @@ def is_rule_match(row: Mapping[str, object], rule: Mapping[str, object]) -> bool
     return True
 
 
+def _normalize_signal_name(raw_signal: object) -> str:
+    """Normalizes raw signal name to non-empty string or empty string."""
+    if raw_signal is None:
+        return ""
+    signal_name = str(raw_signal).strip()
+    return "" if signal_name.lower() == "none" else signal_name
+
+
+def _rule_ranking_key(rule: Mapping[str, object]) -> tuple[float, int]:
+    """Computes (score, rule_length) comparison key for rule ranking."""
+    score = float(str(rule.get("SQN", rule.get("Score", 0.0))))
+    rule_length = sum(
+        1 for key in rule.keys() if key.lower() in TechnicalIndicatorConfig.WHITELIST
+    )
+    return score, rule_length
+
+
 def find_best_rule_match(
     row: Mapping[str, object], rules: Sequence[Mapping[str, object]]
 ) -> dict[str, object] | None:
     """Pure Function: Finds the best matching YAML ranking rule for a signal row."""
-    raw_signal = row.get("signal")
-    signal_name = str(raw_signal).strip() if raw_signal is not None else ""
-    if signal_name.lower() == "none":
-        signal_name = ""
+    signal_name = _normalize_signal_name(row.get("signal"))
+    valid_rules = [
+        rule
+        for rule in rules
+        if is_rule_signal_match(row, rule, signal_name) and is_rule_match(row, rule)
+    ]
+    if not valid_rules:
+        return None
 
-    matching_rules: list[Mapping[str, object]] = []
-    for rule in rules:
-        if is_rule_signal_match(row, rule, signal_name):
-            matching_rules.append(rule)
-
-    best_match: dict[str, object] | None = None
-    best_score = -float("inf")
-    best_rule_length = 0
-
-    for rule in matching_rules:
-        if is_rule_match(row, rule):
-            score = float(str(rule.get("SQN", rule.get("Score", 0.0))))
-            rule_length = sum(
-                1
-                for key in rule.keys()
-                if key.lower() in TechnicalIndicatorConfig.WHITELIST
-            )
-
-            if score > best_score or (
-                score == best_score and rule_length > best_rule_length
-            ):
-                best_match = dict(rule)
-                best_score = score
-                best_rule_length = rule_length
-
-    return best_match
+    best_rule = max(valid_rules, key=_rule_ranking_key)
+    return dict(best_rule)
 
 
 def enrich_sma_distances(
@@ -388,6 +391,43 @@ def enrich_sma_distances(
     return enriched
 
 
+def _resolve_croc_direction(match: Mapping[str, object]) -> str:
+    """Extracts normalized direction, defaulting to 'long'."""
+    raw_direction = str(match.get("direction", "long")).lower().strip()
+    return raw_direction if raw_direction in ("long", "short") else "long"
+
+
+def _resolve_croc_entry_and_stop(
+    prices: PriceData, direction: str
+) -> tuple[float, float]:
+    """Computes entry and stop loss based on direction and risk range."""
+    if direction == "short":
+        return prices.low, prices.low + prices.risk_range
+    return prices.high, prices.high - prices.risk_range
+
+
+def _extract_tp_level(exit_name: str) -> int:
+    """Extracts TP numeric level (e.g. tp1 -> 1, tp2 -> 2) or defaults to 1."""
+    match_tp = re.search(r"tp(\d+)", exit_name.lower().strip())
+    return int(match_tp.group(1)) if match_tp else 1
+
+
+def _resolve_display_signal(raw_signal: object, rule_signal: object) -> str:
+    """Resolves human-readable signal name from raw signal or rule fallback."""
+    if raw_signal and str(raw_signal).lower() != "none":
+        return str(raw_signal)
+    return str(rule_signal) if rule_signal is not None else "-"
+
+
+def _resolve_rule_score(match: Mapping[str, object]) -> float:
+    """Calculates weighted candidate score factoring in SQN/Score and MaxDD."""
+    raw_score = float(str(match.get("SQN", match.get("Score", 0.0))))
+    max_dd = float(str(match.get("MaxDD", 0.0)))
+    return (
+        calculate_croc_candidate_score(raw_score, max_dd) if max_dd > 0.0 else raw_score
+    )
+
+
 def build_croc_candidate(
     row: Mapping[str, object],
     prices: PriceData,
@@ -395,40 +435,17 @@ def build_croc_candidate(
     indices: str,
 ) -> CrocCandidate | None:
     """Pure Function: Constructs a validated CrocCandidate from match and price data."""
-    symbol = str(row.get("symbol", "UNKNOWN"))
     if indices == "-" or prices.risk_range <= 0.0:
         return None
 
-    direction = str(match.get("direction", "long")).lower().strip()
-    if direction not in ("long", "short"):
-        direction = "long"
-
-    if direction == "short":
-        entry = prices.low
-        stop = prices.low + prices.risk_range
-    else:
-        entry = prices.high
-        stop = prices.high - prices.risk_range
-
-    exit_name = str(match.get("Exit", "unknown")).lower().strip()
-    match_tp = re.search(r"tp(\d+)", exit_name)
-    tp_level = int(match_tp.group(1)) if match_tp else 1
-
+    symbol = str(row.get("symbol", "UNKNOWN"))
+    direction = _resolve_croc_direction(match)
+    entry, stop = _resolve_croc_entry_and_stop(prices, direction)
+    tp_level = _extract_tp_level(str(match.get("Exit", "unknown")))
     targets = calculate_croc_targets(entry, prices.risk_range, tp_level, direction)
 
-    raw_signal = row.get("signal")
-    displayed_signal = (
-        str(raw_signal)
-        if raw_signal and str(raw_signal).lower() != "none"
-        else str(match.get("Signal", "-"))
-    )
-
-    raw_score = float(str(match.get("SQN", match.get("Score", 0.0))))
-    max_dd = float(str(match.get("MaxDD", 0.0)))
-    score = (
-        calculate_croc_candidate_score(raw_score, max_dd) if max_dd > 0.0 else raw_score
-    )
-
+    displayed_signal = _resolve_display_signal(row.get("signal"), match.get("Signal"))
+    score = _resolve_rule_score(match)
     date_val = str(row.get("date_str") or row.get("timestamp") or "")
 
     return CrocCandidate(
@@ -560,6 +577,54 @@ class CrocSetupStrategy(BaseStrategy[int]):
 
         return build_croc_candidate(enriched, prices, match, indices)
 
+    def _filter_by_specific_symbols(
+        self,
+        candidates: list[CrocCandidate],
+        specific_symbols: list[str] | None,
+    ) -> list[CrocCandidate]:
+        """Filters candidates to match specified symbols if provided."""
+        if not specific_symbols:
+            return candidates
+        allowed = {symbol.upper() for symbol in specific_symbols}
+        return [c for c in candidates if c.symbol.upper() in allowed]
+
+    def _persist_candidate_trade(self, candidate: CrocCandidate) -> None:
+        """Persists a single candidate as a created trade in signals.db."""
+        context = {
+            "source": "webhook",
+            "date": candidate.date_str,
+            "setup_score": candidate.score,
+            "match_rule": candidate.rule_match,
+            "target_level": candidate.target_level,
+            "indices": candidate.indices,
+            "direction": candidate.direction,
+        }
+        self.trade_repository.create_trade(
+            symbol=candidate.symbol,
+            strategy=Strategies.HoldTarget,
+            size=0,
+            entry=candidate.entry_price,
+            stop_loss=candidate.stop_loss,
+            target=candidate.target_profit,
+            context=context,
+        )
+
+    def _notify_created_candidates(
+        self,
+        created_candidates: list[CrocCandidate],
+        analysis_date: str | None,
+    ) -> None:
+        """Sends Telegram notification report for created candidates."""
+        if not self.telegram_bot or not created_candidates:
+            return
+        report_items = [c.to_report_item() for c in created_candidates]
+        report_items.sort(key=lambda x: x.symbol)
+        self._send_telegram_report(
+            display_name="Croc Signals",
+            data=report_items,
+            date=analysis_date or "LIVE",
+        )
+
     def run(
         self,
         days: int = 0,
@@ -567,52 +632,22 @@ class CrocSetupStrategy(BaseStrategy[int]):
         specific_symbols: list[str] | None = None,
     ) -> int:
         """Runs the CrocSetup screening pipeline and persists top 3 created trades."""
-        if not analysis_date and days == 0:
-            analysis_date = self.signal_repository.get_latest_signal_date()
+        target_date = (
+            self.signal_repository.get_latest_signal_date()
+            if not analysis_date and days == 0
+            else analysis_date
+        )
 
-        sorted_candidates = self._fetch_and_sort_candidates(analysis_date, days)
+        candidates = self._fetch_and_sort_candidates(target_date, days)
+        filtered = self._filter_by_specific_symbols(candidates, specific_symbols)
+        top_candidates = filtered[:DEFAULT_TOP_CANDIDATES_LIMIT]
 
-        if specific_symbols:
-            filtered_symbols = {s.upper() for s in specific_symbols}
-            sorted_candidates = [
-                c for c in sorted_candidates if c.symbol.upper() in filtered_symbols
-            ]
+        for candidate in top_candidates:
+            self._persist_candidate_trade(candidate)
 
-        created_candidates: list[CrocCandidate] = []
-        for candidate in sorted_candidates[:DEFAULT_TOP_CANDIDATES_LIMIT]:
-            context = {
-                "source": "webhook",
-                "date": candidate.date_str,
-                "setup_score": candidate.score,
-                "match_rule": candidate.rule_match,
-                "target_level": candidate.target_level,
-                "indices": candidate.indices,
-                "direction": candidate.direction,
-            }
-
-            self.trade_repository.create_trade(
-                symbol=candidate.symbol,
-                strategy=Strategies.HoldTarget,
-                size=0,
-                entry=candidate.entry_price,
-                stop_loss=candidate.stop_loss,
-                target=candidate.target_profit,
-                context=context,
-            )
-            created_candidates.append(candidate)
-
-        logger.info("🐊 [%s] Created %d trades.", self.name, len(created_candidates))
-
-        if self.telegram_bot and created_candidates:
-            report_items = [c.to_report_item() for c in created_candidates]
-            report_items.sort(key=lambda x: x.symbol)
-            self._send_telegram_report(
-                display_name="Croc Signals",
-                data=report_items,
-                date=analysis_date or "LIVE",
-            )
-
-        return len(created_candidates)
+        logger.info("🐊 [%s] Created %d trades.", self.name, len(top_candidates))
+        self._notify_created_candidates(top_candidates, target_date)
+        return len(top_candidates)
 
     def get_all_recommendations(
         self,
