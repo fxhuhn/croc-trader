@@ -11,6 +11,130 @@ logger = logging.getLogger(__name__)
 
 MAX_NDX_MOMENTUM_LEADERS: int = 5
 
+INDEX_CODE_MAPPING: dict[str, str] = {
+    "NASDAQ_100": "NDX",
+    "SP_500": "SPX",
+    "RUSSELL_1000": "RUS",
+    "RUSSELL_2000": "RUT",
+    "DOW_JONES": "DOW",
+}
+
+
+def harmonize_index_string(raw_indices: str) -> str:
+    """Harmonizes raw index string to short codes (SPX, NDX, RUS, DOW)."""
+    if not raw_indices:
+        return "-"
+    return ", ".join(
+        INDEX_CODE_MAPPING.get(part.strip(), part.strip().replace("_", " "))
+        for part in raw_indices.split(",")
+    )
+
+
+def _resolve_canonical_strategy(
+    strategy: str | Strategies | list[str],
+) -> tuple[str | Strategies | list[str], str]:
+    """Resolves strategy aliases and returns (resolved_strategy, strategy_value)."""
+    normalized_key = str(strategy).replace(".", "_").replace("-", "_").lower()
+    canonical_strategy = STRATEGY_ALIASES.get(normalized_key)
+    resolved = canonical_strategy if canonical_strategy is not None else strategy
+    return resolved, str(resolved)
+
+
+def _is_croc_strategy(
+    strategy: str | Strategies | list[str],
+    resolved_strategy: str | Strategies | list[str],
+    strategy_value: str,
+) -> bool:
+    """Checks whether the requested strategy is a Croc strategy."""
+    croc_prefix = str(Strategies.CrocSetup).lower()
+    return strategy_value.lower().startswith(croc_prefix) or Strategies.CrocSetup in (
+        strategy,
+        resolved_strategy,
+        strategy_value,
+    )
+
+
+def _extract_display_date(context: dict[str, Any], symbol: object = "") -> str:
+    """Extracts and formats display date from context or logs warning if missing."""
+    date_value = context.get("date") or context.get("setup_date")
+    if date_value:
+        return str(date_value).split("T")[0].split(" ")[0]
+    logger.warning("No date found in signal context for %s", symbol)
+    return "-"
+
+
+def _resolve_position_status(status_val: object) -> str:
+    """Maps trade status to 'HOLD' (for ACTIVE) or 'NEW'."""
+    return (
+        "HOLD" if str(status_val).upper() == str(TradeStatus.ACTIVE).upper() else "NEW"
+    )
+
+
+def _enrich_candidate_row(
+    row: dict[str, Any], context: dict[str, Any]
+) -> dict[str, Any]:
+    """Enriches raw candidate dictionary with parsed context, status, and display date."""
+    candidate = dict(row)
+    candidate["context"] = context
+    candidate["position_status"] = _resolve_position_status(candidate.get("status", ""))
+    candidate["display_date"] = _extract_display_date(context, candidate.get("symbol"))
+    return candidate
+
+
+def _sort_candidates_by_score(
+    candidates: list[dict[str, Any]], strategy_value: str
+) -> list[dict[str, Any]]:
+    """Sorts candidates by momentum_score (NDXMomentum) or setup_score (DipBuyer)."""
+    if strategy_value == Strategies.NDXMomentum:
+        candidates.sort(
+            key=lambda x: extract_safe_float(
+                x["context"].get("momentum_score")
+                if isinstance(x.get("context"), dict)
+                else None
+            ),
+            reverse=True,
+        )
+    elif strategy_value == Strategies.DipBuyer:
+        candidates.sort(
+            key=lambda x: extract_safe_float(
+                x["context"].get("setup_score")
+                if isinstance(x.get("context"), dict)
+                else None
+            ),
+            reverse=True,
+        )
+    return candidates
+
+
+def _update_turnover_metrics_from_context(
+    candidate_dict: dict[str, Any], context: dict[str, Any]
+) -> None:
+    """Updates common numeric metrics, display date, and harmonized index from context."""
+    if context.get("setup_close"):
+        candidate_dict["close"] = float(str(context["setup_close"]))
+    if context.get("setup_atr"):
+        candidate_dict["atr"] = float(str(context["setup_atr"]))
+    if context.get("setup_turnover_sma"):
+        candidate_dict["dollar_volume"] = float(str(context["setup_turnover_sma"]))
+
+    date_value = context.get("date") or context.get("setup_date")
+    if date_value:
+        candidate_dict["display_date"] = str(date_value).split("T")[0].split(" ")[0]
+
+    raw_indices = context.get("indices") or context.get("bucket")
+    if raw_indices:
+        candidate_dict["index"] = harmonize_index_string(str(raw_indices))
+
+
+def _apply_turnover_variant_entry(
+    candidate_dict: dict[str, Any], strategy_name: object, entry_price: float
+) -> None:
+    """Updates candidate entry price based on 0.5 or 1.0 strategy variant."""
+    if strategy_name == Strategies.TurnOverTiming_05:
+        candidate_dict["entry_0_5"] = entry_price
+    elif strategy_name == Strategies.TurnOverTiming_10:
+        candidate_dict["entry_1_0"] = entry_price
+
 
 class ScreenerViewService:
     """Service to handle data preparation and business logic for screener views.
@@ -58,73 +182,21 @@ class ScreenerViewService:
         Returns:
             list[dict[str, Any]]: List of processed candidate dictionaries.
         """
-        # Ensure canonical strategy resolution (e.g. NDXMomentum, ndx-momentum -> ndx_momentum)
-        normalized_key = str(strategy).replace(".", "_").replace("-", "_").lower()
-        canonical_strategy = STRATEGY_ALIASES.get(normalized_key)
-        resolved_strategy = (
-            canonical_strategy if canonical_strategy is not None else strategy
-        )
-        strategy_value = str(resolved_strategy)
+        resolved_strategy, strategy_value = _resolve_canonical_strategy(strategy)
 
-        if strategy_value.lower().startswith(
-            str(Strategies.CrocSetup).lower()
-        ) or Strategies.CrocSetup in (strategy, resolved_strategy, strategy_value):
+        if _is_croc_strategy(strategy, resolved_strategy, strategy_value):
             results = self._fetch_croc_candidates(limit)
         else:
             results = self._fetch_standard_candidates(
                 resolved_strategy, strategy_value, limit
             )
 
-        processed_results: list[dict[str, Any]] = []
-        for row in results:
-            candidate = dict(row)
+        processed_results = [
+            _enrich_candidate_row(row, self._parse_context(row.get("signal_context")))
+            for row in results
+        ]
 
-            # Parse Context
-            raw_signal_context = candidate.get("signal_context")
-            context = self._parse_context(raw_signal_context)
-            candidate["context"] = context
-
-            # Position Status (NEW vs HOLD)
-            status_val = str(candidate.get("status", "")).upper()
-            candidate["position_status"] = (
-                "HOLD" if status_val == str(TradeStatus.ACTIVE).upper() else "NEW"
-            )
-
-            # Standardize Date Display (Strict)
-            date_value = context.get("date") or context.get("setup_date")
-            if date_value:
-                candidate["display_date"] = str(date_value).split("T")[0].split(" ")[0]
-            else:
-                logger.warning(
-                    "No date found in signal context for %s", candidate.get("symbol")
-                )
-                candidate["display_date"] = "-"
-
-            processed_results.append(candidate)
-
-        # Sort by Momentum Score DESC for NDX Momentum
-        if strategy_value == Strategies.NDXMomentum:
-            processed_results.sort(
-                key=lambda x: extract_safe_float(
-                    x["context"].get("momentum_score")
-                    if isinstance(x.get("context"), dict)
-                    else None
-                ),
-                reverse=True,
-            )
-
-        # Sort by Setup Score DESC for Dip Buyer
-        if strategy_value == Strategies.DipBuyer:
-            processed_results.sort(
-                key=lambda x: extract_safe_float(
-                    x["context"].get("setup_score")
-                    if isinstance(x.get("context"), dict)
-                    else None
-                ),
-                reverse=True,
-            )
-
-        return processed_results
+        return _sort_candidates_by_score(processed_results, strategy_value)
 
     def _fetch_croc_candidates(self, limit: int) -> list[dict[str, Any]]:
         """Fetches unique trade candidates for Croc strategies."""
@@ -287,29 +359,7 @@ class ScreenerViewService:
     @staticmethod
     def harmonize_indices(raw_indices: str) -> str:
         """Harmonizes index names to short codes (SPX, NDX, RUS, DOW)."""
-        if not raw_indices:
-            return "-"
-
-        index_parts = [part.strip() for part in raw_indices.split(",")]
-        mapped_index_parts = []
-
-        mapping = {
-            "NASDAQ_100": "NDX",
-            "SP_500": "SPX",
-            "RUSSELL_1000": "RUS",
-            "RUSSELL_2000": "RUT",
-            "DOW_JONES": "DOW",
-        }
-
-        for part in index_parts:
-            # Check explicit mapping first
-            if part in mapping:
-                mapped_index_parts.append(mapping[part])
-            else:
-                # Fallback: Replace underscores, keep as is
-                mapped_index_parts.append(part.replace("_", " "))
-
-        return ", ".join(mapped_index_parts)
+        return harmonize_index_string(raw_indices)
 
     def get_turnover_candidates(self, limit: int = 200) -> list[dict[str, Any]]:
         """Fetches and aggregates Turnover Timing candidates.
@@ -367,38 +417,12 @@ class ScreenerViewService:
         try:
             raw_signal_context = row.get("signal_context")
             context = self._parse_context(raw_signal_context)
+            _update_turnover_metrics_from_context(candidate_dict, context)
 
-            # Update common metrics
-            if context.get("setup_close"):
-                candidate_dict["close"] = float(str(context["setup_close"]))
-            if context.get("setup_atr"):
-                candidate_dict["atr"] = float(str(context["setup_atr"]))
-            if context.get("setup_turnover_sma"):
-                candidate_dict["dollar_volume"] = float(
-                    str(context["setup_turnover_sma"])
-                )
-
-            # Strict Date Extraction (No created_at fallback)
-            date_value = context.get("date") or context.get("setup_date")
-            if date_value:
-                candidate_dict["display_date"] = (
-                    str(date_value).split("T")[0].split(" ")[0]
-                )
-
-            # Extract and Harmonize Index
-            raw_indices = context.get("indices") or context.get("bucket")
-            if raw_indices:
-                candidate_dict["index"] = self.harmonize_indices(str(raw_indices))
-
-            # Identify variant
-            strategy_name = row.get("strategy")
             entry_price = float(str(row.get("entry_price") or 0.0))
-
-            # Strict Strategy Matching
-            if strategy_name == Strategies.TurnOverTiming_05:
-                candidate_dict["entry_0_5"] = entry_price
-            elif strategy_name == Strategies.TurnOverTiming_10:
-                candidate_dict["entry_1_0"] = entry_price
+            _apply_turnover_variant_entry(
+                candidate_dict, row.get("strategy"), entry_price
+            )
 
         except (ValueError, TypeError) as error:
             logger.warning(
