@@ -1,5 +1,6 @@
 import json
 import logging
+import warnings
 from typing import Any
 
 from ...const import STRATEGY_ALIASES, Strategies, TradeStatus
@@ -45,7 +46,16 @@ def _is_croc_strategy(
     resolved_strategy: str | Strategies | list[str],
     strategy_value: str,
 ) -> bool:
-    """Checks whether the requested strategy is a Croc strategy."""
+    """Checks whether the requested strategy is a Croc strategy.
+
+    .. deprecated::
+        '_is_croc_strategy' is deprecated and scheduled for future removal.
+    """
+    warnings.warn(
+        "'_is_croc_strategy' is deprecated and scheduled for future removal.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     croc_prefix = str(Strategies.CrocSetup).lower()
     return strategy_value.lower().startswith(croc_prefix) or Strategies.CrocSetup in (
         strategy,
@@ -199,7 +209,16 @@ class ScreenerViewService:
         return _sort_candidates_by_score(processed_results, strategy_value)
 
     def _fetch_croc_candidates(self, limit: int) -> list[dict[str, Any]]:
-        """Fetches unique trade candidates for Croc strategies."""
+        """Fetches unique trade candidates for Croc strategies.
+
+        .. deprecated::
+            '_fetch_croc_candidates' is deprecated and scheduled for future removal.
+        """
+        warnings.warn(
+            "'_fetch_croc_candidates' is deprecated and scheduled for future removal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         strategies_to_fetch = [
             str(Strategies.HoldTarget),
             str(Strategies.SplitTarget),
@@ -227,11 +246,19 @@ class ScreenerViewService:
     ) -> None:
         """Filters out duplicate candidates based on their unique ID.
 
+        .. deprecated::
+            '_filter_new_candidates' is deprecated and scheduled for future removal.
+
         Args:
             candidates: List of candidate dictionary records.
             seen_ids: Set of IDs that have already been collected.
             destination: Target list to append unique candidates to.
         """
+        warnings.warn(
+            "'_filter_new_candidates' is deprecated and scheduled for future removal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         for candidate in candidates:
             cand_id = candidate.get("id")
             if (

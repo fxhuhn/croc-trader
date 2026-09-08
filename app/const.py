@@ -4,13 +4,18 @@ from enum import StrEnum
 
 
 class Strategies(StrEnum):
-    """Canonical identifiers for all trading strategies."""
+    """Canonical identifiers for all trading strategies.
+
+    Note:
+        Croc variants (CrocSetup, SplitTarget, HoldTarget) are deprecated
+        and scheduled for future removal.
+    """
 
     # Core Strategies
     DipBuyer = "dip_buyer"
     TwoPercent = "two_percent"
 
-    # Croc Variants
+    # Croc Variants (Deprecated - scheduled for removal)
     CrocSetup = "croc_setup"
     SplitTarget = "split_target"
     HoldTarget = "hold_target"

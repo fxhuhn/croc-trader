@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+import warnings
 from threading import Lock, Thread
 from typing import Any, TypedDict, cast
 
@@ -26,7 +27,12 @@ type ApiResponse = Response | tuple[Response, int]
 
 
 class WebhookPayload(TypedDict, total=False):
-    """Schema for incoming signal webhooks."""
+    """Schema for incoming signal webhooks.
+
+    .. deprecated::
+        Incoming signal webhooks via /webhook are deprecated and scheduled
+        for future removal.
+    """
 
     symbol: str
     ticker: str
@@ -103,9 +109,18 @@ def root_check() -> ApiResponse:
 def ingest_webhook() -> ApiResponse:
     """Ingests signal webhooks and persists them to the signal database.
 
+    .. deprecated::
+        The TradingView webhook endpoint is deprecated and scheduled for future
+        removal. Code and functionality remain operational until decommissioned.
+
     Returns:
         Response: JSON success with signal ID or error message.
     """
+    warnings.warn(
+        "TradingView webhook endpoint /webhook is deprecated and scheduled for future removal.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     try:
         payload: WebhookPayload | None = request.get_json(silent=True, force=True)
 
@@ -356,9 +371,18 @@ def analyze_turnover() -> ApiResponse:
 def analyze_croc() -> ApiResponse:
     """Returns the full list of recommended signals for CrocSetup.
 
+    .. deprecated::
+        Endpoint /screener/croc is deprecated and scheduled for future removal.
+        Code and functionality remain operational until decommissioned.
+
     Returns:
         ApiResponse: JSON analysis result or error.
     """
+    warnings.warn(
+        "Screener endpoint /screener/croc is deprecated and scheduled for future removal.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     try:
         days_lookback = request.args.get("days", default=0, type=int)
         analysis_date = request.args.get("date")

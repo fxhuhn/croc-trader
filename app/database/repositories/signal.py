@@ -1,6 +1,7 @@
 import json
 import logging
 import sqlite3
+import warnings
 from typing import Any
 
 import pandas
@@ -12,6 +13,13 @@ logger = logging.getLogger(__name__)
 
 
 class SignalRepository(BaseRepository):
+    """Repository for managing incoming webhook signals and mappings in signals.db.
+
+    .. deprecated::
+        SignalRepository and the underlying 'croc' table are deprecated
+        and scheduled for future removal.
+    """
+
     def init_schema(self) -> None:
         """Creates tables for signals (croc), mappings and migrates old data (without deleting)."""
         with self.session.connect() as connection:
@@ -75,7 +83,17 @@ class SignalRepository(BaseRepository):
             )
 
     def save_signal(self, data: dict[str, Any]) -> int:
-        """Saves raw webhook data in 'croc'."""
+        """Saves raw webhook data in 'croc'.
+
+        .. deprecated::
+            Persisting raw webhook signals to the 'croc' table is deprecated
+            and scheduled for future removal.
+        """
+        warnings.warn(
+            "Persisting signals to 'croc' table via SignalRepository is deprecated.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         symbol = data.get("symbol") or data.get("ticker", "UNKNOWN")
         timeframe = data.get("timeframe")
         signal_name = data.get("signal") or data.get("strategy")

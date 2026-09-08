@@ -1,4 +1,5 @@
 import logging
+import warnings
 from decimal import Decimal
 from typing import final, override
 
@@ -15,14 +16,26 @@ logger = logging.getLogger(__name__)
 
 @final
 class HoldTargetStrategy(BaseTradeStrategy):
-    """
-    Manager for Croc Breakouts (Hold/TP3).
+    """Manager for Croc Breakouts (Hold/TP3).
+
     Aims to ride large trends (3R or more) with a breakout entry.
     Inherits shared logic from BaseTradeStrategy.
+
+    .. deprecated::
+        HoldTargetStrategy is deprecated and scheduled for future removal.
+        Code and functionality remain active until decommissioned.
     """
 
     name = Strategies.HoldTarget
     MAX_EXPIRATION_CALENDAR_DAYS: int = 5
+
+    def __init__(self) -> None:
+        warnings.warn(
+            "HoldTargetStrategy is deprecated and scheduled for future removal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__()
 
     @override
     def get_current_parameters(

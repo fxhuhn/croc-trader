@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import sqlite3
+import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -471,7 +472,12 @@ def build_croc_candidate(
 
 
 class CrocSetupStrategy(BaseStrategy[int]):
-    """CrocSetup screening strategy evaluating webhook signals against YAML ranking rules."""
+    """CrocSetup screening strategy evaluating webhook signals against YAML ranking rules.
+
+    .. deprecated::
+        CrocSetupStrategy is deprecated and scheduled for future removal.
+        Code and functionality remain active until decommissioned.
+    """
 
     name: str = Strategies.CrocSetup
 
@@ -482,6 +488,11 @@ class CrocSetupStrategy(BaseStrategy[int]):
         signal_repository: SignalRepository,
         telegram_bot: TelegramBot | None = None,
     ) -> None:
+        warnings.warn(
+            "CrocSetupStrategy is deprecated and scheduled for future removal.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(data_provider, telegram_bot)
         self.trade_repository = trade_repository
         self.signal_repository = signal_repository

@@ -78,7 +78,7 @@ def test_view_screener_overview_returns_correct_response(
 
         # Assert
         assert response.status_code == 200
-        assert b"Croc Setup" in response.data
+        assert b"/screener/croc" not in response.data
         assert b"Dip Buyer" in response.data
         assert b"Turnover Timing" in response.data
 

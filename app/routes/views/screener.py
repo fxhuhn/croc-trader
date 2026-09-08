@@ -1,5 +1,6 @@
 """Routes and views for strategy setups screeners."""
 
+import warnings
 from typing import TypedDict
 
 from flask import render_template, request
@@ -7,7 +8,6 @@ from flask import render_template, request
 from ...const import Strategies
 from .blueprint import views_bp
 from .dependencies import (
-    ScreenerViewService,
     SignalRepository,
     _get_screener_view_service,
     _get_signal_repository,
@@ -29,18 +29,15 @@ class StrategyOverview(TypedDict):
 
 def _get_strategy_overview(
     signals_repository: SignalRepository,
-    screener_service: ScreenerViewService,
 ) -> list[StrategyOverview]:
     """Fetches the overview statistics for all trading strategies.
 
     Args:
         signals_repository: Active repository instance for database access.
-        screener_service: Service layer instance for screening.
 
     Returns:
         list[StrategyOverview]: Populated strategies metadata and signals count.
     """
-    count_croc = len(screener_service.get_candidates(Strategies.CrocSetup, limit=100))
     count_dip = len(
         signals_repository.get_trade_candidates(Strategies.DipBuyer, limit=100)
     )
@@ -64,16 +61,6 @@ def _get_strategy_overview(
     )
 
     return [
-        {
-            "id": "croc",
-            "name": "Croc Setup",
-            "desc": (
-                "Trendfolge-Signale basierend auf Wochen- und Tageschart-Momentum."
-            ),
-            "icon": "arrow-up",
-            "count": count_croc,
-            "is_active": count_croc > 0,
-        },
         {
             "id": "dip-buyer",
             "name": "Dip Buyer",
@@ -142,9 +129,8 @@ def view_screener_overview() -> str:
         str: Rendered HTML dashboard template.
     """
     signals_repository = _get_signal_repository()
-    screener_service = _get_screener_view_service()
 
-    strategies = _get_strategy_overview(signals_repository, screener_service)
+    strategies = _get_strategy_overview(signals_repository)
 
     return render_template(
         "screener.html",
@@ -157,9 +143,19 @@ def view_screener_overview() -> str:
 def view_screener_croc() -> str:
     """Displays the Croc Setup screener details and current candidates.
 
+    .. deprecated::
+        The Croc Setup screener view and template 'screener_croc.html' are deprecated
+        and scheduled for future removal. Code and functionality remain operational
+        until decommissioned.
+
     Returns:
         str: Rendered HTML template with Croc setup candidates list.
     """
+    warnings.warn(
+        "View 'view_screener_croc' and template 'screener_croc.html' are deprecated and scheduled for future removal.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     limit = request.args.get("limit", 200, type=int)
     service = _get_screener_view_service()
     results = service.get_candidates(Strategies.CrocSetup, limit=limit)
