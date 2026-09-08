@@ -15,6 +15,7 @@ import pandas as pd
 from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
+from ....tools.market_holidays import MarketHolidayChecker
 from ...telegram import TelegramBot
 from ..models import SignalReportItem
 from .base import BaseStrategy
@@ -101,18 +102,30 @@ class TGIMStrategy(BaseStrategy[int]):
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
+        *,
+        holiday_checker: MarketHolidayChecker | None = None,
     ) -> None:
         """Initializes the TGIM screener strategy with required dependencies."""
         super().__init__(data_provider=data_provider, telegram_bot=telegram_bot)
         self.trade_repository = trade_repository
+        self.holiday_checker = holiday_checker or MarketHolidayChecker()
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """Executes the TGIM screening logic for the specified date."""
         target_date = self._resolve_target_date(days, analysis_date)
 
-        if target_date.weekday() != 0:
-            logger.debug("Skipping TGIM screening for %s (not a Monday).", target_date)
+        if target_date.weekday() != 0 or self.holiday_checker.is_holiday(target_date):
+            if target_date.weekday() == 0:
+                logger.info(
+                    "Skipping TGIM screening for %s (market holiday: %s).",
+                    target_date,
+                    self.holiday_checker.get_holiday_name(target_date) or "Holiday",
+                )
+            else:
+                logger.debug(
+                    "Skipping TGIM screening for %s (not a Monday).", target_date
+                )
             return 0
 
         target_date_str = target_date.strftime("%Y-%m-%d")

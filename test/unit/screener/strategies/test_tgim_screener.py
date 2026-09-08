@@ -1,5 +1,6 @@
 """Unit tests for the TGIM screener strategy."""
 
+import datetime
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -10,6 +11,7 @@ from app.const import Strategies
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.trade import TradeRepository
 from app.services.screener.strategies.tgim import TGIMStrategy, evaluate_tgim_setup
+from app.tools.market_holidays import MarketHolidayChecker
 
 # =====================================================================
 # Functional Core Unit Tests
@@ -251,3 +253,52 @@ def test_tgim_rolls_friday_analysis_date_to_upcoming_monday(
     assert call_kwargs["entry"] == 495.0
     context = call_kwargs["context"]
     assert context["setup_date"] == "2026-07-20"
+
+
+def test_tgim_skips_monday_holiday(
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that TGIM skips screening if target Monday is a market holiday."""
+    mock_holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    mock_holiday_checker.is_holiday.return_value = True
+    mock_holiday_checker.get_holiday_name.return_value = "Labor Day"
+
+    strategy = TGIMStrategy(
+        trade_repository=mock_trade_repo,
+        data_provider=mock_data_provider,
+        holiday_checker=mock_holiday_checker,
+    )
+
+    hits = strategy.run(days=0, analysis_date="2026-09-07")
+
+    assert hits == 0
+    mock_holiday_checker.is_holiday.assert_called_once_with(datetime.date(2026, 9, 7))
+    mock_data_provider.get_batch_history.assert_not_called()
+    mock_trade_repo.create_trade.assert_not_called()
+
+
+def test_tgim_skips_real_labor_day_holiday(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that TGIM skips real Labor Day Monday (2026-09-07) with default holiday checker."""
+    hits = tgim_strategy.run(days=0, analysis_date="2026-09-07")
+
+    assert hits == 0
+    mock_data_provider.get_batch_history.assert_not_called()
+    mock_trade_repo.create_trade.assert_not_called()
+
+
+def test_tgim_skips_friday_rolling_to_monday_holiday(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that Friday before Labor Day rolls to Monday and is skipped as holiday."""
+    hits = tgim_strategy.run(days=0, analysis_date="2026-09-04")
+
+    assert hits == 0
+    mock_data_provider.get_batch_history.assert_not_called()
+    mock_trade_repo.create_trade.assert_not_called()

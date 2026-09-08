@@ -153,6 +153,7 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
             trade_repository=trade_repository,
             data_provider=md_provider,
             telegram_bot=telegram,
+            holiday_checker=holiday_checker,
         ),
         BridgeScoutStrategy(
             trade_repository=trade_repository,
