@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 from typing import TypedDict, final, override
@@ -12,6 +13,67 @@ from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, HolidayCheckerProtocol, OrderOptions
 
 logger = logging.getLogger(__name__)
+
+
+def is_green_candle(open_price: float, close_price: float) -> bool:
+    """Pure calculation: Determines if a candle is green (Close > Open)."""
+    return close_price > open_price
+
+
+def calculate_consecutive_green_candles(
+    dataframe_history: pd.DataFrame,
+    start_date: pd.Timestamp | datetime.date | str | None = None,
+    initial_setup_candle_green: bool = False,
+) -> int:
+    """Pure calculation: Computes the number of consecutive green candles ending at the latest candle.
+
+    Reconstructs context statelessly from the historical price series, satisfying
+    the Stateless Execution Layers invariant. If historical prices in stocks.db are
+    revised, this calculation automatically self-heals without accumulator drift.
+
+    Args:
+        dataframe_history: Market history containing 'date', 'open', 'close' columns.
+        start_date: Optional setup date or entry date to anchor the trade lifecycle.
+        initial_setup_candle_green: Baseline flag if setup candle is not present in history.
+
+    Returns:
+        int: Consecutive green candles ending at the latest bar in dataframe_history.
+    """
+    if (
+        dataframe_history.empty
+        or "open" not in dataframe_history.columns
+        or "close" not in dataframe_history.columns
+    ):
+        return 1 if initial_setup_candle_green else 0
+
+    candles = dataframe_history
+    if start_date is not None:
+        try:
+            start_date_val = pd.Timestamp(start_date).date()
+            dates = pd.to_datetime(candles["date"]).dt.date
+            filtered_candles = candles[dates >= start_date_val]
+            if not filtered_candles.empty:
+                candles = filtered_candles
+        except (ValueError, TypeError):
+            pass
+
+    count = 0
+    first_date = pd.Timestamp(candles.iloc[0]["date"]).date()
+    start_date_obj = pd.Timestamp(start_date).date() if start_date is not None else None
+
+    # If the history slice starts strictly after start_date, seed with setup candle flag
+    if start_date_obj and first_date > start_date_obj and initial_setup_candle_green:
+        count = 1
+
+    for row in candles.itertuples():
+        open_price = float(row.open)
+        close_price = float(row.close)
+        if is_green_candle(open_price, close_price):
+            count += 1
+        else:
+            count = 0
+
+    return count
 
 
 class TurnoverContext(TypedDict, total=False):
@@ -68,7 +130,39 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         Returns:
             bool: True if the closing price is greater than the opening price.
         """
-        return close_price > open_price
+        return is_green_candle(open_price, close_price)
+
+    def _resolve_green_candle_count(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+    ) -> int:
+        """Resolves the current green candle count statelessly from price history.
+
+        Args:
+            trade: The trade record.
+            dataframe_history: Market history for the symbol.
+
+        Returns:
+            int: The calculated consecutive green candle count.
+        """
+        if (
+            dataframe_history.empty
+            or "open" not in dataframe_history.columns
+            or "close" not in dataframe_history.columns
+        ):
+            context = self._get_full_context(trade)
+            return int(str(context.get("green_candle_count") or 0))
+
+        context = self._get_full_context(trade)
+        setup_date = self._get_signal_date(trade)
+        setup_was_green = bool(context.get("setup_candle_green", False))
+
+        return calculate_consecutive_green_candles(
+            dataframe_history=dataframe_history,
+            start_date=setup_date,
+            initial_setup_candle_green=setup_was_green,
+        )
 
     @override
     def get_current_parameters(
@@ -118,12 +212,13 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        context = self._get_full_context(trade)
-        green_candle_count = int(str(context.get("green_candle_count") or 0))
         quantity = int(trade.get("current_size") or 0)
 
         if quantity <= 0:
             return None
+
+        # Recompute green candle count statelessly from history
+        green_candle_count = self._resolve_green_candle_count(trade, dataframe_history)
 
         # a) Green Sequence Exit (TRIGGERED)
         if green_candle_count >= self.MIN_GREEN_CANDLES_FOR_EXIT:
@@ -216,8 +311,8 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         close_price = float(candle["close"])
         context = self._get_full_context(trade)
 
-        entry_is_green = self._is_green_candle(open_price, close_price)
-        setup_was_green = context.get("setup_candle_green", False)
+        entry_is_green = is_green_candle(open_price, close_price)
+        setup_was_green = bool(context.get("setup_candle_green", False))
 
         context["green_candle_count"] = (
             2 if (entry_is_green and setup_was_green) else (1 if entry_is_green else 0)
@@ -244,9 +339,6 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         latest_leaders: set[str] | None = None,
     ) -> TradeTransition | None:
         """Manages Exits: Multi-Day Green sequence (Next Open) or Time Stop (EOD)."""
-
-        # 1. Signal-Specific Exit (State-Based Green Candles sequence)
-        # Rule: If count >= 2, exit at current candle OPEN (Next Open Rule).
         context = self._get_full_context(trade)
 
         # Idempotency check: Do not process the same candle twice
@@ -254,7 +346,39 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         if last_processed_date == date_string:
             return None
 
-        green_candle_count = int(str(context.get("green_candle_count") or 0))
+        # 1. Signal-Specific Exit (Green Candles sequence)
+        # Rule: If count prior to current candle >= 2, exit at current candle OPEN (Next Open Rule).
+        history_prior = dataframe_history[
+            dataframe_history["date"] < current_candle["date"]
+        ]
+        setup_date = self._get_signal_date(trade)
+        setup_was_green = bool(context.get("setup_candle_green", False))
+
+        if not history_prior.empty:
+            dates = pd.to_datetime(history_prior["date"]).dt.date
+            setup_date_obj = pd.Timestamp(setup_date).date() if setup_date else None
+            has_setup_in_history = (
+                setup_date_obj is not None and (dates <= setup_date_obj).any()
+            )
+
+            if has_setup_in_history:
+                green_candle_count = calculate_consecutive_green_candles(
+                    dataframe_history=history_prior,
+                    start_date=setup_date,
+                    initial_setup_candle_green=setup_was_green,
+                )
+            else:
+                calculated_count = calculate_consecutive_green_candles(
+                    dataframe_history=history_prior,
+                    start_date=setup_date,
+                    initial_setup_candle_green=setup_was_green,
+                )
+                green_candle_count = max(
+                    calculated_count,
+                    int(str(context.get("green_candle_count") or 0)),
+                )
+        else:
+            green_candle_count = int(str(context.get("green_candle_count") or 0))
 
         # Check for Exit Trigger (Next Open)
         if green_candle_count >= self.MIN_GREEN_CANDLES_FOR_EXIT:
@@ -285,29 +409,14 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         trade: TradeData,
         dataframe_history: pd.DataFrame,
     ) -> dict[str, object]:
-        """Provides daily updates to the trade context, specifically tracking the green candle count."""
+        """Provides daily updates to the trade context, tracking green candle count statelessly."""
         if dataframe_history.empty:
             return {}
 
         current_candle = dataframe_history.iloc[-1]
         date_string = str(current_candle["date"])
 
-        context = self._get_full_context(trade)
-
-        # Avoid duplicate updates for the same day
-        last_processed_date = context.get("last_processed_date")
-        if last_processed_date == date_string:
-            return {}
-
-        green_candle_count = int(str(context.get("green_candle_count") or 0))
-
-        # Track consecutive green candles
-        if self._is_green_candle(
-            float(current_candle["open"]), float(current_candle["close"])
-        ):
-            green_candle_count += 1
-        else:
-            green_candle_count = 0
+        green_candle_count = self._resolve_green_candle_count(trade, dataframe_history)
 
         return {
             "green_candle_count": green_candle_count,
