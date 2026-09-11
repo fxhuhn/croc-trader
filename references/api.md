@@ -33,21 +33,23 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
 * **Beschreibung**: Öffentlicher Health-Check Endpunkt zur Überprüfung der Server-Verfügbarkeit.
 * **Auth**: Keine (öffentlich).
 * **Response `200 OK`**:
-  ```json
-  {
-    "status": "ok"
-  }
-  ```
+
+```json
+{
+  "status": "ok"
+}
+```
 
 ### `GET /`
 * **Beschreibung**: Authentifizierter System-Root Check.
 * **Auth**: IP-Whitelist (`@require_ip_whitelist`).
 * **Response `200 OK`**:
-  ```json
-  {
-    "status": "ok"
-  }
-  ```
+
+```json
+{
+  "status": "ok"
+}
+```
 
 ---
 
@@ -57,23 +59,25 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
 * **Beschreibung**: Nimmt Handelssignale (z. B. von TradingView) entgegen und speichert sie in `signals.db`.
 * **Auth**: IP-Whitelist.
 * **Payload (JSON Body)**:
-  ```json
-  {
-    "symbol": "AAPL",
-    "strategy": "BridgeScout",
-    "timeframe": "1D",
-    "signal": "BUY",
-    "price": 185.50,
-    "timestamp": "2026-07-29T09:00:00Z"
-  }
-  ```
+
+```json
+{
+  "symbol": "AAPL",
+  "strategy": "BridgeScout",
+  "timeframe": "1D",
+  "signal": "BUY",
+  "price": 185.50,
+  "timestamp": "2026-07-29T09:00:00Z"
+}
+```
 * **Response `201 Created`**:
-  ```json
-  {
-    "status": "success",
-    "id": 142
-  }
-  ```
+
+```json
+{
+  "status": "success",
+  "id": 142
+}
+```
 * **Response `400 Bad Request`**: Fehlender Parameter (`symbol`) oder invalides JSON.
 
 ---
@@ -81,17 +85,18 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
 ## 3. EOD Pipeline Orchestration
 
 ### `POST /pipeline/run`
-* **Beschreibung**: Führt die synchrone End-of-Day (EOD) Pipeline sequenziell aus: TradeManager & Position Updates -> Screener Engine -> Order Generierung -> Cache Pre-warming.
+* **Beschreibung**: Führt die synchrone End-of-Day (EOD) Pipeline sequenziell aus: TradeManager & Position Updates → Screener Engine → Order Generierung → Cache Pre-warming.
 * **Auth**: IP-Whitelist.
 * **Response `200 OK`**:
-  ```json
-  {
-    "status": "success",
-    "timestamp": "2026-08-28T08:20:00",
-    "duration_seconds": 12.4,
-    "steps_completed": ["trade_manager", "screener", "orders", "cache"]
-  }
-  ```
+
+```json
+{
+  "status": "success",
+  "timestamp": "2026-08-28T08:20:00",
+  "duration_seconds": 12.4,
+  "steps_completed": ["trade_manager", "screener", "orders", "cache"]
+}
+```
 * **Response `500 Internal Server Error`**: Bei unerwartetem Pipeline-Fehler.
 
 ---
@@ -105,12 +110,13 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
   * `days` *(int, default: `0`)*: Handelstage Lookback.
   * `strategy` *(str, optional)*: Filter für eine bestimmte Strategie.
 * **Response `200 OK`**:
-  ```json
-  {
-    "status": "success",
-    "stats": { "tgim": 2, "bridge_scout": 1, "dip_buyer": 0 }
-  }
-  ```
+
+```json
+{
+  "status": "success",
+  "stats": { "tgim": 2, "bridge_scout": 1, "dip_buyer": 0 }
+}
+```
 * **Response `503 Service Unavailable`**: Wenn Screener Engine nicht initialisiert ist.
 
 ### `POST /screener/run/<strategy_name>`
@@ -122,20 +128,22 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
   * **`date`** *(str, optional, Format: `YYYY-MM-DD`)*: Stichtagsdatum für das Screening.
   * **`days`** *(int, optional, default: `0`)*: Lookback-Handelstage.
 * **Response `200 OK`**:
-  ```json
-  {
-    "status": "success",
-    "strategy": "bridge_scout",
-    "signals_found": 3
-  }
-  ```
+
+```json
+{
+  "status": "success",
+  "strategy": "bridge_scout",
+  "signals_found": 3
+}
+```
 * **Response `404 Not Found`**: Wenn die Strategie nicht existiert oder nicht in der Engine initialisiert ist:
-  ```json
-  {
-    "status": "error",
-    "message": "Strategy 'unknown_strat' not found"
-  }
-  ```
+
+```json
+{
+  "status": "error",
+  "message": "Strategy 'unknown_strat' not found"
+}
+```
 
 ### `POST /screener/dip-buyer`
 * **Beschreibung**: Detaillierte Einzelaktien-Analyse für die **DipBuyer** Strategie.
@@ -176,19 +184,21 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
 * **Beschreibung**: Erzeugt tägliche Bracket Orders (Entry, Stop Loss, Take Profit) und exportiert diese atomar als CSV-Datei nach `data/orders/`.
 * **Auth**: IP-Whitelist.
 * **Response `201 Created`**: Wenn neue Orders exportiert wurden.
-  ```json
-  {
-    "status": "success",
-    "file": "data/orders/orders_2026_07_29.csv"
-  }
-  ```
+
+```json
+{
+  "status": "success",
+  "file": "data/orders/orders_2026_07_29.csv"
+}
+```
 * **Response `200 OK`**: Wenn für den aktuellen Handelstag keine Orders anstanden.
-  ```json
-  {
-    "status": "success",
-    "message": "No orders generated"
-  }
-  ```
+
+```json
+{
+  "status": "success",
+  "message": "No orders generated"
+}
+```
 
 ---
 
@@ -217,28 +227,30 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
 * **Aufrufbeispiel**:
   `POST /trades/backfill/bridge-scout?start_date=2026-01-01&end_date=2026-06-30&budget=15000.0`
 * **Response `200 OK`**:
-  ```json
-  {
-    "status": "success",
-    "result": {
-      "start_date": "2026-01-01",
-      "end_date": "2026-06-30",
-      "signals_generated": 14,
-      "trades_filled": 12,
-      "trades_closed": 10,
-      "total_pnl": 1240.50,
-      "win_rate": 80.0,
-      "closed_trades": []
-    }
+
+```json
+{
+  "status": "success",
+  "result": {
+    "start_date": "2026-01-01",
+    "end_date": "2026-06-30",
+    "signals_generated": 14,
+    "trades_filled": 12,
+    "trades_closed": 10,
+    "total_pnl": 1240.50,
+    "win_rate": 80.0,
+    "closed_trades": []
   }
-  ```
+}
+```
 * **Response `400 Bad Request`**: Bei Validierungsfehlern oder nicht für Backfill registrierten Strategien:
-  ```json
-  {
-    "status": "error",
-    "message": "Unknown strategy for backfill: 'dip_buyer'. Available strategies: ['tgim', 'thank_god_its_monday', 'bridge_scout', 'bridgescout', 'bridge scout', 'qqq_eom', 'bounce_bandit', 'bouncebandit', 'bounce bandit', 'qqq_meanrev']"
-  }
-  ```
+
+```json
+{
+  "status": "error",
+  "message": "Unknown strategy for backfill: 'dip_buyer'. Available strategies: ['tgim', 'thank_god_its_monday', 'bridge_scout', 'bridgescout', 'bridge scout', 'qqq_eom', 'bounce_bandit', 'bouncebandit', 'bounce bandit', 'qqq_meanrev']"
+}
+```
 * **Response `500 Internal Server Error`**: Bei serverseitigen Verarbeitungsfehlern.
 
 ---
@@ -253,19 +265,21 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
   * `provider` *(str, default: `"auto"`)*: Provider-Modus (`"auto"`, `"yahoo"`, `"tv"`).
   * `ignore_today` *(bool, default: `false`)*: Heutige Intraday-Bars ignorieren.
 * **Response `202 Accepted`**:
-  ```json
-  {
-    "status": "accepted",
-    "message": "Sync started"
-  }
-  ```
+
+```json
+{
+  "status": "accepted",
+  "message": "Sync started"
+}
+```
 * **Response `409 Conflict`**: Wenn bereits ein Synchronisationslauf im Hintergrund aktiv ist:
-  ```json
-  {
-    "status": "error",
-    "message": "Market synchronization already in progress"
-  }
-  ```
+
+```json
+{
+  "status": "error",
+  "message": "Market synchronization already in progress"
+}
+```
 
 ### `POST /market/reload`
 * **Beschreibung**: Triggert einen vollständigen manuellen Re-Download aller Marktdaten im Hintergrund.
@@ -274,16 +288,18 @@ Dokumentation der REST-API-Schnittstellen von Croc-Trader (`app/routes/api.py`).
   * `provider` *(str, default: `"auto"`)*: Provider-Modus (`"auto"`, `"yahoo"`, `"tv"`).
   * `ignore_today` *(bool, default: `false`)*: Heutige Intraday-Bars ignorieren.
 * **Response `200 OK`**:
-  ```json
-  {
-    "status": "queued",
-    "message": "Full reload triggered"
-  }
-  ```
+
+```json
+{
+  "status": "queued",
+  "message": "Full reload triggered"
+}
+```
 * **Response `409 Conflict`**: Wenn bereits ein Synchronisationslauf im Hintergrund aktiv ist:
-  ```json
-  {
-    "status": "error",
-    "message": "Market synchronization already in progress"
-  }
-  ```
+
+```json
+{
+  "status": "error",
+  "message": "Market synchronization already in progress"
+}
+```
