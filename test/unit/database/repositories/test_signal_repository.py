@@ -1,3 +1,4 @@
+import datetime
 import json
 from pathlib import Path
 from typing import Any, cast
@@ -156,24 +157,27 @@ def test_get_signals_by_date_and_latest_date(
     repo = SignalRepository(signal_session)
     assert repo.get_latest_signal_date() is None
 
+    date_yesterday = (datetime.date.today() - datetime.timedelta(days=2)).isoformat()
+    date_today = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+
     repo.save_signal(
         {
             "symbol": "GOOGL",
             "signal": "BounceBandit",
-            "timestamp": "2026-08-05T09:00:00Z",
+            "timestamp": f"{date_yesterday}T09:00:00Z",
         }
     )
     repo.save_signal(
         {
             "symbol": "META",
             "signal": "BridgeScout",
-            "timestamp": "2026-08-06T09:00:00Z",
+            "timestamp": f"{date_today}T09:00:00Z",
         }
     )
 
-    assert repo.get_latest_signal_date() == "2026-08-06"
+    assert repo.get_latest_signal_date() == date_today
 
-    exact = repo.get_signals_by_date(analysis_date="2026-08-05")
+    exact = repo.get_signals_by_date(analysis_date=date_yesterday)
     assert len(exact) == 1
     assert exact[0]["symbol"] == "GOOGL"
 
