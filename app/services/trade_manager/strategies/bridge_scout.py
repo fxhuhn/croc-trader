@@ -2,7 +2,7 @@
 
 Execution Rules:
 1. Entry (CREATED -> ACTIVE):
-   - Market On Close (MOC) on the setup day where entry conditions were met.
+   - Limit On Close (LOC) on the setup day where Close <= req_close_rsi40.
    - Position size calculated from portfolio budget allocation.
 2. Exits (ACTIVE -> CLOSED):
    - Exit on 1st trading day of new calendar month (DateYear(BarDate) != DateYear(EntryDate)
@@ -29,7 +29,7 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
     """Manages execution and exit lifecycle for the 'Bridge Scout' strategy.
 
     Rules:
-    1. Entry: MOC entry executed on month-end setup close.
+    1. Entry: LOC entry executed on month-end setup close if Close <= req_close_rsi40.
     2. Exit: MOC exit executed on the 1st trading day of the new calendar month.
     """
 
@@ -63,11 +63,28 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        """Generates MOC entry order for CREATED trades."""
+        """Generates LOC entry order for CREATED trades with threshold price."""
+        threshold_price = self._extract_entry_price(trade)
+        req_close_val = self._get_context_value(trade, "req_close_rsi40")
+        if req_close_val is not None:
+            try:
+                parsed_threshold = float(req_close_val)
+                if parsed_threshold > 0:
+                    threshold_price = parsed_threshold
+            except (ValueError, TypeError):
+                pass
+
+        if threshold_price <= 0:
+            return None
+
         return self._generate_budget_entry_order(
             trade=trade,
             budget=budget,
-            options=OrderOptions(order_type="MKT", time_in_force="DAY"),
+            options=OrderOptions(
+                order_type="LOC",
+                time_in_force="DAY",
+                price_override=threshold_price,
+            ),
         )
 
     @override
@@ -79,11 +96,11 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        """Generates exit orders for ACTIVE trades."""
+        """Generates MOC exit orders for ACTIVE trades."""
         return self._generate_standard_exit_order(
             trade=trade,
             dataframe_history=dataframe_history,
-            options=OrderOptions(order_type="MKT", time_in_force="DAY"),
+            options=OrderOptions(order_type="MOC", time_in_force="DAY"),
         )
 
     @override

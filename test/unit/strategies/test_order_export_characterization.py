@@ -288,7 +288,7 @@ def test_characterization_get_override_invalid_structure() -> None:
 def test_characterization_display_name_fallback() -> None:
     """Verifies get_strategy_display_name falls back to enum.value if not in mapping."""
     assert get_strategy_display_name(Strategies.CrocSetup) == "croc_setup"
-    assert get_strategy_display_name(Strategies.BridgeScout) == "bridge_scout"
+    assert get_strategy_display_name(Strategies.BridgeScout) == "BridgeScout"
 
 
 def test_characterization_order_with_no_legs_returns_none() -> None:

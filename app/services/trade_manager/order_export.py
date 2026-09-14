@@ -69,6 +69,7 @@ _CSV_SUPPORTED_STRATEGIES: frozenset[Strategies] = frozenset(
         Strategies.DipBuyer,
         Strategies.BounceBandit,
         Strategies.TGIM,
+        Strategies.BridgeScout,
     }
 )
 
@@ -83,6 +84,7 @@ _STRATEGY_DISPLAY_NAMES: dict[Strategies, str] = {
     Strategies.SplitTarget: "SplitTarget",
     Strategies.BounceBandit: "BounceBandit",
     Strategies.TGIM: "TGIM",
+    Strategies.BridgeScout: "BridgeScout",
 }
 
 CSV_ORDER_HEADER: tuple[str, ...] = (

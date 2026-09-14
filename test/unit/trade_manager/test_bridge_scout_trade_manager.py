@@ -71,13 +71,30 @@ def test_generate_entry_order(
     sample_trade: dict,
     sample_history: pd.DataFrame,
 ) -> None:
-    # Valid budget
+    # Valid budget: LOC entry with limit = entry_price
     order = strategy._generate_entry_order(sample_trade, sample_history, budget=1500.0)
     assert order is not None
     assert order.symbol == "AAPL"
     assert order.quantity == 10
     assert order.entry is not None
-    assert order.entry.type == "MKT"
+    assert order.entry.type == "LOC"
+    assert order.entry.time_in_force == "DAY"
+    assert order.entry.price == Decimal("150.0")
+
+    # Entry with req_close_rsi40 override in context
+    context_trade = dict(
+        sample_trade,
+        entry_price=150.0,
+        signal_context='{"req_close_rsi40": 140.0}',
+    )
+    order_context = strategy._generate_entry_order(
+        context_trade, sample_history, budget=1400.0
+    )
+    assert order_context is not None
+    assert order_context.quantity == 10
+    assert order_context.entry is not None
+    assert order_context.entry.type == "LOC"
+    assert order_context.entry.price == Decimal("140.0")
 
     # Budget too small
     assert (
@@ -103,6 +120,8 @@ def test_generate_exit_order(
     assert order.symbol == "AAPL"
     assert order.quantity == 10
     assert len(order.exits) > 0
+    assert order.exits[0].type == "MOC"
+    assert order.exits[0].time_in_force == "DAY"
     assert order.exits[0].price == Decimal("154.0")
 
     # Empty size
