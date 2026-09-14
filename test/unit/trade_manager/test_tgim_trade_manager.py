@@ -286,7 +286,7 @@ def test_tgim_get_current_parameters_bar2_time_exit(
 def test_tgim_generate_entry_order(
     trade_strategy: TGIMTradeStrategy,
 ) -> None:
-    """Tests _generate_entry_order creates valid MKT entry order and handles invalid inputs."""
+    """Tests _generate_entry_order creates valid LOC entry order and handles invalid inputs."""
     trade = {"symbol": "SPY", "entry_price": 500.0, "budget": 10000.0}
     df_history = pd.DataFrame()
     order = trade_strategy._generate_entry_order(trade, df_history, budget=10000.0)
@@ -294,7 +294,9 @@ def test_tgim_generate_entry_order(
     assert order.symbol == "SPY"
     assert order.quantity == 20
     assert order.entry is not None
-    assert order.entry.type == "MKT"
+    assert order.entry.type == "LOC"
+    assert order.entry.time_in_force == "DAY"
+    assert order.entry.price == Decimal("500.0")
 
     # Invalid entry_price or budget
     assert (
@@ -318,21 +320,50 @@ def test_tgim_generate_entry_order(
 def test_tgim_generate_exit_order(
     trade_strategy: TGIMTradeStrategy,
 ) -> None:
-    """Tests _generate_exit_order creates valid MOC exit order and handles invalid inputs."""
-    trade = {"symbol": "SPY", "current_size": 20}
-    df_history = pd.DataFrame([{"close": 505.0}])
-    order = trade_strategy._generate_exit_order(trade, df_history, budget=10000.0)
-    assert order is not None
-    assert order.symbol == "SPY"
-    assert order.quantity == 20
-    assert len(order.exits) > 0
-    assert order.exits[0].type == "MKT"
-    assert order.exits[0].time_in_force == "DAY"
+    """Tests _generate_exit_order creates valid LOC exit order on Bar 1 and MOC on Bar 2."""
+    trade = {
+        "symbol": "SPY",
+        "current_size": 20,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+    }
+    # Bar 1 (Tuesday) -> LOC exit order at entry_price
+    df_bar1 = pd.DataFrame(
+        [
+            {"date": "2026-07-20", "close": 500.0},
+            {"date": "2026-07-21", "close": 505.0},
+        ]
+    )
+    order_bar1 = trade_strategy._generate_exit_order(trade, df_bar1, budget=10000.0)
+    assert order_bar1 is not None
+    assert order_bar1.symbol == "SPY"
+    assert order_bar1.quantity == 20
+    assert len(order_bar1.exits) == 1
+    assert order_bar1.exits[0].type == "LOC"
+    assert order_bar1.exits[0].price == Decimal("500.0")
+    assert order_bar1.exits[0].time_in_force == "DAY"
+
+    # Bar 2 (Wednesday) -> MOC exit order
+    df_bar2 = pd.DataFrame(
+        [
+            {"date": "2026-07-20", "close": 500.0},
+            {"date": "2026-07-21", "close": 498.0},
+            {"date": "2026-07-22", "close": 495.0},
+        ]
+    )
+    order_bar2 = trade_strategy._generate_exit_order(trade, df_bar2, budget=10000.0)
+    assert order_bar2 is not None
+    assert order_bar2.symbol == "SPY"
+    assert order_bar2.quantity == 20
+    assert len(order_bar2.exits) == 1
+    assert order_bar2.exits[0].type == "MOC"
+    assert order_bar2.exits[0].time_in_force == "DAY"
+    assert order_bar2.exits[0].price == Decimal("495.0")
 
     # Quantity <= 0
     assert (
         trade_strategy._generate_exit_order(
-            {"symbol": "SPY", "current_size": 0}, df_history, budget=10000.0
+            {"symbol": "SPY", "current_size": 0}, df_bar1, budget=10000.0
         )
         is None
     )

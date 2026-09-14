@@ -2,11 +2,11 @@
 
 Execution Rules:
 1. Entry (CREATED -> ACTIVE):
-   - Market On Close (MOC) on Monday close (Bar 0).
+   - Limit On Close (LOC) on Monday close (Bar 0) with limit = threshold_price.
    - Position size calculated from portfolio budget allocation.
 2. Exits (ACTIVE -> CLOSED):
-   - Bar 1 (Tuesday): Exit if Tuesday Close > Monday Close (MOC exit, ExitReason.TAKE_PROFIT).
-   - Bar 2 (Wednesday): Exit if Wednesday Close > Tuesday Close (MOC exit, ExitReason.TAKE_PROFIT),
+   - Bar 1 (Tuesday): Exit if Tuesday Close > Monday Close (LOC exit, ExitReason.TAKE_PROFIT).
+   - Bar 2 (Wednesday): Exit if Wednesday Close > Tuesday Close (LOC exit, ExitReason.TAKE_PROFIT),
      otherwise Time Exit at Wednesday Close (MOC exit, ExitReason.TIME_STOP).
 """
 
@@ -68,15 +68,34 @@ class TGIMTradeStrategy(BaseTradeStrategy):
     """Manages execution and exit lifecycle for the 'TGIM' strategy.
 
     Rules:
-    1. Entry: MOC entry executed on Monday setup close.
+    1. Entry: LOC entry executed on Monday setup close with limit = threshold_price.
     2. Exits:
-       - Bar 1 (Tuesday): Exit if Tuesday Close > Monday Close.
-       - Bar 2 (Wednesday): Exit if Wednesday Close > Tuesday Close,
-         otherwise Time Exit (TE) at Wednesday Close.
+       - Bar 1 (Tuesday): Exit if Tuesday Close > Monday Close (LOC exit).
+       - Bar 2 (Wednesday): Exit if Wednesday Close > Tuesday Close (LOC exit),
+         otherwise Time Exit (TE) at Wednesday Close (MOC exit).
     """
 
     STRATEGY_IDENTIFIER = Strategies.TGIM
     name = Strategies.TGIM
+
+    def _calculate_bars_held(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame | None,
+    ) -> int:
+        """Calculates number of trading bars held since entry date."""
+        entry_date_string = trade.get("entry_date")
+        if (
+            not entry_date_string
+            or dataframe_history is None
+            or dataframe_history.empty
+        ):
+            return 0
+
+        entry_date = pd.Timestamp(entry_date_string).date()
+        dates = pd.to_datetime(dataframe_history["date"]).dt.date
+        history_from_entry = dataframe_history[dates >= entry_date]
+        return max(0, len(history_from_entry) - 1)
 
     @override
     def get_current_parameters(
@@ -88,17 +107,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         entry_price = float(trade.get("entry_price") or 0.0)
         current_size = float(trade.get("current_size") or 0.0)
 
-        bars_held = 0
-        entry_date_string = trade.get("entry_date")
-        if (
-            entry_date_string
-            and dataframe_history is not None
-            and not dataframe_history.empty
-        ):
-            entry_date = pd.Timestamp(entry_date_string).date()
-            dates = pd.to_datetime(dataframe_history["date"]).dt.date
-            history_from_entry = dataframe_history[dates >= entry_date]
-            bars_held = max(0, len(history_from_entry) - 1)
+        bars_held = self._calculate_bars_held(trade, dataframe_history)
 
         take_profit = entry_price if bars_held <= 1 else 0.0
         exit_rule_label = (
@@ -125,7 +134,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        """Generates MOC entry order for CREATED trades."""
+        """Generates LOC entry order for CREATED trades."""
         entry_price_val = trade.get("entry_price") or 0.0
         trade_budget_val = self._get_strategy_budget(trade, budget)
 
@@ -140,7 +149,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
             symbol=trade["symbol"],
             quantity=quantity,
             entry_price=entry_price,
-            options=OrderOptions(order_type="MKT"),
+            options=OrderOptions(order_type="LOC", time_in_force="DAY"),
         )
 
     @override
@@ -152,11 +161,30 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        """Generates exit orders for ACTIVE trades."""
-        return self._generate_standard_exit_order(
-            trade=trade,
-            dataframe_history=dataframe_history,
-            options=OrderOptions(order_type="MKT", time_in_force="DAY"),
+        """Generates exit orders for ACTIVE trades (Bar 1: LOC, Bar 2: MOC)."""
+        quantity = int(trade.get("current_size") or 0)
+        if quantity <= 0 or dataframe_history.empty:
+            return None
+
+        bars_held = self._calculate_bars_held(trade, dataframe_history)
+        entry_price_val = trade.get("entry_price") or 0.0
+        entry_price = Decimal(str(entry_price_val))
+
+        if bars_held >= MAX_TGIM_HOLDING_BARS:
+            last_candle = dataframe_history.iloc[-1]
+            close_price = Decimal(str(last_candle["close"]))
+            return self._create_exit_order(
+                symbol=trade["symbol"],
+                quantity=quantity,
+                price=close_price,
+                options=OrderOptions(order_type="MOC", time_in_force="DAY"),
+            )
+
+        return self._create_exit_order(
+            symbol=trade["symbol"],
+            quantity=quantity,
+            price=entry_price,
+            options=OrderOptions(order_type="LOC", time_in_force="DAY"),
         )
 
     @override
@@ -194,7 +222,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
             return self._execute_activation(
                 trade,
                 float(current_close),
-                "Monday MOC Entry",
+                "Monday LOC Entry",
                 date_string,
             )
 
