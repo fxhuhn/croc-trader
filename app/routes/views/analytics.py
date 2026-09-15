@@ -8,7 +8,7 @@ from flask import render_template, request
 
 from ...const import ExitReason, Strategies
 from ...database.repositories.market import MarketRepository
-from ...services.trade_manager.view_service import TradeViewService
+from ...services.trade_manager.view_service import TradeViewData, TradeViewService
 from ...tools import metrics
 from ...tools.portfolio_analytics import (
     GERMAN_MONTH_NAMES,
@@ -49,12 +49,6 @@ _calculate_monthly_drawdown_max_intramonth = calculate_monthly_drawdown_max_intr
 DEFAULT_INITIAL_CAPITAL: float = 100_000.0
 
 STRATEGY_GROUPS: dict[str, list[Strategies | str]] = {
-    "Croc Setup": [
-        Strategies.CrocSetup,
-        Strategies.HoldTarget,
-        Strategies.SplitTarget,
-        "croc",
-    ],
     "Dip Buyer": [Strategies.DipBuyer],
     "Turnover": [
         Strategies.TurnOverTiming,
@@ -69,7 +63,6 @@ STRATEGY_GROUPS: dict[str, list[Strategies | str]] = {
 }
 
 STRATEGY_COLORS: dict[str, str] = {
-    "Croc Setup": "#10b981",
     "Dip Buyer": "#6366f1",
     "Turnover": "#f59e0b",
     "Two Percent": "#a855f7",
@@ -78,6 +71,30 @@ STRATEGY_COLORS: dict[str, str] = {
     "Bridge Scout": "#0ea5e9",
     "Bounce Bandit": "#8b5cf6",
 }
+
+CROC_STRATEGIES: set[Strategies | str] = {
+    Strategies.CrocSetup,
+    Strategies.HoldTarget,
+    Strategies.SplitTarget,
+    "croc",
+    "croc_setup",
+    "hold_target",
+    "split_target",
+}
+
+
+def _filter_non_croc_trades(
+    trades: list[TradeViewData],
+    service: TradeViewService,
+) -> list[TradeViewData]:
+    """Filters out legacy Croc strategy trades."""
+    return [
+        trade
+        for trade in trades
+        if service.resolve_strategy(cast(dict[str, object], trade))
+        not in CROC_STRATEGIES
+        and trade.get("strategy") not in CROC_STRATEGIES
+    ]
 
 
 @views_bp.route("/analytics", methods=["GET"])
@@ -90,6 +107,8 @@ def view_analytics_dashboard() -> str:
         exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
     )
     active_trades = service.get_trades(status=TradeStatus.ACTIVE)
+    closed_trades = _filter_non_croc_trades(closed_trades, service)
+    active_trades = _filter_non_croc_trades(active_trades, service)
 
     today = pd.Timestamp.now()
     current_month_name = f"{GERMAN_MONTH_NAMES[today.month]} {today.year}"
@@ -615,6 +634,7 @@ def view_analytics_monthly_matrix() -> str:
         status=TradeStatus.CLOSED,
         exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
     )
+    closed_trades = _filter_non_croc_trades(closed_trades, service)
     dataframe = _prepare_closed_trades_dataframe(closed_trades)
 
     matrix_rows, portfolio_row, portfolio_models_rows = calculate_monthly_matrix_data(

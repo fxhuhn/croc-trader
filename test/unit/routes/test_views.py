@@ -876,7 +876,7 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
         {
             "exit_date": f"{current_year}-01-10",
             "realized_pnl": 500.0,
-            "strategy": Strategies.CrocSetup,
+            "strategy": Strategies.DipBuyer,
             "entry_price": 100.0,
             "stop_loss": 95.0,
             "initial_size": 100.0,
@@ -884,7 +884,7 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
         {
             "exit_date": f"{current_year}-01-15",
             "realized_pnl": -200.0,
-            "strategy": Strategies.CrocSetup,
+            "strategy": Strategies.DipBuyer,
             "entry_price": 50.0,
             "stop_loss": 48.0,
             "initial_size": 100.0,
@@ -897,7 +897,7 @@ def test_view_analytics_dashboard_calculates_correct_vectorized_metrics(
         mock_service_instance = mock_trade_service.return_value
         # Closed and Active
         mock_service_instance.get_trades.side_effect = [mock_trades, []]
-        mock_service_instance.resolve_strategy.return_value = Strategies.CrocSetup
+        mock_service_instance.resolve_strategy.return_value = Strategies.DipBuyer
 
         # Act
         response = test_client.get("/analytics")
@@ -929,7 +929,7 @@ def test_view_analytics_dashboard_calculates_correct_95_percentile_utilization(
             "entry_date": "2026-01-10 10:00:00",
             "exit_date": "2026-01-12 16:00:00",
             "realized_pnl": 100.0,
-            "strategy": Strategies.CrocSetup,
+            "strategy": Strategies.DipBuyer,
             "entry_price": 100.0,
             "stop_loss": 95.0,
             "initial_size": 100.0,
@@ -938,7 +938,7 @@ def test_view_analytics_dashboard_calculates_correct_95_percentile_utilization(
             "entry_date": "2026-01-11 11:00:00",
             "exit_date": "2026-01-13 15:00:00",
             "realized_pnl": 100.0,
-            "strategy": Strategies.CrocSetup,
+            "strategy": Strategies.DipBuyer,
             "entry_price": 100.0,
             "stop_loss": 95.0,
             "initial_size": 100.0,
@@ -950,7 +950,7 @@ def test_view_analytics_dashboard_calculates_correct_95_percentile_utilization(
     ) as mock_trade_service:
         mock_service_instance = mock_trade_service.return_value
         mock_service_instance.get_trades.side_effect = [mock_trades, []]
-        mock_service_instance.resolve_strategy.return_value = Strategies.CrocSetup
+        mock_service_instance.resolve_strategy.return_value = Strategies.DipBuyer
 
         # Act
         response = test_client.get("/analytics")
@@ -973,7 +973,7 @@ def test_view_analytics_dashboard_handles_corrupted_data_gracefully(
         {
             "exit_date": "2026-01-10",
             "realized_pnl": 100.0,
-            "strategy": Strategies.CrocSetup,
+            "strategy": Strategies.DipBuyer,
             "entry_price": None,  # Corrupted entry
             "stop_loss": 90.0,
             "initial_size": 10.0,
@@ -981,7 +981,7 @@ def test_view_analytics_dashboard_handles_corrupted_data_gracefully(
         {
             "exit_date": "2026-01-12",
             "realized_pnl": -50.0,
-            "strategy": Strategies.CrocSetup,
+            "strategy": Strategies.DipBuyer,
             "entry_price": 10.0,
             "stop_loss": 9.0,
             "initial_size": "NaN",  # Corrupted size
@@ -993,7 +993,7 @@ def test_view_analytics_dashboard_handles_corrupted_data_gracefully(
     ) as mock_trade_service:
         mock_service_instance = mock_trade_service.return_value
         mock_service_instance.get_trades.side_effect = [mock_trades, []]
-        mock_service_instance.resolve_strategy.return_value = Strategies.CrocSetup
+        mock_service_instance.resolve_strategy.return_value = Strategies.DipBuyer
 
         # Act
         response = test_client.get("/analytics")
@@ -1218,6 +1218,8 @@ def test_view_analytics_monthly_matrix_returns_correct_response(
         assert b"Frequenz-Modell (EV/M)" in response.data
         assert b"SPY (S&amp;P 500)" in response.data
         assert b"QQQ (Nasdaq 100)" in response.data
+        assert b'title="Croc Setup"' not in response.data
+        assert b"<span>Croc Setup</span>" not in response.data
 
 
 def test_view_analytics_monthly_matrix_portfolio_models(
@@ -1266,6 +1268,75 @@ def test_view_analytics_monthly_matrix_portfolio_models(
         assert b"Risikoadjustiert (Risk Parity)" in response.data
 
 
+def test_view_analytics_monthly_matrix_excludes_croc_trades(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that Croc trades are excluded from Monthlymatrix overview and portfolio models."""
+    import pandas as pd
+
+    mock_trades = [
+        {
+            "entry_date": "2026-01-01",
+            "exit_date": "2026-01-15",
+            "realized_pnl": 100.0,
+            "strategy": "dip_buyer",
+            "entry_price": 100.0,
+            "initial_size": 10,  # +10.0% in Jan
+        },
+        {
+            "entry_date": "2026-01-01",
+            "exit_date": "2026-01-15",
+            "realized_pnl": 500.0,
+            "strategy": "croc_setup",
+            "entry_price": 100.0,
+            "initial_size": 10,  # +50.0% in Jan (should be excluded)
+        },
+        {
+            "entry_date": "2026-01-01",
+            "exit_date": "2026-01-15",
+            "realized_pnl": 500.0,
+            "strategy": "hold_target",
+            "entry_price": 100.0,
+            "initial_size": 10,  # (should be excluded)
+        },
+        {
+            "entry_date": "2026-01-01",
+            "exit_date": "2026-01-15",
+            "realized_pnl": 500.0,
+            "strategy": "split_target",
+            "entry_price": 100.0,
+            "initial_size": 10,  # (should be excluded)
+        },
+    ]
+
+    with patch(
+        "app.routes.views.analytics._get_trade_view_service"
+    ) as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.return_value = mock_trades
+        mock_service.resolve_strategy.side_effect = lambda t: t.get("strategy")
+        mock_service.market_repository.get_symbol_history_raw.return_value = (
+            pd.DataFrame()
+        )
+
+        response = test_client.get("/analytics/monthly-matrix?year=2026")
+        assert response.status_code == 200
+
+        # Croc Setup must not appear in the Monthlymatrix overview
+        assert b'title="Croc Setup"' not in response.data
+        assert b"<span>Croc Setup</span>" not in response.data
+        assert b"croc_setup" not in response.data
+        assert b"hold_target" not in response.data
+        assert b"split_target" not in response.data
+
+        # Dip Buyer must appear with +10.0%
+        assert b"Dip Buyer" in response.data
+        assert b"+10.0%" in response.data
+
+        # Portfolio Month 1 average is 10.0% / 7 = 1.4%, not skewed by Croc trades (+50.0%)
+        assert b"+1.4%" in response.data
+
+
 def test_view_analytics_monthly_matrix_compounded_return(
     test_client: FlaskClient,
 ) -> None:
@@ -1312,8 +1383,8 @@ def test_view_analytics_monthly_matrix_compounded_return(
         assert b"+20.0%" in response.data
         # Dip Buyer Compounded Gesamt shows +8.0%
         assert b"+8.0%" in response.data
-        # Portfolio Month 1 average across 8 strategies (+20.0% / 8) shows +2.5%
-        assert b"+2.5%" in response.data
+        # Portfolio Month 1 average across 7 strategies (+20.0% / 7) shows +2.9%
+        assert b"+2.9%" in response.data
 
 
 def test_view_analytics_monthly_matrix_badge_styles(
