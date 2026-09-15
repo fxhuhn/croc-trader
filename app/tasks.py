@@ -170,6 +170,61 @@ def run_market_data_update(
         logger.error("Market data update error: %s", error, exc_info=True)
 
 
+def run_ignored_symbols_check(
+    db_path: Path,
+    app: Flask | None = None,
+    telegram_bot: TelegramBot | None = None,
+) -> list[str]:
+    """Checks blacklisted ignored symbols and restores those with valid market data.
+
+    Args:
+        db_path: Path to stocks database file.
+        app: Optional Flask application instance.
+        telegram_bot: Optional TelegramBot notification instance.
+
+    Returns:
+        List of restored ticker symbols.
+    """
+    logger.info("⏰ Scheduler: Starting weekly ignored symbols check...")
+    try:
+        if telegram_bot is None and app is not None:
+            telegram_bot = app.extensions.get("telegram")
+
+        if telegram_bot is None:
+            try:
+                if has_app_context():
+                    telegram_bot = current_app.extensions.get("telegram")
+            except Exception:
+                telegram_bot = None
+
+        if telegram_bot is None:
+            try:
+                config_manager = ConfigManager()
+                telegram_config = config_manager.app.telegram
+                telegram_bot = TelegramBot(
+                    token=telegram_config.token,
+                    chat_id=telegram_config.chat_id,
+                    enabled=telegram_config.enabled,
+                )
+            except Exception as config_error:
+                logger.debug(
+                    "Could not initialize TelegramBot from ConfigManager: %s",
+                    config_error,
+                )
+
+        session_factory = DatabaseSession(str(db_path))
+        signals_path = db_path.parent / "signals.db"
+        signals_session = DatabaseSession(str(signals_path))
+
+        updater = MarketDataUpdater(session_factory, signals_session)
+        quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
+
+        return quality_service.restore_ignored_symbols()
+    except Exception as error:
+        logger.error("Ignored symbols check error: %s", error, exc_info=True)
+        return []
+
+
 def run_db_maintenance(db_path: Path) -> None:
     """Database maintenance routine (VACUUM & ANALYZE).
 

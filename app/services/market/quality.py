@@ -180,3 +180,92 @@ class MarketQualityService:
                 logger.error("Failed to dispatch Telegram warning: %s", telegram_error)
 
         return False
+
+    def restore_ignored_symbols(self, lookback_days: int = 10) -> list[str]:
+        """Checks blacklisted ignored symbols against Yahoo Finance for restored price data.
+
+        If valid market data is returned, the symbol is removed from the ignored_symbols
+        table so that daily screening and price updates resume.
+
+        Args:
+            lookback_days: Number of calendar days of history to request for validation.
+
+        Returns:
+            List of successfully restored ticker symbols.
+        """
+        ignored_symbols = self.repo.get_ignored_symbols()
+        if not ignored_symbols:
+            logger.info("Ignored Symbols Check: No ignored symbols found in database.")
+            return []
+
+        logger.info(
+            "Ignored Symbols Check: Testing %d blacklisted symbols...",
+            len(ignored_symbols),
+        )
+        symbols_list = sorted(ignored_symbols)
+        start_date = (datetime.now() - timedelta(days=lookback_days)).strftime(
+            "%Y-%m-%d"
+        )
+
+        batch_dataframe, failed_symbols = self.updater.provider.fetch_batch_raw(
+            symbols_list, start_date
+        )
+
+        restored_symbols: list[str] = []
+        for symbol in symbols_list:
+            if symbol in failed_symbols:
+                logger.debug("Symbol %s is still failing download.", symbol)
+                continue
+
+            symbol_dataframe = self.updater.provider.extract_symbol_data(
+                batch_dataframe, symbol
+            )
+            if symbol_dataframe.empty:
+                continue
+
+            symbol_dataframe.columns = symbol_dataframe.columns.str.lower()
+            valid_prices = symbol_dataframe.dropna(subset=["close"])
+            if valid_prices.empty:
+                continue
+
+            try:
+                self.repo.remove_ignored_symbol(symbol)
+                restored_symbols.append(symbol)
+                logger.info(
+                    "✓ Valid data found for %s (%d records). Restored from blacklist.",
+                    symbol,
+                    len(valid_prices),
+                )
+            except Exception as error:
+                logger.error(
+                    "Failed to remove symbol %s from ignored_symbols: %s",
+                    symbol,
+                    error,
+                )
+
+        if restored_symbols:
+            restored_joined = ", ".join(sorted(restored_symbols))
+            logger.info(
+                "Ignored Symbols Check completed: %d symbols restored (%s).",
+                len(restored_symbols),
+                restored_joined,
+            )
+            if self.telegram_bot:
+                message = (
+                    f"ℹ️ **[Croc-Trader] Ignored Symbols Check:** "
+                    f"{len(restored_symbols)} Symbole wieder aktiv und entsperrt: {restored_joined}"
+                )
+                try:
+                    self.telegram_bot.send_message(message)
+                except Exception as telegram_error:
+                    logger.error(
+                        "Failed to dispatch Telegram restore notification: %s",
+                        telegram_error,
+                    )
+        else:
+            logger.info(
+                "Ignored Symbols Check completed: None of the %d symbols could be restored.",
+                len(symbols_list),
+            )
+
+        return restored_symbols

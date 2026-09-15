@@ -29,6 +29,7 @@ from ..tasks import (
     run_daily_strategy_check,
     run_db_backup,
     run_db_maintenance,
+    run_ignored_symbols_check,
     run_market_data_update,
     run_order_generation,
 )
@@ -303,6 +304,17 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
         args=[db_signals],
         trigger=CronTrigger(hour=1, minute=0, timezone=pytz.timezone("Europe/Berlin")),
         id="daily_backup_signals",
+        replace_existing=True,
+    )
+
+    # --- JOB 6: Weekly Ignored Symbols Check (Saturdays 09:00 Berlin) ---
+    scheduler.add_job(
+        func=run_ignored_symbols_check,
+        args=[db_stocks, app],
+        trigger=CronTrigger(
+            day_of_week="sat", hour=9, minute=0, timezone=pytz.timezone("Europe/Berlin")
+        ),
+        id="weekly_ignored_symbols_check",
         replace_existing=True,
     )
 
