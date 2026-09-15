@@ -66,15 +66,15 @@ def test_bva_two_percent_screener_friday_and_thursday_holiday_detection() -> Non
         ]
     )
     data_provider.get_symbol_history.return_value = df_fri
-    assert strategy.run(analysis_date="2026-07-24") == 1
-    assert trade_repo.create_trade.call_count == 1
+    assert strategy.run(analysis_date="2026-07-24") == 2
+    assert trade_repo.create_trade.call_count == 2
 
     # 2. Thursday before a Friday holiday (df does not contain Friday 2026-07-24, ends on Thu 2026-07-23)
     trade_repo.create_trade.reset_mock()
     df_thu = df_fri.iloc[:-1].copy()
     data_provider.get_symbol_history.return_value = df_thu
-    assert strategy.run(analysis_date="2026-07-23") == 1
-    assert trade_repo.create_trade.call_count == 1
+    assert strategy.run(analysis_date="2026-07-23") == 2
+    assert trade_repo.create_trade.call_count == 2
 
     # 3. Wednesday on a normal week (Thursday and Friday exist in DB) -> returns 0
     trade_repo.create_trade.reset_mock()
@@ -388,23 +388,28 @@ def test_two_percent_screener_zero_lookahead_bias() -> None:
     result_future = strategy_future.run(analysis_date=target_friday_str)
 
     # Invariance Assertion
-    assert result_t == result_future == 1
+    assert result_t == result_future == 2
     assert (
         trade_repo_t.create_trade.call_count
         == trade_repo_future.create_trade.call_count
-        == 1
+        == 2
     )
 
-    kwargs_t = trade_repo_t.create_trade.call_args.kwargs
-    kwargs_future = trade_repo_future.create_trade.call_args.kwargs
-    assert kwargs_t["entry"] == kwargs_future["entry"] == 99.0
-    assert (
-        kwargs_t["context"]["limit_entry"]
-        == kwargs_future["context"]["limit_entry"]
-        == 99.0
-    )
-    assert (
-        kwargs_t["context"]["setup_close"]
-        == kwargs_future["context"]["setup_close"]
-        == 100.0
-    )
+    for call_t, call_future in zip(
+        trade_repo_t.create_trade.call_args_list,
+        trade_repo_future.create_trade.call_args_list,
+        strict=True,
+    ):
+        kwargs_t = call_t.kwargs
+        kwargs_future = call_future.kwargs
+        assert kwargs_t["entry"] == kwargs_future["entry"] == 99.0
+        assert (
+            kwargs_t["context"]["limit_entry"]
+            == kwargs_future["context"]["limit_entry"]
+            == 99.0
+        )
+        assert (
+            kwargs_t["context"]["setup_close"]
+            == kwargs_future["context"]["setup_close"]
+            == 100.0
+        )

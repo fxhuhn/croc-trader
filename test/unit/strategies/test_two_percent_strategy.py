@@ -161,14 +161,19 @@ def test_screener_signals_on_friday(
     # Act
     result = screener_strategy.run(analysis_date=friday_date)
 
-    # Assert
-    assert result == 1
-    screener_strategy.trade_repository.create_trade.assert_called_once()
-    args, kwargs = screener_strategy.trade_repository.create_trade.call_args
-    assert kwargs["entry"] == 990.0
-    from app.const import Strategies
+    # Assert: 2 signals (SXRV.DE and QQQ)
+    assert result == 2
+    assert screener_strategy.trade_repository.create_trade.call_count == 2
+    created_symbols = {
+        call.kwargs["symbol"]
+        for call in screener_strategy.trade_repository.create_trade.call_args_list
+    }
+    assert created_symbols == {"SXRV.DE", "QQQ"}
+    for call in screener_strategy.trade_repository.create_trade.call_args_list:
+        assert call.kwargs["entry"] == 990.0
+        from app.const import Strategies
 
-    assert kwargs.get("strategy") == Strategies.TwoPercent
+        assert call.kwargs.get("strategy") == Strategies.TwoPercent
 
 
 @pytest.mark.parametrize("run_date", ["2026-02-07", "2026-02-08"])  # Saturday, Sunday
@@ -192,9 +197,9 @@ def test_screener_signals_on_friday_when_run_on_weekend(
     # Act
     result = screener_strategy.run(analysis_date=friday_date)
 
-    # Assert
-    assert result == 1
-    screener_strategy.trade_repository.create_trade.assert_called_once()
+    # Assert: 2 signals generated (SXRV.DE and QQQ)
+    assert result == 2
+    assert screener_strategy.trade_repository.create_trade.call_count == 2
 
 
 @patch("pandas.Timestamp.now")
@@ -222,9 +227,9 @@ def test_screener_signals_on_thursday_if_friday_missing(
     # Act
     result = screener_strategy.run(analysis_date=thursday_date)
 
-    # Assert
-    assert result == 1
-    screener_strategy.trade_repository.create_trade.assert_called_once()
+    # Assert: 2 signals generated (SXRV.DE and QQQ)
+    assert result == 2
+    assert screener_strategy.trade_repository.create_trade.call_count == 2
 
 
 @patch("pandas.Timestamp.now")
@@ -251,9 +256,9 @@ def test_screener_signals_on_wednesday_if_thursday_and_friday_missing(
     # Act
     result = screener_strategy.run(analysis_date=wednesday_date)
 
-    # Assert
-    assert result == 1
-    screener_strategy.trade_repository.create_trade.assert_called_once()
+    # Assert: 2 signals generated (SXRV.DE and QQQ)
+    assert result == 2
+    assert screener_strategy.trade_repository.create_trade.call_count == 2
 
 
 @patch("pandas.Timestamp.now")
@@ -956,3 +961,85 @@ def test_two_percent_send_signal_report(
     assert "two_percent Entries" in kwargs.get(
         "title", mock_telegram.send_dataframe.call_args[1].get("title", "")
     )
+
+
+@patch("pandas.Timestamp.now")
+def test_two_percent_custom_symbols_override(
+    mock_now: MagicMock,
+    mock_trade_repository: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Verifies that TwoPercentStrategy respects custom symbols sequence passed in constructor."""
+    mock_now.return_value = pd.Timestamp("2026-02-09")
+    strategy = ScreenerStrategy(
+        trade_repository=mock_trade_repository,
+        data_provider=mock_data_provider,
+        symbols=["QQQ"],
+    )
+    assert strategy.symbols == ("QQQ",)
+
+    candle = create_candle("2026-02-06", 500.0)
+    mock_data_provider.get_symbol_history.return_value = pd.DataFrame([candle])
+    mock_trade_repository.exists.return_value = False
+
+    result = strategy.run(analysis_date="2026-02-06")
+
+    assert result == 1
+    mock_trade_repository.create_trade.assert_called_once()
+    assert mock_trade_repository.create_trade.call_args.kwargs["symbol"] == "QQQ"
+
+
+@patch("pandas.Timestamp.now")
+def test_two_percent_partial_history_only_screens_available_symbol(
+    mock_now: MagicMock,
+    mock_trade_repository: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Verifies that if one symbol has no data, the other symbol still generates a signal."""
+    mock_now.return_value = pd.Timestamp("2026-02-09")
+    strategy = ScreenerStrategy(
+        trade_repository=mock_trade_repository,
+        data_provider=mock_data_provider,
+    )
+    candle_qqq = create_candle("2026-02-06", 500.0)
+
+    def get_history(symbol: str, days: int = 20) -> pd.DataFrame:
+        if symbol == "QQQ":
+            return pd.DataFrame([candle_qqq])
+        return pd.DataFrame()
+
+    mock_data_provider.get_symbol_history.side_effect = get_history
+    mock_trade_repository.exists.return_value = False
+
+    result = strategy.run(analysis_date="2026-02-06")
+
+    assert result == 1
+    mock_trade_repository.create_trade.assert_called_once()
+    assert mock_trade_repository.create_trade.call_args.kwargs["symbol"] == "QQQ"
+
+
+@patch("pandas.Timestamp.now")
+def test_two_percent_duplicate_trade_for_one_symbol(
+    mock_now: MagicMock,
+    mock_trade_repository: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Verifies that if SXRV.DE already exists, QQQ still generates a trade proposal."""
+    mock_now.return_value = pd.Timestamp("2026-02-09")
+    strategy = ScreenerStrategy(
+        trade_repository=mock_trade_repository,
+        data_provider=mock_data_provider,
+    )
+    candle = create_candle("2026-02-06", 500.0)
+    mock_data_provider.get_symbol_history.return_value = pd.DataFrame([candle])
+
+    def trade_exists(symbol: str, strategy_name: str, date_str: str) -> bool:
+        return symbol == "SXRV.DE"
+
+    mock_trade_repository.exists.side_effect = trade_exists
+
+    result = strategy.run(analysis_date="2026-02-06")
+
+    assert result == 1
+    mock_trade_repository.create_trade.assert_called_once()
+    assert mock_trade_repository.create_trade.call_args.kwargs["symbol"] == "QQQ"

@@ -1,5 +1,6 @@
 import datetime
 import logging
+from collections.abc import Sequence
 from typing import TypedDict, override
 
 import pandas as pd
@@ -37,18 +38,22 @@ class TwoPercentStrategy(BaseStrategy[int]):
     - Execution: Runs on Fridays at market close.
     - Exception: If Friday is a holiday, it runs on Thursday close.
     - Entry: Limit order at 99% of the 'Setup Close' (Friday/Thursday close).
+    - Underlyings: SXRV.DE, QQQ.
     """
 
     STRATEGY_IDENTIFIER = Strategies.TwoPercent
     ENTRY_LIMIT_DISCOUNT = 0.99
     DEFAULT_LOOKBACK_PERIOD = 20
     SYMBOL = "SXRV.DE"
+    SYMBOLS: tuple[str, ...] = ("SXRV.DE", "QQQ")
 
     def __init__(
         self,
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
+        *,
+        symbols: Sequence[str] | None = None,
     ) -> None:
         """
         Initializes the TwoPercent strategy with required dependencies.
@@ -57,52 +62,85 @@ class TwoPercentStrategy(BaseStrategy[int]):
            trade_repository: Repository for trade persistence.
            data_provider: Provider for market historical data.
            telegram_bot: Optional bot for reporting signals.
+           symbols: Optional sequence of ticker symbols to screen. Defaults to SYMBOLS.
         """
         super().__init__(data_provider, telegram_bot)
         self.name = self.STRATEGY_IDENTIFIER
         self.trade_repository = trade_repository
         self.holiday_checker = MarketHolidayChecker()
+        self.symbols: tuple[str, ...] = (
+            tuple(symbols) if symbols is not None else self.SYMBOLS
+        )
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """
-        Orchestrates the strategy execution for a given analysis date.
+        Orchestrates the strategy execution for a given analysis date across all symbols.
 
         This follows the Step-down Rule by delegating logic to specialized methods.
 
         Returns:
-           int: 1 if a signal was generated and saved, 0 otherwise.
+           int: Number of signals generated and saved.
         """
         analysis_timestamp = self._get_analysis_timestamp(analysis_date)
+        total_signals = 0
+        report_items: list[SignalReportItem] = []
+        signal_date_str: str | None = None
 
-        price_history = self._fetch_price_history(analysis_timestamp)
+        for symbol in self.symbols:
+            signal_item, item_date_str = self._evaluate_symbol(
+                symbol, analysis_timestamp
+            )
+            if signal_item is not None and item_date_str is not None:
+                report_items.append(signal_item)
+                total_signals += 1
+                signal_date_str = item_date_str
+
+        if report_items and signal_date_str:
+            self._send_signal_report(signal_date_str, items=report_items)
+
+        return total_signals
+
+    def _evaluate_symbol(
+        self, symbol: str, analysis_timestamp: pd.Timestamp
+    ) -> tuple[SignalReportItem | None, str | None]:
+        """Evaluates a single symbol for entry signal generation."""
+        price_history = self._fetch_price_history(analysis_timestamp, symbol=symbol)
         if price_history.empty:
-            return 0
+            return None, None
 
         last_candle = self._get_last_valid_candle(price_history, analysis_timestamp)
         if last_candle is None:
-            return 0
+            return None, None
 
         last_candle_timestamp = self._extract_timestamp(last_candle)
 
         close_price = self._extract_close_price(last_candle)
         if close_price is None:
-            return 0
+            return None, None
 
         entry_price = self._calculate_entry_price(close_price)
         signal_date_str = str(last_candle_timestamp.date())
 
-        if self._trade_exists(signal_date_str):
-            return 0
+        if self._trade_exists(signal_date_str, symbol=symbol):
+            return None, None
 
         day_label = self._get_day_label(last_candle_timestamp)
         self._create_trade_proposal(
-            signal_date_str, close_price, entry_price, day_label
+            signal_date_str,
+            close_price,
+            entry_price,
+            day_label,
+            symbol=symbol,
         )
 
-        self._send_signal_report(signal_date_str, close_price, entry_price)
-
-        return 1
+        item = SignalReportItem(
+            symbol=symbol,
+            action="BUY LMT",
+            entry_price=round(entry_price, 2),
+            details={"Setup Close": round(close_price, 2)},
+        )
+        return item, signal_date_str
 
     def _get_analysis_timestamp(self, analysis_date: str | None) -> pd.Timestamp:
         """Determines the effective timestamp for analysis."""
@@ -117,20 +155,23 @@ class TwoPercentStrategy(BaseStrategy[int]):
         """
         return datetime.date.today()
 
-    def _fetch_price_history(self, analysis_timestamp: pd.Timestamp) -> pd.DataFrame:
+    def _fetch_price_history(
+        self, analysis_timestamp: pd.Timestamp, symbol: str | None = None
+    ) -> pd.DataFrame:
         """Fetches historical price data with sufficient lookback."""
+        target_symbol = symbol or self.SYMBOL
         lookback = self.DEFAULT_LOOKBACK_PERIOD
         if analysis_timestamp < pd.Timestamp.now().normalize():
             days_ago = (pd.Timestamp.now() - analysis_timestamp).days
             lookback = max(self.DEFAULT_LOOKBACK_PERIOD, days_ago + 20)
 
-        history = self.data_provider.get_symbol_history(self.SYMBOL, days=lookback)
+        history = self.data_provider.get_symbol_history(target_symbol, days=lookback)
 
         if history.empty:
             logger.warning(
                 "[%s] No data for %s (Lookback: %d days)",
                 self.name,
-                self.SYMBOL,
+                target_symbol,
                 lookback,
             )
 
@@ -247,10 +288,11 @@ class TwoPercentStrategy(BaseStrategy[int]):
         """Calculates the limit entry price based on the discount."""
         return round(close_price * self.ENTRY_LIMIT_DISCOUNT, 2)
 
-    def _trade_exists(self, date_str: str) -> bool:
+    def _trade_exists(self, date_str: str, symbol: str | None = None) -> bool:
         """Checks if a trade for this strategy and date already exists."""
+        target_symbol = symbol or self.SYMBOL
         return self.trade_repository.exists(
-            self.SYMBOL, self.STRATEGY_IDENTIFIER, date_str
+            target_symbol, self.STRATEGY_IDENTIFIER, date_str
         )
 
     def _get_day_label(self, timestamp: pd.Timestamp) -> str:
@@ -265,9 +307,16 @@ class TwoPercentStrategy(BaseStrategy[int]):
         return "Fallback"
 
     def _create_trade_proposal(
-        self, date_str: str, close: float, entry: float, day_label: str
+        self,
+        date_str: str,
+        close: float,
+        entry: float,
+        day_label: str,
+        *,
+        symbol: str | None = None,
     ) -> None:
         """Persists the generated signal as a trade proposal."""
+        target_symbol = symbol or self.SYMBOL
         context: TwoPercentStrategyContext = {
             "date": date_str,
             "setup_close": close,
@@ -277,7 +326,7 @@ class TwoPercentStrategy(BaseStrategy[int]):
         }
 
         self.trade_repository.create_trade(
-            symbol=self.SYMBOL,
+            symbol=target_symbol,
             strategy=self.STRATEGY_IDENTIFIER,
             size=0,
             entry=entry,
@@ -286,19 +335,33 @@ class TwoPercentStrategy(BaseStrategy[int]):
             context=dict(context),
         )
 
-    def _send_signal_report(self, date_str: str, close: float, entry: float) -> None:
+    def _send_signal_report(
+        self,
+        date_str: str,
+        close: float | None = None,
+        entry: float | None = None,
+        *,
+        symbol: str | None = None,
+        items: list[SignalReportItem] | None = None,
+    ) -> None:
         """Sends a notification report via Telegram if available."""
         if not self.telegram_bot:
             return
 
-        report_items = [
-            SignalReportItem(
-                symbol=self.SYMBOL,
-                action="BUY LMT",
-                entry_price=round(entry, 2),
-                details={"Setup Close": round(close, 2)},
-            )
-        ]
+        report_items: list[SignalReportItem]
+        if items is not None:
+            report_items = items
+        elif close is not None and entry is not None:
+            report_items = [
+                SignalReportItem(
+                    symbol=symbol or self.SYMBOL,
+                    action="BUY LMT",
+                    entry_price=round(entry, 2),
+                    details={"Setup Close": round(close, 2)},
+                )
+            ]
+        else:
+            return
 
         self._send_telegram_report(
             f"{self.STRATEGY_IDENTIFIER} Entries", report_items, date_str

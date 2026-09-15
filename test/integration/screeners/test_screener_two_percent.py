@@ -54,12 +54,16 @@ def test_run_on_normal_friday(strategy, mock_provider, mock_repo):
     result = strategy.run(analysis_date=analysis_date)
 
     # Assert
-    assert result == 1
-    mock_repo.create_trade.assert_called_once()
+    assert result == 2
+    assert mock_repo.create_trade.call_count == 2
+    created_symbols = {
+        c.kwargs["symbol"] for c in mock_repo.create_trade.call_args_list
+    }
+    assert created_symbols == {"SXRV.DE", "QQQ"}
 
     # Verify setup_close and limit_entry calculation
-    args, kwargs = mock_repo.create_trade.call_args
-    assert kwargs["entry"] == 99.0  # 100 * 0.99
+    for call in mock_repo.create_trade.call_args_list:
+        assert call.kwargs["entry"] == 99.0  # 100 * 0.99
 
 
 def test_run_on_normal_thursday_skips(strategy, mock_provider, mock_repo):
@@ -81,7 +85,7 @@ def test_run_on_normal_thursday_skips(strategy, mock_provider, mock_repo):
 def test_run_on_thursday_if_friday_is_holiday(strategy, mock_provider, mock_repo):
     """
     Scenario: Today is Thursday, and Friday IS a holiday.
-    Expectation: Run matches (return 1).
+    Expectation: Run matches (return 2, one per symbol).
     """
     analysis_date = "2026-01-29"  # A Thursday
     today = pd.Timestamp(analysis_date)
@@ -99,8 +103,12 @@ def test_run_on_thursday_if_friday_is_holiday(strategy, mock_provider, mock_repo
 
     result = strategy.run(analysis_date=analysis_date)
 
-    assert result == 1
-    mock_repo.create_trade.assert_called_once()
+    assert result == 2
+    assert mock_repo.create_trade.call_count == 2
+    created_symbols = {
+        c.kwargs["symbol"] for c in mock_repo.create_trade.call_args_list
+    }
+    assert created_symbols == {"SXRV.DE", "QQQ"}
 
 
 def test_run_on_friday_if_friday_is_holiday(strategy, mock_provider, mock_repo):

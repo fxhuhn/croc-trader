@@ -198,9 +198,9 @@ def test_two_percent_execution_day_invariance(
 
     hits = strategy.run(days=0, analysis_date=friday_date)
 
-    assert hits == 1, f"TwoPercent failed on wall-clock {day_name} ({mock_today})"
-    assert len(repo.trades) == 1
-    assert repo.trades[0]["symbol"] == "SXRV.DE"
+    assert hits == 2, f"TwoPercent failed on wall-clock {day_name} ({mock_today})"
+    assert len(repo.trades) == 2
+    assert {t["symbol"] for t in repo.trades} == {"SXRV.DE", "QQQ"}
 
 
 # =============================================================================
