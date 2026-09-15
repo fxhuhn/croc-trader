@@ -86,7 +86,6 @@ def test_view_screener_overview_returns_correct_response(
 @pytest.mark.parametrize(
     "strategy_route, expected_title",
     [
-        ("/screener/croc", b"Croc Setup"),
         ("/screener/dip-buyer", b"Dip Buyer"),
         ("/screener/turnover", b"Turnover Signale"),
         ("/screener/twopercent", b"Two Percent"),

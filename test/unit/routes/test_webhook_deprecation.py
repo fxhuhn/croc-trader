@@ -67,25 +67,6 @@ def test_webhook_emits_deprecation_warning(
     assert response.status_code == 201
 
 
-def test_screener_croc_emits_deprecation_warning(client: FlaskClient) -> None:
-    """Verifies that calling /screener/croc triggers a DeprecationWarning."""
-    mock_strategy = MagicMock()
-    mock_strategy.get_all_recommendations.return_value = []
-
-    with patch(
-        "app.routes.api._get_active_strategy", return_value=(mock_strategy, None)
-    ):
-        with pytest.warns(
-            DeprecationWarning,
-            match="Screener endpoint /screener/croc is deprecated",
-        ):
-            response = client.post(
-                "/screener/croc", environ_base={"REMOTE_ADDR": "127.0.0.1"}
-            )
-
-    assert response.status_code == 200
-
-
 def test_hold_target_strategy_init_emits_deprecation_warning() -> None:
     """Verifies that HoldTargetStrategy.__init__ triggers a DeprecationWarning."""
     with pytest.warns(DeprecationWarning, match="HoldTargetStrategy is deprecated"):
@@ -129,7 +110,7 @@ def test_signal_repository_save_signal_emits_deprecation_warning() -> None:
 
     mock_cursor = MagicMock()
     mock_cursor.lastrowid = 42
-    repo.execute = MagicMock(return_value=mock_cursor)  # type: ignore[assignment]
+    repo.execute = MagicMock(return_value=mock_cursor)  # type: ignore[method-assign]
 
     with pytest.warns(
         DeprecationWarning,
@@ -140,31 +121,10 @@ def test_signal_repository_save_signal_emits_deprecation_warning() -> None:
     assert signal_id == 42
 
 
-def test_view_screener_croc_emits_deprecation_warning(client: FlaskClient) -> None:
-    """Verifies that GET /screener/croc triggers a DeprecationWarning."""
-    mock_service = MagicMock()
-    mock_service.get_candidates.return_value = []
-
-    with patch(
-        "app.routes.views.screener._get_screener_view_service",
-        return_value=mock_service,
-    ):
-        with pytest.warns(
-            DeprecationWarning,
-            match="View 'view_screener_croc' and template 'screener_croc.html' are deprecated",
-        ):
-            response = client.get("/screener/croc")
-
-    assert response.status_code == 200
-
-
 def test_view_service_croc_functions_emit_deprecation_warning() -> None:
-    """Verifies that Croc-specific helper methods in view_service trigger DeprecationWarnings."""
-    with pytest.warns(
-        DeprecationWarning,
-        match="'_is_croc_strategy' is deprecated",
-    ):
-        assert _is_croc_strategy("croc_setup", "croc_setup", "croc_setup") is True
+    """Verifies that Croc-specific candidate fetch methods in view_service trigger DeprecationWarnings."""
+    assert _is_croc_strategy("croc_setup", "croc_setup", "croc_setup") is True
+    assert _is_croc_strategy("dip_buyer", "dip_buyer", "dip_buyer") is False
 
     mock_repo = MagicMock()
     mock_repo.get_trade_candidates.return_value = []

@@ -1,6 +1,5 @@
 """Routes and views for strategy setups screeners."""
 
-import warnings
 from typing import TypedDict
 
 from flask import render_template, request
@@ -136,30 +135,6 @@ def view_screener_overview() -> str:
         "screener.html",
         strategies=strategies,
     )
-
-
-@views_bp.route("/screener/croc", methods=["GET"])
-@cache.cached(timeout=86400, query_string=True)
-def view_screener_croc() -> str:
-    """Displays the Croc Setup screener details and current candidates.
-
-    .. deprecated::
-        The Croc Setup screener view and template 'screener_croc.html' are deprecated
-        and scheduled for future removal. Code and functionality remain operational
-        until decommissioned.
-
-    Returns:
-        str: Rendered HTML template with Croc setup candidates list.
-    """
-    warnings.warn(
-        "View 'view_screener_croc' and template 'screener_croc.html' are deprecated and scheduled for future removal.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    limit = request.args.get("limit", 200, type=int)
-    service = _get_screener_view_service()
-    results = service.get_candidates(Strategies.CrocSetup, limit=limit)
-    return render_template("screener_croc.html", results=results)
 
 
 @views_bp.route("/screener/dip-buyer", methods=["GET"])

@@ -46,16 +46,7 @@ def _is_croc_strategy(
     resolved_strategy: str | Strategies | list[str],
     strategy_value: str,
 ) -> bool:
-    """Checks whether the requested strategy is a Croc strategy.
-
-    .. deprecated::
-        '_is_croc_strategy' is deprecated and scheduled for future removal.
-    """
-    warnings.warn(
-        "'_is_croc_strategy' is deprecated and scheduled for future removal.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
+    """Checks whether the requested strategy is a Croc strategy."""
     croc_prefix = str(Strategies.CrocSetup).lower()
     return strategy_value.lower().startswith(croc_prefix) or Strategies.CrocSetup in (
         strategy,

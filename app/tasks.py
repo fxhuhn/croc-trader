@@ -339,7 +339,6 @@ def _prewarm_target_routes(app: Flask) -> None:
         "/trades/bridge-scout",
         "/trades/bounce-bandit",
         "/screener",
-        "/screener/croc",
         "/screener/dip-buyer",
         "/screener/turnover",
         "/screener/twopercent",

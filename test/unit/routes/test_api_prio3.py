@@ -1,12 +1,10 @@
 """Comprehensive unit tests for Prio 3 REST API routes in app/routes/api.py."""
 
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from flask import Flask
 
-from app.const import Strategies
 from app.routes.api import _parse_boolean_parameter, api_blueprint
 
 
@@ -152,32 +150,21 @@ def test_single_symbol_analyzers(api_app: Flask) -> None:
 
 
 @patch("app.routes.api.require_ip_whitelist", lambda f: f)
-def test_analyze_croc_and_ndx_momentum(api_app: Flask) -> None:
+def test_analyze_ndx_momentum(api_app: Flask) -> None:
     client = api_app.test_client()
 
     mock_engine = MagicMock()
-    mock_croc_strat = MagicMock()
-    mock_croc_strat.get_all_recommendations.return_value = [{"symbol": "NVDA"}]
-
     mock_ndx_strat = MagicMock()
     mock_ndx_strat.calculate_analysis.return_value = {
         "date": "2026-08-01",
         "top_symbols": ["QQQ"],
     }
 
-    def get_strat_side_effect(enum_val: Any) -> Any:
-        if enum_val == Strategies.CrocSetup:
-            return mock_croc_strat
-        if enum_val == Strategies.NDXMomentum:
-            return mock_ndx_strat
-        return None
-
-    mock_engine.get_strategy.side_effect = get_strat_side_effect
+    mock_engine.get_strategy.return_value = mock_ndx_strat
     api_app.extensions["screener_engine"] = mock_engine
 
     res_croc = client.post("/api/screener/croc?days=10")
-    assert res_croc.status_code == 200
-    assert len(res_croc.get_json()["signals"]) == 1
+    assert res_croc.status_code == 404
 
     res_ndx = client.post("/api/screener/ndx-momentum")
     assert res_ndx.status_code == 200

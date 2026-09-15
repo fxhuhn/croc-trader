@@ -366,52 +366,6 @@ def analyze_turnover() -> ApiResponse:
     return _debug_single_symbol(Strategies.TurnOverTiming)
 
 
-@api_blueprint.route("/screener/croc", methods=["POST"])
-@require_ip_whitelist
-def analyze_croc() -> ApiResponse:
-    """Returns the full list of recommended signals for CrocSetup.
-
-    .. deprecated::
-        Endpoint /screener/croc is deprecated and scheduled for future removal.
-        Code and functionality remain operational until decommissioned.
-
-    Returns:
-        ApiResponse: JSON analysis result or error.
-    """
-    warnings.warn(
-        "Screener endpoint /screener/croc is deprecated and scheduled for future removal.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    try:
-        days_lookback = request.args.get("days", default=0, type=int)
-        analysis_date = request.args.get("date")
-
-        strategy, err_resp = _get_active_strategy(Strategies.CrocSetup)
-        if err_resp or strategy is None:
-            return err_resp or (jsonify({"status": "error"}), 500)
-
-        signals = strategy.get_all_recommendations(
-            days=days_lookback, analysis_date=analysis_date
-        )
-
-        return (
-            jsonify(
-                {
-                    "status": "success",
-                    "date": analysis_date,
-                    "days_lookback": days_lookback,
-                    "signals": signals,
-                }
-            ),
-            200,
-        )
-
-    except Exception as error:
-        logger.exception("Error analyzing Croc setup: %s", error)
-        return jsonify({"status": "error", "message": str(error)}), 500
-
-
 @api_blueprint.route("/screener/ndx-momentum", methods=["POST"])
 @require_ip_whitelist
 def analyze_ndx_momentum() -> ApiResponse:
