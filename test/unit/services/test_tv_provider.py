@@ -89,6 +89,42 @@ def test_tv_provider_fetch_symbol_history_success(
     assert records[0]["close"] == 104.0
 
 
+@patch("app.services.market.tv_provider.mapper")
+def test_tv_provider_fetch_symbol_history_caret_stripped(
+    mock_mapper: MagicMock,
+) -> None:
+    mock_mapper.get_exchange.return_value = "CBOE"
+
+    dummy_df = pd.DataFrame(
+        {
+            "open": [15.0],
+            "high": [16.0],
+            "low": [14.5],
+            "close": [15.5],
+            "volume": [0],
+        },
+        index=pd.DatetimeIndex(["2026-07-29"]),
+    )
+
+    mock_tv_instance = MagicMock()
+    mock_tv_instance.get_hist.return_value = dummy_df
+
+    provider = TradingViewDataProvider()
+    provider._tv = mock_tv_instance
+
+    records = provider.fetch_symbol_history("^VIX", number_of_bars=10)
+
+    # Check that tv_symbol was stripped of caret (VIX) and sent to CBOE
+    mock_tv_instance.get_hist.assert_called_once()
+    _, kwargs = mock_tv_instance.get_hist.call_args
+    assert kwargs["symbol"] == "VIX"
+    assert kwargs["exchange"] == "CBOE"
+
+    assert len(records) == 1
+    assert records[0]["symbol"] == "^VIX"  # Preserved as standard symbol in records
+    assert records[0]["close"] == 15.5
+
+
 def test_market_price_from_tradingview_datetime_key() -> None:
     """Verifies that MarketPrice parses 'datetime' key when 'date' is absent in TradingView records."""
     row = {

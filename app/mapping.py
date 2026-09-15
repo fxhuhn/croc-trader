@@ -31,6 +31,8 @@ class ExchangeMapper:
         "XLRE": "AMEX",
         "XLC": "AMEX",
         "SXRV.DE": "XETR",
+        "^VIX": "CBOE",
+        "VIX": "CBOE",
     }
 
     def __new__(cls) -> "ExchangeMapper":
