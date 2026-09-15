@@ -27,13 +27,13 @@ COLUMN_HEADER_MAPPINGS: dict[str, str] = {
     "max close (rsi<40)": "MAX_CL",
     "req_close_rsi40": "MAX_CL",
     "setup close": "CLOSE",
+    "loc": "LOC",
+    "threshold_loc": "LOC",
 }
 
 OMIT_SECONDARY_COLUMNS: set[str] = {
     "score",
     "setup_score",
-    "loc",
-    "threshold_loc",
     "atr",
     "atr5",
     "atr%",
@@ -50,6 +50,44 @@ OMIT_SECONDARY_COLUMNS: set[str] = {
 
 
 MAX_UNFILTERED_COLUMNS: int = 4
+
+RIGHT_ALIGNED_COLUMNS: set[str] = {
+    "entry",
+    "entry_price",
+    "limit entry",
+    "tp",
+    "target",
+    "target_profit",
+    "sl",
+    "stop",
+    "stop_loss",
+    "close",
+    "setup close",
+    "max close (rsi<40)",
+    "req_close_rsi40",
+    "loc",
+    "threshold_loc",
+}
+
+
+def _filter_table_columns(available_columns: list[str]) -> list[str]:
+    """Filters secondary columns when total column count exceeds compact width limit."""
+    if len(available_columns) <= MAX_UNFILTERED_COLUMNS:
+        return available_columns
+
+    omit_columns = set(OMIT_SECONDARY_COLUMNS)
+    if any(
+        str(column).lower() in {"tp", "target", "target_profit"}
+        for column in available_columns
+    ):
+        omit_columns.update({"loc", "threshold_loc"})
+
+    filtered = [
+        column
+        for column in available_columns
+        if str(column).lower() not in omit_columns
+    ]
+    return filtered if filtered else available_columns
 
 
 def format_compact_table(
@@ -116,42 +154,19 @@ def format_dataframe_to_compact_table(dataframe: pd.DataFrame) -> str:
     if dataframe.empty:
         return ""
 
-    available_columns = list(dataframe.columns)
-    if len(available_columns) > MAX_UNFILTERED_COLUMNS:
-        filtered_columns = [
-            column
-            for column in available_columns
-            if str(column).lower() not in OMIT_SECONDARY_COLUMNS
-        ]
-        if filtered_columns:
-            available_columns = filtered_columns
-
+    available_columns = _filter_table_columns(list(dataframe.columns))
     headers = [
         COLUMN_HEADER_MAPPINGS.get(str(column).lower(), str(column))
         for column in available_columns
     ]
 
-    alignments = []
-    for column in available_columns:
-        col_lower = str(column).lower()
-        if pd.api.types.is_numeric_dtype(dataframe[column]) or col_lower in {
-            "entry",
-            "entry_price",
-            "limit entry",
-            "tp",
-            "target",
-            "target_profit",
-            "sl",
-            "stop",
-            "stop_loss",
-            "close",
-            "setup close",
-            "max close (rsi<40)",
-            "req_close_rsi40",
-        }:
-            alignments.append("right")
-        else:
-            alignments.append("left")
+    alignments = [
+        "right"
+        if pd.api.types.is_numeric_dtype(dataframe[column])
+        or str(column).lower() in RIGHT_ALIGNED_COLUMNS
+        else "left"
+        for column in available_columns
+    ]
 
     rows: list[list[str]] = []
     for _, row in dataframe.iterrows():

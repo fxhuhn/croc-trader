@@ -109,6 +109,33 @@ def test_format_dataframe_to_compact_table_filtering() -> None:
     assert "ATR" not in output
 
 
+def test_format_dataframe_to_compact_table_loc_when_no_tp() -> None:
+    """Tests format_dataframe_to_compact_table retains LOC when TP is absent."""
+    dataframe = pd.DataFrame(
+        [
+            {
+                "Symbol": "BKNG",
+                "Action": "BUY LMT",
+                "Entry": 196.11,
+                "LOC": 207.74,
+                "Score": 1.67,
+                "Close": 202.56,
+                "ATR": 6.45,
+            }
+        ]
+    )
+
+    output = format_dataframe_to_compact_table(dataframe)
+    lines = output.split("\n")
+
+    assert lines[0] == "SYM   ACTION    ENTRY     LOC"
+    assert lines[1] == "-----------------------------"
+    assert lines[2] == "BKNG  BUY LMT  196.11  207.74"
+    assert "Score" not in output
+    assert "Close" not in output
+    assert "ATR" not in output
+
+
 def test_telegram_send_dataframe() -> None:
     """Tests send_dataframe with empty DataFrame and populated DataFrame."""
     bot = TelegramBot(token="12345:TOKEN", chat_id="9999", enabled=True)

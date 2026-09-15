@@ -491,7 +491,6 @@ class DipBuyerStrategy(BaseStrategy[int]):
         entry_price = signal_row["close"] - (
             signal_row["atr"] * self.config.ENTRY_FACTOR
         )
-        target_price = entry_price + (signal_row["atr"] * self.config.EXIT_TP_FACTOR)
         high_next_target = signal_row["high"] + 0.01
 
         indices_str = self._get_indices_string(symbol)
@@ -525,7 +524,6 @@ class DipBuyerStrategy(BaseStrategy[int]):
                 symbol=symbol,
                 action="BUY LMT",
                 entry_price=round(entry_price, 2),
-                target_profit=round(target_price, 2),
                 details={
                     "LOC": round(high_next_target, 2),
                     "Score": round(signal_row["setup_score"], 2),
