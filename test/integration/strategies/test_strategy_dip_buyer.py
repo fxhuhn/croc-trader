@@ -92,7 +92,7 @@ def test_entry_standard_fill(
 
     # Act
     # We must ensure signal_date is set in trade data for date validation
-    base_trade_data["signal_context"] = '{"setup_date": "2026-01-01"}'
+    base_trade_data["signal_context"] = '{"setup_date": "2026-01-01", "atr5": 5.0}'
     result = strategy.check_entry(base_trade_data, candle, df_history, mock_repository)
 
     # Assert
@@ -104,18 +104,19 @@ def test_entry_standard_fill(
     data = args[1]
     assert data["entry_price"] == 100.0
     assert data["status"] == TradeStatus.ACTIVE
+    assert data["current_target"] == 104.0  # 100.0 + (0.8 * 5.0)
 
 
 def test_entry_gap_down_fill(
     strategy: DipBuyerStrategy, mock_repository: MagicMock, base_trade_data: dict
 ) -> None:
-    """Gap Down: Open < Limit. Fills at Open (Better Price)."""
+    """Gap Down: Open < Limit. Fills at Open (Better Price) and recalculates Target."""
     # Arrange
     candle = create_candle("2026-01-02", 95.0, 98.0, 90.0, 92.0)
     df_history = pd.DataFrame([candle])
 
     # Act
-    base_trade_data["signal_context"] = '{"date": "2026-01-01"}'
+    base_trade_data["signal_context"] = '{"date": "2026-01-01", "atr5": 5.0}'
     result = strategy.check_entry(base_trade_data, candle, df_history, mock_repository)
 
     # Assert
@@ -125,6 +126,7 @@ def test_entry_gap_down_fill(
     mock_repository.update_trade.assert_called_once()
     args, _ = mock_repository.update_trade.call_args
     assert args[1]["entry_price"] == 95.0
+    assert args[1]["current_target"] == 99.0  # 95.0 + (0.8 * 5.0)
 
 
 def test_entry_no_fill_high_above_limit(

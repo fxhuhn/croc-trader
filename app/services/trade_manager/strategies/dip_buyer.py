@@ -26,6 +26,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
     name: Strategies = Strategies.DipBuyer
     TIME_STOP_DAYS: int = 8
     MIN_HISTORY_FOR_PREVIOUS_CANDLE: int = 2
+    EXIT_TP_FACTOR: float = 0.8
 
     @override
     def get_current_parameters(
@@ -110,7 +111,17 @@ class DipBuyerStrategy(BaseTradeStrategy):
             min(open_price, limit_price) if open_price < limit_price else limit_price
         )
 
-        return self._execute_activation(trade, fill_price, "LIMIT", date_string)
+        extra_updates: dict[str, object] = {}
+        context = self._get_full_context(trade)
+        raw_atr = context.get("atr5") or context.get("setup_atr")
+        atr_value = float(str(raw_atr)) if raw_atr is not None else 0.0
+        if atr_value > 0:
+            target_price = round(fill_price + (atr_value * self.EXIT_TP_FACTOR), 2)
+            extra_updates["current_target"] = target_price
+
+        return self._execute_activation(
+            trade, fill_price, "LIMIT", date_string, extra_updates=extra_updates
+        )
 
     @override
     def _do_manage_active_trade(

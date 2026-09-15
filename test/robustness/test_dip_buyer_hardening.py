@@ -159,6 +159,7 @@ def test_bva_dip_buyer_entry_limit_hit_and_gap_down() -> None:
     assert transition_hit is not None
     assert transition_hit.updates["status"] == TradeStatus.ACTIVE
     assert transition_hit.updates["entry_price"] == 96.0
+    assert transition_hit.updates["current_target"] == 99.2  # 96.0 + (0.8 * 4.0)
     assert "LIMIT" in transition_hit.reason
 
     # 2. Gap Down: Open=93.0 (< Limit 96.0), Low=92.0 -> Fills at Open (93.0) with gap-down benefit
@@ -169,6 +170,7 @@ def test_bva_dip_buyer_entry_limit_hit_and_gap_down() -> None:
     assert transition_gap is not None
     assert transition_gap.updates["status"] == TradeStatus.ACTIVE
     assert transition_gap.updates["entry_price"] == 93.0
+    assert transition_gap.updates["current_target"] == 96.2  # 93.0 + (0.8 * 4.0)
     assert "LIMIT" in transition_gap.reason
 
     # 3. Missed Entry Window on Day 1: Low=97.0 (> Limit 96.0) -> Rejected (INVALID)

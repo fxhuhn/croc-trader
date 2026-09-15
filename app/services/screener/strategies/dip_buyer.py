@@ -516,7 +516,7 @@ class DipBuyerStrategy(BaseStrategy[int]):
             size=0,
             entry=round(entry_price, 2),
             stop_loss=0.0,
-            target=round(target_price, 2),
+            target=0.0,
             context=context,
         )
 

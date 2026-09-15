@@ -203,8 +203,8 @@ def test_process_signals_creates_trade(strategy, mock_repo):
     assert call_kwargs["symbol"] == "TEST"
     assert call_kwargs["strategy"] == "dip_buyer"
     assert call_kwargs["entry"] == 95.0  # 100 - (5.0 * 1.0)
-    # TP = Entry + (0.8 * ATR) = 95.0 + (0.8 * 5.0) = 95.0 + 4.0 = 99.0
-    assert call_kwargs["target"] == 99.0
+    # Target is 0.0 at CREATED stage; calculated upon actual entry fill in Trade Manager
+    assert call_kwargs["target"] == 0.0
     assert call_kwargs["stop_loss"] == 0.0
 
 
