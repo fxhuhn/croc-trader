@@ -64,6 +64,36 @@ def calculate_unweighted_monthly_pct(month_df: pd.DataFrame) -> float:
     return float(trade_pcts.mean())
 
 
+def calculate_weighted_monthly_pct(month_df: pd.DataFrame) -> float:
+    """Calculates the capital-weighted percentage return of closed trades in a month.
+
+    Args:
+        month_df: DataFrame of closed trades for the month.
+
+    Returns:
+        float: Capital-weighted percentage return across trades.
+    """
+    if month_df.empty:
+        return 0.0
+
+    pnl = pd.to_numeric(month_df["realized_pnl"], errors="coerce").fillna(0.0)
+    entry_prices = pd.to_numeric(month_df["entry_price"], errors="coerce").fillna(0.0)
+    initial_sizes = pd.to_numeric(month_df["initial_size"], errors="coerce").fillna(0.0)
+
+    invested = entry_prices * initial_sizes
+    valid_mask = invested > 0.0
+
+    if not valid_mask.any():
+        return 0.0
+
+    total_invested = float(invested[valid_mask].sum())
+    if total_invested <= 0.0:
+        return 0.0
+
+    total_pnl = float(pnl[valid_mask].sum())
+    return float((total_pnl / total_invested) * 100.0)
+
+
 def calculate_active_months(strat_df: pd.DataFrame) -> float:
     """Computes the active month span of a strategy based on entry and exit dates.
 
@@ -158,6 +188,76 @@ def calculate_evm_allocations(
     return dict.fromkeys(strategy_groups, default_weight)
 
 
+def extract_calendar_daily_returns(
+    slice_df: pd.DataFrame,
+    strategy_groups: dict[str, list[Any]],
+) -> pd.DataFrame:
+    """Extracts calendar-synchronized daily return series across strategy groups.
+
+    For each calendar day with closed trades, computes the capital-weighted net return
+    per strategy. Strategies with no closed trades on that calendar day receive a return
+    of 0.0, eliminating asynchronous trade-index alignment and artificial variance dilution.
+
+    Args:
+        slice_df: DataFrame of closed trades containing exit_date or exit_date_dt.
+        strategy_groups: Strategy group name to filter list mapping.
+
+    Returns:
+        pd.DataFrame: Calendar-indexed DataFrame where each column is a strategy daily return.
+    """
+    strat_names = list(strategy_groups.keys())
+    if slice_df.empty or "strategy" not in slice_df.columns:
+        return pd.DataFrame(columns=strat_names)
+
+    if "exit_date_dt" in slice_df.columns:
+        exit_dates = pd.to_datetime(slice_df["exit_date_dt"], errors="coerce")
+    elif "exit_date" in slice_df.columns:
+        exit_dates = pd.to_datetime(slice_df["exit_date"], errors="coerce")
+    else:
+        return pd.DataFrame(columns=strat_names)
+
+    normalized_dates = exit_dates.dt.normalize().dropna()
+    calendar_dates = sorted(normalized_dates.unique())
+    if not calendar_dates:
+        return pd.DataFrame(columns=strat_names)
+
+    resolved_strategies = slice_df["strategy"].apply(
+        lambda s: STRATEGY_ALIASES.get(str(s).lower(), s)
+    )
+
+    slice_copy = slice_df.copy()
+    slice_copy["_exit_date_norm"] = normalized_dates
+
+    entry_prices = pd.to_numeric(slice_copy["entry_price"], errors="coerce").fillna(0.0)
+    initial_sizes = pd.to_numeric(slice_copy["initial_size"], errors="coerce").fillna(
+        0.0
+    )
+    realized_pnls = pd.to_numeric(slice_copy["realized_pnl"], errors="coerce").fillna(
+        0.0
+    )
+    slice_copy["_invested"] = entry_prices * initial_sizes
+    slice_copy["_realized_pnl"] = realized_pnls
+
+    daily_dict: dict[str, pd.Series] = {}
+    for name in strat_names:
+        filters = strategy_groups[name]
+        strat_df = slice_copy[resolved_strategies.isin(filters)]
+        if strat_df.empty:
+            daily_dict[name] = pd.Series(0.0, index=calendar_dates)
+            continue
+
+        grouped = strat_df.groupby("_exit_date_norm").agg(
+            {"_realized_pnl": "sum", "_invested": "sum"}
+        )
+        valid_invested = grouped["_invested"] > 0.0
+        daily_ret = (grouped["_realized_pnl"] / grouped["_invested"]).where(
+            valid_invested, 0.0
+        )
+        daily_dict[name] = daily_ret.reindex(calendar_dates, fill_value=0.0)
+
+    return pd.DataFrame(daily_dict, index=calendar_dates)
+
+
 def _extract_strategy_return_vectors(
     slice_df: pd.DataFrame,
     strategy_groups: dict[str, list[Any]],
@@ -192,26 +292,19 @@ def calculate_mean_variance_allocations(
     if slice_df.empty or "strategy" not in slice_df.columns:
         return dict.fromkeys(strategy_groups, default_weight)
 
-    strat_names, strat_returns, mus = _extract_strategy_return_vectors(
-        slice_df, strategy_groups
-    )
+    strat_names = list(strategy_groups.keys())
+    daily_returns_df = extract_calendar_daily_returns(slice_df, strategy_groups)
 
-    max_len = max((len(s) for s in strat_returns), default=0)
-    if max_len < MIN_SERIES_LEN:
+    if daily_returns_df.empty or len(daily_returns_df) < MIN_SERIES_LEN:
         return dict.fromkeys(strategy_groups, default_weight)
 
-    padded_dict = {
-        name: ser.reset_index(drop=True)
-        for name, ser in zip(strat_names, strat_returns, strict=True)
-    }
-    returns_df = pd.DataFrame(padded_dict)
-
-    cov_matrix = build_covariance_matrix(returns_df)
-    mu_vector = np.array(mus, dtype=float)
+    cov_matrix = build_covariance_matrix(daily_returns_df)
 
     if model_type == "risk_parity":
         opt_weights = optimize_risk_parity_weights(cov_matrix)
     else:
+        mus = [float(daily_returns_df[col].mean()) for col in strat_names]
+        mu_vector = np.array(mus, dtype=float)
         opt_weights = optimize_max_sharpe_weights(mu_vector, cov_matrix)
 
     return {name: float(w) for name, w in zip(strat_names, opt_weights, strict=True)}
@@ -233,11 +326,8 @@ def calculate_mean_variance_dashboard_data(
     stat_data = _compute_mv_strategy_statistics(
         slice_df, resolved_strategies, strat_names, strategy_groups
     )
-    padded_dict = {
-        name: ser.reset_index(drop=True)
-        for name, ser in zip(strat_names, stat_data["returns"], strict=True)
-    }
-    cov_matrix = build_covariance_matrix(pd.DataFrame(padded_dict))
+    daily_returns_df = extract_calendar_daily_returns(slice_df, strategy_groups)
+    cov_matrix = build_covariance_matrix(daily_returns_df)
     mu_vector = np.array(stat_data["mus"], dtype=float)
 
     weights_ms = optimize_max_sharpe_weights(mu_vector, cov_matrix)
@@ -564,6 +654,10 @@ def _build_portfolio_models_matrix_rows(
             factor *= 1.0 + p / 100.0
         return (factor - 1.0) * 100.0
 
+    evm_rounded = [round(p, 1) for p in evm_pcts]
+    ms_rounded = [round(p, 1) for p in ms_pcts]
+    rp_rounded = [round(p, 1) for p in rp_pcts]
+
     return [
         {
             "name": "Standard",
@@ -572,18 +666,18 @@ def _build_portfolio_models_matrix_rows(
         },
         {
             "name": "Frequenz-Modell (EV/M)",
-            "months": [round(p, 1) for p in evm_pcts],
-            "gesamt": round(compound(evm_pcts), 1),
+            "months": evm_rounded,
+            "gesamt": round(compound(evm_rounded), 1),
         },
         {
             "name": "Risikoadjustiert (Max-Sharpe)",
-            "months": [round(p, 1) for p in ms_pcts],
-            "gesamt": round(compound(ms_pcts), 1),
+            "months": ms_rounded,
+            "gesamt": round(compound(ms_rounded), 1),
         },
         {
             "name": "Risikoadjustiert (Risk Parity)",
-            "months": [round(p, 1) for p in rp_pcts],
-            "gesamt": round(compound(rp_pcts), 1),
+            "months": rp_rounded,
+            "gesamt": round(compound(rp_rounded), 1),
         },
     ]
 

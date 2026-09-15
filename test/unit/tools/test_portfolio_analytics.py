@@ -19,7 +19,9 @@ from app.tools.portfolio_analytics import (
     calculate_rolling_3m_metrics,
     calculate_strategy_risk_and_expectancy,
     calculate_unweighted_monthly_pct,
+    calculate_weighted_monthly_pct,
     calculate_win_loss_rois,
+    extract_calendar_daily_returns,
     extract_roi_series,
 )
 
@@ -94,6 +96,39 @@ def test_calculate_unweighted_monthly_pct_empty_and_valid() -> None:
     )
     # Invested = 1000 each. ROI = 50/1000 = 5%, -20/1000 = -2%. Mean = 1.5%
     assert pytest.approx(calculate_unweighted_monthly_pct(df)) == 1.5
+
+
+def test_calculate_weighted_monthly_pct_heterogeneous_capital() -> None:
+    """Verifies that capital-weighted monthly return respects position sizing."""
+    df = pd.DataFrame(
+        {
+            "realized_pnl": [100.0, -900.0],
+            "entry_price": [100.0, 100.0],
+            "initial_size": [10.0, 90.0],  # 1,000 invested vs 9,000 invested
+        }
+    )
+    # Unweighted average would be (+10% + -10%) / 2 = 0.0%
+    # Capital-weighted is -800 / 10,000 = -8.0%
+    assert pytest.approx(calculate_weighted_monthly_pct(df)) == -8.0
+
+
+def test_extract_calendar_daily_returns(
+    sample_trade_dataframe: pd.DataFrame, strategy_groups: dict[str, list[object]]
+) -> None:
+    """Verifies calendar-synchronized daily returns generation across strategies."""
+    daily_df = extract_calendar_daily_returns(sample_trade_dataframe, strategy_groups)
+    assert not daily_df.empty
+    # Must have columns for all requested strategy groups
+    assert list(daily_df.columns) == list(strategy_groups.keys())
+    # Dates present in fixture are Jan 15, Jan 18, Jan 20, Feb 10
+    assert len(daily_df) == 4
+
+    # Croc Setup traded on Jan 15 (+50 PnL, 1000 inv -> +0.05) and Jan 20 (-20 PnL, 1050 inv -> -0.0190)
+    assert pytest.approx(daily_df.loc[pd.Timestamp("2026-01-15"), "Croc Setup"]) == 0.05
+    # On Jan 18, Croc Setup had no exits -> 0.0
+    assert daily_df.loc[pd.Timestamp("2026-01-18"), "Croc Setup"] == 0.0
+    # Dip Buyer traded on Jan 18 (+80 PnL, 1000 inv -> +0.08)
+    assert pytest.approx(daily_df.loc[pd.Timestamp("2026-01-18"), "Dip Buyer"]) == 0.08
 
 
 def test_calculate_active_months(sample_trade_dataframe: pd.DataFrame) -> None:

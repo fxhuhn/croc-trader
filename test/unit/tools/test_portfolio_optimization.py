@@ -103,3 +103,51 @@ def test_compute_downside_deviation() -> None:
     returns = pd.Series([0.05, -0.02, 0.03, -0.04, 0.01])
     d_dev = compute_downside_deviation(returns)
     assert d_dev > 0.0
+
+
+def test_optimize_risk_parity_weights_multi_asset_exact_erc() -> None:
+    """Verifies that the convex Spinu solver achieves equal risk contributions across heterogeneous assets."""
+    cov = np.diag([0.09, 0.04, 0.01, 0.0025])
+    weights = optimize_risk_parity_weights(cov)
+
+    assert len(weights) == 4
+    assert pytest.approx(np.sum(weights), abs=1e-5) == 1.0
+    # Inverse volatility ordering: asset with 0.0025 var must have largest weight
+    assert weights[3] > weights[2] > weights[1] > weights[0]
+
+    _, _, prc = calculate_risk_contributions(weights, cov)
+    for p in prc:
+        assert pytest.approx(p, abs=0.1) == 25.0
+
+
+def test_optimize_risk_parity_weights_edge_cases() -> None:
+    """Verifies boundary handling for 0 and 1 asset inputs."""
+    empty_cov = np.empty((0, 0))
+    assert len(optimize_risk_parity_weights(empty_cov)) == 0
+
+    single_cov = np.array([[0.04]])
+    single_w = optimize_risk_parity_weights(single_cov)
+    assert len(single_w) == 1
+    assert pytest.approx(single_w[0]) == 1.0
+
+
+def test_build_covariance_matrix_shrinkage_with_nans() -> None:
+    """Verifies that sparse DataFrames containing NaNs correctly trigger Ledoit-Wolf shrinkage."""
+    df_sparse = pd.DataFrame(
+        {
+            "StratA": [0.01, 0.02, -0.01, 0.03, 0.01, -0.02],
+            "StratB": [
+                np.nan,
+                np.nan,
+                np.nan,
+                0.02,
+                np.nan,
+                0.01,
+            ],  # Only 2 valid observations
+        }
+    )
+    cov = build_covariance_matrix(df_sparse, shrinkage_threshold=5)
+    assert cov.shape == (2, 2)
+    assert cov[0, 0] > 0.0
+    assert cov[1, 1] > 0.0
+    assert pytest.approx(cov[0, 1]) == cov[1, 0]

@@ -50,8 +50,10 @@ def build_covariance_matrix(
     if sample_cov.ndim == 0:
         sample_cov = np.array([[float(sample_cov)]])
 
-    # Check if shrinkage is required
-    valid_obs_count = (returns_df != 0.0).astype(int).sum(axis=0).min()
+    # Check if shrinkage is required (count non-NaN, non-zero active observations)
+    valid_obs_count = int(
+        (returns_df.notna() & (returns_df != 0.0)).astype(int).sum(axis=0).min()
+    )
     if valid_obs_count < shrinkage_threshold:
         # Target: Diagonal matrix with average sample variance
         avg_var = float(np.mean(np.diag(sample_cov)))
@@ -170,17 +172,18 @@ def optimize_max_sharpe_weights(
 def optimize_risk_parity_weights(
     cov_matrix: np.ndarray,
 ) -> np.ndarray:
-    """Computes Equal Risk Contribution (Risk Parity) portfolio weights using SLSQP.
+    """Computes Equal Risk Contribution (Risk Parity) portfolio weights.
 
-    Objective:
-        Minimize Σ_i Σ_j ( w_i * (Σ w)_i - w_j * (Σ w)_j )²
+    Uses the strictly convex log-barrier formulation of Maillard, Roncalli & Teïletche (2010)
+    and Spinu (2013):
+        min_y ( 1/2 * yᵀ Σ y - Σ ln(y_i) )  subject to y > 0
+        w* = y* / (Σ y_i*)
 
-    Constraints:
-        Σ w_i = 1.0
-        w_i >= 0.0  (No-Short)
+    This formulation guarantees strict convexity, a unique global minimum, and eliminates
+    the local minima and vanishing gradient stalls of the non-convex pairwise difference formulation.
 
     Args:
-        cov_matrix: N x N covariance matrix Σ.
+        cov_matrix: N x N symmetric positive semi-definite covariance matrix Σ.
 
     Returns:
         np.ndarray: Vector of optimal Risk Parity weights w*.
@@ -188,35 +191,45 @@ def optimize_risk_parity_weights(
     num_strats = cov_matrix.shape[0]
     if num_strats == 0:
         return np.array([], dtype=float)
+    if num_strats == 1:
+        return np.array([1.0], dtype=float)
 
     default_weights: np.ndarray = np.ones(num_strats) / float(num_strats)
 
-    def risk_parity_objective(weights: np.ndarray) -> float:
-        cov_w = np.dot(cov_matrix, weights)
-        risk_contributions = weights * cov_w
-        # Sum of squared differences between all pairs of risk contributions
-        diffs = risk_contributions[:, None] - risk_contributions[None, :]
-        return float(np.sum(diffs**2))
+    # Initial guess inversely proportional to volatility (naive risk parity)
+    variances = np.diag(cov_matrix)
+    stds = np.sqrt(np.maximum(variances, 1e-8))
+    inv_vols = 1.0 / stds
+    y0 = inv_vols / np.sum(inv_vols)
 
-    constraints = [{"type": "eq", "fun": lambda w: float(np.sum(w) - 1.0)}]
-    bounds = [(1e-4, 1.0) for _ in range(num_strats)]
+    def log_barrier_objective(y: np.ndarray) -> float:
+        safe_y = np.maximum(y, 1e-12)
+        quad = float(np.dot(safe_y.T, np.dot(cov_matrix, safe_y)))
+        log_barrier = float(np.sum(np.log(safe_y)))
+        return 0.5 * quad - log_barrier
+
+    def log_barrier_gradient(y: np.ndarray) -> np.ndarray:
+        safe_y = np.maximum(y, 1e-12)
+        return cast(np.ndarray, np.dot(cov_matrix, safe_y) - (1.0 / safe_y))
+
+    bounds = [(1e-8, None) for _ in range(num_strats)]
 
     result = minimize(
-        risk_parity_objective,
-        x0=default_weights,
-        method="SLSQP",
+        log_barrier_objective,
+        x0=y0,
+        jac=log_barrier_gradient,
+        method="L-BFGS-B",
         bounds=bounds,
-        constraints=constraints,
-        options={"maxiter": 500, "ftol": 1e-9},
+        options={"maxiter": 500, "ftol": 1e-12, "gtol": 1e-10},
     )
 
-    if not result.success:
+    if not result.success or np.any(result.x <= 0.0):
         return default_weights
 
     optimized_weights: np.ndarray = np.maximum(0.0, result.x)
-    total_w = float(np.sum(optimized_weights))
-    if total_w > EPSILON:
-        return cast(np.ndarray, optimized_weights / total_w)
+    total_weight = float(np.sum(optimized_weights))
+    if total_weight > EPSILON:
+        return cast(np.ndarray, optimized_weights / total_weight)
 
     return default_weights
 
