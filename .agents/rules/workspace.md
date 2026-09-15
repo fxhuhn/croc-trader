@@ -55,5 +55,13 @@ The repository-local virtual environment uses:
   2. `app/routes/api.py` (or relevant blueprint files) for verified `@blueprint.route` decorator definitions.
 * Do **NOT** rely on fallback default values defined inside Python dataclasses (e.g. `app/config.py`) when runtime configuration files (`settings.yaml`, `.env`) are present in the workspace.
 
+## Production Inspection & Container Log Invariant
+For container, log, and metric inspection in the production environment:
+- **Strict Prohibition:** Never use `browser_subagent` or temporary scratch scripts in `/tmp` or the root directory.
+- **Priority 1 (Standard & 100% Reliable):** Execute the official zero-dependency plugin CLI:
+  `.venv/bin/python .agents/plugins/dozzle-mcp/scripts/dozzle_cli.py [status|list|logs|search|stats]`
+  (or `python3 .agents/plugins/dozzle-mcp/scripts/dozzle_cli.py ...`)
+- **Priority 2 (Native MCP Dispatcher):** Use `call_mcp_tool` providing all 5 mandatory parameters (`ServerName: "dozzle"`, `ToolName`, `Arguments` as a JSON object, `toolSummary`, `toolAction`). Note that the IDE masks schema/argument errors as `unknown tool name: call_mcp_tool`.
+
 Task scope, change discipline, evidence requirements, and completion reporting
 are governed by `.agents/AGENTS.md`.
