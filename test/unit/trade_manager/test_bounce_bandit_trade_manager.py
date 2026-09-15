@@ -276,6 +276,41 @@ def test_bounce_bandit_generate_entry_order(
     assert order.entry is not None
     assert order.entry.type == "MKT"
 
+    # Bracket with target_price in signal_context
+    trade_with_context = {
+        "id": 1,
+        "symbol": "QQQ",
+        "entry_price": 500.0,
+        "budget": 10000.0,
+        "signal_context": json.dumps({"target_price": 510.50}),
+    }
+    order_bracket = trade_strategy._generate_entry_order(
+        trade_with_context, df_history, budget=10000.0
+    )
+    assert order_bracket is not None
+    assert len(order_bracket.exits) == 1
+    assert order_bracket.exits[0].action == "SELL"
+    assert order_bracket.exits[0].type == "LOC"
+    assert order_bracket.exits[0].price == Decimal("510.50")
+    assert order_bracket.exits[0].quantity == 20
+    assert order_bracket.exits[0].time_in_force == "DAY"
+
+    # Bracket with target_price derived from dataframe_history
+    dates = pd.date_range("2026-08-01", periods=10, freq="B")
+    df_with_history = pd.DataFrame(
+        [
+            {"date": d.strftime("%Y-%m-%d"), "close": 500.0 + i}
+            for i, d in enumerate(dates)
+        ]
+    )
+    order_from_history = trade_strategy._generate_entry_order(
+        trade, df_with_history, budget=10000.0
+    )
+    assert order_from_history is not None
+    assert len(order_from_history.exits) == 1
+    assert order_from_history.exits[0].type == "LOC"
+    assert order_from_history.exits[0].price > Decimal("0")
+
     # Invalid entry price or budget
     invalid_trade = {"id": 1, "symbol": "QQQ", "entry_price": 0.0}
     assert (

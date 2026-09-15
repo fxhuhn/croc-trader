@@ -277,7 +277,7 @@ class BounceBanditStrategy(BaseStrategy[int]):
             size=0.0,
             entry=setup_result.current_close,
             stop_loss=0.0,
-            target=0.0,
+            target=round(setup_result.target_price, 2),
             context=dict(context),
         )
 

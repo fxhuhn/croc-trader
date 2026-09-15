@@ -203,7 +203,10 @@ def test_bounce_bandit_strategy_to_csv_end_to_end(tmp_path: Path) -> None:
         assert order_entry.entry is not None
         assert order_entry.entry.type == "MKT"
         assert order_entry.entry.time_in_force == "OPG"
-        assert len(order_entry.exits) == 0  # No exits on entry day
+        assert len(order_entry.exits) == 1  # Bracket: Attached LOC TP exit leg
+        assert order_entry.exits[0].type == "LOC"
+        assert order_entry.exits[0].time_in_force == "DAY"
+        assert order_entry.exits[0].price > Decimal("0")
 
         csv_path_entry = write_csv_orders_file(
             orders_data=[(trade_created, order_entry)],
@@ -214,10 +217,14 @@ def test_bounce_bandit_strategy_to_csv_end_to_end(tmp_path: Path) -> None:
         assert csv_path_entry is not None
         with open(csv_path_entry, newline="") as f:
             entry_rows = list(csv.DictReader(f))
-        assert len(entry_rows) == 1
+        assert len(entry_rows) == 2
         assert entry_rows[0]["bracket_role"] == "ENTRY"
         assert entry_rows[0]["order_type"] == "MKT"
         assert entry_rows[0]["tif"] == "OPG"
+        assert entry_rows[1]["bracket_role"] == "TP"
+        assert entry_rows[1]["order_type"] == "LOC"
+        assert entry_rows[1]["tif"] == "DAY"
+        assert float(entry_rows[1]["target_price"]) > 0.0
 
         # 3. Test ACTIVE trade generates exit order
         trade_active: TradeData = {

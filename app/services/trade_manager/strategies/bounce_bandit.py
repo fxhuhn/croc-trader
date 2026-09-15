@@ -18,11 +18,11 @@ from typing import final, override
 import pandas as pd
 
 from ....const import Strategies
-from ....models import Order, TradeParams
+from ....models import Order, OrderLeg, TradeParams
 from ....tools.indicators import calculate_rsi, calculate_sma
 from ....types import TradeData
 from ..types import TradeTransition
-from .abstract import BaseTradeStrategy, OrderOptions
+from .abstract import BaseTradeStrategy, OrderOptions, OrderPayload
 
 logger = logging.getLogger(__name__)
 
@@ -134,11 +134,63 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        """Generates MOO entry order for CREATED trades with OPG time-in-force."""
-        return self._generate_budget_entry_order(
-            trade=trade,
-            budget=budget,
-            options=OrderOptions(order_type="MKT", time_in_force="OPG"),
+        """Generates MOO entry bracket order with attached LOC TP exit leg for CREATED trades."""
+        entry_price = self._extract_entry_price(trade)
+        trade_budget = self._get_strategy_budget(trade, budget)
+
+        if entry_price <= 0 or trade_budget <= 0:
+            return None
+
+        quantity = int(trade_budget / entry_price)
+        if quantity < 1:
+            return None
+
+        entry_leg = OrderLeg(
+            action="BUY",
+            type="MKT",
+            price=Decimal(str(entry_price)),
+            quantity=quantity,
+            time_in_force="OPG",
+        )
+
+        exits: list[OrderLeg] = []
+        context = self._get_full_context(trade)
+        target_price = (
+            context.get("target_price")
+            or context.get("target")
+            or trade.get("current_target")
+        )
+
+        if (
+            target_price is None
+            and not dataframe_history.empty
+            and len(dataframe_history) >= self.EXIT_SMA_LEN
+        ):
+            close_series = dataframe_history["close"].astype(float)
+            targets = calculate_bounce_bandit_targets(close_series, self.EXIT_SMA_LEN)
+            target_price = targets.get("target_price")
+
+        if target_price is not None:
+            target_value = float(str(target_price))
+            if target_value > 0:
+                exits.append(
+                    OrderLeg(
+                        action="SELL",
+                        type="LOC",
+                        price=Decimal(str(round(target_value, 2))),
+                        quantity=quantity,
+                        time_in_force="DAY",
+                    )
+                )
+
+        return self._create_order(
+            OrderPayload(
+                symbol=trade["symbol"],
+                quantity=quantity,
+                mode="Entry",
+                entry=entry_leg,
+                exits=exits,
+            )
         )
 
     @override
