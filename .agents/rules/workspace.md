@@ -63,5 +63,10 @@ For container, log, and metric inspection in the production environment:
   (or `python3 .agents/plugins/dozzle-mcp/scripts/dozzle_cli.py ...`)
 - **Priority 2 (Native MCP Dispatcher):** Use `call_mcp_tool` providing all 5 mandatory parameters (`ServerName: "dozzle"`, `ToolName`, `Arguments` as a JSON object, `toolSummary`, `toolAction`). Note that the IDE masks schema/argument errors as `unknown tool name: call_mcp_tool`.
 
+## Domain & Environment Tool Execution Invariant (Mandatory MCP Usage)
+* **STRICT MCP DISPATCHER MANDATE:** Whenever inspecting, verifying, or interacting with application services, portfolios, trades, screener candidates, system health, logs, database queries, or workflow triggers (both in DEV and PROD), you **MUST ALWAYS** use the native MCP tools via `call_mcp_tool` (or available eager MCP tools).
+* **STRICT BAN ON RAW HTTP / URLLIB / CURL FOR MCP OPERATIONS:** Never execute raw `urllib`, `requests`, `httpx`, `curl`, or custom HTTP scripts via command-line to bypass, simulate, or test MCP endpoints and domain operations when native MCP tools (`croc-trader-dev`, `croc-trader-prod`, `croc-sqlite-readonly`, `dozzle`) are available.
+
+
 Task scope, change discipline, evidence requirements, and completion reporting
 are governed by `.agents/AGENTS.md`.
