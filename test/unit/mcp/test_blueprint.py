@@ -303,3 +303,41 @@ def test_oauth_metadata_discovery(mcp_app: Flask) -> None:
         assert response.status_code == 200
         data = response.get_json()
         assert data["auth_methods"] == ["ip_whitelist"]
+
+
+def test_mcp_unauthorized_ip_blocked_even_in_warning_mode(mcp_app: Flask) -> None:
+    """Verifies that unauthorized client IP receives 403 Forbidden even in warning mode."""
+    client = mcp_app.test_client()
+    response = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+        environ_base={"REMOTE_ADDR": "198.51.100.55"},
+    )
+    assert response.status_code == 403
+    data = response.get_json()
+    assert data == {"status": "error", "message": "Unauthorized Access"}
+
+
+def test_mcp_authorized_ip_allowed(mcp_app: Flask) -> None:
+    """Verifies that whitelisted client IP receives normal response."""
+    client = mcp_app.test_client()
+    response = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "ping"},
+        environ_base={"REMOTE_ADDR": "127.0.0.1"},
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["result"] == {}
+
+
+def test_oauth_metadata_discovery_unauthorized_ip_blocked(mcp_app: Flask) -> None:
+    """Verifies that OAuth discovery endpoint blocks unauthorized IPs with 403."""
+    client = mcp_app.test_client()
+    response = client.get(
+        "/.well-known/oauth-protected-resource",
+        environ_base={"REMOTE_ADDR": "198.51.100.55"},
+    )
+    assert response.status_code == 403
+    data = response.get_json()
+    assert data == {"status": "error", "message": "Unauthorized Access"}

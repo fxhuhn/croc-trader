@@ -45,3 +45,7 @@ brain/
 # Nur temporäre Skripte ignorieren (wichtige Skripte bleiben in Git)
 scripts/one_off/
 scripts/temp_*.py
+
+# MCP & API Referenzen
+references/mcp.md
+references/api.md

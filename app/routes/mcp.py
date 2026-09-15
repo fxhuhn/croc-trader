@@ -164,7 +164,7 @@ def _dispatch_method(
 
 
 @mcp_bp.route("/mcp", methods=["GET", "POST"])
-@require_ip_whitelist
+@require_ip_whitelist(strict=True)
 def handle_mcp_request() -> ApiResponse:
     """Streamable HTTP / JSON-RPC 2.0 entrypoint for the MCP Server."""
     mcp_server = current_app.extensions.get("mcp_server")
@@ -226,7 +226,7 @@ def handle_mcp_request() -> ApiResponse:
 
 @mcp_bp.route("/.well-known/oauth-protected-resource", methods=["GET"])
 @mcp_bp.route("/.well-known/oauth-protected-resource/mcp", methods=["GET"])
-@require_ip_whitelist
+@require_ip_whitelist(strict=True)
 def handle_oauth_metadata_discovery() -> ApiResponse:
     """Handles OAuth 2.0 protected resource metadata discovery probes gracefully."""
     return (

@@ -13,4 +13,5 @@ PyYAML==6.0.3
 scipy==1.18.0
 yfinance==1.4.0
 tvdatafeed @ git+https://github.com/rongardF/tvdatafeed.git
+mcp==2.0.0
 
