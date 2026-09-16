@@ -14,6 +14,7 @@ from .routes import main_bp
 
 # Services Setup
 from .services.setup import configure_scheduler, register_services
+from .tools.formatting import format_german_number
 
 
 def create_app(config_object: ConfigManager = settings) -> Flask:
@@ -68,6 +69,22 @@ def create_app(config_object: ConfigManager = settings) -> Flask:
             return dt_local.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
             return str(utc_str)
+
+    # Register German number format filter
+    @app.template_filter("de_number")
+    def de_number(
+        value: float | int | str | None,
+        decimals: int = 2,
+        prefix_plus: bool = False,
+        default: str = "-",
+    ) -> str:
+        """Formats numeric values into German number format (1.xxx,xx)."""
+        return format_german_number(
+            value=value,
+            decimals=decimals,
+            prefix_plus=prefix_plus,
+            default=default,
+        )
 
     # 2. Logging Setup
     log_file_path = config_object.get_log_path()

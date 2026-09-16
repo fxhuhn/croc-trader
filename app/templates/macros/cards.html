@@ -710,6 +710,6 @@ progress_current=none, progress_max=none) %}
     {% else %}
         bg-rose-500 text-white font-bold shadow-sm
     {% endif %}">
-    {% if val > 0.0 %}+{{ "%.1f"|format(val) }}%{% elif val < 0.0 %}{{ "%.1f"|format(val) }}%{% else %}{% endif %}
+    {% if val > 0.0 %}+{{ val | de_number(1) }}%{% elif val < 0.0 %}{{ val | de_number(1) }}%{% else %}{% endif %}
 </div>
 {% endmacro %}

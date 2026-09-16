@@ -4,7 +4,8 @@ Follows the Functional Core pattern: deterministic calculations without side eff
 """
 
 from collections.abc import Sequence
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, TypedDict
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,38 @@ from ..tools.portfolio_optimization import (
     optimize_max_sharpe_weights,
     optimize_risk_parity_weights,
 )
+
+
+@dataclass(frozen=True)
+class AllocationRecommendationContext:
+    """Input context for calculating portfolio allocation recommendations."""
+
+    model_key: str
+    model_name: str
+    ytd_return_pct: float
+    weights: dict[str, float]
+    reference_capital: float = 100_000.0
+
+
+class StrategyAllocationRow(TypedDict):
+    """Single strategy allocation entry for the portfolio recommendation."""
+
+    name: str
+    share_pct: float
+    budget_per_trade_dollar: float
+    slots: int
+
+
+class AllocationRecommendationPayload(TypedDict):
+    """Complete payload for the 100k portfolio allocation recommendation."""
+
+    model_name: str
+    model_key: str
+    ytd_return_pct: float
+    total_slots: int
+    reference_capital: float
+    rows: list[StrategyAllocationRow]
+
 
 MIN_SERIES_LEN: int = 2
 LOW_DATA_THRESHOLD: int = 5
@@ -658,28 +691,119 @@ def _build_portfolio_models_matrix_rows(
     ms_rounded = [round(p, 1) for p in ms_pcts]
     rp_rounded = [round(p, 1) for p in rp_pcts]
 
+    equal_weights = (
+        {name: 1.0 / len(strategy_groups) for name in strategy_groups}
+        if strategy_groups
+        else {}
+    )
+    current_evm_weights = calculate_evm_allocations(dataframe, strategy_groups)
+    current_ms_weights = calculate_mean_variance_allocations(
+        dataframe, strategy_groups, model_type="max_sharpe"
+    )
+    current_rp_weights = calculate_mean_variance_allocations(
+        dataframe, strategy_groups, model_type="risk_parity"
+    )
+
     return [
         {
+            "key": "standard",
             "name": "Standard",
             "months": standard_monthly,
             "gesamt": round(compound(standard_monthly), 1),
+            "weights": equal_weights,
         },
         {
+            "key": "evm",
             "name": "Frequenz-Modell (EV/M)",
             "months": evm_rounded,
             "gesamt": round(compound(evm_rounded), 1),
+            "weights": current_evm_weights,
         },
         {
+            "key": "max_sharpe",
             "name": "Risikoadjustiert (Max-Sharpe)",
             "months": ms_rounded,
             "gesamt": round(compound(ms_rounded), 1),
+            "weights": current_ms_weights,
         },
         {
+            "key": "risk_parity",
             "name": "Risikoadjustiert (Risk Parity)",
             "months": rp_rounded,
             "gesamt": round(compound(rp_rounded), 1),
+            "weights": current_rp_weights,
         },
     ]
+
+
+def calculate_allocation_recommendation(
+    context: AllocationRecommendationContext,
+    dataframe: pd.DataFrame,
+    active_trades: Sequence[dict[str, Any]],
+    strategy_groups: dict[str, list[Any]],
+) -> AllocationRecommendationPayload:
+    """Calculates allocation recommendation for reference capital based on best model.
+
+    Args:
+        context: Encapsulated model context (model_key, model_name, ytd_return_pct, weights, reference_capital).
+        dataframe: Historical closed trades DataFrame.
+        active_trades: Currently open active trades sequence.
+        strategy_groups: Mapping of strategy display names to identifier filters.
+
+    Returns:
+        AllocationRecommendationPayload: Structured recommendation data.
+    """
+    resolved_strategies = (
+        dataframe["strategy"].apply(lambda s: STRATEGY_ALIASES.get(str(s).lower(), s))
+        if not dataframe.empty and "strategy" in dataframe.columns
+        else pd.Series(dtype=object)
+    )
+
+    rows: list[StrategyAllocationRow] = []
+    total_slots = 0
+
+    for name, filters in strategy_groups.items():
+        strat_df = (
+            dataframe[resolved_strategies.isin(filters)].copy()
+            if not dataframe.empty and not resolved_strategies.empty
+            else pd.DataFrame()
+        )
+        strat_active = [
+            trade
+            for trade in active_trades
+            if STRATEGY_ALIASES.get(
+                str(trade.get("strategy", "")).lower(), trade.get("strategy")
+            )
+            in filters
+            or trade.get("strategy") in filters
+        ]
+
+        _, percentile_95 = calculate_concurrent_exposure(strat_df, strat_active)
+        slots = max(int(percentile_95), 1)
+        total_slots += slots
+
+        weight = float(context.weights.get(name, 0.0))
+        share_pct = round(weight * 100.0, 1)
+        strategy_budget = context.reference_capital * weight
+        budget_per_trade = round(strategy_budget / slots, 0) if slots > 0 else 0.0
+
+        rows.append(
+            {
+                "name": name,
+                "share_pct": share_pct,
+                "budget_per_trade_dollar": budget_per_trade,
+                "slots": slots,
+            }
+        )
+
+    return {
+        "model_name": context.model_name,
+        "model_key": context.model_key,
+        "ytd_return_pct": context.ytd_return_pct,
+        "total_slots": total_slots,
+        "reference_capital": context.reference_capital,
+        "rows": rows,
+    }
 
 
 def calculate_strategy_risk_and_expectancy(

@@ -5,8 +5,10 @@ import pytest
 
 from app.const import Strategies
 from app.tools.portfolio_analytics import (
+    AllocationRecommendationContext,
     apply_depot_and_ev_allocations,
     calculate_active_months,
+    calculate_allocation_recommendation,
     calculate_benchmark_monthly_returns,
     calculate_concurrent_exposure,
     calculate_evm_allocations,
@@ -215,6 +217,92 @@ def test_calculate_monthly_matrix_data(
     assert portfolio_row["name"] == "Portfolio"
     assert len(portfolio_row["months"]) == 12
     assert len(model_rows) == 4
+    for model in model_rows:
+        assert "key" in model
+        assert "weights" in model
+        assert isinstance(model["weights"], dict)
+
+
+def test_calculate_allocation_recommendation_standard(
+    sample_trade_dataframe: pd.DataFrame, strategy_groups: dict[str, list[object]]
+) -> None:
+    """Verifies allocation recommendation structure and calculation with standard model."""
+    _matrix_rows, _portfolio_row, model_rows = calculate_monthly_matrix_data(
+        sample_trade_dataframe, selected_year=2026, strategy_groups=strategy_groups
+    )
+    best_model = model_rows[0]
+    context = AllocationRecommendationContext(
+        model_key=best_model["key"],
+        model_name=best_model["name"],
+        ytd_return_pct=best_model["gesamt"],
+        weights=best_model["weights"],
+        reference_capital=100_000.0,
+    )
+    payload = calculate_allocation_recommendation(
+        context=context,
+        dataframe=sample_trade_dataframe,
+        active_trades=[],
+        strategy_groups=strategy_groups,
+    )
+    assert payload["model_name"] == "Standard"
+    assert payload["model_key"] == "standard"
+    assert payload["reference_capital"] == 100_000.0
+    assert len(payload["rows"]) == len(strategy_groups)
+    assert payload["total_slots"] == sum(r["slots"] for r in payload["rows"])
+    for row in payload["rows"]:
+        assert row["name"] in strategy_groups
+        assert row["slots"] >= 1
+        assert 0.0 <= row["share_pct"] <= 100.0
+        assert row["budget_per_trade_dollar"] >= 0.0
+
+
+def test_calculate_allocation_recommendation_empty_data(
+    strategy_groups: dict[str, list[object]],
+) -> None:
+    """Verifies allocation recommendation handles empty data without error."""
+    context = AllocationRecommendationContext(
+        model_key="standard",
+        model_name="Standard",
+        ytd_return_pct=0.0,
+        weights={"Dip Buyer": 0.5, "Turnover": 0.5},
+        reference_capital=100_000.0,
+    )
+    payload = calculate_allocation_recommendation(
+        context=context,
+        dataframe=pd.DataFrame(),
+        active_trades=[],
+        strategy_groups=strategy_groups,
+    )
+    assert payload["model_key"] == "standard"
+    assert payload["total_slots"] == len(strategy_groups)
+    for row in payload["rows"]:
+        assert row["slots"] == 1
+
+
+def test_calculate_allocation_recommendation_with_active_trades(
+    sample_trade_dataframe: pd.DataFrame, strategy_groups: dict[str, list[object]]
+) -> None:
+    """Verifies allocation recommendation includes active trades in slot calculation."""
+    active_trades = [
+        {"strategy": "dip_buyer", "entry_date": "2026-03-01"},
+        {"strategy": "dip_buyer", "entry_date": "2026-03-02"},
+    ]
+    context = AllocationRecommendationContext(
+        model_key="standard",
+        model_name="Standard",
+        ytd_return_pct=15.0,
+        weights={"Dip Buyer": 0.5, "Turnover": 0.5},
+        reference_capital=100_000.0,
+    )
+    payload = calculate_allocation_recommendation(
+        context=context,
+        dataframe=sample_trade_dataframe,
+        active_trades=active_trades,
+        strategy_groups=strategy_groups,
+    )
+    dip_row = next(r for r in payload["rows"] if r["name"] == "Dip Buyer")
+    assert dip_row["slots"] >= 1
+    assert dip_row["budget_per_trade_dollar"] > 0.0
 
 
 def test_calculate_strategy_risk_and_expectancy(

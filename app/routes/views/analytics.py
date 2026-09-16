@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Sequence
-from typing import cast
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -12,8 +12,10 @@ from ...services.trade_manager.view_service import TradeViewData, TradeViewServi
 from ...tools import metrics
 from ...tools.portfolio_analytics import (
     GERMAN_MONTH_NAMES,
+    AllocationRecommendationContext,
     apply_depot_and_ev_allocations,
     calculate_active_months,
+    calculate_allocation_recommendation,
     calculate_benchmark_monthly_returns,
     calculate_concurrent_exposure,
     calculate_evm_allocations,
@@ -634,13 +636,39 @@ def view_analytics_monthly_matrix() -> str:
         status=TradeStatus.CLOSED,
         exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
     )
+    active_trades = service.get_trades(status=TradeStatus.ACTIVE)
     closed_trades = _filter_non_croc_trades(closed_trades, service)
+    active_trades = _filter_non_croc_trades(active_trades, service)
     dataframe = _prepare_closed_trades_dataframe(closed_trades)
 
     matrix_rows, portfolio_row, portfolio_models_rows = calculate_monthly_matrix_data(
         dataframe, selected_year, STRATEGY_GROUPS
     )
     benchmark_rows = _fetch_benchmark_rows(service.market_repository, selected_year)
+
+    best_model = (
+        max(portfolio_models_rows, key=lambda m: float(str(m.get("gesamt", 0.0))))
+        if portfolio_models_rows
+        else {
+            "key": "standard",
+            "name": "Standard",
+            "gesamt": 0.0,
+            "weights": {name: 1.0 / len(STRATEGY_GROUPS) for name in STRATEGY_GROUPS},
+        }
+    )
+
+    recommendation_context = AllocationRecommendationContext(
+        model_key=str(best_model.get("key", "standard")),
+        model_name=str(best_model.get("name", "Standard")),
+        ytd_return_pct=float(str(best_model.get("gesamt", 0.0))),
+        weights=cast(dict[str, float], best_model.get("weights", {})),
+    )
+    allocation_recommendation = calculate_allocation_recommendation(
+        context=recommendation_context,
+        dataframe=dataframe,
+        active_trades=cast(list[dict[str, Any]], active_trades),
+        strategy_groups=STRATEGY_GROUPS,
+    )
 
     return render_template(
         "analytics_monthly_matrix.html",
@@ -651,6 +679,7 @@ def view_analytics_monthly_matrix() -> str:
         portfolio_row=portfolio_row,
         portfolio_models_rows=portfolio_models_rows,
         benchmark_rows=benchmark_rows,
+        allocation_recommendation=allocation_recommendation,
         active_page="analytics",
         active_subpage="monthly_matrix",
     )

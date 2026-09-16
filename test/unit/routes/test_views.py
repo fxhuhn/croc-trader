@@ -1267,6 +1267,13 @@ def test_view_analytics_monthly_matrix_portfolio_models(
         assert b"Risikoadjustiert (Max-Sharpe)" in response.data
         assert b"Risikoadjustiert (Risk Parity)" in response.data
 
+        # Section 4: Allokations-Empfehlung rendered
+        assert b"Allokations-Empfehlung" in response.data
+        assert b"100.000 $ Portfolio" in response.data
+        assert b"Max. Budget / Trade" in response.data
+        assert b"Slots (P95)" in response.data
+        assert b"Modell:" in response.data
+
 
 def test_view_analytics_monthly_matrix_excludes_croc_trades(
     test_client: FlaskClient,
@@ -1329,12 +1336,12 @@ def test_view_analytics_monthly_matrix_excludes_croc_trades(
         assert b"hold_target" not in response.data
         assert b"split_target" not in response.data
 
-        # Dip Buyer must appear with +10.0%
+        # Dip Buyer must appear with +10,0%
         assert b"Dip Buyer" in response.data
-        assert b"+10.0%" in response.data
+        assert b"+10,0%" in response.data
 
         # Portfolio Month 1 average is 10.0% / 7 = 1.4%, not skewed by Croc trades (+50.0%)
-        assert b"+1.4%" in response.data
+        assert b"+1,4%" in response.data
 
 
 def test_view_analytics_monthly_matrix_compounded_return(
@@ -1379,12 +1386,12 @@ def test_view_analytics_monthly_matrix_compounded_return(
 
         response = test_client.get("/analytics/monthly-matrix?year=2026")
         assert response.status_code == 200
-        # Dip Buyer Month 1 cell shows +20.0%
-        assert b"+20.0%" in response.data
-        # Dip Buyer Compounded Gesamt shows +8.0%
-        assert b"+8.0%" in response.data
-        # Portfolio Month 1 average across 7 strategies (+20.0% / 7) shows +2.9%
-        assert b"+2.9%" in response.data
+        # Dip Buyer Month 1 cell shows +20,0%
+        assert b"+20,0%" in response.data
+        # Dip Buyer Compounded Gesamt shows +8,0%
+        assert b"+8,0%" in response.data
+        # Portfolio Month 1 average across 7 strategies (+20.0% / 7) shows +2,9%
+        assert b"+2,9%" in response.data
 
 
 def test_view_analytics_monthly_matrix_badge_styles(
