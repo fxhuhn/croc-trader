@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% from "macros/navigation.html" import render_header %}
+{% import "macros/cards.html" as cards %}
+
+{% block title %}{% block page_title %}Screener{% endblock %}{% endblock %}
+
+{% block header_title %}{{ self.page_title() }}{% endblock %}
+
+{% block content %}
+<!-- Header -->
+{{ render_header(self.header_title()|trim, self.page_key()|trim, show_switcher=False, active_tab="screener") }}
+
+<!-- MAIN CONTENT -->
+<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+
+    <!-- Signals Section (Cards) -->
+    <section class="mb-12">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+            {% for row in results %}
+                {% block screener_card scoped %}{% endblock %}
+            {% else %}
+                {% block empty_state %}
+                {{ cards.empty_state() }}
+                {% endblock %}
+            {% endfor %}
+        </div>
+        {% block footer_note %}
+        <div class="mt-4 px-2 py-2 text-xs text-slate-600 font-medium tracking-wide text-center">
+            Check auf neue Signale erfolgt täglich
+        </div>
+        {% endblock %}
+    </section>
+
+</main>
+
+{% set active_page = 'screener' %}
+{% include "partials/mobile_nav.html" with context %}
+{% endblock %}
+
+{% block page_key %}screener{% endblock %}

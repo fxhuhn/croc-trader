@@ -1,116 +1,85 @@
-{% extends "base.html" %}
+{% extends "screener_base.html" %}
 
-{% block title %}NDX Momentum Screener{% endblock %}
+{% block page_title %}NDX Momentum Screener{% endblock %}
+{% block header_title %}NDX Momentum{% endblock %}
+{% block page_key %}ndx-momentum{% endblock %}
 
-{% block content %}
-{% from "macros/navigation.html" import render_header %}
-{% import "macros/cards.html" as cards %}
-
-{{ render_header("NDX Momentum", "ndx-momentum", show_switcher=False, active_tab="screener") }}
-
-<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
-
-    <!-- Signals Section (Cards) -->
-    <section class="mb-12">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
-            {% for res in results %}
-            {% set score_formatted = "%+.2f"|format(res.context.momentum_score) %}
-            {% call cards.screener_card(res.symbol, "", "", "", false) %}
-            <div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
-                <!-- Left Column -->
-                <div class="flex flex-col">
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">Datum</span>
-                        <span class="font-bold text-slate-800">{{ res.context.actual_analysis_date or res.display_date
-                            }}</span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100 items-center">
-                        <span class="text-slate-500 font-medium whitespace-nowrap mr-2">Status</span>
-                        <span>
-                            {% if res.position_status == 'HOLD' %}
-                            <span
-                                class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-xs font-bold">HOLD</span>
-                            {% else %}
-                            <span
-                                class="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded text-xs font-bold">NEW</span>
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100 items-center">
-                        <span class="text-slate-500 font-medium whitespace-nowrap mr-2">Market Breadth</span>
-                        <span>
-                            {% if res.context.breadth_regime == 'BULL' %}
-                            <span
-                                class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-xs font-bold">BULL</span>
-                            {% else %}
-                            <span
-                                class="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded text-xs font-bold">BEAR</span>
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100 items-center">
-                        <span class="text-slate-500 font-medium whitespace-nowrap mr-2">QQQ Regime</span>
-                        <span>
-                            {% if res.context.qqq_regime == 'BULL' %}
-                            <span
-                                class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-xs font-bold">BULL</span>
-                            {% else %}
-                            <span
-                                class="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded text-xs font-bold">BEAR</span>
-                            {% endif %}
-                        </span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">Sum(ROC)</span>
-                        <span class="font-bold text-blue-600 font-mono">{{ score_formatted }}</span>
-                    </div>
-                </div>
-                <!-- Right Column -->
-                <div class="flex flex-col">
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">ROC 1M</span>
-                        <span
-                            class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_1 > 0 else 'text-rose-600' }}">
-                            {{ "%+.2f"|format(res.context.roc_1) }}%
-                        </span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">ROC 3M</span>
-                        <span
-                            class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_3 > 0 else 'text-rose-600' }}">
-                            {{ "%+.2f"|format(res.context.roc_3) }}%
-                        </span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">ROC 6M</span>
-                        <span
-                            class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_6 > 0 else 'text-rose-600' }}">
-                            {{ "%+.2f"|format(res.context.roc_6) }}%
-                        </span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">ROC 12M</span>
-                        <span
-                            class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_12 > 0 else 'text-rose-600' }}">
-                            {{ "%+.2f"|format(res.context.roc_12) }}%
-                        </span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Action Button (Chart) -->
-            {{ cards.tradingview_btn(res.symbol) }}
-            {% endcall %}
-            {% else %}
-            {{ cards.empty_state() }}
-            {% endfor %}
+{% block screener_card %}
+{% set res = row %}
+{% set score_formatted = "%+.2f"|format(res.context.momentum_score) %}
+{% call cards.screener_card(res.symbol, "", "", "", false) %}
+<div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
+    <!-- Left Column -->
+    <div class="flex flex-col">
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Datum</span>
+            <span class="font-bold text-slate-800">{{ res.context.actual_analysis_date or res.display_date }}</span>
         </div>
-    </section>
+        <div class="flex justify-between py-1.5 border-b border-slate-100 items-center">
+            <span class="text-slate-500 font-medium whitespace-nowrap mr-2">Status</span>
+            <span>
+                {% if res.position_status == 'HOLD' %}
+                <span class="bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded text-xs font-bold">HOLD</span>
+                {% else %}
+                <span class="bg-amber-50 text-amber-700 border border-amber-100 px-2 py-0.5 rounded text-xs font-bold">NEW</span>
+                {% endif %}
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100 items-center">
+            <span class="text-slate-500 font-medium whitespace-nowrap mr-2">Market Breadth</span>
+            <span>
+                {% if res.context.breadth_regime == 'BULL' %}
+                <span class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-xs font-bold">BULL</span>
+                {% else %}
+                <span class="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded text-xs font-bold">BEAR</span>
+                {% endif %}
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100 items-center">
+            <span class="text-slate-500 font-medium whitespace-nowrap mr-2">QQQ Regime</span>
+            <span>
+                {% if res.context.qqq_regime == 'BULL' %}
+                <span class="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-xs font-bold">BULL</span>
+                {% else %}
+                <span class="bg-rose-50 text-rose-700 border border-rose-100 px-2 py-0.5 rounded text-xs font-bold">BEAR</span>
+                {% endif %}
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Sum(ROC)</span>
+            <span class="font-bold text-blue-600 font-mono">{{ score_formatted }}</span>
+        </div>
+    </div>
+    <!-- Right Column -->
+    <div class="flex flex-col">
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">ROC 1M</span>
+            <span class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_1 > 0 else 'text-rose-600' }}">
+                {{ "%+.2f"|format(res.context.roc_1) }}%
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">ROC 3M</span>
+            <span class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_3 > 0 else 'text-rose-600' }}">
+                {{ "%+.2f"|format(res.context.roc_3) }}%
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">ROC 6M</span>
+            <span class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_6 > 0 else 'text-rose-600' }}">
+                {{ "%+.2f"|format(res.context.roc_6) }}%
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">ROC 12M</span>
+            <span class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_12 > 0 else 'text-rose-600' }}">
+                {{ "%+.2f"|format(res.context.roc_12) }}%
+            </span>
+        </div>
+    </div>
+</div>
 
-</main>
-
-
-
-{% set active_page = 'screener' %}
-{% include "partials/mobile_nav.html" with context %}
+<!-- Action Button (Chart) -->
+{{ cards.tradingview_btn(res.symbol) }}
+{% endcall %}
 {% endblock %}

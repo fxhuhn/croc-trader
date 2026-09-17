@@ -15,15 +15,6 @@
         {{ render_mobile_table_header() }}
 
         {% for group in active_trades %}
-        {% set variant_metrics = namespace(half_percent_variant=none, one_percent_variant=none, total_quantity=0, max_days=0, green_candle_count=0) %}
-        {% for variant in group.variants %}
-        {% if '0.5' in variant.strategy %}{% set variant_metrics.half_percent_variant = variant %}{% endif %}
-        {% if '1.0' in variant.strategy %}{% set variant_metrics.one_percent_variant = variant %}{% endif %}
-        {% set variant_metrics.total_quantity = variant_metrics.total_quantity + variant.current_size|int %}
-        {% set variant_metrics.max_days = [variant_metrics.max_days, variant.days_held|int]|max %}
-        {% set variant_metrics.green_candle_count = variant.green_candle_count|default(0) %}
-        {% endfor %}
-
         <div class="group-linkable">
             <!-- Trigger Row -->
             <button type="button" id="trigger-turnover-{{ loop.index }}"
@@ -34,11 +25,11 @@
                     <!-- Col 1–5: Symbol & Subline -->
                     <div class="col-span-5">
                         <span class="text-sm font-bold text-slate-900 leading-none">{{ group.symbol }}</span>
-                        {{ render_row_subline(variant_metrics.max_days ~ 'd') }}
+                        {{ render_row_subline(group.max_days ~ 'd') }}
                     </div>
                     <!-- Col 6–8: Quantity -->
                     <div class="col-span-3 text-right">
-                        <span class="text-sm font-bold text-slate-600 tabular-nums">{{ variant_metrics.total_quantity }}</span>
+                        <span class="text-sm font-bold text-slate-600 tabular-nums">{{ group.total_quantity }}</span>
                     </div>
                     <!-- Col 9–12: Open PnL & Chevron -->
                     <div class="col-span-4 flex items-center justify-end gap-2">
@@ -61,12 +52,12 @@
                                 <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                     <span class="text-slate-500 font-medium text-xs">Date</span>
                                     <span class="text-slate-700 font-bold text-xs tabular-nums">
-                                        {{ variant_metrics.half_percent_variant.display_entry if variant_metrics.half_percent_variant else variant_metrics.one_percent_variant.display_entry }} ({{ variant_metrics.max_days }}d)
+                                        {{ group.variant_05.display_entry if group.variant_05 else (group.variant_10.display_entry if group.variant_10 else (group.variants[0].display_entry if group.variants else '-')) }} ({{ group.max_days }}d)
                                     </span>
                                 </div>
                                 <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                     <span class="text-slate-500 font-medium text-xs">Quantity</span>
-                                    <span class="text-slate-700 font-bold text-xs tabular-nums">{{ variant_metrics.total_quantity }}</span>
+                                    <span class="text-slate-700 font-bold text-xs tabular-nums">{{ group.total_quantity }}</span>
                                 </div>
                             </div>
                             <div class="flex flex-col">
@@ -79,12 +70,12 @@
                                 <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                     <span class="text-slate-500 font-medium text-xs">Candle</span>
                                     <span class="text-slate-700 font-bold text-xs">
-                                        {% if variant_metrics.green_candle_count == 0 %}
+                                        {% if group.green_candle_count == 0 %}
                                         <span class="inline-flex items-center gap-0 text-slate-300">
                                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
                                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current"></i>
                                         </span>
-                                        {% elif variant_metrics.green_candle_count == 1 %}
+                                        {% elif group.green_candle_count == 1 %}
                                         <span class="inline-flex items-center gap-0">
                                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current text-emerald-500"></i>
                                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current text-slate-300"></i>
@@ -148,25 +139,18 @@
         <!-- Active Trades List (Desktop) -->
         <div class="divide-y divide-slate-100">
             {% for group in active_trades %}
-            {% set variant_metrics = namespace(half_percent_variant=none, one_percent_variant=none, total_quantity=0, max_days=0, green_candle_count=0) %}
-            {% for variant in group.variants %}
-            {% if '0.5' in variant.strategy %}{% set variant_metrics.half_percent_variant = variant %}{% endif %}
-            {% if '1.0' in variant.strategy %}{% set variant_metrics.one_percent_variant = variant %}{% endif %}
-            {% set variant_metrics.total_quantity = variant_metrics.total_quantity + variant.current_size|int %}
-            {% set variant_metrics.max_days = [variant_metrics.max_days, variant.days_held|int]|max %}
-            {% set variant_metrics.green_candle_count = variant.green_candle_count|default(0) %}
-            {% endfor %}
-
             <div class="hover:bg-slate-50/50 transition-colors cursor-pointer" onclick="toggleRow('acc-act-turnover-{{ loop.index }}')">
                 <div class="grid grid-cols-8 gap-4 px-4 py-3 items-center text-sm">
                     <!-- 1. Date -->
                     <div class="text-slate-500 tabular-nums whitespace-nowrap">
-                        {% if variant_metrics.half_percent_variant %}
-                            {{ variant_metrics.half_percent_variant.display_entry }}
+                        {% if group.variant_05 %}
+                            {{ group.variant_05.display_entry }}
+                        {% elif group.variant_10 %}
+                            {{ group.variant_10.display_entry }}
                         {% else %}
-                            {{ variant_metrics.one_percent_variant.display_entry }}
+                            {{ group.variants[0].display_entry if group.variants else '-' }}
                         {% endif %}
-                        ({{ variant_metrics.max_days }}d)
+                        ({{ group.max_days }}d)
                     </div>
 
                     <!-- 2. Symbol -->
@@ -176,12 +160,12 @@
 
                     <!-- 3. Signal (Strategy Badges) -->
                     <div class="flex flex-nowrap gap-1 whitespace-nowrap">
-                        {% if variant_metrics.half_percent_variant %}
+                        {% if group.variant_05 %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
                             0.5
                         </span>
                         {% endif %}
-                        {% if variant_metrics.one_percent_variant %}
+                        {% if group.variant_10 %}
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
                             1.0
                         </span>
@@ -190,16 +174,16 @@
 
                     <!-- 4. Quantity -->
                     <div class="text-right tabular-nums text-slate-500 whitespace-nowrap">
-                        {{ variant_metrics.total_quantity }}
+                        {{ group.total_quantity }}
                     </div>
 
                     <!-- 5. Entry (sub-rows for multiple strategy variants) -->
                     <div class="flex flex-col items-end gap-0.5 text-xs text-slate-500 font-medium tabular-nums whitespace-nowrap">
-                        {% if variant_metrics.half_percent_variant %}
-                        <div class="whitespace-nowrap">0.5: {{ "{:,.2f}".format(variant_metrics.half_percent_variant.entry_price|float) }}</div>
+                        {% if group.variant_05 %}
+                        <div class="whitespace-nowrap">0.5: {{ "{:,.2f}".format(group.variant_05.entry_price|float) }}</div>
                         {% endif %}
-                        {% if variant_metrics.one_percent_variant %}
-                        <div class="whitespace-nowrap">1.0: {{ "{:,.2f}".format(variant_metrics.one_percent_variant.entry_price|float) }}</div>
+                        {% if group.variant_10 %}
+                        <div class="whitespace-nowrap">1.0: {{ "{:,.2f}".format(group.variant_10.entry_price|float) }}</div>
                         {% endif %}
                     </div>
 
@@ -211,7 +195,7 @@
 
                     <!-- 7. Target (Green Candle count) -->
                     <div class="text-right tabular-nums font-medium whitespace-nowrap flex items-center justify-end gap-1">
-                        {% if variant_metrics.green_candle_count == 0 %}
+                        {% if group.green_candle_count == 0 %}
                         <span class="inline-flex items-center gap-0 text-slate-300">
                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
                             <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>

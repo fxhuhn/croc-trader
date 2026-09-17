@@ -1,37 +1,26 @@
-<!DOCTYPE html>
-<html lang="de">
+{% extends "base.html" %}
 
-<head>
-    <meta charset="UTF-8">
-    <title>404 Nicht gefunden</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            text-align: center;
-            padding: 50px;
-            color: #333;
-        }
+{% block title %}404 - Seite nicht gefunden | Croc Trader{% endblock %}
 
-        h1 {
-            font-size: 50px;
-            color: #e74c3c;
-        }
-
-        p {
-            font-size: 20px;
-        }
-
-        a {
-            color: #3498db;
-            text-decoration: none;
-        }
-    </style>
-</head>
-
-<body>
-    <h1>404</h1>
-    <p>Diese Seite existiert nicht oder wurde verschoben.</p>
-    <p><a href="/">Zurück zur Übersicht</a></p>
-</body>
-
-</html>
+{% block content %}
+<main class="flex-grow flex items-center justify-center px-4 py-16 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full text-center">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 md:p-10">
+            <div class="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <i data-lucide="compass" class="w-8 h-8"></i>
+            </div>
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 mb-4">
+                HTTP 404
+            </span>
+            <h1 class="text-2xl font-bold text-slate-900 mb-2">Seite nicht gefunden</h1>
+            <p class="text-slate-500 text-sm leading-relaxed mb-8">
+                Die aufgerufene Seite existiert nicht oder wurde verschoben. Bitte überprüfen Sie die URL.
+            </p>
+            <a href="/" class="inline-flex items-center justify-center gap-2 w-full px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-medium text-sm transition-all shadow-sm">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                Zurück zur Übersicht
+            </a>
+        </div>
+    </div>
+</main>
+{% endblock %}

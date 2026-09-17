@@ -1,84 +1,6 @@
 {% extends "base.html" %}
 
 {% block title %}Screener{% endblock %}
-{% block head %}
-<style type="text/tailwindcss">
-    @layer components {
-            .glass-nav {
-                @apply bg-white/80 backdrop-blur-md border-b border-slate-200/60;
-            }
-            
-            .screener-card {
-                @apply bg-white rounded-xl shadow-saas p-4 lg:p-8 transition-all duration-300 flex flex-col h-full relative;
-            }
-
-            .screener-card:hover {
-                @apply -translate-y-1 shadow-saas-hover;
-            }
-
-            .card-content-wrapper {
-                @apply flex flex-row lg:flex-col justify-center lg:justify-start items-center lg:items-stretch mb-4 lg:mb-0 flex-grow;
-            }
-
-            .strategy-icon-box {
-                @apply h-10 w-10 lg:h-16 lg:w-16 bg-slate-50 rounded-full flex items-center justify-center transition-colors duration-300 text-slate-400 flex-shrink-0 mr-4 lg:mr-0 lg:mb-6 lg:self-center;
-            }
-
-            /* Group Hover Logic for Icon Box */
-            .group:hover .strategy-icon-box {
-                @apply bg-blue-50 text-blue-600;
-            }
-
-            .strategy-info {
-                @apply text-left lg:text-center flex-grow-0 lg:flex-grow;
-            }
-
-            .strategy-title {
-                @apply text-xl font-bold text-slate-900 mb-1 lg:mb-3;
-            }
-
-            .strategy-desc {
-                @apply text-slate-500 text-sm leading-relaxed mb-6 hidden lg:block;
-            }
-
-            .btn-primary {
-                @apply block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto;
-            }
-
-            .status-line {
-                @apply flex items-center justify-start lg:justify-center space-x-2 mb-0 lg:mb-8;
-            }
-
-            .dot-active {
-                @apply h-2.5 w-2.5 bg-emerald-500 rounded-full;
-            }
-
-            .dot-inactive {
-                @apply h-2.5 w-2.5 bg-slate-300 rounded-full;
-            }
-
-            .text-status {
-                @apply text-sm font-medium;
-            }
-            
-            .text-active {
-                @apply text-slate-700;
-            }
-            
-            .text-inactive {
-                @apply text-slate-400;
-            }
-        }
-
-        /* SVG Sprite Hide Class */
-        .svg-sprite-hidden {
-            position: absolute;
-            width: 0;
-            height: 0;
-            overflow: hidden;
-        }
-    </style>
-{% endblock %}
 
 {% block content %}
 {% from "macros/navigation.html" import render_header with context %}
@@ -129,26 +51,26 @@
     <!-- Desktop Strategy Grid -->
     <div class="hidden md:grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 mb-8">
         {% for strategy in strategies %}
-        <article class="screener-card group {% if not strategy.is_active %}opacity-70{% endif %}">
-            <div class="card-content-wrapper">
-                <div class="strategy-icon-box">
+        <article class="bg-white rounded-xl shadow-saas p-4 lg:p-8 transition-all duration-300 flex flex-col h-full relative hover:-translate-y-1 hover:shadow-saas-hover group {% if not strategy.is_active %}opacity-70{% endif %}">
+            <div class="flex flex-row lg:flex-col justify-center lg:justify-start items-center lg:items-stretch mb-4 lg:mb-0 flex-grow">
+                <div class="h-10 w-10 lg:h-16 lg:w-16 bg-slate-50 rounded-full flex items-center justify-center transition-colors duration-300 text-slate-400 flex-shrink-0 mr-4 lg:mr-0 lg:mb-6 lg:self-center group-hover:bg-blue-50 group-hover:text-blue-600">
                     <i data-lucide="{{ strategy.icon }}" class="w-5 h-5 md:w-8 md:h-8"></i>
                 </div>
-                <div class="strategy-info">
-                    <h3 class="strategy-title">{{ strategy.name }}</h3>
-                    <p class="strategy-desc">{{ strategy.desc }}</p>
-                    <div class="status-line">
+                <div class="text-left lg:text-center flex-grow-0 lg:flex-grow">
+                    <h3 class="text-xl font-bold text-slate-900 mb-1 lg:mb-3">{{ strategy.name }}</h3>
+                    <p class="text-slate-500 text-sm leading-relaxed mb-6 hidden lg:block">{{ strategy.desc }}</p>
+                    <div class="flex items-center justify-start lg:justify-center space-x-2 mb-0 lg:mb-8">
                         {% if strategy.is_active %}
-                        <span class="dot-active status-pulse"></span>
-                        <span class="text-status text-active">{{ strategy.count }} Signale</span>
+                        <span class="h-2.5 w-2.5 bg-emerald-500 rounded-full status-pulse"></span>
+                        <span class="text-sm font-medium text-slate-700">{{ strategy.count }} Signale</span>
                         {% else %}
-                        <span class="dot-inactive"></span>
-                        <span class="text-status text-inactive">0 Signale</span>
+                        <span class="h-2.5 w-2.5 bg-slate-300 rounded-full"></span>
+                        <span class="text-sm font-medium text-slate-400">0 Signale</span>
                         {% endif %}
                     </div>
                 </div>
             </div>
-            <a href="/screener/{{ strategy.id }}" class="btn-primary">Signale anzeigen</a>
+            <a href="/screener/{{ strategy.id }}" class="block w-full text-center bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors duration-200 mt-auto">Signale anzeigen</a>
         </article>
         {% endfor %}
     </div>

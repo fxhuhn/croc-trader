@@ -13,9 +13,12 @@ def _make_dummy_trade_view_data(
     strategy: str = "DipBuyer",
     unrealized_pnl: float = 100.0,
     initial_size: int = 10,
+    current_size: int = 10,
     entry_price: float = 150.0,
     exit_date: str = "2026-01-10",
     display_entry: str = "2026-01-01",
+    days_held: int = 9,
+    green_candle_count: int = 0,
 ) -> TradeViewData:
     return {
         "id": "1",
@@ -23,7 +26,7 @@ def _make_dummy_trade_view_data(
         "strategy": strategy,
         "status": "ACTIVE",
         "initial_size": initial_size,
-        "current_size": 10,
+        "current_size": current_size,
         "entry_price": entry_price,
         "entry_date": "2026-01-01T10:00:00",
         "exit_price": None,
@@ -32,7 +35,8 @@ def _make_dummy_trade_view_data(
         "signal_context": None,
         "display_entry": display_entry,
         "display_exit": exit_date,
-        "days_held": 9,
+        "days_held": days_held,
+        "green_candle_count": green_candle_count,
         "unrealized_pnl": unrealized_pnl,
         "pnl_percentage": 6.67,
         "is_critical": False,
@@ -71,8 +75,22 @@ def test_group_trades_by_symbol_and_history() -> None:
         trade_repository=MagicMock(), market_repository=MagicMock()
     )
 
-    t1 = _make_dummy_trade_view_data(symbol="AAPL", unrealized_pnl=50.0)
-    t2 = _make_dummy_trade_view_data(symbol="AAPL", unrealized_pnl=30.0)
+    t1 = _make_dummy_trade_view_data(
+        symbol="AAPL",
+        strategy="Turnover_0.5",
+        unrealized_pnl=50.0,
+        current_size=10,
+        days_held=3,
+        green_candle_count=1,
+    )
+    t2 = _make_dummy_trade_view_data(
+        symbol="AAPL",
+        strategy="Turnover_1.0",
+        unrealized_pnl=30.0,
+        current_size=20,
+        days_held=5,
+        green_candle_count=2,
+    )
     t3 = _make_dummy_trade_view_data(symbol="MSFT", unrealized_pnl=-20.0)
 
     # Group by symbol
@@ -81,6 +99,11 @@ def test_group_trades_by_symbol_and_history() -> None:
     aapl_group = next(g for g in grouped if g["symbol"] == "AAPL")
     assert aapl_group["total_pnl"] == 80.0
     assert float(str(aapl_group["total_pnl_percentage"])) > 0
+    assert aapl_group["variant_05"] == t1
+    assert aapl_group["variant_10"] == t2
+    assert aapl_group["total_quantity"] == 30
+    assert aapl_group["max_days"] == 5
+    assert aapl_group["green_candle_count"] == 2
 
     # Group trades history
     t_hist1 = _make_dummy_trade_view_data(

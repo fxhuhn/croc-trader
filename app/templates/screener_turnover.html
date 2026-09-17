@@ -1,78 +1,56 @@
-{% extends "base.html" %}
+{% extends "screener_base.html" %}
 
-{% block title %}Turnover Signale{% endblock %}
+{% block page_title %}Turnover Signale{% endblock %}
+{% block header_title %}Turnover{% endblock %}
+{% block page_key %}turnover{% endblock %}
 
-{% block content %}
-{% import "macros/cards.html" as cards %}
-{% from "macros/navigation.html" import render_header %}
-{{ render_header("Turnover", "turnover", show_switcher=False, active_tab="screener") }}
-
-<!-- MAIN CONTENT -->
-<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
-
-    <!-- Signals Section (Cards) -->
-    <section class="mb-12">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
-            {% for row in results %}
-            {% call cards.screener_card(row.symbol, "", row.get('entry_0_5', 0), "Limit 0.5") %}
-            <div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
-                <!-- Left Column -->
-                <div class="flex flex-col">
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">Datum</span>
-                        <span class="font-bold text-slate-800">{{ row.display_date }}</span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">Index</span>
-                        <span class="font-bold text-slate-800">{{ row.index }}</span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">Dollar-Volume</span>
-                        <span class="font-bold text-slate-600 font-mono">
-                            {% set dv = row.get('dollar_volume', 0) %}
-                            {% if dv >= 1000000000 %}
-                            {{ "%.2f"|format(dv / 1000000000) }}B
-                            {% elif dv >= 1000000 %}
-                            {{ "%.0f"|format(dv / 1000000) }}M
-                            {% else %}
-                            {{ "{:,.0f}".format(dv) }}
-                            {% endif %}
-                        </span>
-                    </div>
-                </div>
-                <!-- Right Column -->
-                <div class="flex flex-col">
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">Limit (1.0)</span>
-                        <span class="font-bold text-slate-600 font-mono">
-                            {% if row.entry_1_0 %}{{ "%.2f"|format(row.entry_1_0) }}{% else %}-{% endif %}
-                        </span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">Close</span>
-                        <span class="font-bold text-slate-600 font-mono">{{ "%.2f"|format(row.close) }}</span>
-                    </div>
-                    <div class="flex justify-between py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium">ATR</span>
-                        <span class="font-bold text-slate-600 font-mono">{{ "%.2f"|format(row.atr) }}</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Action Button (Chart) -->
-            {{ cards.tradingview_btn(row.symbol) }}
-            {% endcall %}
-            {% else %}
-            {{ cards.empty_state() }}
-            {% endfor %}
+{% block screener_card %}
+{% call cards.screener_card(row.symbol, "", row.get('entry_0_5', 0), "Limit 0.5") %}
+<div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
+    <!-- Left Column -->
+    <div class="flex flex-col">
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Datum</span>
+            <span class="font-bold text-slate-800">{{ row.display_date }}</span>
         </div>
-    </section>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Index</span>
+            <span class="font-bold text-slate-800">{{ row.index }}</span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Dollar-Volume</span>
+            <span class="font-bold text-slate-600 font-mono">
+                {% set dv = row.get('dollar_volume', 0) %}
+                {% if dv >= 1000000000 %}
+                {{ "%.2f"|format(dv / 1000000000) }}B
+                {% elif dv >= 1000000 %}
+                {{ "%.0f"|format(dv / 1000000) }}M
+                {% else %}
+                {{ "{:,.0f}".format(dv) }}
+                {% endif %}
+            </span>
+        </div>
+    </div>
+    <!-- Right Column -->
+    <div class="flex flex-col">
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Limit (1.0)</span>
+            <span class="font-bold text-slate-600 font-mono">
+                {% if row.entry_1_0 %}{{ "%.2f"|format(row.entry_1_0) }}{% else %}-{% endif %}
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Close</span>
+            <span class="font-bold text-slate-600 font-mono">{{ "%.2f"|format(row.close) }}</span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">ATR</span>
+            <span class="font-bold text-slate-600 font-mono">{{ "%.2f"|format(row.atr) }}</span>
+        </div>
+    </div>
+</div>
 
-</main>
-
-
-
-
-{% set active_page = 'screener' %}
-{% include "partials/mobile_nav.html" with context %}
+<!-- Action Button (Chart) -->
+{{ cards.tradingview_btn(row.symbol) }}
+{% endcall %}
 {% endblock %}

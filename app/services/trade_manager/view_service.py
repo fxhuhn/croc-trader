@@ -210,6 +210,11 @@ class SymbolTradeGroup(TypedDict):
     total_invested: float
     total_pnl_percentage: float
     variants: list["TradeViewData"]
+    variant_05: "TradeViewData | None"
+    variant_10: "TradeViewData | None"
+    total_quantity: int
+    max_days: int
+    green_candle_count: int
 
 
 class HistoryTradeGroup(TypedDict):
@@ -1136,8 +1141,31 @@ class TradeViewService:
                     "total_invested": 0.0,
                     "total_pnl_percentage": 0.0,
                     "variants": [],
+                    "variant_05": None,
+                    "variant_10": None,
+                    "total_quantity": 0,
+                    "max_days": 0,
+                    "green_candle_count": 0,
                 }
             grouped[symbol]["variants"].append(trade)
+
+            strategy_name = str(trade.get("strategy") or "")
+            if "0.5" in strategy_name:
+                grouped[symbol]["variant_05"] = trade
+            elif "1.0" in strategy_name:
+                grouped[symbol]["variant_10"] = trade
+
+            current_size = int(float(str(trade.get("current_size") or 0)))
+            grouped[symbol]["total_quantity"] += current_size
+
+            days_held = int(float(str(trade.get("days_held") or 0)))
+            grouped[symbol]["max_days"] = max(grouped[symbol]["max_days"], days_held)
+
+            candle_count = int(float(str(trade.get("green_candle_count") or 0)))
+            grouped[symbol]["green_candle_count"] = max(
+                grouped[symbol]["green_candle_count"], candle_count
+            )
+
             unrealized_pnl = float(trade.get("unrealized_pnl") or 0.0)
             entry_price = float(trade.get("entry_price") or 0.0)
             initial_size = float(trade.get("initial_size") or 0.0)

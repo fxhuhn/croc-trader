@@ -254,6 +254,11 @@ def test_view_trades_strategy_specific_routes(
         "total_invested": 15000.0,
         "total_pnl_percentage": 3.33,
         "variants": [mock_active_trade],
+        "variant_05": mock_active_trade,
+        "variant_10": None,
+        "total_quantity": 100,
+        "max_days": 5,
+        "green_candle_count": 0,
     }
 
     # Arrange
@@ -870,6 +875,11 @@ def test_view_trades_all_strategies_populated_data_renders_specific_breakdowns(
                 "total_invested": 10000.0,
                 "total_pnl_percentage": 5.0,
                 "variants": [mock_trade_active],
+                "variant_05": mock_trade_active,
+                "variant_10": None,
+                "total_quantity": 50,
+                "max_days": 2,
+                "green_candle_count": 0,
             }
         ]
         mock_service.group_trades_history.return_value = [
@@ -1862,3 +1872,30 @@ def test_view_trades_tgim_rendered_content_and_progress_max(
         assert b"Time Exit (Wed MOC)" in response.data
         assert b"Tue MOC" not in response.data
         assert b"Monday MOC / Fri EOD" not in response.data
+
+
+def test_404_error_page_renders_clean_template(test_client: FlaskClient) -> None:
+    """Verifies that an unknown HTML route renders the modernized 404 page."""
+    response = test_client.get("/non-existent-page-path-12345")
+    assert response.status_code == 404
+    assert b"Seite nicht gefunden" in response.data
+    assert b"HTTP 404" in response.data
+    assert b"Zur\xc3\xbcck zur \xc3\x9cbersicht" in response.data
+
+
+def test_500_error_page_renders_clean_standalone_html(
+    test_application: Flask,
+) -> None:
+    """Verifies that a server error renders the crash-resilient 500 page."""
+    test_application.config["TESTING"] = False
+    client = test_application.test_client()
+
+    @test_application.route("/simulate-500-error-for-test")
+    def _fail() -> str:
+        raise RuntimeError("Simulated crash")
+
+    response = client.get("/simulate-500-error-for-test")
+    assert response.status_code == 500
+    assert b"Interner Serverfehler" in response.data
+    assert b"HTTP 500" in response.data
+    assert b"Zur\xc3\xbcck zur \xc3\x9cbersicht" in response.data
