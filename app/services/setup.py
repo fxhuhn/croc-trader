@@ -37,12 +37,10 @@ from ..tasks import (
 from ..tools.market_holidays import MarketHolidayChecker
 from ..tools.symbol_exchange import SymbolExchange
 from ..tools.symbol_filter import SymbolFilter
-from .ranking_verification import verify_ranking_system
 
 # Strategies
 from .screener.strategies.bounce_bandit import BounceBanditStrategy
 from .screener.strategies.bridge_scout import BridgeScoutStrategy
-from .screener.strategies.croc_setup import CrocSetupStrategy
 from .screener.strategies.dip_buyer import DipBuyerStrategy
 from .screener.strategies.ndx_momentum import NDXMomentumScreener
 from .screener.strategies.tgim import TGIMStrategy
@@ -117,12 +115,6 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
         except Exception as e:
             logging.error("Failed to load strategy YAML: %s", e)
 
-    # 4.5 Ranking System Verification
-    verify_ranking_system(
-        ranking_yaml_path=config.get_path("ranking_yaml"),
-        signal_repository=signal_repository,
-    )
-
     # 5. Screener Engine (DI: Repos and Strategies)
     active_strategies: list[StrategyProtocol] = [
         DipBuyerStrategy(
@@ -133,12 +125,6 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
         TurnoverTimingStrategy(
             trade_repository=trade_repository,
             data_provider=md_provider,
-            telegram_bot=telegram,
-        ),
-        CrocSetupStrategy(
-            trade_repository=trade_repository,
-            data_provider=md_provider,
-            signal_repository=signal_repository,
             telegram_bot=telegram,
         ),
         TwoPercentStrategy(
