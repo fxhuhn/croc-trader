@@ -49,6 +49,7 @@ class MarketDataUpdater:
 
         self.provider = YahooDataProvider()
         self.tv_provider = TradingViewDataProvider()
+        self._reconcile_eod: bool = False
 
         # Ensure schema exists
         self.repo.init_schema()
@@ -60,6 +61,8 @@ class MarketDataUpdater:
         specific_symbols: list[str] | None = None,
         provider_mode: str = "auto",
         ignore_today: bool = False,
+        *,
+        reconcile_eod: bool = False,
     ) -> None:
         """
         Main entry point for updating market data.
@@ -68,6 +71,7 @@ class MarketDataUpdater:
         :param specific_symbols: Optional subset list of symbols to process.
         :param provider_mode: Data provider strategy ('auto', 'tradingview', 'yahoo').
         :param ignore_today: If True, filters out bars matching today's date.
+        :param reconcile_eod: If True, reconciles latest daily close against regularMarketPrice.
         """
         start_time = datetime.now()
 
@@ -81,12 +85,15 @@ class MarketDataUpdater:
             logger.warning("No symbols to process.")
             return
 
+        self._reconcile_eod = reconcile_eod or (specific_symbols is not None)
+
         logger.info(
-            "Starting update for %d symbols (Full=%s, Provider=%s, IgnoreToday=%s)...",
+            "Starting update for %d symbols (Full=%s, Provider=%s, IgnoreToday=%s, Reconcile=%s)...",
             len(symbols),
             full_reload,
             provider_mode,
             ignore_today,
+            self._reconcile_eod,
         )
 
         # 2. Determine Date Range
@@ -149,6 +156,9 @@ class MarketDataUpdater:
         df_sym = df_sym.dropna(subset=["close"])
         if df_sym.empty:
             return [], ""
+
+        if self._reconcile_eod:
+            df_sym = self.provider.reconcile_eod_candle(symbol, df_sym)
 
         df_sym = df_sym.reset_index().rename(columns={"index": "date"})
         symbol_prices: list[MarketPrice] = []
@@ -233,7 +243,10 @@ class MarketDataUpdater:
                 continue
 
             symbol_prices, symbol_max_date = self._extract_symbol_market_prices(
-                df_sym, symbol, ignore_today, today_str
+                df_sym,
+                symbol,
+                ignore_today,
+                today_str,
             )
             if not symbol_prices:
                 failures.append(symbol)

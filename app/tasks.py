@@ -8,6 +8,7 @@ from typing import Any
 from flask import Flask, current_app, has_app_context
 
 from .config import ConfigManager
+from .database.repositories.trade import TradeRepository
 from .database.session import DatabaseSession
 from .extensions import cache
 from .services.market.quality import MarketQualityService
@@ -168,6 +169,63 @@ def run_market_data_update(
 
     except Exception as error:
         logger.error("Market data update error: %s", error, exc_info=True)
+
+
+def run_active_positions_market_sync(
+    db_path: Path,
+    telegram_bot: TelegramBot | None = None,
+) -> list[str]:
+    """Refreshes market data specifically for active and pending trade symbols.
+
+    Runs pre-flight before TradeManager (e.g. at 05:45 Berlin) to reconcile
+    any unfinalized post-market quotes with official regular market close prices.
+
+    Args:
+        db_path: Path to stocks database file.
+        telegram_bot: Optional TelegramBot notification instance.
+
+    Returns:
+        List of refreshed ticker symbols.
+    """
+    logger.info("⏰ Scheduler: Starting pre-flight market sync for active positions...")
+    try:
+        signals_path = db_path.parent / "signals.db"
+        signals_session = DatabaseSession(str(signals_path))
+        trade_repo = TradeRepository(signals_session)
+        active_trades = trade_repo.get_active_trades()
+
+        symbols = sorted(
+            {
+                str(trade["symbol"]).strip().upper()
+                for trade in active_trades
+                if trade.get("symbol")
+            }
+        )
+
+        if not symbols:
+            logger.info("No active or created trades found. Pre-flight sync skipped.")
+            return []
+
+        logger.info(
+            "Found %d active/created positions to refresh: %s",
+            len(symbols),
+            ", ".join(symbols),
+        )
+
+        session_factory = DatabaseSession(str(db_path))
+        updater = MarketDataUpdater(session_factory, signals_session)
+        updater.run_update(
+            specific_symbols=symbols,
+            provider_mode="auto",
+            reconcile_eod=True,
+        )
+
+        logger.info("✅ Pre-flight market sync completed for: %s", ", ".join(symbols))
+        return symbols
+
+    except Exception as error:
+        logger.error("Active positions market sync error: %s", error, exc_info=True)
+        return []
 
 
 def run_ignored_symbols_check(

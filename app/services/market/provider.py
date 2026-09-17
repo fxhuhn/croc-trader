@@ -111,3 +111,60 @@ class YahooDataProvider:
             return df.copy()
 
         return pd.DataFrame()
+
+    def reconcile_eod_candle(
+        self,
+        symbol: str,
+        symbol_dataframe: pd.DataFrame,
+        *,
+        drift_threshold: float = 0.002,
+    ) -> pd.DataFrame:
+        """Reconciles the latest daily bar close against Yahoo fast_info regularMarketPrice.
+
+        If post-market drift (> drift_threshold) is detected between bar close
+        and official regular market price, corrects the latest bar's close
+        to the regular market price.
+
+        Args:
+            symbol: Equity ticker symbol.
+            symbol_dataframe: Single-symbol historical prices DataFrame.
+            drift_threshold: Relative discrepancy threshold (default 0.2%).
+
+        Returns:
+            pd.DataFrame: Reconciled DataFrame.
+        """
+        if symbol_dataframe.empty:
+            return symbol_dataframe
+
+        close_column = next(
+            (c for c in ("close", "Close") if c in symbol_dataframe.columns),
+            None,
+        )
+        if close_column is None:
+            return symbol_dataframe
+
+        try:
+            fast_info = getattr(yf.Ticker(symbol), "fast_info", None)
+            regular_price = fast_info.get("lastPrice") if fast_info else None
+            raw_close = float(symbol_dataframe[close_column].iloc[-1])
+
+            if regular_price is not None and regular_price > 0 and raw_close > 0:
+                relative_diff = abs(raw_close - regular_price) / regular_price
+                if relative_diff > drift_threshold:
+                    logger.info(
+                        "Reconciled post-market close for %s: %.4f -> %.4f (diff: %.2f%%)",
+                        symbol,
+                        raw_close,
+                        regular_price,
+                        relative_diff * 100,
+                    )
+                    reconciled_dataframe = symbol_dataframe.copy()
+                    reconciled_dataframe.iloc[
+                        -1, reconciled_dataframe.columns.get_loc(close_column)
+                    ] = regular_price
+                    return reconciled_dataframe
+
+        except Exception as error:
+            logger.debug("EOD reconciliation skipped for %s: %s", symbol, error)
+
+        return symbol_dataframe

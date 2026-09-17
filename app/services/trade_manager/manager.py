@@ -124,7 +124,7 @@ class TradeManager:
         """Attempts a targeted market data update for a single active trade symbol."""
         try:
             updater = MarketDataUpdater(self.stocks_session, self.signals_session)
-            updater.run_update(specific_symbols=[symbol])
+            updater.run_update(specific_symbols=[symbol], reconcile_eod=True)
         except Exception as error:
             logger.warning(
                 "Failed targeted market data update for %s: %s", symbol, error

@@ -25,6 +25,7 @@ from ..services.trade_manager import TradeManager
 
 # Tasks importieren
 from ..tasks import (
+    run_active_positions_market_sync,
     run_cache_prewarm,
     run_daily_strategy_check,
     run_db_backup,
@@ -233,6 +234,20 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
             day_of_week="sun", hour=4, timezone=pytz.timezone("Europe/Berlin")
         ),
         id="db_maintenance",
+        replace_existing=True,
+    )
+
+    # --- JOB 2b: Pre-Flight Market Data Reconciliation for Active Positions (05:45 Berlin) ---
+    scheduler.add_job(
+        func=run_active_positions_market_sync,
+        args=[db_stocks],
+        trigger=CronTrigger(
+            day_of_week="mon-sat",
+            hour=5,
+            minute=45,
+            timezone=pytz.timezone("Europe/Berlin"),
+        ),
+        id="market_data_preflight_active_positions",
         replace_existing=True,
     )
 
