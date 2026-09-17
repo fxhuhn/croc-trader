@@ -135,6 +135,51 @@ def test_view_trades_overview_returns_correct_response(
         # Assert
         assert response.status_code == 200
         assert b"Strategies" in response.data
+        assert b'href="/trades/croc"' not in response.data
+        assert b"Croc Setup" not in response.data
+
+
+def test_view_trades_overview_croc_setup_excluded(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that Croc Setup is excluded from trades overview dashboard and navigation."""
+    mock_trades = [
+        {
+            "id": "trade-croc-1",
+            "symbol": "AAPL",
+            "entry_date": "2026-06-01",
+            "strategy": "hold_target",
+            "unrealized_pnl": 150.0,
+            "entry_price": 100.0,
+            "initial_size": 10,
+        },
+        {
+            "id": "trade-dip-1",
+            "symbol": "MSFT",
+            "entry_date": "2026-06-01",
+            "strategy": "dip_buyer",
+            "unrealized_pnl": 200.0,
+            "entry_price": 200.0,
+            "initial_size": 5,
+        },
+    ]
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
+        mock_service_instance = mock_trade_service.return_value
+        mock_service_instance.get_trades.return_value = mock_trades
+        mock_service_instance.resolve_strategy.side_effect = lambda t: t.get("strategy")
+        mock_service_instance.get_portfolio_summary.return_value = {
+            "invested": 2000.0,
+            "open_pnl": 350.0,
+            "win_rate": 1.0,
+        }
+        mock_service_instance.generate_donut_chart.return_value = "<div>Donut</div>"
+
+        response = test_client.get("/trades")
+
+        assert response.status_code == 200
+        assert b"Dip Buyer" in response.data
+        assert b"Croc Setup" not in response.data
+        assert b'href="/trades/croc"' not in response.data
 
 
 @pytest.mark.parametrize(

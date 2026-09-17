@@ -11,6 +11,7 @@ from flask.testing import FlaskClient
 
 from app import create_app
 from app.database.repositories.signal import SignalRepository
+from app.routes.views.trades import _aggregate_croc_signals
 from app.services.screener.strategies.croc_setup import CrocSetupStrategy
 from app.services.screener.view_service import ScreenerViewService, _is_croc_strategy
 from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
@@ -144,3 +145,47 @@ def test_view_service_croc_functions_emit_deprecation_warning() -> None:
         dest: list[dict[str, Any]] = []
         service._filter_new_candidates([], set(), dest)
         assert dest == []
+
+
+def test_view_trades_croc_emits_deprecation_warning(
+    client: FlaskClient,
+) -> None:
+    """Verifies that accessing /trades/croc triggers a DeprecationWarning."""
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
+        mock_service_instance = mock_trade_service.return_value
+        mock_service_instance.get_trades.return_value = []
+        mock_service_instance.get_portfolio_summary.return_value = {
+            "invested": 0.0,
+            "open_pnl": 0.0,
+            "win_rate": 0.0,
+            "total_pnl": 0.0,
+        }
+        mock_service_instance.get_closed_summary.return_value = {
+            "count": 0,
+            "average_pnl": 0.0,
+            "total_pnl": 0.0,
+            "win_rate": 0.0,
+        }
+        mock_service_instance.get_index_stats.return_value = {}
+        mock_service_instance.group_trades_by_symbol.return_value = []
+        mock_service_instance.group_trades_history.return_value = []
+
+        with pytest.warns(
+            DeprecationWarning,
+            match="'view_trades_croc' is deprecated",
+        ):
+            response = client.get("/trades/croc")
+
+        assert response.status_code == 200
+
+
+def test_aggregate_croc_signals_emits_deprecation_warning() -> None:
+    """Verifies that calling _aggregate_croc_signals triggers a DeprecationWarning."""
+    mock_service = MagicMock()
+    with pytest.warns(
+        DeprecationWarning,
+        match="'_aggregate_croc_signals' is deprecated",
+    ):
+        result = _aggregate_croc_signals([], mock_service)
+
+    assert "Breakout (L20)" in result

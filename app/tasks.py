@@ -388,7 +388,6 @@ def _prewarm_target_routes(app: Flask) -> None:
         "/analytics",
         "/analytics/monthly-matrix",
         "/trades",
-        "/trades/croc",
         "/trades/dip-buyer",
         "/trades/turnover",
         "/trades/ndx-momentum",

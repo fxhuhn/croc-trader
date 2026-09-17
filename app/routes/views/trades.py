@@ -1,4 +1,5 @@
 import logging
+import warnings
 from collections.abc import Sequence
 from typing import Any
 
@@ -72,7 +73,6 @@ def _build_strategy_overview_stats(
 ) -> dict[str, dict[str, float]]:
     """Builds aggregated trade counts, PnL, and invested volume per strategy group."""
     stats: dict[str, dict[str, float]] = {
-        "Croc Setup": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "Dip Buyer": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "Turnover": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "Two Percent": {"count": 0, "pnl": 0.0, "invested": 0.0},
@@ -87,6 +87,9 @@ def _build_strategy_overview_stats(
         label = STRATEGY_DISPLAY_MAP.get(
             strat_key, str(trade.get("strategy", "Unknown"))
         )
+
+        if label == "Croc Setup":
+            continue
 
         if label not in stats:
             stats[label] = {"count": 0, "pnl": 0.0, "invested": 0.0}
@@ -139,7 +142,16 @@ def _render_standard_strategy_trades(
 @views_bp.route("/trades/croc", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
 def view_trades_croc() -> str:
-    """Displays the Croc Setup trade history and active positions."""
+    """Displays the Croc Setup trade history and active positions.
+
+    .. deprecated::
+        'view_trades_croc' is deprecated and scheduled for future removal.
+    """
+    warnings.warn(
+        "'view_trades_croc' is deprecated and scheduled for future removal.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     limit = request.args.get("limit", 100, type=int)
     service = _get_trade_view_service()
 
@@ -176,7 +188,16 @@ def view_trades_croc() -> str:
 def _aggregate_croc_signals(
     closed_trades: Sequence[TradeViewData | dict[str, Any]], service: Any
 ) -> dict[str, dict[str, Any]]:
-    """Aggregates trade count, win/loss, and PnL by specific Croc entry signal."""
+    """Aggregates trade count, win/loss, and PnL by specific Croc entry signal.
+
+    .. deprecated::
+        '_aggregate_croc_signals' is deprecated and scheduled for future removal.
+    """
+    warnings.warn(
+        "'_aggregate_croc_signals' is deprecated and scheduled for future removal.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     signals: dict[str, dict[str, Any]] = {
         "Breakout (L20)": {"count": 0, "win": 0, "loss": 0, "pnl": 0.0},
         "Pullback (SMA20)": {"count": 0, "win": 0, "loss": 0, "pnl": 0.0},

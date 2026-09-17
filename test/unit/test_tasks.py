@@ -9,6 +9,7 @@ from app.database.session import DatabaseSession
 from app.tasks import (
     _clear_and_prewarm_cache,
     _enforce_backup_retention,
+    _prewarm_target_routes,
     _warm_single_route,
     run_cache_prewarm,
     run_daily_eod_pipeline,
@@ -212,6 +213,23 @@ def test_clear_and_prewarm_cache_prod_mode() -> None:
         _clear_and_prewarm_cache(app)
         mock_clear.assert_called_once()
         mock_prewarm.assert_called_once_with(app)
+
+
+def test_prewarm_target_routes_excludes_trades_croc() -> None:
+    """Verifies that _prewarm_target_routes does not include /trades/croc."""
+    app = Flask(__name__)
+    with (
+        patch.object(app, "test_client") as mock_test_client,
+        patch("app.tasks._warm_single_route") as mock_warm,
+    ):
+        mock_client = MagicMock()
+        mock_test_client.return_value.__enter__.return_value = mock_client
+        _prewarm_target_routes(app)
+
+        warmed_routes = [call.args[1] for call in mock_warm.call_args_list]
+        assert "/trades/croc" not in warmed_routes
+        assert "/trades" in warmed_routes
+        assert "/trades/dip-buyer" in warmed_routes
 
 
 def test_warm_single_route_branches() -> None:
