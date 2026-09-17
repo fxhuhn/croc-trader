@@ -291,6 +291,14 @@
 </div>
 {% endmacro %}
 
+{% macro render_mobile_table_header(col1="Symbol", col2="Quantity", col3="Open PnL") %}
+<div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+    <div class="col-span-5">{{ col1 }}</div>
+    <div class="col-span-3 text-right">{{ col2 }}</div>
+    <div class="col-span-4 text-right pr-6">{{ col3 }}</div>
+</div>
+{% endmacro %}
+
 {% macro render_pnl_cell(pnl_val, pnl_pct, show_sign=true) %}
 <div class="flex flex-col items-end text-right whitespace-nowrap">
     <div class="font-bold {{ 'text-emerald-500' if pnl_val >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">

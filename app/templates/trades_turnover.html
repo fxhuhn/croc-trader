@@ -12,11 +12,7 @@
     <!-- Mobile View (Tabular Accordion with Order Timeline & Date/Index Grid) -->
     <div class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
         <!-- Table Header -->
-        <div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
-            <div class="col-span-5">Symbol</div>
-            <div class="col-span-3 text-right">Quantity</div>
-            <div class="col-span-4 text-right pr-6">Open PnL</div>
-        </div>
+        {{ render_mobile_table_header() }}
 
         {% for group in active_trades %}
         {% set variant_metrics = namespace(half_percent_variant=none, one_percent_variant=none, total_quantity=0, max_days=0, green_candle_count=0) %}
@@ -175,13 +171,7 @@
 
                     <!-- 2. Symbol -->
                     <div class="font-bold text-slate-700 whitespace-nowrap">
-                        <a href="https://www.tradingview.com/chart/?symbol={{ group.symbol }}"
-                            target="_blank"
-                            onclick="event.stopPropagation();"
-                            class="hover:text-indigo-500 transition-colors flex items-center gap-1 whitespace-nowrap">
-                            {{ group.symbol }}
-                            <i data-lucide="chart-candlestick" class="w-3 h-3 text-slate-300 inline-block"></i>
-                        </a>
+                        {{ tradingview_link(group.symbol, is_button=false) }}
                     </div>
 
                     <!-- 3. Signal (Strategy Badges) -->
@@ -240,14 +230,7 @@
                     </div>
 
                     <!-- 8. PnL -->
-                    <div class="flex flex-col items-end text-right whitespace-nowrap">
-                        <div class="font-bold {{ 'text-emerald-500' if group.total_pnl >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
-                            {{ "{:+,.2f}".format(group.total_pnl) }}
-                        </div>
-                        <div class="text-[11px] text-slate-500 tabular-nums whitespace-nowrap">
-                            {{ "{:+.2f}".format(group.total_pnl_percentage) }}%
-                        </div>
-                    </div>
+                    {{ render_pnl_cell(group.total_pnl, group.total_pnl_percentage) }}
                 </div>
 
                 <!-- Desktop Accordion Timeline Detail -->

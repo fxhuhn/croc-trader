@@ -2,9 +2,6 @@
 
 {% block title %}Croc Screener{% endblock %}
 
-
-{% block body_class %}bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col{% endblock %}
-
 {% block content %}
 {% import "macros/cards.html" as cards %}
 
@@ -12,7 +9,7 @@
 {{ render_header("Croc Setup", "croc", show_switcher=False, active_tab="screener") }}
 
 <!-- MAIN CONTENT -->
-<main class="flex-grow pt-4 md:pt-20 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+<main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
     <!-- Signals Section (Cards) -->
     <section class="mb-12">

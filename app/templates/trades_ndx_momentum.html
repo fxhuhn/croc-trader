@@ -13,12 +13,7 @@
     <div
         class="md:hidden bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
         <!-- Table Header -->
-        <div
-            class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
-            <div class="col-span-5">Symbol</div>
-            <div class="col-span-3 text-right">Quantity</div>
-            <div class="col-span-4 text-right pr-6">Open PnL</div>
-        </div>
+        {{ render_mobile_table_header() }}
 
         {% for trade in active_trades %}
         <div class="group-linkable">
