@@ -14,35 +14,7 @@ import pytest
 
 # Maximum allowed legacy violations per template file to enforce non-regression.
 # Decrement these limits whenever existing templates are migrated and cleaned up.
-LEGACY_TECHNICAL_DEBT_BASELINE: Final[dict[str, int]] = {
-    "analytics.html": 47,
-    "analytics_monthly_matrix.html": 4,
-    "backtest_dashboard.html": 59,
-    "honeypot_login.html": 1,
-    "macros/cards.html": 33,
-    "macros/timeline.html": 5,
-    "partials/index_performance_table.html": 3,
-    "partials/mobile_nav.html": 4,
-    "screener.html": 2,
-    "screener_bounce_bandit.html": 4,
-    "screener_bridge_scout.html": 3,
-    "screener_croc.html": 7,
-    "screener_dip_buyer.html": 4,
-    "screener_ndx_momentum.html": 5,
-    "screener_tgim.html": 2,
-    "screener_turnover.html": 8,
-    "screener_twopercent.html": 1,
-    "trades.html": 4,
-    "trades_bounce_bandit.html": 11,
-    "trades_bridge_scout.html": 3,
-    "trades_broker.html": 33,
-    "trades_croc.html": 6,
-    "trades_dip_buyer.html": 6,
-    "trades_ndx_momentum.html": 3,
-    "trades_tgim.html": 4,
-    "trades_turnover.html": 4,
-    "trades_twopercent.html": 4,
-}
+LEGACY_TECHNICAL_DEBT_BASELINE: Final[dict[str, int]] = {}
 
 FINANCIAL_METRIC_KEYWORDS: Final[tuple[str, ...]] = (
     "price",

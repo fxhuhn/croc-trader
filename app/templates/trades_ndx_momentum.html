@@ -100,12 +100,12 @@
 
                     <!-- Entry Price -->
                     <div class="text-right tabular-nums text-slate-600">
-                        {{ "{:,.2f}".format(trade.entry_price|float) }}
+                        {{ trade.entry_price | de_number(2) }}
                     </div>
 
                     <!-- Last Price -->
                     <div class="text-right tabular-nums text-slate-600">
-                        {{ "{:,.2f}".format(trade.current_price|float) if trade.current_price else '-' }}
+                        {{ trade.current_price | de_number(2) }}
                     </div>
 
                     <!-- Open PnL -->
@@ -127,7 +127,7 @@
                 <div class="col-span-5 text-right font-bold text-slate-500 uppercase tracking-widest text-xs">Total
                     Open PnL</div>
                 <div class="text-right font-bold text-base {{ 'text-emerald-500' if summary.open_pnl >= 0 else 'text-rose-500' }} tabular-nums">
-                    {{ "{:+,.2f}".format(summary.open_pnl) }}
+                    {{ summary.open_pnl | de_number(2, prefix_plus=True) }}
                 </div>
             </div>
         </div>

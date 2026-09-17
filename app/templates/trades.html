@@ -6,7 +6,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header with context %}
-{% from "macros/cards.html" import dashboard_kpis %}
+{% from "macros/cards.html" import dashboard_kpis, render_section_header %}
 
 {% set strategy_endpoints = {
     'Dip Buyer': '/trades/dip-buyer',
@@ -25,14 +25,16 @@
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-20 md:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
+    <div class="mb-6 hidden md:block">
+        <h1 class="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight leading-tight">Positions & Trades</h1>
+    </div>
+
     <!-- KPI Cards -->
     {{ dashboard_kpis(summary, active_trades|length) }}
 
     <!-- Strategies Overview -->
     <section class="mb-4 md:mb-12 mt-2 md:mt-0">
-        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Strategies
-        </h2>
+        {{ render_section_header("Strategies", icon="layers") }}
 
         <div class="flex flex-col gap-3 md:gap-4 md:grid md:grid-cols-2 lg:grid-cols-3">
             {% for strategy_name, strategy_statistic in strategy_stats.items() %}
@@ -41,8 +43,8 @@
                     <span class="text-sm md:text-lg font-bold text-slate-900 leading-tight">{{ strategy_name }}</span>
                     <span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full mt-1.5">{{ strategy_statistic.count }} Active</span>
                 </div>
-                <div class="text-base md:text-xl font-black {{ 'text-emerald-500' if strategy_statistic.pnl >= 0 else 'text-rose-500' }} tabular-nums">
-                    {{ "{:+,.0f}".format(strategy_statistic.pnl) }}
+                <div class="text-base md:text-xl font-bold {{ 'text-emerald-500' if strategy_statistic.pnl >= 0 else 'text-rose-500' }} tabular-nums">
+                    {{ strategy_statistic.pnl | de_number(0, prefix_plus=True) }}
                 </div>
 
                 <a href="{{ strategy_endpoints.get(strategy_name, '/trades') }}" class="absolute inset-0 z-10 w-full h-full">

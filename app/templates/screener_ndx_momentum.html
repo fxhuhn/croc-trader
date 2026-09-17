@@ -6,7 +6,6 @@
 
 {% block screener_card %}
 {% set res = row %}
-{% set score_formatted = "%+.2f"|format(res.context.momentum_score) %}
 {% call cards.screener_card(res.symbol, "", "", "", false) %}
 <div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
     <!-- Left Column -->
@@ -47,33 +46,33 @@
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">Sum(ROC)</span>
-            <span class="font-bold text-blue-600 font-mono">{{ score_formatted }}</span>
+            <span class="font-bold text-blue-600 font-sans tabular-nums">{{ res.context.momentum_score | de_number(2, prefix_plus=True) }}</span>
         </div>
     </div>
     <!-- Right Column -->
     <div class="flex flex-col">
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">ROC 1M</span>
-            <span class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_1 > 0 else 'text-rose-600' }}">
-                {{ "%+.2f"|format(res.context.roc_1) }}%
+            <span class="font-bold font-sans tabular-nums {{ 'text-emerald-600' if res.context.roc_1 > 0 else 'text-rose-600' }}">
+                {{ res.context.roc_1 | de_number(2, prefix_plus=True) }}&nbsp;%
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">ROC 3M</span>
-            <span class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_3 > 0 else 'text-rose-600' }}">
-                {{ "%+.2f"|format(res.context.roc_3) }}%
+            <span class="font-bold font-sans tabular-nums {{ 'text-emerald-600' if res.context.roc_3 > 0 else 'text-rose-600' }}">
+                {{ res.context.roc_3 | de_number(2, prefix_plus=True) }}&nbsp;%
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">ROC 6M</span>
-            <span class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_6 > 0 else 'text-rose-600' }}">
-                {{ "%+.2f"|format(res.context.roc_6) }}%
+            <span class="font-bold font-sans tabular-nums {{ 'text-emerald-600' if res.context.roc_6 > 0 else 'text-rose-600' }}">
+                {{ res.context.roc_6 | de_number(2, prefix_plus=True) }}&nbsp;%
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">ROC 12M</span>
-            <span class="font-bold font-mono {{ 'text-emerald-600' if res.context.roc_12 > 0 else 'text-rose-600' }}">
-                {{ "%+.2f"|format(res.context.roc_12) }}%
+            <span class="font-bold font-sans tabular-nums {{ 'text-emerald-600' if res.context.roc_12 > 0 else 'text-rose-600' }}">
+                {{ res.context.roc_12 | de_number(2, prefix_plus=True) }}&nbsp;%
             </span>
         </div>
     </div>

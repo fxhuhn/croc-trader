@@ -161,12 +161,12 @@
                     <!-- 3. Signal (Strategy Badges) -->
                     <div class="flex flex-nowrap gap-1 whitespace-nowrap">
                         {% if group.variant_05 %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
                             0.5
                         </span>
                         {% endif %}
                         {% if group.variant_10 %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
                             1.0
                         </span>
                         {% endif %}
@@ -180,10 +180,10 @@
                     <!-- 5. Entry (sub-rows for multiple strategy variants) -->
                     <div class="flex flex-col items-end gap-0.5 text-xs text-slate-500 font-medium tabular-nums whitespace-nowrap">
                         {% if group.variant_05 %}
-                        <div class="whitespace-nowrap">0.5: {{ "{:,.2f}".format(group.variant_05.entry_price|float) }}</div>
+                        <div class="whitespace-nowrap">0.5: {{ group.variant_05.entry_price | de_number(2) }}</div>
                         {% endif %}
                         {% if group.variant_10 %}
-                        <div class="whitespace-nowrap">1.0: {{ "{:,.2f}".format(group.variant_10.entry_price|float) }}</div>
+                        <div class="whitespace-nowrap">1.0: {{ group.variant_10.entry_price | de_number(2) }}</div>
                         {% endif %}
                     </div>
 

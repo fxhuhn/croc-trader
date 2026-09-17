@@ -6,7 +6,7 @@
                      ("bg-rose-50 text-rose-700 border-rose-100/50" if status in ['Error', 'Stop Loss', 'Stop'] or 'STOP' in status_upper else
                      ("bg-indigo-50 text-indigo-700 border-indigo-100" if status in ['Target'] or 'TARGET' in status_upper else
                      "bg-slate-50 text-slate-400 border-slate-200")))) %}
-<span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-bold border {{ badge_style }} shrink-0">
+<span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-xs leading-none font-bold border {{ badge_style }} shrink-0">
     {{ status }}
 </span>
 {% endmacro %}
@@ -69,7 +69,7 @@
         <span class="text-xs font-bold {% if is_cancelled %}text-slate-400{% elif is_child %}text-slate-600{% else %}text-slate-700{% endif %} flex items-center gap-1.5">
             {% if is_child %}<span aria-hidden="true" class="text-slate-400 font-mono font-normal">└─</span>{% endif %}
             <span class="{% if is_cancelled %}text-slate-400{% elif action_name == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %}">{{ action_name }}</span>
-            {{ quantity_amount }} @ {{ "{:,.2f}".format(price_value | float(0.0)) if price_value else '-' }}
+            {{ quantity_amount }} @ {{ (price_value | de_number(2)) if price_value else '-' }}
             {% if variant_label %}
             <span class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase">{{ variant_label }}</span>
             {% endif %}
@@ -82,7 +82,7 @@
     <!-- Meta Row (Omit if no date or secondary meta fields exist) -->
     {% set has_meta = date_value or item.days_held or item.tif or item.parent_id or (commission_fee is not none and commission_fee | float(0.0) > 0) or (price_slippage is not none and price_slippage != 0) %}
     {% if has_meta %}
-    <div class="text-[11px] text-slate-400 font-mono mt-0.5">
+    <div class="text-xs text-slate-400 font-mono mt-0.5">
         {% set meta_parts = [] %}
         {% if order_identifier and order_identifier != '-' %}
             {% set _ = meta_parts.append('#' ~ order_identifier) %}
@@ -100,10 +100,10 @@
             {% set _ = meta_parts.append('Parent #' ~ item.parent_id) %}
         {% endif %}
         {% if commission_fee is not none and commission_fee | float(0.0) > 0 %}
-            {% set _ = meta_parts.append('+' ~ "{:,.2f}".format(commission_fee | float(0.0)) ~ ' (fee)') %}
+            {% set _ = meta_parts.append('+' ~ (commission_fee | de_number(2)) ~ ' (fee)') %}
         {% endif %}
         {% if price_slippage is not none and price_slippage != 0 %}
-            {% set _ = meta_parts.append("{:+,.2f}".format(price_slippage) ~ ' (slip)') %}
+            {% set _ = meta_parts.append((price_slippage | de_number(2, prefix_plus=True)) ~ ' (slip)') %}
         {% endif %}
         {{ meta_parts | join(' • ') }}
     </div>

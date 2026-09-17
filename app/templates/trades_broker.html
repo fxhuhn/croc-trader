@@ -18,7 +18,7 @@
     <!-- Navigation Switcher for Tabs -->
     <div class="flex items-center justify-between mb-6">
         <div>
-            <h1 class="text-xl md:text-2xl font-black text-slate-900 leading-tight">Executions</h1>
+            <h1 class="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight leading-tight">Executions</h1>
             <p class="text-slate-500 text-xs mt-0.5">Echtzeit-Ausführungen (TWS).</p>
         </div>
 
@@ -30,7 +30,7 @@
             <button onclick="switchTab('reconciliation')" id="tab-reconciliation"
                 class="text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5">
                 <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-amber-500"></i> Reconciliation
-                <span class="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-[11px] font-black"
+                <span class="bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full text-xs font-bold"
                     id="badge-discrepancies-count">{{ discrepancies|length }}</span>
             </button>
         </div>
@@ -76,7 +76,7 @@
                         <div id="kpi-pnl-label" class="{{ 'text-emerald-50/80' if pnl_all >= 0 else 'text-rose-100/80' }} text-xs uppercase font-bold tracking-wider mb-1">
                             Net PnL (TWS)
                         </div>
-                        <div class="text-2xl md:text-3xl font-black text-white leading-none mb-1 tabular-nums">
+                        <div class="text-2xl md:text-3xl font-bold text-white leading-none mb-1 tabular-nums">
                             <span id="kpi-pnl">{{ metrics.all.pnlText }}</span>&nbsp;$
                         </div>
                     </div>
@@ -92,7 +92,7 @@
                         <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                             Win Rate
                         </div>
-                        <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums" id="kpi-winrate">
+                        <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums" id="kpi-winrate">
                             {{ metrics.all.winrate }}
                         </div>
                     </div>
@@ -100,12 +100,12 @@
 
                 <!-- Slippage -->
                 {{ render_kpi_card("Slippage", metrics.all.slippage, "git-compare", value_classes="text-lg md:text-2xl
-                font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums",
+                font-bold text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums",
                 value_id="kpi-slippage") }}
 
                 <!-- Broker Fees -->
-                {{ render_kpi_card("Commissions", "{:,.2f}".format(metrics.all.fees), "receipt", value_classes="text-3xl
-                md:text-2xl font-black text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums",
+                {{ render_kpi_card("Commissions", metrics.all.fees | de_number(2), "receipt", value_classes="text-3xl
+                md:text-2xl font-bold text-slate-900 leading-none mb-1 md:mb-0 md:order-last tabular-nums",
                 bg_classes="col-span-2 md:col-span-1 bg-white border border-slate-200 rounded-2xl p-4 md:p-6 shadow-sm
                 border md:border-slate-200", value_id="kpi-fees") }}
             </section>
@@ -150,10 +150,10 @@
                                         class="{% if order.is_child %}text-slate-500{% elif order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
                                         order.action }}</span>)</div>
                                 <div
-                                    class="text-right font-mono {% if order.is_child %}text-slate-500{% else %}text-slate-700{% endif %} font-bold">
-                                    {{ "{:,.2f}".format(order.target_price|float) if order.target_price else '-' }}
+                                    class="text-right font-sans tabular-nums {% if order.is_child %}text-slate-500{% else %}text-slate-700{% endif %} font-bold">
+                                    {{ order.target_price | de_number(2) }}
                                     <span
-                                        class="px-1.5 py-0.5 bg-slate-100 rounded text-[11px] font-black text-slate-500 font-mono leading-none">{{
+                                        class="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-bold text-slate-500 font-mono leading-none">{{
                                         order.order_type }}</span>
                                 </div>
                             </div>
@@ -162,14 +162,14 @@
                                     <div
                                         class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 font-medium">
                                         <span
-                                            class="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Group:</span>
+                                            class="text-slate-400 font-bold uppercase tracking-wider text-xs">Group:</span>
                                         <span class="font-mono text-slate-900 bg-slate-100 px-1.5 py-0.5 rounded">{{
                                             order.trade_group_id }}</span>
-                                        <span class="text-slate-300 font-light">|</span>
+                                        <span class="text-slate-300 font-normal">|</span>
                                         <span
-                                            class="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Parent:</span>
+                                            class="text-slate-400 font-bold uppercase tracking-wider text-xs">Parent:</span>
                                         <span class="font-mono text-slate-900">{{ order.parent_id or '-' }}</span>
-                                        <span class="text-slate-300 font-light">|</span>
+                                        <span class="text-slate-300 font-normal">|</span>
                                         <span class="text-slate-400 font-mono">{{ order.transmitted_at | to_local_tz if
                                             order.transmitted_at else '-' }}</span>
                                     </div>
@@ -304,10 +304,10 @@
                                 <div class="text-right tabular-nums text-slate-500">{{ order.quantity }} (<span
                                         class="{% if order.action == 'BUY' %}text-emerald-600{% else %}text-rose-600{% endif %} font-bold">{{
                                         order.action }}</span>)</div>
-                                <div class="text-right font-mono text-slate-700 font-bold">
-                                    {{ "{:,.2f}".format(order.target_price|float) if order.target_price else '-' }}
+                                <div class="text-right font-sans tabular-nums text-slate-700 font-bold">
+                                    {{ order.target_price | de_number(2) }}
                                     <span
-                                        class="px-1.5 py-0.5 bg-slate-100 rounded text-[11px] font-black text-slate-500 font-mono leading-none">{{
+                                        class="px-1.5 py-0.5 bg-slate-100 rounded text-xs font-bold text-slate-500 font-mono leading-none">{{
                                         order.order_type }}</span>
                                 </div>
                             </div>
@@ -373,13 +373,12 @@
                                     <div class="flex flex-col">
                                         <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                                             <span class="text-slate-500 font-medium">Target Price</span>
-                                            <span class="font-mono text-slate-700 font-bold">{{
-                                                "{:,.2f}".format(order.target_price|float) if order.target_price else
-                                                '-' }}</span>
+                                            <span class="font-sans tabular-nums text-slate-700 font-bold">{{
+                                                order.target_price | de_number(2) }}</span>
                                         </div>
                                     </div>
                                 </div>
-                                <p class="mt-3 text-[11px] text-red-700 leading-relaxed border-t border-red-100 pt-2">
+                                <p class="mt-3 text-xs text-red-700 leading-relaxed border-t border-red-100 pt-2">
                                     Übertragungskonflikt für {{ order.trade_group_id }}.
                                 </p>
                             </div>
@@ -419,9 +418,9 @@
                                 <div class="tabular-nums text-slate-600">{{ trade.entry_date }} ({{ trade.days_held }}d)</div>
                                 <div class="text-right tabular-nums text-slate-600">{{ trade.current_size|int }}</div>
                                 <div class="text-right tabular-nums text-slate-600">{{
-                                    "{:,.2f}".format(trade.entry_price) }}</div>
+                                    trade.entry_price | de_number(2) }}</div>
                                 <div class="text-right tabular-nums text-slate-600">{{
-                                    "{:,.2f}".format(trade.current_price) }}</div>
+                                    trade.current_price | de_number(2) }}</div>
                                 {{ render_pnl_cell(trade.unrealized_pnl, trade.pnl_percentage) }}
                             </div>
                             <div id="acc-act-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
@@ -550,17 +549,15 @@
                             </div>
                             <div class="text-slate-600 font-medium">{{ settlement.strategy_name }}</div>
                             <div class="text-right tabular-nums text-slate-600">{{
-                                "{:,.2f}".format(settlement.avg_entry_price) }}</div>
+                                settlement.avg_entry_price | de_number(2) }}</div>
                             <div class="text-right tabular-nums text-slate-600">{{
-                                "{:,.2f}".format(settlement.avg_exit_price) }}</div>
+                                settlement.avg_exit_price | de_number(2) }}</div>
                             <div
                                 class="text-right tabular-nums {% if settlement.price_diff_slippage > 0 %}text-emerald-500 font-bold{% elif settlement.price_diff_slippage < 0 %}text-rose-500 font-bold{% else %}text-slate-400{% endif %}">
-                                {% if settlement.price_diff_slippage > 0 %}+{% endif %}{{
-                                "{:,.2f}".format(settlement.price_diff_slippage) if settlement.price_diff_slippage
-                                != 0 else '-' }}
+                                {{ settlement.price_diff_slippage | de_number(2, prefix_plus=True) if settlement.price_diff_slippage != 0 else '-' }}
                             </div>
                             <div class="text-right tabular-nums text-slate-500">{{
-                                "{:,.2f}".format(settlement.total_commissions) }}</div>
+                                settlement.total_commissions | de_number(2) }}</div>
                             {{ render_pnl_cell(settlement.net_pnl, settlement.pnl_percentage) }}
                         </div>
                         <div id="acc-settle-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10">
@@ -679,7 +676,7 @@
     <!-- SECTION 2: RECONCILIATION CENTER -->
     <div id="section-reconciliation" class="hidden space-y-6">
         <div>
-            <h2 class="text-lg font-bold text-slate-900">Reconciliation & Audit Center</h2>
+            {{ render_section_header("Reconciliation & Audit Center", icon="shield-alert") }}
             <p class="text-slate-500 text-xs mt-0.5">Datenabgleich zwischen lokalem Zustand (signals.db) und realen
                 TWS-Ausführungen (trading.db).</p>
         </div>
@@ -703,7 +700,7 @@
         <!-- Desktop Discrepancy Table -->
         <div class="hidden md:block bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
             <div
-                class="grid grid-cols-5 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-semibold text-xs uppercase tracking-wider">
+                class="grid grid-cols-5 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-xs uppercase tracking-wider">
                 <div>Wertpapier</div>
                 <div>Diskrepanz & Risiko</div>
                 <div>Status Lokal</div>
@@ -760,7 +757,7 @@
                                 discrepancy.symbol }}</span>
                             {% if discrepancy.strategy %}
                             <span
-                                class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap leading-none py-1">{{
+                                class="px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 whitespace-nowrap leading-none py-1">{{
                                 discrepancy.strategy }}</span>
                             {% endif %}
                             <span
@@ -833,7 +830,7 @@
             pnlText: "{{ metrics.all.pnlText }}",
             winrate: "{{ metrics.all.winrate }}",
             slippage: "{{ metrics.all.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.all.fees) }}",
+            fees: "{{ metrics.all.fees | de_number(2) }}",
             totalCount: {{ metrics.all.total_count }}
         },
         DipBuyer: {
@@ -841,7 +838,7 @@
             pnlText: "{{ metrics.DipBuyer.pnlText }}",
             winrate: "{{ metrics.DipBuyer.winrate }}",
             slippage: "{{ metrics.DipBuyer.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.DipBuyer.fees) }}",
+            fees: "{{ metrics.DipBuyer.fees | de_number(2) }}",
             totalCount: {{ metrics.DipBuyer.total_count }}
         },
         TurnoverTiming: {
@@ -849,7 +846,7 @@
             pnlText: "{{ metrics.TurnoverTiming.pnlText }}",
             winrate: "{{ metrics.TurnoverTiming.winrate }}",
             slippage: "{{ metrics.TurnoverTiming.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.TurnoverTiming.fees) }}",
+            fees: "{{ metrics.TurnoverTiming.fees | de_number(2) }}",
             totalCount: {{ metrics.TurnoverTiming.total_count }}
         },
         TwoPercent: {
@@ -857,7 +854,7 @@
             pnlText: "{{ metrics.TwoPercent.pnlText }}",
             winrate: "{{ metrics.TwoPercent.winrate }}",
             slippage: "{{ metrics.TwoPercent.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.TwoPercent.fees) }}",
+            fees: "{{ metrics.TwoPercent.fees | de_number(2) }}",
             totalCount: {{ metrics.TwoPercent.total_count }}
         },
         NDXMomentum: {
@@ -865,7 +862,7 @@
             pnlText: "{{ metrics.NDXMomentum.pnlText }}",
             winrate: "{{ metrics.NDXMomentum.winrate }}",
             slippage: "{{ metrics.NDXMomentum.slippage }}",
-            fees: "{{ '{:,.2f}'.format(metrics.NDXMomentum.fees) }}",
+            fees: "{{ metrics.NDXMomentum.fees | de_number(2) }}",
             totalCount: {{ metrics.NDXMomentum.total_count }}
         }
     };

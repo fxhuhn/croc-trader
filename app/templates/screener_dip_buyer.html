@@ -19,10 +19,8 @@
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">ATR</span>
-            <span class="font-bold text-slate-600 font-mono">
-                {% if row.context.get('atr5') %}
-                {{ "{:,.2f}".format(row.context.get('atr5')|float) }}
-                {% else %}-{% endif %}
+            <span class="font-bold text-slate-600 font-sans tabular-nums">
+                {{ row.context.get('atr5') | de_number(2) }}
             </span>
         </div>
     </div>
@@ -30,22 +28,18 @@
     <div class="flex flex-col">
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">LOC</span>
-            <span class="font-bold text-amber-600 font-mono">
-                {% if row.context.get('threshold_loc') %}
-                {{ "{:,.2f}".format(row.context.threshold_loc|float) }}
-                {% else %}-{% endif %}
+            <span class="font-bold text-amber-600 font-sans tabular-nums">
+                {{ row.context.get('threshold_loc') | de_number(2) }}
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">Score</span>
-            <span class="font-bold text-slate-800 font-mono">{{ row.context.get('setup_score', '-') }}</span>
+            <span class="font-bold text-slate-800 font-sans tabular-nums">{{ row.context.get('setup_score') | de_number(2) if row.context.get('setup_score') is not none else '-' }}</span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">Close</span>
-            <span class="font-bold text-slate-600 font-mono">
-                {% if row.context.get('close') %}
-                {{ "{:,.2f}".format(row.context.get('close')|float) }}
-                {% else %}-{% endif %}
+            <span class="font-bold text-slate-600 font-sans tabular-nums">
+                {{ row.context.get('close') | de_number(2) }}
             </span>
         </div>
     </div>

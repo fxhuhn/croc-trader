@@ -11,7 +11,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import segmented_arc_gauge %}
+{% from "macros/cards.html" import segmented_arc_gauge, render_section_header %}
 
 <!-- Top-Navigation -->
 {{ render_header("Strategy", "analytics", show_switcher=False, active_tab='analytics') }}
@@ -23,6 +23,10 @@
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
+    <div class="mb-6 hidden md:block">
+        <h1 class="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight leading-tight">Strategy Analytics &amp; Performance</h1>
+    </div>
+
     <!-- Section 1: KPI Grid (2 Rows of 3 Tiles on Desktop) -->
     <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8 mt-2 md:mt-0">
         <!-- 1. Return (YTD) -->
@@ -33,8 +37,8 @@
                 <div class="{{ 'text-emerald-50/80' if return_val >= 0 else 'text-rose-100/80' }} text-xs uppercase font-bold tracking-wider mb-1">
                     Return (YTD)
                 </div>
-                <div class="text-2xl md:text-3xl font-black text-white leading-none mb-1 tabular-nums">
-                    {{ "{:+.1f}%".format(return_val) }}
+                <div class="text-2xl md:text-3xl font-bold text-white leading-none mb-1 tabular-nums">
+                    {{ return_val | de_number(1, prefix_plus=True) }}&nbsp;%
                 </div>
             </div>
             <i data-lucide="trending-down" aria-hidden="true"
@@ -49,8 +53,8 @@
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 Max Drawdown
             </div>
-            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
-                {{ "{:.1%}".format(summary.max_drawdown | default(0.0)) }}
+            <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
+                {{ ((summary.max_drawdown | default(0.0)) * 100) | de_number(1) }}&nbsp;%
             </div>
         </article>
 
@@ -66,8 +70,8 @@
                 <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                     Sharpe
                 </div>
-                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
-                    {{ "{:.2f}".format(sharpe_val) }}
+                <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
+                    {{ sharpe_val | de_number(2) }}
                 </div>
                 <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ sharpe_cls }}">
                     <span>{{ sharpe_label }}</span>
@@ -90,8 +94,8 @@
                 <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                     Sortino
                 </div>
-                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
-                    {{ "{:.2f}".format(sortino_val) }}
+                <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
+                    {{ sortino_val | de_number(2) }}
                 </div>
                 <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ sortino_cls }}">
                     <span>{{ sortino_label }}</span>
@@ -114,11 +118,11 @@
                 <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                     Profit Factor
                 </div>
-                <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+                <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
                     {% if pf_val > 900 %}
                         &infin;
                     {% else %}
-                        {{ "{:.2f}".format(pf_val) }}
+                        {{ pf_val | de_number(2) }}
                     {% endif %}
                 </div>
                 <div class="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-full text-xs font-bold tabular-nums border w-fit self-start {{ pf_cls }}">
@@ -136,7 +140,7 @@
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 Sample
             </div>
-            <div class="text-2xl md:text-3xl font-black text-slate-900 leading-none tabular-nums">
+            <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
                 {{ summary.sample_size | default(summary.total_trades | default(0)) }}
             </div>
         </article>
@@ -146,9 +150,7 @@
     <section class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-8 md:mb-12">
         <!-- Monthly Performance -->
         <div class="flex flex-col">
-            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                <i data-lucide="calendar" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Monthly Performance
-            </h2>
+            {{ render_section_header("Monthly Performance", icon="calendar") }}
             <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative flex-1 flex flex-col justify-between">
                 <div>
                     <div class="flex justify-end items-center mb-3">
@@ -178,9 +180,7 @@
 
         <!-- Monthly Drawdown (Underwater) -->
         <div class="flex flex-col">
-            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                <i data-lucide="trending-down" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-rose-500"></i> Monthly Drawdown (Underwater)
-            </h2>
+            {{ render_section_header("Monthly Drawdown (Underwater)", icon="trending-down") }}
             <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative flex-1 flex flex-col justify-between">
                 <div>
                     <div class="flex justify-end items-center mb-3">
@@ -207,9 +207,7 @@
     <section class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-8 md:mb-12">
         <!-- Left: Weekly PnL (3 Months) -->
         <div class="flex flex-col">
-            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Weekly PnL
-            </h2>
+            {{ render_section_header("Weekly PnL", icon="bar-chart-2") }}
             <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative flex-1 flex flex-col justify-between">
                 <div>
                     <div class="flex justify-end items-center mb-3">
@@ -239,9 +237,7 @@
 
         <!-- Right: Rolling Performance KPIs -->
         <div class="flex flex-col">
-            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-                <i data-lucide="history" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Rolling Performance
-            </h2>
+            {{ render_section_header("Rolling Performance", icon="history") }}
             <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6 relative flex-1 flex flex-col justify-between">
                 <div>
                     <table class="w-full text-left border-collapse">
@@ -251,7 +247,7 @@
                             <tr class="hover:bg-slate-50/50 transition-colors">
                                 <td class="py-2.5 px-1 text-slate-500 font-medium">Return</td>
                                 <td class="py-2.5 px-2 text-right font-bold tabular-nums whitespace-nowrap {{ 'text-emerald-600' if r3m_ret >= 0 else 'text-rose-600' }}">
-                                    {{ "{:+.2f}%".format(r3m_ret) }}
+                                    {{ r3m_ret | de_number(2, prefix_plus=True) }}&nbsp;%
                                 </td>
                                 <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap"></td>
                             </tr>
@@ -263,10 +259,10 @@
                             <tr class="hover:bg-slate-50/50 transition-colors">
                                 <td class="py-2.5 px-1 text-slate-500 font-medium">Sharpe</td>
                                 <td class="py-2.5 px-2 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
-                                    {{ "{:.2f}".format(r3m_sharpe) }}
+                                    {{ r3m_sharpe | de_number(2) }}
                                 </td>
                                 <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border {{ r3m_sharpe_cls }}">{{ r3m_sharpe_label }}</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border {{ r3m_sharpe_cls }}">{{ r3m_sharpe_label }}</span>
                                 </td>
                             </tr>
 
@@ -277,10 +273,10 @@
                             <tr class="hover:bg-slate-50/50 transition-colors">
                                 <td class="py-2.5 px-1 text-slate-500 font-medium">Profit Factor</td>
                                 <td class="py-2.5 px-2 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
-                                    {% if r3m_pf > 900 %}&infin;{% else %}{{ "{:.2f}".format(r3m_pf) }}{% endif %}
+                                    {% if r3m_pf > 900 %}&infin;{% else %}{{ r3m_pf | de_number(2) }}{% endif %}
                                 </td>
                                 <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border {{ r3m_pf_cls }}">{{ r3m_pf_label }}</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border {{ r3m_pf_cls }}">{{ r3m_pf_label }}</span>
                                 </td>
                             </tr>
 
@@ -291,10 +287,10 @@
                             <tr class="hover:bg-slate-50/50 transition-colors">
                                 <td class="py-2.5 px-1 text-slate-500 font-medium">Sortino</td>
                                 <td class="py-2.5 px-2 text-right font-bold text-slate-800 tabular-nums whitespace-nowrap">
-                                    {{ "{:.2f}".format(r3m_sortino) }}
+                                    {{ r3m_sortino | de_number(2) }}
                                 </td>
                                 <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border {{ r3m_sortino_cls }}">{{ r3m_sortino_label }}</span>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold border {{ r3m_sortino_cls }}">{{ r3m_sortino_label }}</span>
                                 </td>
                             </tr>
 
@@ -303,7 +299,7 @@
                             <tr class="hover:bg-slate-50/50 transition-colors">
                                 <td class="py-2.5 px-1 text-slate-500 font-medium">Avg ROI</td>
                                 <td class="py-2.5 px-2 text-right font-bold tabular-nums whitespace-nowrap {{ 'text-emerald-600' if r3m_roi >= 0 else 'text-rose-600' }}">
-                                    {{ "{:+.2f}%".format(r3m_roi) }}
+                                    {{ r3m_roi | de_number(2, prefix_plus=True) }}&nbsp;%
                                 </td>
                                 <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap"></td>
                             </tr>
@@ -316,7 +312,7 @@
                                 </td>
                                 <td class="py-2.5 pl-2 pr-1 text-right w-24 md:w-28 whitespace-nowrap">
                                     {% if rolling_3m.trades_count and rolling_3m.trades_count > 0 %}
-                                    <div class="inline-flex items-baseline gap-1 text-xs font-bold tabular-nums">
+                                     <div class="inline-flex items-baseline gap-1 text-xs font-bold tabular-nums">
                                         <span class="text-emerald-600">{{ rolling_3m.win_count | default(0) }}W</span>
                                         <span class="text-slate-300">—</span>
                                         <span class="text-rose-600">{{ rolling_3m.loss_count | default(0) }}L</span>
@@ -340,9 +336,7 @@
 
     <!-- Section 3: Strategy Breakdown (Accordion) -->
     <section class="mb-8 md:mb-12">
-        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="pie-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Strategies
-        </h2>
+        {{ render_section_header("Strategies", icon="pie-chart") }}
         <div class="bg-transparent md:bg-white md:rounded-3xl md:shadow-sm border-0 md:border border-slate-200 md:overflow-hidden">
             <div class="flex flex-col gap-4 md:gap-0 md:divide-y md:divide-slate-100">
                 {% for strategy in strategies %}
@@ -360,8 +354,8 @@
                     <div class="flex items-center gap-3 shrink-0 ml-2">
                         <div class="flex flex-col items-end gap-1">
                             <!-- Realized PnL -->
-                            <span class="text-base md:text-xl font-black leading-none {{ 'text-emerald-500' if strategy.pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
-                                {{ "{:+,.2f} $".format(strategy.pnl) }}
+                            <span class="text-base md:text-xl font-bold leading-none {{ 'text-emerald-500' if strategy.pnl >= 0 else 'text-rose-500' }} whitespace-nowrap">
+                                {{ strategy.pnl | de_number(2, prefix_plus=True) }}&nbsp;$
                             </span>
                             
                             <!-- Open PnL -->
@@ -372,7 +366,7 @@
                                   <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                                   <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                                 </span>
-                                <span class="text-xs font-bold text-emerald-600 leading-none whitespace-nowrap">Open {{ "{:+,.2f} $".format(open_pnl) }}</span>
+                                <span class="text-xs font-bold text-emerald-600 leading-none whitespace-nowrap">Open {{ open_pnl | de_number(2, prefix_plus=True) }}&nbsp;$</span>
                             </div>
                             {% elif open_pnl and open_pnl < 0 %}
                             <div class="flex items-center gap-1 mt-1">
@@ -380,12 +374,12 @@
                                   <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
                                   <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
                                 </span>
-                                <span class="text-xs font-bold text-rose-600 leading-none whitespace-nowrap">Open {{ "{:+,.2f} $".format(open_pnl) }}</span>
+                                <span class="text-xs font-bold text-rose-600 leading-none whitespace-nowrap">Open {{ open_pnl | de_number(2, prefix_plus=True) }}&nbsp;$</span>
                             </div>
                             {% else %}
                             <div class="flex items-center gap-1 mt-1">
                                 <div class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></div>
-                                <span class="text-xs font-bold text-slate-500 leading-none whitespace-nowrap">Open 0.00 $</span>
+                                <span class="text-xs font-bold text-slate-500 leading-none whitespace-nowrap">Open 0,00&nbsp;$</span>
                             </div>
                             {% endif %}
                         </div>
@@ -416,7 +410,7 @@
                                     {% if strategy.metrics.profit_factor > 900 %}
                                         &infin;
                                     {% else %}
-                                        {{ "{:.2f}".format(strategy.metrics.profit_factor) }}
+                                        {{ strategy.metrics.profit_factor | de_number(2) }}
                                     {% endif %}
                                 </span>
                             </div>
@@ -439,9 +433,9 @@
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Avg W/L</span>
                                 <div class="flex items-baseline gap-1 font-bold">
-                                    <span class="text-emerald-500">+{{ "{:.2f}%".format(strategy.metrics.avg_win) }}</span>
+                                    <span class="text-emerald-500">+{{ strategy.metrics.avg_win | de_number(2) }}&nbsp;%</span>
                                     <span class="text-slate-300 mx-0.5">/</span>
-                                    <span class="text-rose-500">{{ "{:.2f}%".format(strategy.metrics.avg_loss) }}</span>
+                                    <span class="text-rose-500">{{ strategy.metrics.avg_loss | de_number(2) }}&nbsp;%</span>
                                 </div>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
@@ -450,8 +444,7 @@
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-b border-slate-100">
                                 <span class="text-slate-500 font-medium">Sharpe</span>
-                                <span class="font-bold text-slate-800">{{ "{:.2f}".format(strategy.metrics.sharpe)
-                                    }}</span>
+                                <span class="font-bold text-slate-800">{{ strategy.metrics.sharpe | de_number(2) }}</span>
                             </div>
                             <div class="flex justify-between py-1.5 md:py-2 border-none">
                                 <span class="text-slate-500 font-medium">Avg ROI</span>
@@ -471,11 +464,11 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 pt-2 border-t border-slate-50 pl-6">
                     <div>
                         <p class="font-semibold text-slate-700">Open (100% / 95%)</p>
-                        <p class="leading-relaxed text-[11px] text-slate-500">Die maximale Anzahl gleichzeitig offener Trades (100% Auslastung) im Vergleich zur 95% Auslastungsgrenze (95. Perzentil). Letztere zeigt die Auslastung, die an 95% aller Handelstage nicht überschritten wurde (ohne Verzerrung durch sequenzielle Intraday-Trades).</p>
+                        <p class="leading-relaxed text-xs text-slate-500">Die maximale Anzahl gleichzeitig offener Trades (100% Auslastung) im Vergleich zur 95% Auslastungsgrenze (95. Perzentil). Letztere zeigt die Auslastung, die an 95% aller Handelstage nicht überschritten wurde (ohne Verzerrung durch sequenzielle Intraday-Trades).</p>
                     </div>
                     <div>
                         <p class="font-semibold text-slate-700">Profit Factor</p>
-                        <p class="leading-relaxed text-[11px] text-slate-500">
+                        <p class="leading-relaxed text-xs text-slate-500">
                             Das Verhältnis von Bruttogewinnen zu Bruttoverlusten. Ein Wert über 1.0 bedeutet Profitabilität. Die Klassifizierung lautet:
                             <br>&bull; <b>&lt; 1.0</b>: Verlustbringend (Unprofitabel)
                             <br>&bull; <b>1.0 - 1.5</b>: Moderat profitabel
@@ -485,23 +478,23 @@
                     </div>
                     <div>
                         <p class="font-semibold text-slate-700">RoR (Rate of Return)</p>
-                        <p class="leading-relaxed text-[11px] text-slate-500">Die Gesamtrendite der Strategie bezogen auf das Startkapital des Depots (100.000 $).</p>
+                        <p class="leading-relaxed text-xs text-slate-500">Die Gesamtrendite der Strategie bezogen auf das Startkapital des Depots (100.000 $).</p>
                     </div>
                     <div>
                         <p class="font-semibold text-slate-700">Avg Risk</p>
-                        <p class="leading-relaxed text-[11px] text-slate-500">Das durchschnittliche Risiko pro Trade in % des Depotkapitals, berechnet aus dem Abstand zwischen Einstiegskurs und Stop-Loss multipliziert mit der Positionsgröße.</p>
+                        <p class="leading-relaxed text-xs text-slate-500">Das durchschnittliche Risiko pro Trade in % des Depotkapitals, berechnet aus dem Abstand zwischen Einstiegskurs und Stop-Loss multipliziert mit der Positionsgröße.</p>
                     </div>
                     <div>
                         <p class="font-semibold text-slate-700">Expectancy</p>
-                        <p class="leading-relaxed text-[11px] text-slate-500">Der Erwartungswert ausgedrückt in R-Multiples (Vielfaches des eingegangenen Risikos). Ein Wert von 1.5 R bedeutet, dass im Durchschnitt das 1,5-fache des gesetzten Risikos gewonnen wird.</p>
+                        <p class="leading-relaxed text-xs text-slate-500">Der Erwartungswert ausgedrückt in R-Multiples (Vielfaches des eingegangenen Risikos). Ein Wert von 1.5 R bedeutet, dass im Durchschnitt das 1,5-fache des gesetzten Risikos gewonnen wird.</p>
                     </div>
                     <div>
                         <p class="font-semibold text-slate-700">Sharpe-Ratio</p>
-                        <p class="leading-relaxed text-[11px] text-slate-500">Ein Maß für die risikoadjustierte Rendite. Sie bewertet das Verhältnis zwischen der erzielten Überrendite und der Volatilität der Ergebnisse (annualisiert).</p>
+                        <p class="leading-relaxed text-xs text-slate-500">Ein Maß für die risikoadjustierte Rendite. Sie bewertet das Verhältnis zwischen der erzielten Überrendite und der Volatilität der Ergebnisse (annualisiert).</p>
                     </div>
                     <div>
                         <p class="font-semibold text-slate-700">Avg ROI</p>
-                        <p class="leading-relaxed text-[11px] text-slate-500">Die durchschnittliche Rendite pro Trade (Return on Investment) bezogen auf das jeweils in den Trade konkret investierte Kapital.</p>
+                        <p class="leading-relaxed text-xs text-slate-500">Die durchschnittliche Rendite pro Trade (Return on Investment) bezogen auf das jeweils in den Trade konkret investierte Kapital.</p>
                     </div>
                 </div>
             </div>
@@ -510,9 +503,7 @@
 
     <!-- Section 5: Frequenz-Modell (EV/M) -->
     <section class="mb-8 md:mb-12">
-        <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2">
-            <i data-lucide="activity" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Frequenz-Modell (EV/M)
-        </h2>
+        {{ render_section_header("Frequenz-Modell (EV/M)", icon="activity") }}
         <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 p-4 md:p-6">
             <!-- Stacked Bar Chart -->
             <div class="mb-8">
@@ -530,7 +521,7 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="border-b border-slate-100 text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">
+                            <tr class="border-b border-slate-100 text-slate-400 text-xs uppercase font-medium tracking-wider">
                                 <th class="py-3 px-2">Strategy</th>
                                 <th class="py-3 px-2 text-right">Trades / Monat</th>
                                 <th class="py-3 px-2 text-right">EV / Trade (ROI)</th>
@@ -545,11 +536,11 @@
                                     <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_colors.get(strategy.name, 'bg-slate-500') }}"></div>
                                     <span class="font-bold text-slate-900">{{ strategy.name }}</span>
                                 </td>
-                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.1f}".format(strategy.metrics.trades_per_month) }}</td>
-                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strategy.metrics.ev_per_trade_roi * 100) }}</td>
-                                <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.2f}%".format(strategy.metrics.ev_per_month * 100) }}</td>
-                                <td class="py-3 px-2 text-right font-black text-indigo-600 font-mono">
-                                    {{ "{:.1f}%".format(strategy.metrics.ev_allocation * 100) }}
+                                <td class="py-3 px-2 text-right text-slate-600 font-sans font-normal tabular-nums">{{ strategy.metrics.trades_per_month | de_number(1) }}</td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-sans font-normal tabular-nums">{{ (strategy.metrics.ev_per_trade_roi * 100) | de_number(2) }}&nbsp;%</td>
+                                <td class="py-3 px-2 text-right font-medium text-slate-800 font-sans tabular-nums">{{ (strategy.metrics.ev_per_month * 100) | de_number(2) }}&nbsp;%</td>
+                                <td class="py-3 px-2 text-right font-bold text-indigo-600 font-sans tabular-nums">
+                                    {{ (strategy.metrics.ev_allocation * 100) | de_number(1) }}&nbsp;%
                                 </td>
                             </tr>
                             {% endfor %}
@@ -567,9 +558,7 @@
     <!-- Section 6: Risikoadjustiertes Optimierungs-Modell (Mean-Variance / Risk Parity) -->
     <section class="mb-8 md:mb-12">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <h2 class="text-xs md:text-lg font-black md:font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
-                <i data-lucide="sliders" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Risikoadjustiertes Modell (Mean-Variance / Risk Parity)
-            </h2>
+            {{ render_section_header("Risikoadjustiertes Modell (Mean-Variance / Risk Parity)", icon="sliders") }}
             <!-- Interactive Toggle Switch -->
             <div class="inline-flex p-1 bg-slate-200/80 rounded-xl self-start sm:self-auto text-xs font-semibold">
                 <button type="button" id="toggle-max-sharpe" onclick="switchOptModel('max_sharpe')"
@@ -609,7 +598,7 @@
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
-                            <tr class="border-b border-slate-100 text-slate-400 text-[10px] md:text-xs uppercase font-bold tracking-wider">
+                            <tr class="border-b border-slate-100 text-slate-400 text-xs uppercase font-medium tracking-wider">
                                 <th class="py-3 px-2">Strategy</th>
                                 <th class="py-3 px-2 text-right">Trades / M</th>
                                 <th class="py-3 px-2 text-right">μ (Ertrag)</th>
@@ -630,23 +619,23 @@
                                     <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_colors.get(strat.name, 'bg-slate-500') }}"></div>
                                     <span class="font-bold text-slate-900">{{ strat.name }}</span>
                                 </td>
-                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.1f}".format(strat.trades_per_month) }}</td>
-                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strat.mu) }}</td>
-                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strat.sigma) }}</td>
-                                <td class="py-3 px-2 text-right text-slate-600 font-mono">{{ "{:.2f}%".format(strat.sigma_d) }}</td>
-                                <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.2f}".format(strat.sharpe) }}</td>
-                                <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono">{{ "{:.2f}".format(strat.sortino) }}</td>
-                                <td class="py-3 px-2 text-right font-black text-indigo-600 font-mono val-weight">
-                                    {{ "{:.1f}%".format(strat.weight_max_sharpe) }}
+                                <td class="py-3 px-2 text-right text-slate-600 font-sans font-normal tabular-nums">{{ strat.trades_per_month | de_number(1) }}</td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-sans font-normal tabular-nums">{{ strat.mu | de_number(2) }}&nbsp;%</td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-sans font-normal tabular-nums">{{ strat.sigma | de_number(2) }}&nbsp;%</td>
+                                <td class="py-3 px-2 text-right text-slate-600 font-sans font-normal tabular-nums">{{ strat.sigma_d | de_number(2) }}&nbsp;%</td>
+                                <td class="py-3 px-2 text-right font-medium text-slate-800 font-sans tabular-nums">{{ strat.sharpe | de_number(2) }}</td>
+                                <td class="py-3 px-2 text-right font-medium text-slate-800 font-sans tabular-nums">{{ strat.sortino | de_number(2) }}</td>
+                                <td class="py-3 px-2 text-right font-bold text-indigo-600 font-sans tabular-nums val-weight">
+                                    {{ strat.weight_max_sharpe | de_number(1) }}&nbsp;%
                                 </td>
-                                <td class="py-3 px-2 text-right text-slate-600 font-mono val-mcr">
-                                    {{ "{:.2f}%".format(strat.mcr_max_sharpe) }}
+                                <td class="py-3 px-2 text-right text-slate-600 font-sans font-normal tabular-nums val-mcr">
+                                    {{ strat.mcr_max_sharpe | de_number(2) }}&nbsp;%
                                 </td>
-                                <td class="py-3 px-2 text-right text-slate-600 font-mono val-trc">
-                                    {{ "{:.2f}%".format(strat.trc_max_sharpe) }}
+                                <td class="py-3 px-2 text-right text-slate-600 font-sans font-normal tabular-nums val-trc">
+                                    {{ strat.trc_max_sharpe | de_number(2) }}&nbsp;%
                                 </td>
-                                <td class="py-3 px-2 text-right font-semibold text-slate-800 font-mono val-prc">
-                                    {{ "{:.1f}%".format(strat.prc_max_sharpe) }}
+                                <td class="py-3 px-2 text-right font-medium text-slate-800 font-sans tabular-nums val-prc">
+                                    {{ strat.prc_max_sharpe | de_number(1) }}&nbsp;%
                                 </td>
                             </tr>
                             {% endfor %}
@@ -683,19 +672,19 @@
     }
 
     function formatCurrency(val, withSign) {
-        if (val === null || val === undefined || isNaN(val)) return '$0.00';
+        if (val === null || val === undefined || isNaN(val)) return '0,00 $';
         const num = Number(val);
-        const absStr = Math.abs(num).toLocaleString('en-US', {
+        const absStr = Math.abs(num).toLocaleString('de-DE', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         });
         if (withSign) {
-            if (num > 0.0001) return `+$${absStr}`;
-            if (num < -0.0001) return `-$${absStr}`;
-            return `$${absStr}`;
+            if (num > 0.0001) return `+${absStr} $`;
+            if (num < -0.0001) return `-${absStr} $`;
+            return `${absStr} $`;
         }
-        if (num < -0.0001) return `-$${absStr}`;
-        return `$${absStr}`;
+        if (num < -0.0001) return `-${absStr} $`;
+        return `${absStr} $`;
     }
 
     function renderSeriesTooltip(tooltipEl, dataPayload, strategyHexColors, pointIndex, isPnL) {
@@ -747,7 +736,7 @@
         }
 
         if (isPnL && stratItems.length === 0) {
-            stratRows = `<div class="text-[11px] text-slate-400 italic py-0.5">Keine Trades</div>`;
+            stratRows = `<div class="text-xs text-slate-400 italic py-0.5">Keine Trades</div>`;
         }
 
         const portfolioClass = isPnL
@@ -780,7 +769,7 @@
         const drawdownVal = (dataPayload.aggregate && dataPayload.aggregate[pointIndex] !== undefined)
             ? Number(dataPayload.aggregate[pointIndex])
             : 0.0;
-        const ddPct = (drawdownVal * 100).toFixed(1) + '%';
+        const ddPct = (drawdownVal * 100).toFixed(1).replace('.', ',') + ' %';
         const valClass = drawdownVal < -0.0001 ? 'text-rose-600' : 'text-slate-900';
 
         tooltipEl.innerHTML = `
@@ -1258,10 +1247,10 @@
                 const trcVal = model === 'max_sharpe' ? strat.trc_max_sharpe : strat.trc_risk_parity;
                 const prcVal = model === 'max_sharpe' ? strat.prc_max_sharpe : strat.prc_risk_parity;
 
-                if (weightCell) weightCell.textContent = wVal.toFixed(1) + '%';
-                if (mcrCell) mcrCell.textContent = mcrVal.toFixed(2) + '%';
-                if (trcCell) trcCell.textContent = trcVal.toFixed(2) + '%';
-                if (prcCell) prcCell.textContent = prcVal.toFixed(1) + '%';
+                if (weightCell) weightCell.innerHTML = wVal.toFixed(1).replace('.', ',') + '&nbsp;%';
+                if (mcrCell) mcrCell.innerHTML = mcrVal.toFixed(2).replace('.', ',') + '&nbsp;%';
+                if (trcCell) trcCell.innerHTML = trcVal.toFixed(2).replace('.', ',') + '&nbsp;%';
+                if (prcCell) prcCell.innerHTML = prcVal.toFixed(1).replace('.', ',') + '&nbsp;%';
             });
         }
     };

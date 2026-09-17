@@ -498,7 +498,7 @@ def test_view_trades_dip_buyer_weekday_stats_populated_and_rendered(
         # Assert Weekday card header and populated weekday row are present in HTML
         assert b"Weekday" in response.data
         assert b"Monday" in response.data
-        assert b"+1000" in response.data
+        assert b"+1.000" in response.data
         assert b"1W" in response.data
 
 
@@ -1508,9 +1508,9 @@ def test_view_analytics_monthly_matrix_badge_styles(
         response = test_client.get("/analytics/monthly-matrix?year=2026")
         assert response.status_code == 200
 
-        # Tier 1 (<= 3%): font-semibold
+        # Tier 1 (<= 3%): font-medium (3-tier typography)
         assert (
-            b"bg-emerald-50 text-emerald-700 font-semibold border border-emerald-100"
+            b"bg-emerald-50 text-emerald-700 font-medium border border-emerald-100"
             in response.data
         )
 
@@ -1867,7 +1867,7 @@ def test_view_trades_tgim_rendered_content_and_progress_max(
         assert response.status_code == 200
         assert b"repeat(2, minmax(0, 1fr))" in response.data
         assert b"LOC Limit" in response.data
-        assert b"LOC: &gt; 500.00" in response.data
+        assert b"LOC: &gt; 500,00" in response.data
         assert b"2 Days Limit" in response.data
         assert b"Time Exit (Wed MOC)" in response.data
         assert b"Tue MOC" not in response.data

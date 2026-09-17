@@ -34,13 +34,13 @@
                 <div class="flex flex-col">
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">Entry</span>
-                        <span class="tabular-nums text-slate-700 font-bold text-xs">{{ "{:,.2f}".format(trade.entry_price|float) }}</span>
+                        <span class="tabular-nums text-slate-700 font-bold text-xs">{{ trade.entry_price | de_number(2) }}</span>
                     </div>
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">SMA(8)</span>
                         <span class="tabular-nums text-slate-700 font-bold text-xs">
                             {% if trade.context and trade.context.get('sma_8') is not none %}
-                            {{ "{:,.2f}".format(trade.context.get('sma_8')|float) }}
+                            {{ trade.context.get('sma_8') | de_number(2) }}
                             {% else %}-{% endif %}
                         </span>
                     </div>
@@ -48,19 +48,16 @@
                         <span class="text-slate-500 font-medium text-xs">RSI(2)</span>
                         <span class="tabular-nums text-slate-700 font-bold text-xs">
                             {% if trade.context and trade.context.get('rsi_2') is not none %}
-                            {{ "{:,.2f}".format(trade.context.get('rsi_2')|float) }}
+                            {{ trade.context.get('rsi_2') | de_number(2) }}
                             {% else %}-{% endif %}
                         </span>
                     </div>
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs text-emerald-600">LOC Limit</span>
                         <span class="tabular-nums text-emerald-600 font-bold text-xs">
-                            {% if trade.context and trade.context.get('target') is not none %}
-                            &gt; {{ "{:,.2f}".format(trade.context.get('target')|float) }}
-                            {% elif trade.context and trade.context.get('target_price') is not none %}
-                            &gt; {{ "{:,.2f}".format(trade.context.get('target_price')|float) }}
-                            {% elif trade.context and trade.context.get('required_exit_price') is not none %}
-                            &gt; {{ "{:,.2f}".format(trade.context.get('required_exit_price')|float) }}
+                            {% set tgt = trade.context.get('target', trade.context.get('target_price', trade.context.get('required_exit_price'))) if trade.context else none %}
+                            {% if tgt is not none %}
+                            &gt; {{ tgt | de_number(2) }}
                             {% else %}-{% endif %}
                         </span>
                     </div>
@@ -108,23 +105,20 @@
 
                     <!-- 5. Entry -->
                     <div class="text-right tabular-nums text-slate-600 font-medium whitespace-nowrap">
-                        {{ "{:,.2f}".format(trade.entry_price|float) }}
+                        {{ trade.entry_price | de_number(2) }}
                     </div>
 
                     <!-- 6. Last Price -->
                     <div class="text-right tabular-nums text-slate-900 font-bold whitespace-nowrap">
-                        {{ "{:,.2f}".format(trade.current_price|float) if trade.current_price else '-' }}
+                        {{ trade.current_price | de_number(2) }}
                     </div>
 
                     <!-- 7. Target -->
                     <div class="text-right text-xs whitespace-nowrap flex flex-col items-end">
                         <span class="text-emerald-600 font-bold">
-                            {% if trade.context and trade.context.get('target') is not none %}
-                            LOC &gt; {{ "{:,.2f}".format(trade.context.get('target')|float) }}
-                            {% elif trade.context and trade.context.get('target_price') is not none %}
-                            LOC &gt; {{ "{:,.2f}".format(trade.context.get('target_price')|float) }}
-                            {% elif trade.context and trade.context.get('required_exit_price') is not none %}
-                            LOC &gt; {{ "{:,.2f}".format(trade.context.get('required_exit_price')|float) }}
+                            {% set tgt = trade.context.get('target', trade.context.get('target_price', trade.context.get('required_exit_price'))) if trade.context else none %}
+                            {% if tgt is not none %}
+                            LOC &gt; {{ tgt | de_number(2) }}
                             {% else %}-{% endif %}
                         </span>
                     </div>

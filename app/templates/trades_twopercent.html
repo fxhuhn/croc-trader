@@ -48,14 +48,14 @@
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">0.5 Entry</span>
                         <span class="tabular-nums text-slate-500 font-bold text-xs">
-                            {{ "{:,.2f}".format(group.variant_05.entry_price|float) if group.variant_05.entry_price else '-' }}
+                            {{ group.variant_05.entry_price | de_number(2) }}
                         </span>
                     </div>
                     {% if group.variant_05.current_target %}
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs text-emerald-600">0.5 Target</span>
                         <span class="tabular-nums text-emerald-600 font-bold text-xs">
-                            {{ "{:,.2f}".format(group.variant_05.current_target|float) }}
+                            {{ group.variant_05.current_target | de_number(2) }}
                         </span>
                     </div>
                     {% endif %}
@@ -65,14 +65,14 @@
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">1.0 Entry</span>
                         <span class="tabular-nums text-slate-500 font-bold text-xs">
-                            {{ "{:,.2f}".format(group.variant_10.entry_price|float) if group.variant_10.entry_price else '-' }}
+                            {{ group.variant_10.entry_price | de_number(2) }}
                         </span>
                     </div>
                     {% if group.variant_10.current_target %}
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs text-emerald-600">1.0 Target</span>
                         <span class="tabular-nums text-emerald-600 font-bold text-xs">
-                            {{ "{:,.2f}".format(group.variant_10.current_target|float) }}
+                            {{ group.variant_10.current_target | de_number(2) }}
                         </span>
                     </div>
                     {% endif %}

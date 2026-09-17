@@ -36,7 +36,7 @@
                 <div class="flex flex-col">
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">Entry</span>
-                        <span class="tabular-nums text-slate-700 font-bold text-xs">{{ "{:,.2f}".format(trade.entry_price|float) }}</span>
+                        <span class="tabular-nums text-slate-700 font-bold text-xs">{{ trade.entry_price | de_number(2) }}</span>
                     </div>
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         {% if trade.days_held|default(0)|int >= 2 %}
@@ -44,7 +44,7 @@
                         <span class="tabular-nums text-sky-600 font-bold text-xs">Time Exit (Wed MOC)</span>
                         {% else %}
                         <span class="text-slate-500 font-medium text-xs text-emerald-600">LOC Limit</span>
-                        <span class="tabular-nums text-emerald-600 font-bold text-xs">&gt; {{ "{:,.2f}".format(trade.entry_price|float) }}</span>
+                        <span class="tabular-nums text-emerald-600 font-bold text-xs">&gt; {{ trade.entry_price | de_number(2) }}</span>
                         {% endif %}
                     </div>
                 </div>
@@ -99,7 +99,7 @@
 
                     <!-- 5. Entry -->
                     <div class="text-right tabular-nums text-slate-600 font-medium whitespace-nowrap">
-                        {{ "{:,.2f}".format(trade.entry_price|float) }}
+                        {{ trade.entry_price | de_number(2) }}
                     </div>
 
                     <!-- 6. Stop -->
@@ -112,7 +112,7 @@
                         {% if trade.days_held|default(0)|int >= 2 %}
                             <span class="text-sky-600">Time Exit (Wed MOC)</span>
                         {% else %}
-                            <span class="text-emerald-600">LOC: &gt; {{ "{:,.2f}".format(trade.entry_price|float) }}</span>
+                            <span class="text-emerald-600">LOC: &gt; {{ trade.entry_price | de_number(2) }}</span>
                         {% endif %}
                     </div>
 

@@ -15,10 +15,8 @@
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">Close</span>
-            <span class="font-bold text-slate-600 font-mono">
-                {% if row.context.get('setup_close') %}
-                {{ "{:,.2f}".format(row.context.get('setup_close')|float) }}
-                {% else %}-{% endif %}
+            <span class="font-bold text-slate-600 font-sans tabular-nums">
+                {{ row.context.get('setup_close') | de_number(2) }}
             </span>
         </div>
     </div>
@@ -26,26 +24,22 @@
     <div class="flex flex-col">
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">SMA(200)</span>
-            <span class="font-bold text-slate-600 font-mono">
-                {% if row.context.get('sma_200') is not none %}
-                {{ "{:,.2f}".format(row.context.get('sma_200')|float) }}
-                {% else %}-{% endif %}
+            <span class="font-bold text-slate-600 font-sans tabular-nums">
+                {{ row.context.get('sma_200') | de_number(2) }}
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">ATR %</span>
-            <span class="font-bold text-slate-600 font-mono">
+            <span class="font-bold text-slate-600 font-sans tabular-nums">
                 {% if row.context.get('atr_pct') is not none %}
-                {{ "{:,.2f}".format(row.context.get('atr_pct')|float) }}%
+                {{ row.context.get('atr_pct') | de_number(2) }}&nbsp;%
                 {% else %}-{% endif %}
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">RSI(2)</span>
-            <span class="font-bold text-amber-600 font-mono">
-                {% if row.context.get('rsi_2') is not none %}
-                {{ "{:,.2f}".format(row.context.get('rsi_2')|float) }}
-                {% else %}-{% endif %}
+            <span class="font-bold text-amber-600 font-sans tabular-nums">
+                {{ row.context.get('rsi_2') | de_number(2) }}
             </span>
         </div>
     </div>

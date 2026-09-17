@@ -24,11 +24,13 @@
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-8 pb-20 md:pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
+    <div class="mb-6 hidden md:block">
+        <h1 class="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight leading-tight">Monthly Performance Matrix</h1>
+    </div>
+
     <!-- Section 1 Header & Year Filter -->
     <div class="flex flex-row items-center justify-between gap-4 mb-4">
-        <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
-            <i data-lucide="grid-3x3" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Monthlymatrix
-        </h2>
+        {{ render_section_header("Monthlymatrix", icon="grid-3x3") }}
 
         <!-- Year Selector -->
         <form method="GET" action="/analytics/monthly-matrix" class="flex items-center gap-2 shrink-0">
@@ -51,7 +53,7 @@
             <table class="w-full text-left border-collapse min-w-[850px]">
                 <!-- Table Header (Consistent bg-slate-50) -->
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
+                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
                         <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
                             Strategie
                         </th>
@@ -143,9 +145,7 @@
 
     <!-- Section 2: Portfoliomodell Header -->
     <div class="mb-4">
-        <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
-            <i data-lucide="layers" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Portfoliomodell
-        </h2>
+        {{ render_section_header("Portfoliomodell", icon="layers") }}
     </div>
 
     <!-- Section 2: Portfoliomodell Card Container -->
@@ -154,7 +154,7 @@
             <table class="w-full text-left border-collapse min-w-[850px]">
                 <!-- Table Header -->
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
+                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
                         <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
                             Modell
                         </th>
@@ -205,9 +205,7 @@
 
     <!-- Section 3: Vergleichsindizes Header -->
     <div class="mb-4">
-        <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
-            <i data-lucide="line-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Vergleichsindizes
-        </h2>
+        {{ render_section_header("Vergleichsindizes", icon="line-chart") }}
     </div>
 
     <!-- Section 3: Vergleichsindizes Card Container -->
@@ -216,7 +214,7 @@
             <table class="w-full text-left border-collapse min-w-[850px]">
                 <!-- Table Header -->
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
+                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
                         <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
                             Index
                         </th>
@@ -267,9 +265,7 @@
 
     <!-- Section 4: Allokations-Empfehlung Header -->
     <div class="flex flex-row items-center justify-between gap-4 mb-4">
-        <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 flex items-center gap-2">
-            <i data-lucide="pie-chart" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> Allokations-Empfehlung ({{ allocation_recommendation.reference_capital | de_number(0) }} $ Portfolio)
-        </h2>
+        {{ render_section_header("Allokations-Empfehlung (" ~ (allocation_recommendation.reference_capital | de_number(0)) ~ " $ Portfolio)", icon="pie-chart") }}
         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
             <i data-lucide="award" class="w-3.5 h-3.5 text-indigo-500"></i>
             <span>Modell: <strong class="text-slate-900">{{ allocation_recommendation.model_name }}</strong></span>
@@ -282,7 +278,7 @@
             <table class="w-full text-left border-collapse min-w-[600px]">
                 <!-- Table Header -->
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-xs tracking-wider">
+                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
                         <th class="py-4 px-4">
                             Strategie
                         </th>

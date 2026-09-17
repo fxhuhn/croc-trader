@@ -15,30 +15,30 @@
         <a href="{{ '/screener/' ~ strategy_slug if strategy_slug else '/screener' }}"
            data-tab
            {% if active_page == 'screener' %}aria-current="page" data-active{% endif %}
-           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'screener' else 'text-slate-500' }}">
+           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-bold text-[#007AFF]' if active_page == 'screener' else 'text-slate-500' }}">
             <i data-lucide="search-check" class="w-5 h-5"></i>
-            <span class="text-[11px] font-medium tracking-tight mt-0.5">Screener</span>
+            <span class="text-xs font-medium tracking-tight mt-0.5">Screener</span>
         </a>
         <a href="{{ '/trades/' ~ strategy_slug if strategy_slug else '/trades' }}"
            data-tab
            {% if active_page == 'trades' %}aria-current="page" data-active{% endif %}
-           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'trades' else 'text-slate-500' }}">
+           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-bold text-[#007AFF]' if active_page == 'trades' else 'text-slate-500' }}">
             <i data-lucide="wallet" class="w-5 h-5"></i>
-            <span class="text-[11px] font-medium tracking-tight mt-0.5">Trades</span>
+            <span class="text-xs font-medium tracking-tight mt-0.5">Trades</span>
         </a>
         <a href="/analytics"
            data-tab
            {% if active_page == 'analytics' %}aria-current="page" data-active{% endif %}
-           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'analytics' else 'text-slate-500' }}">
+           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-bold text-[#007AFF]' if active_page == 'analytics' else 'text-slate-500' }}">
             <i data-lucide="pie-chart" class="w-5 h-5"></i>
-            <span class="text-[11px] font-medium tracking-tight mt-0.5">Analytics</span>
+            <span class="text-xs font-medium tracking-tight mt-0.5">Analytics</span>
         </a>
         <a href="/broker"
            data-tab
            {% if active_page == 'broker' %}aria-current="page" data-active{% endif %}
-           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-semibold text-[#007AFF]' if active_page == 'broker' else 'text-slate-500' }}">
+           class="tab-item relative z-10 flex flex-col items-center justify-center w-full h-full transition-colors {{ 'font-bold text-[#007AFF]' if active_page == 'broker' else 'text-slate-500' }}">
             <i data-lucide="folder-sync" class="w-5 h-5"></i>
-            <span class="text-[11px] font-medium tracking-tight mt-0.5">Broker</span>
+            <span class="text-xs font-medium tracking-tight mt-0.5">Broker</span>
         </a>
     </div>
 </nav>

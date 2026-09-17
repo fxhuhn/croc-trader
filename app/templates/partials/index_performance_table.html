@@ -19,29 +19,29 @@
                     <span class="text-rose-500">{{ row.loss }}L</span>
                 </span>
             </td>
-            <td class="px-6 py-3 text-right font-medium text-slate-600">
-                {{ "{:+,.0f}".format(row.average_pnl) }}
+            <td class="px-6 py-3 text-right font-medium text-slate-600 tabular-nums">
+                {{ row.average_pnl | de_number(0, prefix_plus=True) }}
             </td>
             <td
-                class="px-6 py-3 text-right font-medium {{ 'text-emerald-500/80' if row.pnl >= 0 else 'text-rose-500/90' }}">
-                {{ "{:+.0f}".format(row.pnl) }}
+                class="px-6 py-3 text-right font-medium tabular-nums {{ 'text-emerald-500/80' if row.pnl >= 0 else 'text-rose-500/90' }}">
+                {{ row.pnl | de_number(0, prefix_plus=True) }}
             </td>
         </tr>
         {% endif %}
         {% endfor %}
     </tbody>
     <tfoot class="bg-slate-50 border-t border-slate-200">
-        <tr class="font-semibold">
+        <tr class="font-bold">
             <td class="px-6 py-4 text-slate-900 border-none">Total (Unique)</td>
-            <td class="px-6 py-4 text-right text-slate-500 border-none">
+            <td class="px-6 py-4 text-right text-slate-500 font-medium border-none">
                 {{ closed_summary.count }} Trades
             </td>
-            <td class="px-6 py-4 text-right text-slate-600 border-none">
-                {{ "{:+,.0f}".format(closed_summary.average_pnl) }} $
+            <td class="px-6 py-4 text-right text-slate-600 tabular-nums border-none">
+                {{ closed_summary.average_pnl | de_number(0, prefix_plus=True) }}&nbsp;$
             </td>
             <td
-                class="px-6 py-4 text-right border-none {{ 'text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'text-rose-500/90' }}">
-                {{ "{:+,.0f}".format(closed_summary.total_pnl) }} $
+                class="px-6 py-4 text-right tabular-nums border-none {{ 'text-emerald-500/80' if closed_summary.total_pnl >= 0 else 'text-rose-500/90' }}">
+                {{ closed_summary.total_pnl | de_number(0, prefix_plus=True) }}&nbsp;$
             </td>
         </tr>
     </tfoot>
