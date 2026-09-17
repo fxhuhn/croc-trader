@@ -15,6 +15,10 @@ render_mobile_table_header, render_pnl_cell, render_row_subline, render_history_
 <!-- MAIN CONTENT -->
 <main class="flex-grow pt-4 md:pt-12 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
 
+    <div class="mb-6 hidden md:block">
+        <h1 class="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight leading-tight">{% block h1_title %}{{ self.page_title()|trim }} Trades{% endblock %}</h1>
+    </div>
+
     <!-- KPI Cards -->
     {% block kpi_cards %}
     {{ cards.dashboard_kpis(summary, active_trades|length if active_trades is defined else (active_groups|length if active_groups is defined else 0)) }}

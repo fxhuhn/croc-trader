@@ -1,8 +1,9 @@
 """Static linting and continuous assurance suite for Jinja2 templates.
 
 Validates typography hierarchies, font weights, ad-hoc pixel classes,
-monospaced font usage, section header macro invocations, and German
-locale number formatting (de-DE: 1.234,56 $).
+monospaced font usage, section header macro invocations, mandatory
+semantic <h1> elements, Jinja2 syntax correctness, and German locale
+number formatting (de-DE: 1.234,56 $).
 """
 
 import re
@@ -10,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+import jinja2
 import pytest
 
 # Maximum allowed legacy violations per template file to enforce non-regression.
@@ -30,6 +32,22 @@ FINANCIAL_METRIC_KEYWORDS: Final[tuple[str, ...]] = (
     "val-weight",
 )
 
+MANDATORY_H1_TEMPLATES: Final[frozenset[str]] = frozenset(
+    {
+        "404.html",
+        "500.html",
+        "honeypot_login.html",
+        "analytics.html",
+        "analytics_monthly_matrix.html",
+        "backtest_dashboard.html",
+        "trades.html",
+        "trades_base.html",
+        "trades_broker.html",
+        "screener.html",
+        "screener_base.html",
+    }
+)
+
 
 @dataclass(frozen=True)
 class LintViolation:
@@ -38,6 +56,48 @@ class LintViolation:
     rule_name: str
     line_number: int
     snippet: str
+
+
+def _check_jinja_syntax(content: str) -> list[LintViolation]:
+    """Compiles Jinja2 template AST to catch syntax or parsing errors."""
+    env = jinja2.Environment()
+    try:
+        env.parse(content)
+        return []
+    except jinja2.TemplateSyntaxError as error:
+        return [
+            LintViolation(
+                "JINJA_SYNTAX_ERROR",
+                error.lineno or 1,
+                f"Jinja2 syntax error: {error.message}",
+            )
+        ]
+
+
+def _check_mandatory_h1(content: str, relative_path: str) -> list[LintViolation]:
+    """Ensures that all primary views and base page layouts define exactly one semantic <h1> element."""
+    normalized_path = relative_path.replace("\\", "/")
+    if normalized_path not in MANDATORY_H1_TEMPLATES:
+        return []
+
+    h1_matches = re.findall(r"<h1\b", content, re.IGNORECASE)
+    if not h1_matches:
+        return [
+            LintViolation(
+                "MISSING_SEMANTIC_H1",
+                1,
+                f"Template '{normalized_path}' is a primary view/layout but lacks a semantic <h1> header.",
+            )
+        ]
+    if len(h1_matches) > 1:
+        return [
+            LintViolation(
+                "MULTIPLE_H1_ELEMENTS",
+                1,
+                f"Template '{normalized_path}' contains {len(h1_matches)} <h1> elements (expected exactly 1).",
+            )
+        ]
+    return []
 
 
 def _check_locale_violations(line: str, line_number: int) -> list[LintViolation]:
@@ -60,10 +120,18 @@ def _check_locale_violations(line: str, line_number: int) -> list[LintViolation]
 
 
 def _check_font_weight_violations(line: str, line_number: int) -> list[LintViolation]:
-    """Detects forbidden font weight utility classes."""
-    pattern = r"\b(font-light|font-black|font-thin|font-extralight|font-extrabold)\b"
-    if re.search(pattern, line):
-        return [LintViolation("FORBIDDEN_FONT_WEIGHT", line_number, line.strip())]
+    """Detects forbidden font weight utility classes (strictly enforces 3-tier system)."""
+    pattern = r"\b(font-thin|font-extralight|font-light|font-semibold|font-extrabold|font-black)\b"
+    matches = re.findall(pattern, line)
+    if matches:
+        return [
+            LintViolation(
+                "FORBIDDEN_FONT_WEIGHT",
+                line_number,
+                f"Prohibited font weight '{match}': {line.strip()}",
+            )
+            for match in matches
+        ]
     return []
 
 
@@ -137,8 +205,11 @@ def scan_template_content(
     Returns:
         List of immutable LintViolation records.
     """
-    lines = content.splitlines()
     violations: list[LintViolation] = []
+    violations.extend(_check_jinja_syntax(content))
+    violations.extend(_check_mandatory_h1(content, relative_path))
+
+    lines = content.splitlines()
     is_macro_file = relative_path.endswith("macros/cards.html")
     is_base_layout = relative_path.endswith("base.html")
 
@@ -162,15 +233,50 @@ def scan_template_content(
 # ---------------------------------------------------------------------------
 
 
-def test_lint_detects_forbidden_font_weights() -> None:
-    """Verifies detection of font-light and font-black weights."""
-    valid_snippet = '<p class="font-normal text-slate-600 font-bold">Valid</p>'
-    invalid_snippet = '<h1 class="font-light text-3xl font-black">Title</h1>'
+def test_lint_detects_jinja_syntax_errors() -> None:
+    """Verifies detection of unclosed parentheses or malformed Jinja2 syntax."""
+    valid_snippet = "{% set x = (1 if a else 2) %}"
+    invalid_snippet = "{% set x = (1 if a else 2)) %}"
 
     assert scan_template_content(valid_snippet) == []
     violations = scan_template_content(invalid_snippet)
     assert len(violations) == 1
-    assert violations[0].rule_name == "FORBIDDEN_FONT_WEIGHT"
+    assert violations[0].rule_name == "JINJA_SYNTAX_ERROR"
+
+
+def test_lint_detects_forbidden_font_weights() -> None:
+    """Verifies detection of font-light, font-black, and font-semibold weights."""
+    valid_snippet = '<p class="font-normal text-slate-600 font-bold">Valid</p>'
+    invalid_snippet = '<h1 class="font-light text-3xl font-black"><span class="font-semibold">Title</span></h1>'
+
+    assert scan_template_content(valid_snippet) == []
+    violations = scan_template_content(invalid_snippet)
+    assert len(violations) == 3
+    assert all(v.rule_name == "FORBIDDEN_FONT_WEIGHT" for v in violations)
+
+
+def test_lint_detects_mandatory_h1_structure() -> None:
+    """Verifies that primary view templates must contain exactly one <h1> element."""
+    valid_page = """{% extends "base.html" %}
+    <main>
+        <h1 class="text-2xl font-bold text-slate-900">Dashboard</h1>
+    </main>"""
+    missing_h1_page = """{% extends "base.html" %}
+    <main>
+        <h2 class="text-xl font-bold text-slate-900">Dashboard</h2>
+    </main>"""
+    multiple_h1_page = """{% extends "base.html" %}
+    <main>
+        <h1 class="text-2xl font-bold text-slate-900">Title 1</h1>
+        <h1 class="text-2xl font-bold text-slate-900">Title 2</h1>
+    </main>"""
+
+    assert scan_template_content(valid_page, "analytics.html") == []
+    missing_violations = scan_template_content(missing_h1_page, "analytics.html")
+    assert any(v.rule_name == "MISSING_SEMANTIC_H1" for v in missing_violations)
+
+    multiple_violations = scan_template_content(multiple_h1_page, "analytics.html")
+    assert any(v.rule_name == "MULTIPLE_H1_ELEMENTS" for v in multiple_violations)
 
 
 def test_lint_detects_adhoc_pixel_sizes() -> None:

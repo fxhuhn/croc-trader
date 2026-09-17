@@ -459,15 +459,15 @@
             <div class="mt-4 pt-4 border-t border-slate-100 px-4 md:px-6 pb-6 text-xs text-slate-500 flex flex-col gap-4">
                 <div class="flex items-start gap-2">
                     <i data-lucide="info" class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5"></i>
-                    <p class="font-semibold text-slate-700">Strategie-Kennzahlen & Definitionen</p>
+                    <p class="font-bold text-slate-700">Strategie-Kennzahlen & Definitionen</p>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 pt-2 border-t border-slate-50 pl-6">
                     <div>
-                        <p class="font-semibold text-slate-700">Open (100% / 95%)</p>
+                        <p class="font-bold text-slate-700">Open (100% / 95%)</p>
                         <p class="leading-relaxed text-xs text-slate-500">Die maximale Anzahl gleichzeitig offener Trades (100% Auslastung) im Vergleich zur 95% Auslastungsgrenze (95. Perzentil). Letztere zeigt die Auslastung, die an 95% aller Handelstage nicht überschritten wurde (ohne Verzerrung durch sequenzielle Intraday-Trades).</p>
                     </div>
                     <div>
-                        <p class="font-semibold text-slate-700">Profit Factor</p>
+                        <p class="font-bold text-slate-700">Profit Factor</p>
                         <p class="leading-relaxed text-xs text-slate-500">
                             Das Verhältnis von Bruttogewinnen zu Bruttoverlusten. Ein Wert über 1.0 bedeutet Profitabilität. Die Klassifizierung lautet:
                             <br>&bull; <b>&lt; 1.0</b>: Verlustbringend (Unprofitabel)
@@ -477,23 +477,23 @@
                         </p>
                     </div>
                     <div>
-                        <p class="font-semibold text-slate-700">RoR (Rate of Return)</p>
+                        <p class="font-bold text-slate-700">RoR (Rate of Return)</p>
                         <p class="leading-relaxed text-xs text-slate-500">Die Gesamtrendite der Strategie bezogen auf das Startkapital des Depots (100.000 $).</p>
                     </div>
                     <div>
-                        <p class="font-semibold text-slate-700">Avg Risk</p>
+                        <p class="font-bold text-slate-700">Avg Risk</p>
                         <p class="leading-relaxed text-xs text-slate-500">Das durchschnittliche Risiko pro Trade in % des Depotkapitals, berechnet aus dem Abstand zwischen Einstiegskurs und Stop-Loss multipliziert mit der Positionsgröße.</p>
                     </div>
                     <div>
-                        <p class="font-semibold text-slate-700">Expectancy</p>
+                        <p class="font-bold text-slate-700">Expectancy</p>
                         <p class="leading-relaxed text-xs text-slate-500">Der Erwartungswert ausgedrückt in R-Multiples (Vielfaches des eingegangenen Risikos). Ein Wert von 1.5 R bedeutet, dass im Durchschnitt das 1,5-fache des gesetzten Risikos gewonnen wird.</p>
                     </div>
                     <div>
-                        <p class="font-semibold text-slate-700">Sharpe-Ratio</p>
+                        <p class="font-bold text-slate-700">Sharpe-Ratio</p>
                         <p class="leading-relaxed text-xs text-slate-500">Ein Maß für die risikoadjustierte Rendite. Sie bewertet das Verhältnis zwischen der erzielten Überrendite und der Volatilität der Ergebnisse (annualisiert).</p>
                     </div>
                     <div>
-                        <p class="font-semibold text-slate-700">Avg ROI</p>
+                        <p class="font-bold text-slate-700">Avg ROI</p>
                         <p class="leading-relaxed text-xs text-slate-500">Die durchschnittliche Rendite pro Trade (Return on Investment) bezogen auf das jeweils in den Trade konkret investierte Kapital.</p>
                     </div>
                 </div>
@@ -508,7 +508,7 @@
             <!-- Stacked Bar Chart -->
             <div class="mb-8">
                 <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-sm font-semibold text-slate-700">Monatliche EV/M Allokation</h3>
+                    <h3 class="text-sm font-bold text-slate-700">Monatliche EV/M Allokation</h3>
                 </div>
                 <div id="frequency-bar-chart" class="h-[300px] w-full"></div>
             </div>
@@ -516,7 +516,7 @@
             <!-- Details Table -->
             <div class="border-t border-slate-100 pt-6">
                 <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-sm font-semibold text-slate-700">Details der Berechnung (Aktueller Monat: {{ current_month_name }})</h3>
+                    <h3 class="text-sm font-bold text-slate-700">Details der Berechnung (Aktueller Monat: {{ current_month_name }})</h3>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
@@ -560,7 +560,7 @@
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             {{ render_section_header("Risikoadjustiertes Modell (Mean-Variance / Risk Parity)", icon="sliders") }}
             <!-- Interactive Toggle Switch -->
-            <div class="inline-flex p-1 bg-slate-200/80 rounded-xl self-start sm:self-auto text-xs font-semibold">
+            <div class="inline-flex p-1 bg-slate-200/80 rounded-xl self-start sm:self-auto text-xs font-medium">
                 <button type="button" id="toggle-max-sharpe" onclick="switchOptModel('max_sharpe')"
                     class="px-3 py-1.5 rounded-lg transition-all duration-200 bg-white text-indigo-600 shadow-sm font-bold">
                     Max-Sharpe
@@ -585,7 +585,7 @@
             <!-- Stacked Bar Chart -->
             <div class="mb-8">
                 <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-sm font-semibold text-slate-700" id="mv-chart-title">Monatliche Allokation (Max-Sharpe)</h3>
+                    <h3 class="text-sm font-bold text-slate-700" id="mv-chart-title">Monatliche Allokation (Max-Sharpe)</h3>
                 </div>
                 <div id="mean-variance-bar-chart" class="h-[300px] w-full"></div>
             </div>
@@ -593,7 +593,7 @@
             <!-- Details Table -->
             <div class="border-t border-slate-100 pt-6">
                 <div class="flex justify-between items-center mb-3">
-                    <h3 class="text-sm font-semibold text-slate-700">Details der risikoadjustierten Optimierung (Aktueller Monat: {{ current_month_name }})</h3>
+                    <h3 class="text-sm font-bold text-slate-700">Details der risikoadjustierten Optimierung (Aktueller Monat: {{ current_month_name }})</h3>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
@@ -730,7 +730,7 @@
                         <div class="w-2 h-2 rounded-full shrink-0" style="background-color: ${item.color};"></div>
                         <span class="truncate">${item.name}</span>
                     </div>
-                    <span class="font-sans tabular-nums text-right font-semibold shrink-0 ${valClass}">${formatCurrency(item.val, isPnL)}</span>
+                    <span class="font-sans tabular-nums text-right font-bold shrink-0 ${valClass}">${formatCurrency(item.val, isPnL)}</span>
                 </div>
             `;
         }
