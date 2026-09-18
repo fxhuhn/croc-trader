@@ -121,7 +121,9 @@ def view_analytics_dashboard() -> str:
     dataframe = _prepare_closed_trades_dataframe(closed_trades)
     initial_capital = DEFAULT_INITIAL_CAPITAL
     summary = _calculate_summary_metrics(dataframe, initial_capital, today)
-    rolling_3m = calculate_rolling_3m_metrics(dataframe, initial_capital, today)
+    rolling_3m = calculate_rolling_3m_metrics(
+        dataframe, initial_capital, today, strategy_groups=STRATEGY_GROUPS
+    )
 
     strategies_data = _build_strategies_dashboard(
         dataframe, active_trades, service, initial_capital

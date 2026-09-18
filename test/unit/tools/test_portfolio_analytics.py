@@ -558,9 +558,24 @@ def test_calculate_rolling_3m_metrics_empty_and_valid() -> None:
     assert res["win_count"] == 1
     assert res["loss_count"] == 1
     assert res["net_pnl"] == 50.0
-    assert res["return_pct"] == pytest.approx(0.5)  # 50 / 10000 = 0.5%
+    assert res["return_pct"] == pytest.approx(
+        4.5
+    )  # (1 + 0.10) * (1 - 0.05) - 1 = +4.5%
     assert res["profit_factor"] == pytest.approx(2.0)  # 100 / 50 = 2.0
     assert res["avg_roi"] == pytest.approx(2.5)  # mean(10%, -5%) = 2.5%
     assert res["start_date"] == "15.01.2026"
     assert res["end_date"] == "15.04.2026"
     assert res["date_range_label"] == "15.01.2026 – 15.04.2026"
+
+    # Test with strategy groups matching overview methodology
+    strategy_groups = {"GroupA": ["strat_a"]}
+    trades_df_strat = trades_df.copy()
+    trades_df_strat["strategy"] = "strat_a"
+    res_strat = calculate_rolling_3m_metrics(
+        trades_df_strat,
+        initial_capital=10_000.0,
+        as_of_date=eval_date,
+        strategy_groups=strategy_groups,
+    )
+    assert res_strat["return_pct"] == pytest.approx(4.5)
+    assert res_strat["trades_count"] == 2

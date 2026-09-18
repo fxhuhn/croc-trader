@@ -1161,17 +1161,73 @@ def calculate_monthly_drawdown_max_intramonth(
     }
 
 
+def _calculate_rolling_compounded_return(
+    dataframe: pd.DataFrame,
+    current_date: pd.Timestamp,
+    strategy_groups: dict[str, list[Any]] | None = None,
+) -> float:
+    """Calculates compounded monthly portfolio return for the rolling 3-month window.
+
+    Matches the unweighted strategy compounding methodology used in the
+    monthly performance matrix and overview KPIs.
+    """
+    target_months = [
+        (current_date - pd.DateOffset(months=offset)) for offset in (2, 1, 0)
+    ]
+    monthly_pcts: list[float] = []
+
+    for month_dt in target_months:
+        year = month_dt.year
+        month = month_dt.month
+        month_df = (
+            dataframe[
+                (dataframe["exit_date_dt"].dt.year == year)
+                & (dataframe["exit_date_dt"].dt.month == month)
+                & (dataframe["exit_date_dt"] <= current_date)
+            ]
+            if not dataframe.empty and "exit_date_dt" in dataframe.columns
+            else pd.DataFrame()
+        )
+
+        if month_df.empty:
+            monthly_pcts.append(0.0)
+            continue
+
+        if strategy_groups and "strategy" in month_df.columns:
+            resolved = month_df["strategy"].apply(
+                lambda s: STRATEGY_ALIASES.get(str(s).lower(), s)
+            )
+            strat_pcts: list[float] = []
+            for _name, filters in strategy_groups.items():
+                strat_df = month_df[resolved.isin(filters)]
+                strat_pcts.append(round(calculate_unweighted_monthly_pct(strat_df), 1))
+            month_pct = (
+                round(sum(strat_pcts) / len(strat_pcts), 1) if strat_pcts else 0.0
+            )
+        else:
+            month_pct = round(calculate_unweighted_monthly_pct(month_df), 1)
+
+        monthly_pcts.append(month_pct)
+
+    factor = 1.0
+    for val in monthly_pcts:
+        factor *= 1.0 + val / 100.0
+    return round((factor - 1.0) * 100.0, 2)
+
+
 def calculate_rolling_3m_metrics(
     dataframe: pd.DataFrame,
-    initial_capital: float,
+    initial_capital: float = 100_000.0,
     as_of_date: pd.Timestamp | None = None,
+    strategy_groups: dict[str, list[Any]] | None = None,
 ) -> dict[str, object]:
     """Calculates summary performance KPIs for the rolling 3-month period.
 
     Args:
         dataframe: DataFrame of closed trades with exit_date_dt, realized_pnl, etc.
-        initial_capital: Base starting portfolio capital.
+        initial_capital: Base starting portfolio capital (kept for compatibility).
         as_of_date: Reference calculation date (defaults to current date).
+        strategy_groups: Strategy group mapping for portfolio monthly matrix weighting.
 
     Returns:
         dict[str, object]: Dictionary containing rolling 3-month performance KPIs.
@@ -1209,7 +1265,9 @@ def calculate_rolling_3m_metrics(
 
     pnl_series = pd.to_numeric(period_df["realized_pnl"], errors="coerce").fillna(0.0)
     net_pnl = float(pnl_series.sum())
-    return_pct = (net_pnl / initial_capital) * 100.0 if initial_capital > 0 else 0.0
+    return_pct = _calculate_rolling_compounded_return(
+        dataframe, current_date, strategy_groups
+    )
 
     roi_series = extract_roi_series(period_df)
     avg_roi = float(roi_series.mean() * 100.0) if not roi_series.empty else 0.0
