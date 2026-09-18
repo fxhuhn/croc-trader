@@ -1899,3 +1899,68 @@ def test_500_error_page_renders_clean_standalone_html(
     assert b"Interner Serverfehler" in response.data
     assert b"HTTP 500" in response.data
     assert b"Zur\xc3\xbcck zur \xc3\x9cbersicht" in response.data
+
+
+@pytest.mark.parametrize("candle_count", [0, 1, 2])
+def test_view_trades_turnover_green_candle_count_branches(
+    test_client: FlaskClient, candle_count: int
+) -> None:
+    """Verifies that all green candle count states (0, 1, >=2) render without Jinja errors."""
+    mock_trade_active: dict[str, Any] = {
+        "id": "trade-turnover-1",
+        "symbol": "AAPL",
+        "entry_date": "2026-06-01",
+        "display_entry": "2026-06-01",
+        "days_held": 2,
+        "initial_size": 50,
+        "current_size": 50,
+        "entry_price": 200.0,
+        "current_price": 210.0,
+        "current_stop_loss": 190.0,
+        "current_target": 220.0,
+        "unrealized_pnl": 500.0,
+        "realized_pnl": 0.0,
+        "pnl_percentage": 5.0,
+        "strategy": "turnover_timing_0.5",
+        "variant": "0.5",
+        "context": {"green_candle_count": candle_count},
+        "executions": [],
+        "exit_reason": None,
+    }
+
+    with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
+        mock_service = mock_trade_service.return_value
+        mock_service.get_trades.side_effect = lambda strategies, status, **kwargs: (
+            [mock_trade_active] if status == TradeStatus.ACTIVE else []
+        )
+        mock_service.get_portfolio_summary.return_value = {
+            "invested": 10000.0,
+            "open_pnl": 500.0,
+            "win_rate": 100.0,
+            "total_pnl": 500.0,
+        }
+        mock_service.get_closed_summary.return_value = {
+            "count": 0,
+            "average_pnl": 0.0,
+            "total_pnl": 0.0,
+        }
+        mock_service.get_index_stats.return_value = {}
+        mock_service.group_trades_by_symbol.return_value = [
+            {
+                "symbol": "AAPL",
+                "total_pnl": 500.0,
+                "total_invested": 10000.0,
+                "total_pnl_percentage": 5.0,
+                "variants": [mock_trade_active],
+                "variant_05": mock_trade_active,
+                "variant_10": None,
+                "total_quantity": 50,
+                "max_days": 2,
+                "green_candle_count": candle_count,
+            }
+        ]
+        mock_service.group_trades_history.return_value = []
+
+        response = test_client.get("/trades/turnover")
+        assert response.status_code == 200
+        assert b"AAPL" in response.data
