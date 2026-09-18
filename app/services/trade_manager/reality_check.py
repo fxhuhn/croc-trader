@@ -52,6 +52,7 @@ class PositionRealityCheck:
     has_quantity_diff: bool = False
     has_entry_price_diff: bool = False
     has_pnl_diff: bool = False
+    pnl_percentage: float | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,7 @@ class HistoryRealityCheck:
     has_exit_price_diff: bool = False
     has_pnl_diff: bool = False
     executions: list[dict[str, Any]] = field(default_factory=list)
+    pnl_percentage: float | None = None
 
 
 @dataclass(frozen=True)
@@ -254,6 +256,30 @@ def matches_strategy_filter(
     return target_filter in (strategy, strategy_filter_val)
 
 
+def _calculate_pnl_percentage(
+    primary_source: dict[str, Any],
+    fallback_source: dict[str, Any],
+    pnl: Decimal,
+    entry_price: Decimal,
+    quantity: float,
+) -> float | None:
+    """Calculates or extracts the PnL percentage from sources or cost basis."""
+    for source in (primary_source, fallback_source):
+        raw_pct = source.get("pnl_percentage")
+        if raw_pct is not None:
+            try:
+                return float(raw_pct)
+            except (ValueError, TypeError):
+                continue
+
+    if entry_price > Decimal("0.00") and quantity > 0:
+        cost_basis = entry_price * to_decimal(quantity)
+        if cost_basis > Decimal("0.00"):
+            return float((pnl / cost_basis) * Decimal("100"))
+
+    return None
+
+
 def _build_position_comparison(
     bt_trade: dict[str, Any],
     pos: dict[str, Any],
@@ -294,6 +320,10 @@ def _build_position_comparison(
 
     open_pnl_broker = to_decimal(pos.get("unrealized_pnl"))
 
+    pnl_pct = _calculate_pnl_percentage(
+        pos, bt_trade, open_pnl_broker, entry_broker, qty_broker
+    )
+
     has_qty_diff = not is_fut and (int(qty_bt) != int(qty_broker))
     has_entry_diff = entry_bt != entry_broker
     has_pnl_diff = open_pnl_bt != open_pnl_broker
@@ -320,6 +350,7 @@ def _build_position_comparison(
         has_quantity_diff=has_qty_diff,
         has_entry_price_diff=has_entry_diff,
         has_pnl_diff=has_pnl_diff,
+        pnl_percentage=pnl_pct,
     )
 
 
@@ -437,6 +468,10 @@ def _build_history_comparison(
     has_exit_diff = exit_bt != exit_broker
     has_pnl_diff = net_pnl_bt != net_pnl_broker
 
+    pnl_pct = _calculate_pnl_percentage(
+        settlement, bt_trade, net_pnl_broker, entry_broker, qty_broker
+    )
+
     return HistoryRealityCheck(
         trade_id=trade_id,
         symbol=str(settlement.get("symbol") or bt_trade.get("symbol") or ""),
@@ -466,6 +501,7 @@ def _build_history_comparison(
         has_exit_price_diff=has_exit_diff,
         has_pnl_diff=has_pnl_diff,
         executions=executions_list,
+        pnl_percentage=pnl_pct,
     )
 
 
