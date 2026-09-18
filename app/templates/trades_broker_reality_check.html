@@ -1,0 +1,507 @@
+{% extends "base.html" %}
+
+{% block title %}Reality Check — Backtest vs. Broker{% endblock %}
+
+{% block head %}
+<!-- Plotly.js -->
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+{% endblock %}
+
+{% block body_class %}bg-slate-50 text-slate-900 pb-24{% endblock %}
+
+{% block content %}
+{% from "macros/navigation.html" import render_header %}
+{% from "macros/cards.html" import render_section_header, render_kpi_card, render_pnl_cell, tradingview_link %}
+{% from "macros/timeline.html" import render_timeline_node %}
+
+<!-- Top-Navigation mit aktivem Broker-Tab -->
+{{ render_header("Broker", "broker", show_switcher=False, active_tab='reality_check') }}
+
+<!-- Mobile Hinweiskarte (Desktop-Only Guard) -->
+<div class="md:hidden pt-8 pb-16 px-4 max-w-lg mx-auto text-center">
+    <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
+            <i data-lucide="monitor" class="w-6 h-6"></i>
+        </div>
+        <div class="text-base font-bold text-slate-900 mb-2">Desktop-Optimiert</div>
+        <p class="text-xs text-slate-500 leading-relaxed mb-4">
+            Das Reality Check Dashboard für den Abgleich zwischen Backtest und Broker-Ausführungen erfordert eine hochauflösende Tabellen- und Chartansicht. Bitte öffnen Sie diese Seite auf einem Desktop-Bildschirm.
+        </p>
+        <a href="/broker" class="inline-flex items-center justify-center px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors">
+            Zurück zur Broker-Übersicht
+        </a>
+    </div>
+</div>
+
+<!-- HAUPTINHALT (Desktop-Only) -->
+<main class="hidden md:block flex-grow pt-4 md:pt-8 pb-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto w-full">
+
+    <!-- Page Header & Strategy Filter (1:1 Angleichung an trades_broker.html) -->
+    <div class="mb-6">
+        <h1 class="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight leading-tight">Reality Check</h1>
+        <p class="text-slate-500 text-xs mt-0.5">
+            Abgleich zwischen simulierten Backtest und realen TWS-Ausführungen.
+        </p>
+    </div>
+
+    <!-- Strategy Filter (Horizontaler Pill-Switcher exakt wie trades_broker.html:43-66) -->
+    <div class="flex justify-center md:justify-end mb-6">
+        <div class="flex items-center bg-slate-200/60 p-1 rounded-lg overflow-x-auto snap-x pb-1 w-auto">
+            <a href="/broker/reality-check?strategy=all" id="btn-strat-all"
+                class="{{ 'bg-white shadow-sm text-slate-900' if selected_strategy == 'all' else 'text-slate-500 hover:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                All
+            </a>
+            <a href="/broker/reality-check?strategy=DipBuyer" id="btn-strat-DipBuyer"
+                class="{{ 'bg-white shadow-sm text-slate-900' if selected_strategy == 'DipBuyer' else 'text-slate-500 hover:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                Dip Buyer
+            </a>
+            <a href="/broker/reality-check?strategy=TurnoverTiming" id="btn-strat-TurnoverTiming"
+                class="{{ 'bg-white shadow-sm text-slate-900' if selected_strategy == 'TurnoverTiming' else 'text-slate-500 hover:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                Turnover
+            </a>
+            <a href="/broker/reality-check?strategy=TwoPercent" id="btn-strat-TwoPercent"
+                class="{{ 'bg-white shadow-sm text-slate-900' if selected_strategy == 'TwoPercent' else 'text-slate-500 hover:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                Two Percent
+            </a>
+            <a href="/broker/reality-check?strategy=NDXMomentum" id="btn-strat-NDXMomentum"
+                class="{{ 'bg-white shadow-sm text-slate-900' if selected_strategy == 'NDXMomentum' else 'text-slate-500 hover:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                NDX Momentum
+            </a>
+            <a href="/broker/reality-check?strategy=TGIM" id="btn-strat-TGIM"
+                class="{{ 'bg-white shadow-sm text-slate-900' if selected_strategy == 'TGIM' else 'text-slate-500 hover:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                TGIM
+            </a>
+            <a href="/broker/reality-check?strategy=BounceBandit" id="btn-strat-BounceBandit"
+                class="{{ 'bg-white shadow-sm text-slate-900' if selected_strategy == 'BounceBandit' else 'text-slate-500 hover:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                Bounce Bandit
+            </a>
+            <a href="/broker/reality-check?strategy=BridgeScout" id="btn-strat-BridgeScout"
+                class="{{ 'bg-white shadow-sm text-slate-900' if selected_strategy == 'BridgeScout' else 'text-slate-500 hover:text-slate-700' }} px-3 py-1 rounded-md text-xs font-bold transition-all whitespace-nowrap snap-start">
+                Bridge Scout
+            </a>
+        </div>
+    </div>
+
+    <!-- KPI Cards Grid (Exakt wie analytics.html: 2 Zeilen à 3 Spalten) -->
+    <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8" aria-label="Reality Check Kennzahlen">
+        <!-- 1. Matched Trades -->
+        <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Matched Trades
+            </div>
+            <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
+                {{ summary.matched_count }}
+            </div>
+        </article>
+
+        <!-- 2. Net PnL Backtest -->
+        <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Net PnL Backtest
+            </div>
+            <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.net_pnl_bt > 0 %}text-emerald-600{% elif summary.net_pnl_bt < 0 %}text-rose-600{% else %}text-slate-900{% endif %}">
+                {{ summary.net_pnl_bt | de_number(2, prefix_plus=True) }}&nbsp;$
+            </div>
+        </article>
+
+        <!-- 3. Net PnL Broker -->
+        <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Net PnL Broker
+            </div>
+            <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.net_pnl_broker > 0 %}text-emerald-600{% elif summary.net_pnl_broker < 0 %}text-rose-600{% else %}text-slate-900{% endif %}">
+                {{ summary.net_pnl_broker | de_number(2, prefix_plus=True) }}&nbsp;$
+            </div>
+        </article>
+
+        <!-- 4. Commissions -->
+        <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Commissions
+            </div>
+            <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
+                {{ summary.total_commissions | de_number(2) }}&nbsp;$
+            </div>
+        </article>
+
+        <!-- 5. Entry Slippage -->
+        <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Entry Slippage
+            </div>
+            <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.avg_entry_slippage > 0 %}text-rose-600{% elif summary.avg_entry_slippage < 0 %}text-emerald-600{% else %}text-slate-900{% endif %}">
+                {{ summary.avg_entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$
+            </div>
+        </article>
+
+        <!-- 6. Exit Slippage -->
+        <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+                Exit Slippage
+            </div>
+            <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.avg_exit_slippage < 0 %}text-rose-600{% elif summary.avg_exit_slippage > 0 %}text-emerald-600{% else %}text-slate-900{% endif %}">
+                {{ summary.avg_exit_slippage | de_number(2, prefix_plus=True) }}&nbsp;$
+            </div>
+        </article>
+    </section>
+
+    <!-- Kumulative Dual-Equity-Kurve (Header AUSSERHALB der Card nach Croc-Standard) -->
+    <section class="mb-8" aria-label="Equity Chart">
+        {{ render_section_header("Equity-Kurve", icon="trending-up") }}
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-200 p-6">
+            <div class="flex justify-end items-center mb-4">
+                <div class="flex items-center gap-4 text-xs font-bold">
+                    <span class="flex items-center gap-1.5 text-blue-600">
+                        <span class="w-3 h-0.5 bg-blue-500 rounded"></span> Backtest Modell
+                    </span>
+                    <span class="flex items-center gap-1.5 text-emerald-600">
+                        <span class="w-3 h-0.5 bg-emerald-500 rounded"></span> Broker Realität
+                    </span>
+                </div>
+            </div>
+
+            {% if equity_points %}
+            <div id="equity-curve-chart" class="w-full h-80"></div>
+            {% else %}
+            <div class="h-48 flex items-center justify-center text-slate-400 text-sm italic">
+                Keine geschlossenen Vergleichstrades für die Equity-Kurve vorhanden.
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <!-- Tabs Container: Positions & History -->
+    <div class="space-y-4">
+        <!-- Section Header & Segmented Tab Switcher (Konsistentes Croc-Design ohne Unterstrich) -->
+        <div class="flex items-center justify-between">
+            {{ render_section_header("Transaktionen", icon="git-compare", extra_class="mb-0") }}
+            <div class="flex items-center bg-slate-200/60 p-1 rounded-lg">
+                <button type="button" id="tab-btn-positions" onclick="switchRealityTab('positions')"
+                    class="bg-white shadow-sm text-slate-900 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5">
+                    Positions
+                    <span class="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full text-xs font-bold tabular-nums">{{ positions|length }}</span>
+                </button>
+                <button type="button" id="tab-btn-history" onclick="switchRealityTab('history')"
+                    class="text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5">
+                    History
+                    <span class="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded-full text-xs font-bold tabular-nums">{{ history|length }}</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- TAB 1: POSITIONS (Aktive offene Positionen) -->
+        <section id="tab-content-positions" aria-label="Offene Positionen">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-xs">
+                                <th class="py-3.5 px-4 whitespace-nowrap">ID &amp; Symbol</th>
+                                <th class="py-3.5 px-4 whitespace-nowrap">Strategy</th>
+                                <th class="py-3.5 px-4 whitespace-nowrap">Date</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Quantity</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Entry Price</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Slippage</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Open PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for p in positions %}
+                            <tr class="hover:bg-slate-50/50 transition-colors text-sm">
+                                <!-- ID & Symbol -->
+                                <td class="py-3.5 px-4 whitespace-nowrap">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{ p.trade_id }}</span>
+                                        <span class="font-bold text-slate-900">{{ tradingview_link(p.symbol, is_button=false) }}</span>
+                                    </div>
+                                </td>
+
+                                <!-- Strategy -->
+                                <td class="py-3.5 px-4 whitespace-nowrap text-slate-600 font-medium">
+                                    {{ p.strategy_display or p.strategy or '—' }}
+                                </td>
+
+                                <!-- Date -->
+                                <td class="py-3.5 px-4 whitespace-nowrap text-slate-600 tabular-nums text-xs">
+                                    {{ p.entry_date }} ({{ p.days_held }}d)
+                                </td>
+
+                                <!-- Quantity (Broker / BT Subline Smart Delta) -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                    {% if p.has_quantity_diff %}
+                                    <span class="inline-flex items-center gap-1 font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/70 tabular-nums text-xs" title="Abweichung: BT {{ p.quantity_bt|int }} vs Broker {{ p.quantity_broker|int }}">
+                                        {{ p.quantity_broker | de_number(0) }}
+                                        <i data-lucide="alert-circle" class="w-3 h-3 text-amber-500 shrink-0"></i>
+                                    </span>
+                                    <span class="block text-xs text-slate-400 tabular-nums font-normal mt-0.5">{{ p.quantity_bt | de_number(0) }}&nbsp;BT</span>
+                                    {% else %}
+                                    <span class="font-medium text-slate-700 tabular-nums">{{ p.quantity_broker | de_number(0) }}</span>
+                                    {% endif %}
+                                </td>
+
+                                <!-- Entry Price (Broker / BT Subline Smart Delta) -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                    {% if p.has_entry_price_diff %}
+                                        {% if p.entry_price_broker > p.entry_price_bt %}
+                                        <span class="font-bold text-rose-600 tabular-nums" title="Slippage: +{{ p.entry_slippage | de_number(2) }} $">{{ p.entry_price_broker | de_number(2) }}&nbsp;$</span>
+                                        {% else %}
+                                        <span class="font-bold text-emerald-600 tabular-nums" title="Price Improvement: {{ p.entry_slippage | de_number(2) }} $">{{ p.entry_price_broker | de_number(2) }}&nbsp;$</span>
+                                        {% endif %}
+                                        <span class="block text-xs text-slate-400 tabular-nums font-normal mt-0.5">{{ p.entry_price_bt | de_number(2) }}&nbsp;$&nbsp;BT</span>
+                                    {% else %}
+                                        <span class="font-medium text-slate-700 tabular-nums">{{ p.entry_price_broker | de_number(2) }}&nbsp;$</span>
+                                    {% endif %}
+                                </td>
+
+                                <!-- Slippage -->
+                                <td class="py-3.5 px-4 text-right tabular-nums font-bold whitespace-nowrap {% if p.entry_slippage > 0 %}text-rose-600{% elif p.entry_slippage < 0 %}text-emerald-600{% else %}text-slate-400{% endif %}">
+                                    {{ p.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$
+                                </td>
+
+                                <!-- Open PnL (Neutral ohne BT-Abgleich) -->
+                                <td class="py-3.5 px-4 text-right tabular-nums whitespace-nowrap">
+                                    <span class="font-bold text-slate-900">
+                                        {{ p.open_pnl_broker | de_number(2, prefix_plus=True) }}&nbsp;$
+                                    </span>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="7" class="p-8 text-center text-slate-400 text-sm italic">
+                                    Keine übereinstimmenden offenen Positionen zwischen Backtest und Broker gefunden.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: HISTORY (Geschlossene Trades) -->
+        <section id="tab-content-history" class="hidden" aria-label="Geschlossene Trades">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-xs">
+                                <th class="py-3.5 px-4 whitespace-nowrap">ID &amp; Symbol</th>
+                                <th class="py-3.5 px-4 whitespace-nowrap">Strategy</th>
+                                <th class="py-3.5 px-4 whitespace-nowrap">Date</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Quantity</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Entry Price</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Exit Price</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Slippage</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Commissions</th>
+                                <th class="py-3.5 px-4 text-right whitespace-nowrap">Net PnL</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            {% for h in history %}
+                            <tr class="hover:bg-slate-50/50 transition-colors cursor-pointer text-sm"
+                                onclick="toggleRow('acc-reality-{{ loop.index }}')">
+                                <!-- ID & Symbol -->
+                                <td class="py-3.5 px-4 whitespace-nowrap">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{ h.trade_id }}</span>
+                                        <span class="font-bold text-slate-900">{{ tradingview_link(h.symbol, is_button=false) }}</span>
+                                    </div>
+                                </td>
+
+                                <!-- Strategy -->
+                                <td class="py-3.5 px-4 whitespace-nowrap text-slate-600 font-medium">
+                                    {{ h.strategy_display or h.strategy or '—' }}
+                                </td>
+
+                                <!-- Date -->
+                                <td class="py-3.5 px-4 whitespace-nowrap text-slate-600 tabular-nums text-xs">
+                                    {{ h.date }}
+                                </td>
+
+                                <!-- Quantity (Broker / BT Subline Smart Delta) -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                    {% if h.has_quantity_diff %}
+                                    <span class="inline-flex items-center gap-1 font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/70 tabular-nums text-xs" title="Abweichung: BT {{ h.quantity_bt|int }} {{ h.unit_label_bt }} vs Broker {{ h.quantity_broker|int }} {{ h.unit_label_broker }}">
+                                        {{ h.quantity_broker | de_number(0) }}&nbsp;{{ h.unit_label_broker }}
+                                        <i data-lucide="alert-circle" class="w-3 h-3 text-amber-500 shrink-0"></i>
+                                    </span>
+                                    <span class="block text-xs text-slate-400 tabular-nums font-normal mt-0.5">{{ h.quantity_bt | de_number(0) }}&nbsp;{{ h.unit_label_bt }}&nbsp;BT</span>
+                                    {% else %}
+                                    <span class="font-medium text-slate-700 tabular-nums">{{ h.quantity_broker | de_number(0) }}&nbsp;{{ h.unit_label_broker }}</span>
+                                    {% endif %}
+                                </td>
+
+                                <!-- Entry Price (Broker / BT Subline Smart Delta) -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                    {% if h.has_entry_price_diff %}
+                                        {% if h.entry_price_broker > h.entry_price_bt %}
+                                        <span class="font-bold text-rose-600 tabular-nums" title="Slippage: +{{ h.entry_slippage | de_number(2) }} $">{{ h.entry_price_broker | de_number(2) }}&nbsp;$</span>
+                                        {% else %}
+                                        <span class="font-bold text-emerald-600 tabular-nums" title="Price Improvement: {{ h.entry_slippage | de_number(2) }} $">{{ h.entry_price_broker | de_number(2) }}&nbsp;$</span>
+                                        {% endif %}
+                                        <span class="block text-xs text-slate-400 tabular-nums font-normal mt-0.5">{{ h.entry_price_bt | de_number(2) }}&nbsp;$&nbsp;BT</span>
+                                    {% else %}
+                                        <span class="font-medium text-slate-700 tabular-nums">{{ h.entry_price_broker | de_number(2) }}&nbsp;$</span>
+                                    {% endif %}
+                                </td>
+
+                                <!-- Exit Price (Broker / BT Subline Smart Delta) -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap">
+                                    {% if h.has_exit_price_diff %}
+                                        {% if h.exit_price_broker < h.exit_price_bt %}
+                                        <span class="font-bold text-rose-600 tabular-nums" title="Slippage: {{ h.exit_slippage | de_number(2) }} $">{{ h.exit_price_broker | de_number(2) }}&nbsp;$</span>
+                                        {% else %}
+                                        <span class="font-bold text-emerald-600 tabular-nums" title="Price Improvement: +{{ h.exit_slippage | de_number(2) }} $">{{ h.exit_price_broker | de_number(2) }}&nbsp;$</span>
+                                        {% endif %}
+                                        <span class="block text-xs text-slate-400 tabular-nums font-normal mt-0.5">{{ h.exit_price_bt | de_number(2) }}&nbsp;$&nbsp;BT</span>
+                                    {% else %}
+                                        <span class="font-medium text-slate-700 tabular-nums">{{ h.exit_price_broker | de_number(2) }}&nbsp;$</span>
+                                    {% endif %}
+                                </td>
+
+                                <!-- Slippage (Total Round Turn) -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap tabular-nums font-bold {% if h.total_slippage > 0 %}text-rose-600{% elif h.total_slippage < 0 %}text-emerald-600{% else %}text-slate-400{% endif %}" title="Entry: {{ h.entry_slippage | de_number(2, prefix_plus=True) }} $, Exit: {{ h.exit_slippage | de_number(2, prefix_plus=True) }} $">
+                                    {{ h.total_slippage | de_number(2, prefix_plus=True) }}&nbsp;$
+                                </td>
+
+                                <!-- Commissions -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap tabular-nums font-medium text-slate-700">
+                                    {{ h.commissions | de_number(2) }}&nbsp;$
+                                </td>
+
+                                <!-- Net PnL (Neutral ohne BT-Abgleich) -->
+                                <td class="py-3.5 px-4 text-right whitespace-nowrap tabular-nums">
+                                     <span class="font-bold text-slate-900">
+                                         {{ h.net_pnl_broker | de_number(2, prefix_plus=True) }}&nbsp;$
+                                     </span>
+                                 </td>
+                            </tr>
+
+                            <!-- Expandable Detail: Broker Timeline & Fee Breakdown -->
+                            <tr id="acc-reality-{{ loop.index }}" class="hidden bg-slate-50/20">
+                                <td colspan="9" class="px-6 py-4 border-t border-slate-100">
+                                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                        <div class="space-y-1">
+                                            <div class="text-xs font-bold text-slate-700">Abrechnungs-Details &amp; Gebühren:</div>
+                                            <div class="text-xs text-slate-500 font-medium">
+                                                IBKR Kommissionen: <span class="font-bold text-slate-700 tabular-nums">{{ h.commissions | de_number(2) }}&nbsp;$</span>
+                                                &bull; Reality Gap (Endpreis-Delta):
+                                                <span class="font-bold tabular-nums {% if h.endpreis_delta > 0 %}text-emerald-600{% elif h.endpreis_delta < 0 %}text-rose-600{% else %}text-slate-700{% endif %}">
+                                                    {{ h.endpreis_delta | de_number(2, prefix_plus=True) }}&nbsp;$
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {% if h.executions %}
+                                        <div class="space-y-2">
+                                            <div class="text-xs font-bold text-slate-700">Ausführungs-Historie (trading.db):</div>
+                                            <div class="relative pl-4 border-l border-slate-200 space-y-2">
+                                                {% for execution in h.executions | sort(attribute='order_id') %}
+                                                {{ render_timeline_node(execution, is_child=False, is_first=loop.first) }}
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="9" class="p-8 text-center text-slate-400 text-sm italic">
+                                    Keine übereinstimmenden geschlossenen Trades zwischen Backtest und Broker gefunden.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+</main>
+
+<!-- Vanilla JS für Tab-Umschaltung und Plotly Dual-Line Render -->
+<script>
+function switchRealityTab(tabName) {
+    const posContent = document.getElementById('tab-content-positions');
+    const histContent = document.getElementById('tab-content-history');
+    const posBtn = document.getElementById('tab-btn-positions');
+    const histBtn = document.getElementById('tab-btn-history');
+
+    if (tabName === 'positions') {
+        posContent.classList.remove('hidden');
+        histContent.classList.add('hidden');
+
+        posBtn.className = "bg-white shadow-sm text-slate-900 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5";
+        histBtn.className = "text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5";
+    } else {
+        posContent.classList.add('hidden');
+        histContent.classList.remove('hidden');
+
+        histBtn.className = "bg-white shadow-sm text-slate-900 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5";
+        posBtn.className = "text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5";
+    }
+    if (window.lucide) {
+        window.lucide.createIcons();
+    }
+}
+
+// Plotly Dual-Line Equity Chart Render
+document.addEventListener('DOMContentLoaded', function() {
+    {% if equity_points %}
+    const dates = [{% for pt in equity_points %}'{{ pt.date }}'{% if not loop.last %}, {% endif %}{% endfor %}];
+    const pnlBt = [{% for pt in equity_points %}{{ pt.cumulative_pnl_bt }}{% if not loop.last %}, {% endif %}{% endfor %}];
+    const pnlBroker = [{% for pt in equity_points %}{{ pt.cumulative_pnl_broker }}{% if not loop.last %}, {% endif %}{% endfor %}];
+
+    const traceBt = {
+        x: dates,
+        y: pnlBt,
+        mode: 'lines+markers',
+        name: 'Backtest Modell',
+        line: { color: '#3b82f6', width: 2.5 },
+        marker: { size: 5, color: '#2563eb' },
+        hovertemplate: '<b>Backtest</b>: %{y:.2f} $<extra></extra>'
+    };
+
+    const traceBroker = {
+        x: dates,
+        y: pnlBroker,
+        mode: 'lines+markers',
+        name: 'Broker Realität',
+        line: { color: '#10b981', width: 2.5 },
+        marker: { size: 5, color: '#059669' },
+        fill: 'tonexty',
+        fillcolor: 'rgba(59, 130, 246, 0.08)',
+        hovertemplate: '<b>Broker</b>: %{y:.2f} $<extra></extra>'
+    };
+
+    const layout = {
+        margin: { t: 15, r: 25, l: 50, b: 35 },
+        showlegend: false,
+        xaxis: {
+            showgrid: true,
+            gridcolor: '#f1f5f9',
+            tickfont: { family: 'Inter, sans-serif', size: 11, color: '#64748b' }
+        },
+        yaxis: {
+            showgrid: true,
+            gridcolor: '#f1f5f9',
+            tickfont: { family: 'Inter, sans-serif', size: 11, color: '#64748b' },
+            ticksuffix: ' $'
+        },
+        plot_bgcolor: '#ffffff',
+        paper_bgcolor: '#ffffff',
+        hovermode: 'x unified'
+    };
+
+    const config = {
+        responsive: true,
+        displayModeBar: false
+    };
+
+    Plotly.newPlot('equity-curve-chart', [traceBt, traceBroker], layout, config);
+    {% endif %}
+});
+</script>
+{% endblock %}

@@ -481,3 +481,27 @@ def view_broker_dashboard() -> str:
         discrepancies=discrepancies,
         active_trades=active_trades,
     )
+
+
+@views_bp.route("/broker/reality-check", methods=["GET"])
+def view_broker_reality_check() -> str:
+    """Displays the Reality Check dashboard comparing backtest expectations against broker results."""
+    service = _get_trade_view_service()
+    strategy_param = request.args.get("strategy")
+    active_strategy = (
+        strategy_param if strategy_param and strategy_param != "all" else None
+    )
+
+    positions = service.get_reality_check_positions(active_strategy)
+    history = service.get_reality_check_history(active_strategy)
+    summary = service.get_reality_check_summary(positions, history)
+    equity_points = service.get_reality_check_equity_curve(history)
+
+    return render_template(
+        "trades_broker_reality_check.html",
+        positions=positions,
+        history=history,
+        summary=summary,
+        equity_points=equity_points,
+        selected_strategy=strategy_param or "all",
+    )

@@ -26,6 +26,16 @@ from ...database.repositories.market import MarketRepository
 from ...database.repositories.trade import TradeRepository
 from ...tools import metrics
 from ...types import TradeData
+from .reality_check import (
+    EquityPoint,
+    HistoryRealityCheck,
+    PositionRealityCheck,
+    RealityCheckSummary,
+    compute_dual_equity_curve,
+    compute_reality_check_summary,
+    match_active_positions,
+    match_closed_history,
+)
 from .strategies.bounce_bandit import BounceBanditTradeStrategy
 
 logger = logging.getLogger(__name__)
@@ -1603,6 +1613,41 @@ class TradeViewService:
             )
 
         return error_orders
+
+    def get_reality_check_positions(
+        self, strategy_filter: str | None = None
+    ) -> list[PositionRealityCheck]:
+        """Retrieves matched active positions between backtest signals and broker."""
+        if self.broker_repository is None:
+            return []
+        signals_active = self.trade_repository.get_active_trades()
+        broker_active = [dict(p) for p in self.get_broker_active_trades()]
+        return match_active_positions(signals_active, broker_active, strategy_filter)
+
+    def get_reality_check_history(
+        self, strategy_filter: str | None = None
+    ) -> list[HistoryRealityCheck]:
+        """Retrieves matched closed trades between backtest signals and broker settlements."""
+        if self.broker_repository is None:
+            return []
+        signals_closed = self.trade_repository.get_by_status("CLOSED")
+        broker_settlements = [dict(s) for s in self.get_broker_settlements()]
+        return match_closed_history(signals_closed, broker_settlements, strategy_filter)
+
+    def get_reality_check_summary(
+        self,
+        positions: Sequence[PositionRealityCheck],
+        history: Sequence[HistoryRealityCheck],
+    ) -> RealityCheckSummary:
+        """Computes aggregate KPIs for the Reality Check view."""
+        return compute_reality_check_summary(positions, history)
+
+    def get_reality_check_equity_curve(
+        self,
+        history: Sequence[HistoryRealityCheck],
+    ) -> list[EquityPoint]:
+        """Computes points for the cumulative dual-equity curve."""
+        return compute_dual_equity_curve(history)
 
 
 def _map_order_strategy_filter(strategy_name: str) -> str:
