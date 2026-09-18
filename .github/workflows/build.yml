@@ -90,6 +90,57 @@ jobs:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy'
 
+      - name: Run Container Smoke Test (Pre-Push Gate)
+        run: |
+          set -euo pipefail
+
+          cleanup() {
+            echo "--- Container logs at exit ---"
+            docker logs croc-smoke 2>/dev/null || true
+            docker stop croc-smoke 2>/dev/null || true
+            docker rm croc-smoke 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          echo "Starting Docker test container..."
+          docker run -d --name croc-smoke -e TZ=Europe/Berlin "${{ github.event.repository.name }}:test" gunicorn -c gunicorn.conf.py --workers 1 --threads 4 --timeout 60 --bind 0.0.0.0:8000 run:app
+
+          echo "Waiting for container startup and cache pre-warming..."
+          READY=0
+          for i in $(seq 1 20); do
+            if docker exec croc-smoke curl -s -f http://127.0.0.1:8000/health > /dev/null 2>&1; then
+              READY=1
+              echo "Container responded successfully to /health on attempt ${i}."
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "::error::Container failed to start or respond within 40 seconds!"
+            exit 1
+          fi
+
+          echo "Running smoke tests on critical UI dashboard and screener routes..."
+          ROUTES="/analytics /trades /trades/turnover /trades/dip-buyer /screener /screener/turnover"
+          FAILED_ROUTES=()
+
+          for route in $ROUTES; do
+            HTTP_STATUS=$(docker exec croc-smoke curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8000${route}")
+            if [ "$HTTP_STATUS" -ne 200 ]; then
+              echo "::error::Smoke test failed for ${route}: HTTP ${HTTP_STATUS}"
+              FAILED_ROUTES+=("${route} (HTTP ${HTTP_STATUS})")
+            else
+              echo "  ✓ Smoke test passed: ${route} (HTTP 200)"
+            fi
+          done
+
+          if [ ${#FAILED_ROUTES[@]} -ne 0 ]; then
+            echo "::error::Smoke test failed on routes: ${FAILED_ROUTES[*]}! Aborting Docker push."
+            exit 1
+          fi
+          echo "✅ All container smoke tests passed successfully. Proceeding to Docker push."
+
       - name: Push Docker image
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7

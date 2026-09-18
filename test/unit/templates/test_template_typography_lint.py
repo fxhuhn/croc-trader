@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Final
 
 import jinja2
+import jinja2.meta
 import pytest
 
 # Maximum allowed legacy violations per template file to enforce non-regression.
@@ -376,4 +377,67 @@ def test_template_typography_and_locale_non_regression(
         f"Template '{rel_path}' introduced {actual_violations - allowed_baseline} "
         f"new typography/locale violation(s) (Limit: {allowed_baseline}, Actual: {actual_violations}):\n"
         f"{failure_details}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Template AST Syntax & Banned Undeclared Variables Gate
+# ---------------------------------------------------------------------------
+
+BANNED_TEMPLATE_VARIABLES: Final[frozenset[str]] = frozenset(
+    {"variant_metrics", "df", "calc", "tmp", "res"}
+)
+
+
+def test_render_green_candle_indicator_macro() -> None:
+    """Verifies that render_green_candle_indicator produces valid output across count values."""
+    workspace_root = Path(__file__).resolve().parents[3]
+    cards_path = workspace_root / "app" / "templates" / "macros" / "cards.html"
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(cards_path.parent)))
+    env.filters["de_number"] = lambda *args, **kwargs: "0"
+    template = env.from_string(
+        '{% from "cards.html" import render_green_candle_indicator %}'
+        "{{ render_green_candle_indicator(count) }}"
+    )
+
+    # 0 candles -> slate-300
+    res_0 = template.render(count=0)
+    assert "text-slate-300" in res_0
+    assert "text-emerald-500" not in res_0
+
+    # 1 candle -> 1 green, 1 slate
+    res_1 = template.render(count=1)
+    assert "text-emerald-500" in res_1
+    assert "text-slate-300" in res_1
+
+    # 2 candles -> 2 green
+    res_2 = template.render(count=2)
+    assert "text-emerald-500" in res_2
+    assert "text-slate-300" not in res_2
+
+    # None / invalid -> safe fallback to 0
+    res_none = template.render(count=None)
+    assert "text-slate-300" in res_none
+
+
+@pytest.mark.parametrize(
+    "template_path",
+    _collect_template_paths(),
+    ids=lambda path: str(path.name),
+)
+def test_template_jinja_syntax_and_banned_variables(template_path: Path) -> None:
+    """Asserts that all HTML templates parse without Jinja syntax errors and contain no banned symbols."""
+    content = template_path.read_text(encoding="utf-8")
+    env = jinja2.Environment()
+    env.filters["de_number"] = lambda *args, **kwargs: "0"
+
+    try:
+        parsed_ast = env.parse(content)
+    except jinja2.TemplateSyntaxError as error:
+        pytest.fail(f"Template '{template_path.name}' has syntax error: {error}")
+
+    undeclared = jinja2.meta.find_undeclared_variables(parsed_ast)
+    found_banned = undeclared.intersection(BANNED_TEMPLATE_VARIABLES)
+    assert not found_banned, (
+        f"Template '{template_path.name}' references banned/legacy undeclared variables: {found_banned}"
     )

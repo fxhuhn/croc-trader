@@ -321,6 +321,26 @@
 <span class="block text-xs text-slate-500 tabular-nums whitespace-nowrap mt-0.5">{{ text }}</span>
 {% endmacro %}
 
+{% macro render_green_candle_indicator(count) %}
+{% set safe_count = count | default(0) | int %}
+{% if safe_count == 0 %}
+<span class="inline-flex items-center gap-0 text-slate-300" title="0/2 Grüne Kerzen">
+    <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+    <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+</span>
+{% elif safe_count == 1 %}
+<span class="inline-flex items-center gap-0" title="1/2 Grüne Kerzen">
+    <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current text-emerald-500 inline-block"></i>
+    <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current text-slate-300 inline-block"></i>
+</span>
+{% else %}
+<span class="inline-flex items-center gap-0 text-emerald-500" title="{{ safe_count }}/2 Grüne Kerzen">
+    <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+    <i data-lucide="rectangle-vertical" class="w-3.5 h-3.5 fill-current inline-block"></i>
+</span>
+{% endif %}
+{% endmacro %}
+
 {% macro render_section_header(title, icon="zap", badge_text=none, badge_class="bg-indigo-50 text-indigo-600", extra_class="") %}
 <h2 class="text-xs md:text-lg font-bold text-slate-600 md:text-slate-800 uppercase md:normal-case tracking-widest md:tracking-normal px-1 md:px-0 mb-4 flex items-center gap-2 {{ extra_class }}">
     <i data-lucide="{{ icon }}" class="w-3.5 h-3.5 md:w-5 md:h-5 text-slate-600 md:text-indigo-500"></i> {{ title }}
