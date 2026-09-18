@@ -103,7 +103,11 @@ jobs:
           trap cleanup EXIT
 
           echo "Starting Docker test container..."
-          docker run -d --name croc-smoke -e TZ=Europe/Berlin "${{ github.event.repository.name }}:test" gunicorn -c gunicorn.conf.py --workers 1 --threads 4 --timeout 60 --bind 0.0.0.0:8000 run:app
+          docker run -d --name croc-smoke \
+            -e TZ=Europe/Berlin \
+            -v "${{ github.workspace }}/data/holidays.yaml:/app/data/holidays.yaml:ro" \
+            "${{ github.event.repository.name }}:test" \
+            gunicorn -c gunicorn.conf.py --workers 1 --threads 4 --timeout 60 --bind 0.0.0.0:8000 run:app
 
           echo "Waiting for container startup and cache pre-warming..."
           READY=0
@@ -121,8 +125,8 @@ jobs:
             exit 1
           fi
 
-          echo "Running smoke tests on critical UI dashboard and screener routes..."
-          ROUTES="/analytics /trades /trades/turnover /trades/dip-buyer /screener /screener/turnover"
+          echo "Running smoke tests on all 18 pre-warm UI dashboard and screener routes..."
+          ROUTES="/analytics /analytics/monthly-matrix /trades /trades/dip-buyer /trades/turnover /trades/ndx-momentum /trades/twopercent /trades/tgim /trades/bridge-scout /trades/bounce-bandit /screener /screener/dip-buyer /screener/turnover /screener/twopercent /screener/ndx-momentum /screener/tgim /screener/bridge-scout /screener/bounce-bandit"
           FAILED_ROUTES=()
 
           for route in $ROUTES; do

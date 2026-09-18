@@ -36,7 +36,8 @@ Dockerfile
 docker-compose.yml
 
 # Lokale Anwendungsdaten (werden via Volume gemountet)
-data/
+data/*
+!data/holidays.yaml
 logs/
 tws/
 references/
