@@ -97,36 +97,6 @@ def calculate_unweighted_monthly_pct(month_df: pd.DataFrame) -> float:
     return float(trade_pcts.mean())
 
 
-def calculate_weighted_monthly_pct(month_df: pd.DataFrame) -> float:
-    """Calculates the capital-weighted percentage return of closed trades in a month.
-
-    Args:
-        month_df: DataFrame of closed trades for the month.
-
-    Returns:
-        float: Capital-weighted percentage return across trades.
-    """
-    if month_df.empty:
-        return 0.0
-
-    pnl = pd.to_numeric(month_df["realized_pnl"], errors="coerce").fillna(0.0)
-    entry_prices = pd.to_numeric(month_df["entry_price"], errors="coerce").fillna(0.0)
-    initial_sizes = pd.to_numeric(month_df["initial_size"], errors="coerce").fillna(0.0)
-
-    invested = entry_prices * initial_sizes
-    valid_mask = invested > 0.0
-
-    if not valid_mask.any():
-        return 0.0
-
-    total_invested = float(invested[valid_mask].sum())
-    if total_invested <= 0.0:
-        return 0.0
-
-    total_pnl = float(pnl[valid_mask].sum())
-    return float((total_pnl / total_invested) * 100.0)
-
-
 def calculate_active_months(strat_df: pd.DataFrame) -> float:
     """Computes the active month span of a strategy based on entry and exit dates.
 

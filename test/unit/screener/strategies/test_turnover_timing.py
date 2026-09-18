@@ -143,15 +143,6 @@ def test_turnover_strategy_generates_signals_on_valid_setup(
             assert mock_trade_repository.create_trade.called
 
 
-def test_extract_safe_float_value_handles_anomalies(
-    strategy: TurnoverTimingStrategy,
-) -> None:
-    """Verifies safety helper handles NaN correctly."""
-    # Act & Assert
-    assert strategy._extract_safe_float_value(np.nan, default=1.0) == 1.0
-    assert strategy._extract_safe_float_value(123.45) == 123.45
-
-
 def test_compile_target_universe_with_specific_symbols(
     strategy: TurnoverTimingStrategy,
 ) -> None:

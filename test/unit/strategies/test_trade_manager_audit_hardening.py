@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 
 from app.services.trade_manager.manager import TradeManager, _resolve_history_start_date
+from app.services.trade_manager.order_export import write_csv_orders_file
 from app.services.trade_manager.strategies.dip_buyer import DipBuyerStrategy
 from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
 from app.services.trade_manager.strategies.ndx_momentum import (
@@ -794,17 +795,16 @@ class TestTradeManagerDipBuyerCSVExport:
             temp_orders_dir = tmp_path / "orders"
             temp_orders_dir.mkdir()
 
-            with patch(
-                "app.services.trade_manager.manager.Path",
-                return_value=temp_orders_dir,
-            ):
-                result_path_str = manager_instance._write_csv_orders_file(
-                    orders_data, "2026-06-10"
-                )
+            result_path = write_csv_orders_file(
+                orders_data,
+                "2026-06-10",
+                manager_instance._ibkr_account_id,
+                manager_instance._resolve_strategy_name,
+                output_directory=temp_orders_dir,
+            )
 
             # Assert
-            assert result_path_str is not None
-            result_path = Path(result_path_str)
+            assert result_path is not None
             assert result_path.exists()
 
             # Read CSV content

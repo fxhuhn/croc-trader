@@ -255,11 +255,6 @@ def map_strategy_filter_key(
     return strategy_name
 
 
-def _map_strategy_filter_name(raw_name: str) -> str:
-    """Normalizes a raw strategy name into its UI filter representation."""
-    return map_strategy_filter_key(raw_name, fallback_to_unknown=False)
-
-
 class TradeViewData(TradeData, total=False):
     """
     Extended dictionary for trade view data, inheriting from TradeData.

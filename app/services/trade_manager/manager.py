@@ -732,22 +732,6 @@ class TradeManager:
             reference_date=reference_date,
         )
 
-    def _write_csv_orders_file(
-        self,
-        orders_data: list[tuple[dict[str, object], Order]],
-        date_string: str,
-    ) -> Path | None:
-        """Backward-compatible helper calling the extracted write_csv_orders_file function."""
-        typed_orders: list[tuple[TradeData | dict[str, object], Order]] = [
-            (t, o) for t, o in orders_data
-        ]
-        return write_csv_orders_file(
-            typed_orders,
-            date_string,
-            self._ibkr_account_id,
-            self._resolve_strategy_name,
-        )
-
 
 def _extract_anchor_date(trade: dict[str, object]) -> str | None:
     """Extracts the anchor date string from trade record or signal context."""

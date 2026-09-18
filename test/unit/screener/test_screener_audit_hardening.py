@@ -20,6 +20,7 @@ from app.database.repositories.trade import TradeRepository
 from app.services.screener.strategies.croc_setup import (
     CrocSetupStrategy,
     PriceData,
+    enrich_sma_distances,
 )
 from app.services.screener.strategies.dip_buyer import DipBuyerStrategy
 from app.services.screener.strategies.ndx_momentum import (
@@ -413,16 +414,16 @@ class TestEnrichSmaReturnsPureResult:
     """Validates fix: _enrich_sma no longer mutates its input dict."""
 
     def test_enrich_sma_returns_new_dict_without_mutating_original(
-        self, croc_strategy: CrocSetupStrategy
+        self,
     ) -> None:
-        """Verifies that _enrich_sma returns enriched copy, not mutated original."""
+        """Verifies that enrich_sma_distances returns enriched copy, not mutated original."""
         # Arrange
         original_row: dict = {"symbol": "AAPL", "close": 100.0}
         original_id = id(original_row)
         prices = PriceData(high=110.0, low=90.0, close=100.0, sma_20=95.0, sma_200=80.0)
 
         # Act
-        enriched = croc_strategy._enrich_sma(original_row, prices)
+        enriched = enrich_sma_distances(original_row, prices)
 
         # Assert — original dict is unchanged
         assert id(enriched) != original_id
@@ -443,7 +444,6 @@ class TestEnrichSmaReturnsPureResult:
     )
     def test_enrich_sma_conditional_key_addition(
         self,
-        croc_strategy: CrocSetupStrategy,
         sma_20: float,
         sma_200: float,
         close: float,
@@ -458,13 +458,13 @@ class TestEnrichSmaReturnsPureResult:
         )
 
         # Act
-        enriched = croc_strategy._enrich_sma(row, prices)
+        enriched = enrich_sma_distances(row, prices)
 
         # Assert
         assert ("dist_sma_20" in enriched) == expect_20_key
         assert ("dist_sma_200" in enriched) == expect_200_key
 
-    def test_enrich_sma_math_is_correct(self, croc_strategy: CrocSetupStrategy) -> None:
+    def test_enrich_sma_math_is_correct(self) -> None:
         """Verifies the percentage distance formula is mathematically correct."""
         # Arrange: close=110, sma_20=100 → dist = (110-100)/100 * 100 = 10%
         prices = PriceData(
@@ -472,7 +472,7 @@ class TestEnrichSmaReturnsPureResult:
         )
 
         # Act
-        enriched = croc_strategy._enrich_sma({}, prices)
+        enriched = enrich_sma_distances({}, prices)
 
         # Assert
         assert enriched["dist_sma_20"] == pytest.approx(10.0)

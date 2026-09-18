@@ -556,7 +556,3 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
             },
             "note": "Rank logic (Top 20) requires full market scan.",
         }
-
-    def _extract_safe_float_value(self, value: object, default: float = 0.0) -> float:
-        """Safely extracts a float value from a potentially null/NaN object."""
-        return extract_safe_float(value, default)

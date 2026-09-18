@@ -8,7 +8,13 @@ from app.const import Strategies
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.signal import SignalRepository
 from app.database.repositories.trade import TradeRepository
-from app.services.screener.strategies.croc_setup import CrocSetupStrategy, PriceData
+from app.services.screener.strategies.croc_setup import (
+    CrocSetupStrategy,
+    PriceData,
+    enrich_sma_distances,
+    evaluate_indicator_condition,
+    find_best_rule_match,
+)
 
 # --- FIXTURES ---
 
@@ -67,7 +73,7 @@ def strategy(
 # --- LOGIC TESTS ---
 
 
-def test_compute_sma_distances_calculation(strategy):
+def test_compute_sma_distances_calculation():
     """Test ((Close - SMA)/SMA)*100 logic."""
     row = {
         "close": 110.0,
@@ -75,37 +81,38 @@ def test_compute_sma_distances_calculation(strategy):
         "sma_200": 100.0,  # +10%
     }
     prices = PriceData.from_row(row)
-    enriched = strategy._enrich_sma(row, prices)
+    assert prices is not None
+    enriched = enrich_sma_distances(row, prices)
 
     assert enriched["dist_sma_20"] == 10.0
     assert enriched["dist_sma_200"] == 10.0
 
 
-def test_compute_sma_distances_safe_failure(strategy):
+def test_compute_sma_distances_safe_failure():
     """Test robustness against missing/bad values via PriceData."""
     row = {"close": "bad", "sma_20": None}
     prices = PriceData.from_row(row)
     assert prices is None
 
 
-def test_check_condition_rsi(strategy):
+def test_check_condition_rsi():
     """Test RSI string matching."""
     # "Oversold (<30)" -> < 30
-    assert strategy._check_value(25.0, "Oversold (<30)") is True
-    assert strategy._check_value(35.0, "Oversold (<30)") is False
+    assert evaluate_indicator_condition(25.0, "Oversold (<30)") is True
+    assert evaluate_indicator_condition(35.0, "Oversold (<30)") is False
 
     # "Neutral" -> 45-55
-    assert strategy._check_value(50.0, "Neutral") is True
+    assert evaluate_indicator_condition(50.0, "Neutral") is True
 
 
-def test_check_condition_ema(strategy):
+def test_check_condition_ema():
     """Test SMA/EMA range matching."""
     # "0 to 3%" -> 0 <= val <= 3
-    assert strategy._check_value(1.5, "0 to 3%") is True
-    assert strategy._check_value(5.0, "0 to 3%") is False
+    assert evaluate_indicator_condition(1.5, "0 to 3%") is True
+    assert evaluate_indicator_condition(5.0, "0 to 3%") is False
 
     # "< -10%" -> val < -10
-    assert strategy._check_value(-12.0, "< -10%") is True
+    assert evaluate_indicator_condition(-12.0, "< -10%") is True
 
 
 # --- FLOW TESTS ---
@@ -116,20 +123,20 @@ def test_find_best_match(strategy):
     # Case 1: High Score Match
     # RSI=25 (Oversold), Dist=12 (>10%) -> Matches first rule (Score 5.0)
     data_1 = {"signal": "TestSignal", "rsi": 25.0, "dist_sma_200": 12.0}
-    match_1 = strategy._find_best_match(data_1)
+    match_1 = find_best_rule_match(data_1, strategy.ranking_rules)
     assert match_1 is not None
     assert match_1["Score"] == 5.0
 
     # Case 2: Low Score Match
     # RSI=50 (Neutral), Dist=2 (0-3%) -> Matches second rule (Score 2.0)
     data_2 = {"signal": "TestSignal", "rsi": 50.0, "dist_sma_200": 2.0}
-    match_2 = strategy._find_best_match(data_2)
+    match_2 = find_best_rule_match(data_2, strategy.ranking_rules)
     assert match_2 is not None
     assert match_2["Score"] == 2.0
 
     # Case 3: No Match
     data_3 = {"signal": "TestSignal", "rsi": 90.0}
-    match_3 = strategy._find_best_match(data_3)
+    match_3 = find_best_rule_match(data_3, strategy.ranking_rules)
     assert match_3 is None
 
 

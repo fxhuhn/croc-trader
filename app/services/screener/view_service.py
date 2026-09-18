@@ -374,11 +374,6 @@ class ScreenerViewService:
 
         return results[:limit]
 
-    @staticmethod
-    def harmonize_indices(raw_indices: str) -> str:
-        """Harmonizes index names to short codes (SPX, NDX, RUS, DOW)."""
-        return harmonize_index_string(raw_indices)
-
     def get_turnover_candidates(self, limit: int = 200) -> list[dict[str, Any]]:
         """Fetches and aggregates Turnover Timing candidates.
 

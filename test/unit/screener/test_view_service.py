@@ -3,7 +3,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.const import Strategies
-from app.services.screener.view_service import ScreenerViewService
+from app.services.screener.view_service import (
+    ScreenerViewService,
+    harmonize_index_string,
+)
 
 
 @pytest.fixture
@@ -152,10 +155,10 @@ def test_parse_context_variations(mock_signal_repository: MagicMock) -> None:
 
 
 def test_harmonize_indices() -> None:
-    assert ScreenerViewService.harmonize_indices(None) == "-"
-    assert ScreenerViewService.harmonize_indices("") == "-"
+    assert harmonize_index_string(None) == "-"
+    assert harmonize_index_string("") == "-"
 
-    result = ScreenerViewService.harmonize_indices("NASDAQ_100, SP_500, UNKNOWN_INDEX")
+    result = harmonize_index_string("NASDAQ_100, SP_500, UNKNOWN_INDEX")
     assert result == "NDX, SPX, UNKNOWN INDEX"
 
 

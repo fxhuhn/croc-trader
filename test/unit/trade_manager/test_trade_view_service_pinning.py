@@ -28,7 +28,7 @@ from app.services.trade_manager.view_service import (
     TradeViewData,
     TradeViewService,
     _map_order_strategy_filter,
-    _map_strategy_filter_name,
+    map_strategy_filter_key,
 )
 
 
@@ -66,14 +66,35 @@ def service(
 
 
 def test_map_strategy_filter_name_all_branches() -> None:
-    """Verifies all branches in _map_strategy_filter_name."""
-    assert _map_strategy_filter_name("my_dip_strategy") == "DipBuyer"
-    assert _map_strategy_filter_name("turnover_v1") == "TurnoverTiming"
-    assert _map_strategy_filter_name("twopercent_flow") == "TwoPercent"
-    assert _map_strategy_filter_name("two_percent") == "TwoPercent"
-    assert _map_strategy_filter_name("ndx_momentum_leader") == "NDXMomentum"
-    assert _map_strategy_filter_name("other_momentum") == "NDXMomentum"
-    assert _map_strategy_filter_name("ArbitraryStrategy") == "ArbitraryStrategy"
+    """Verifies all branches in map_strategy_filter_key with fallback_to_unknown=False."""
+    assert (
+        map_strategy_filter_key("my_dip_strategy", fallback_to_unknown=False)
+        == "DipBuyer"
+    )
+    assert (
+        map_strategy_filter_key("turnover_v1", fallback_to_unknown=False)
+        == "TurnoverTiming"
+    )
+    assert (
+        map_strategy_filter_key("twopercent_flow", fallback_to_unknown=False)
+        == "TwoPercent"
+    )
+    assert (
+        map_strategy_filter_key("two_percent", fallback_to_unknown=False)
+        == "TwoPercent"
+    )
+    assert (
+        map_strategy_filter_key("ndx_momentum_leader", fallback_to_unknown=False)
+        == "NDXMomentum"
+    )
+    assert (
+        map_strategy_filter_key("other_momentum", fallback_to_unknown=False)
+        == "NDXMomentum"
+    )
+    assert (
+        map_strategy_filter_key("ArbitraryStrategy", fallback_to_unknown=False)
+        == "ArbitraryStrategy"
+    )
 
 
 def test_map_order_strategy_filter_all_tokens() -> None:

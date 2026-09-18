@@ -468,22 +468,6 @@ class TradeRepository(BaseRepository):
                     ),
                 )
 
-    def _log_event(
-        self,
-        trade_id: int | str,
-        entry: TradeLogEntry,
-    ) -> None:
-        self.execute(
-            "INSERT INTO trade_logs (trade_id, event_type, old_value, new_value, reason) VALUES (?, ?, ?, ?, ?)",
-            (
-                trade_id,
-                str(entry.event_type),
-                str(entry.old_value),
-                str(entry.new_value),
-                entry.reason,
-            ),
-        )
-
     def _log_event_conn(
         self,
         connection: sqlite3.Connection,

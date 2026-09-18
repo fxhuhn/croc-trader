@@ -1,5 +1,4 @@
 # filename: test_croc_setup.py
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -9,7 +8,13 @@ from app.const import Strategies
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.signal import SignalRepository
 from app.database.repositories.trade import TradeRepository
-from app.services.screener.strategies.croc_setup import CrocSetupStrategy, PriceData
+from app.services.screener.strategies.croc_setup import (
+    CrocSetupStrategy,
+    PriceData,
+    build_croc_candidate,
+    evaluate_indicator_condition,
+    find_best_rule_match,
+)
 from app.services.telegram import TelegramBot
 
 
@@ -136,28 +141,6 @@ def test_run_no_signals(
     assert count == 0
 
 
-def test_process_single_signal_success(strategy: CrocSetupStrategy) -> None:
-    """Tests full processing of a single signal."""
-    # Arrange
-    strategy.ranking_rules = [{"Signal": "Croc1", "Score": 5, "Exit": "split"}]
-    row = {
-        "symbol": "AAPL",
-        "signal": "Croc1",
-        "data": json.dumps({"high": 105, "low": 95, "close": 100}),
-        "date_str": "2026-02-18",
-    }
-
-    with patch.object(strategy, "_get_indices_string", return_value="SPX"):
-        # Act
-        result = strategy._process_single_signal(row)
-
-        # Assert
-        assert result is not None
-        assert result["Symbol"] == "AAPL"
-        assert result["Score"] == 5.0
-        assert result["Entry"] == 105.0
-
-
 def test_rule_matching_logic(strategy: CrocSetupStrategy) -> None:
     """Tests the detailed rule matching logic including SMA/EMA mapping."""
     # Arrange
@@ -167,20 +150,20 @@ def test_rule_matching_logic(strategy: CrocSetupStrategy) -> None:
     row = {"signal": "CROC", "dist_sma_200": 15.0, "rsi": 60.0}
 
     # Act
-    match = strategy._find_best_match(row)
+    match = find_best_rule_match(row, strategy.ranking_rules)
 
     # Assert
     assert match is not None
     assert match["Score"] == 10
 
 
-def test_check_value_numeric_and_string(strategy: CrocSetupStrategy) -> None:
-    """Tests _check_value with numeric conditions and string fallbacks."""
+def test_check_value_numeric_and_string() -> None:
+    """Tests evaluate_indicator_condition with numeric conditions and string fallbacks."""
     # Arrange & Act & Assert
-    assert strategy._check_value(25.0, "oversold") is True
-    assert strategy._check_value(75.0, "overbought") is True
-    assert strategy._check_value("Long", "Long") is True
-    assert strategy._check_value(None, "anything") is False
+    assert evaluate_indicator_condition(25.0, "oversold") is True
+    assert evaluate_indicator_condition(75.0, "overbought") is True
+    assert evaluate_indicator_condition("Long", "Long") is True
+    assert evaluate_indicator_condition(None, "anything") is False
 
 
 def test_create_trade_defaults_to_hold(
@@ -193,12 +176,12 @@ def test_create_trade_defaults_to_hold(
     row = {"symbol": "AAPL"}
 
     # Act
-    with patch.object(strategy, "_get_indices_string", return_value="SPX"):
-        result = strategy._create_trade(row, prices, match)
+    candidate = build_croc_candidate(row, prices, match, "SPX")
+    assert candidate is not None
+    assert candidate.target_profit == 110.0  # Entry 100 + 1 * Risk 10 = 110
+    strategy._persist_candidate_trade(candidate)
 
     # Assert
-    assert result is not None
-    assert result["TP"] == 110.0  # Entry 100 + 1 * Risk 10 = 110
     mock_trade_repo.create_trade.assert_called_once()
     args, kwargs = mock_trade_repo.create_trade.call_args
     assert kwargs["strategy"] == Strategies.HoldTarget
@@ -214,17 +197,17 @@ def test_create_trade_dynamic_parsing(
     match = {"Exit": "Hold (TP4)", "Score": 8}
     row = {"symbol": "TSLA", "date_str": "2026-02-18"}
 
-    with patch.object(strategy, "_get_indices_string", return_value="NDX"):
-        # Act
-        result = strategy._create_trade(row, prices, match)
+    # Act
+    candidate = build_croc_candidate(row, prices, match, "NDX")
+    assert candidate is not None
+    assert candidate.target_profit == 150.0  # Entry 110 + 4 * Risk 10 = 150
+    strategy._persist_candidate_trade(candidate)
 
-        # Assert
-        assert result is not None
-        assert result["TP"] == 150.0  # Entry 110 + 4 * Risk 10 = 150
-        mock_trade_repo.create_trade.assert_called_once()
-        args, kwargs = mock_trade_repo.create_trade.call_args
-        assert kwargs["strategy"] == Strategies.HoldTarget
-        assert kwargs["context"]["target_level"] == 4
+    # Assert
+    mock_trade_repo.create_trade.assert_called_once()
+    args, kwargs = mock_trade_repo.create_trade.call_args
+    assert kwargs["strategy"] == Strategies.HoldTarget
+    assert kwargs["context"]["target_level"] == 4
 
 
 def test_create_trade_hold_logic(
@@ -236,17 +219,16 @@ def test_create_trade_hold_logic(
     match = {"Exit": "hold", "Score": 7}
     row = {"symbol": "MSFT"}
 
-    with patch.object(strategy, "_get_indices_string", return_value="SPX"):
-        # Act
-        result = strategy._create_trade(row, prices, match)
+    # Act
+    candidate = build_croc_candidate(row, prices, match, "SPX")
+    assert candidate is not None
+    strategy._persist_candidate_trade(candidate)
 
-        # Assert
-        assert result is not None
-        mock_trade_repo.create_trade.assert_called_once()
-        assert (
-            mock_trade_repo.create_trade.call_args[1]["strategy"]
-            == Strategies.HoldTarget
-        )
+    # Assert
+    mock_trade_repo.create_trade.assert_called_once()
+    assert (
+        mock_trade_repo.create_trade.call_args[1]["strategy"] == Strategies.HoldTarget
+    )
 
 
 def test_get_indices_string(strategy: CrocSetupStrategy) -> None:

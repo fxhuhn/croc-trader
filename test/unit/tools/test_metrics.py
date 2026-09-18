@@ -142,29 +142,6 @@ def test_calculate_max_drawdown_with_initial_value():
     assert max_dd == pytest.approx(-0.0666666, abs=1e-5)
 
 
-def test_calculate_return_on_invested():
-    """Tests return on invested capital calculation."""
-    # Arrange
-    pnl = pd.Series([200.0, -100.0, 400.0])
-    invested = pd.Series([1000.0, 2000.0, 2000.0])
-
-    # Act
-    return_pct = metrics.calculate_return_on_invested(pnl, invested)
-
-    # Assert
-    # Total PnL = 500, Total Invested = 5000 -> 500 / 5000 * 100 = 10.0%
-    assert return_pct == pytest.approx(10.0)
-
-
-def test_calculate_return_on_invested_empty():
-    """Tests return on invested capital with empty series or zero investment."""
-    assert metrics.calculate_return_on_invested(pd.Series([]), pd.Series([])) == 0.0
-    assert (
-        metrics.calculate_return_on_invested(pd.Series([100.0]), pd.Series([0.0]))
-        == 0.0
-    )
-
-
 def test_calculate_sharpe_ratio_from_roi():
     """Tests Sharpe Ratio from ROI series."""
     # Arrange

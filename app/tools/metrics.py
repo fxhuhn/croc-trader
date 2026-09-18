@@ -200,38 +200,6 @@ def calculate_sharpe_ratio(
     return float((returns.mean() / standard_deviation) * np.sqrt(annualization_factor))
 
 
-def calculate_return_on_invested(
-    trades_pnl: pd.Series, invested_capital: pd.Series
-) -> float:
-    """Calculates the overall percentage return on total invested capital.
-
-    Formula: Return % = (Σ(PnL_valid) / Σ(Invested_valid)) × 100
-
-    Args:
-        trades_pnl: Series of realized profit and loss per trade.
-        invested_capital: Series of total invested capital (Entry Price × Size) per trade.
-
-    Returns:
-        float: Total percentage return on invested capital.
-    """
-    if trades_pnl.empty or invested_capital.empty:
-        return 0.0
-
-    clean_invested = pd.to_numeric(invested_capital, errors="coerce").fillna(0.0)
-    clean_pnl = pd.to_numeric(trades_pnl, errors="coerce").fillna(0.0)
-
-    valid_mask = clean_invested > EPSILON
-    if not valid_mask.any():
-        return 0.0
-
-    total_invested = float(clean_invested[valid_mask].sum())
-    if total_invested <= EPSILON:
-        return 0.0
-
-    total_pnl = float(clean_pnl[valid_mask].sum())
-    return float((total_pnl / total_invested) * 100.0)
-
-
 def calculate_sharpe_ratio_from_roi(
     roi_series: pd.Series, trades_per_year: float = 252.0
 ) -> float:

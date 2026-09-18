@@ -11,7 +11,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.const import Strategies, TradeStatus
-from app.services.screener.view_service import ScreenerViewService
+from app.services.screener.view_service import (
+    ScreenerViewService,
+    harmonize_index_string,
+)
 
 
 @pytest.fixture
@@ -305,28 +308,24 @@ def test_build_ndx_candidates_caps_at_max_leaders(
 # ===========================================================================
 
 
-def test_harmonize_indices_cases(service: ScreenerViewService) -> None:
+def test_harmonize_indices_cases() -> None:
     """Verifies mapping of raw index strings to short codes."""
-    assert service.harmonize_indices("") == "-"
-    assert service.harmonize_indices(None) == "-"  # type: ignore[arg-type]
+    assert harmonize_index_string("") == "-"
+    assert harmonize_index_string(None) == "-"  # type: ignore[arg-type]
 
     # Explicit mappings
-    assert service.harmonize_indices("NASDAQ_100") == "NDX"
-    assert service.harmonize_indices("SP_500") == "SPX"
-    assert service.harmonize_indices("RUSSELL_1000") == "RUS"
-    assert service.harmonize_indices("RUSSELL_2000") == "RUT"
-    assert service.harmonize_indices("DOW_JONES") == "DOW"
+    assert harmonize_index_string("NASDAQ_100") == "NDX"
+    assert harmonize_index_string("SP_500") == "SPX"
+    assert harmonize_index_string("RUSSELL_1000") == "RUS"
+    assert harmonize_index_string("RUSSELL_2000") == "RUT"
+    assert harmonize_index_string("DOW_JONES") == "DOW"
 
     # Multi-value comma separated
-    assert (
-        service.harmonize_indices("NASDAQ_100, SP_500, RUSSELL_1000") == "NDX, SPX, RUS"
-    )
+    assert harmonize_index_string("NASDAQ_100, SP_500, RUSSELL_1000") == "NDX, SPX, RUS"
 
     # Unmapped index fallback replaces underscores with spaces
-    assert service.harmonize_indices("CUSTOM_TECH_INDEX") == "CUSTOM TECH INDEX"
-    assert (
-        service.harmonize_indices("NASDAQ_100, CUSTOM_BASKET") == "NDX, CUSTOM BASKET"
-    )
+    assert harmonize_index_string("CUSTOM_TECH_INDEX") == "CUSTOM TECH INDEX"
+    assert harmonize_index_string("NASDAQ_100, CUSTOM_BASKET") == "NDX, CUSTOM BASKET"
 
 
 # ===========================================================================

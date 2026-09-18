@@ -301,42 +301,6 @@ ranking_2026:
     assert cand.score == 12.5
     assert cand.indices == "NDX"
 
-    # _find_candidate adapter
-    res_dict = strategy._find_candidate(signal_row)
-    assert res_dict is not None
-    assert "prices" in res_dict
-    assert "match" in res_dict
-
-    # _create_trade adapter
-    prices = PriceData(high=150.0, low=140.0, close=145.0)
-    match_dict = {
-        "Signal": "CrocBuy",
-        "Score": 12.5,
-        "direction": "long",
-        "Exit": "tp1",
-    }
-    trade_res = strategy._create_trade(signal_row, prices, match_dict)
-    assert trade_res is not None
-    assert trade_res["Symbol"] == "AAPL"
-    assert mock_trade_repo.create_trade.called
-
-    # _build_trade_recommendation adapter
-    rec_res = strategy._build_trade_recommendation(signal_row, prices, match_dict)
-    assert rec_res is not None
-    assert rec_res["Symbol"] == "AAPL"
-    assert "_internal" in rec_res
-
-    # _process_single_signal adapter
-    single_res = strategy._process_single_signal(signal_row)
-    assert single_res is not None
-    assert single_res["Symbol"] == "AAPL"
-
-    # Helper adapters
-    assert strategy._check_value(60.0, "strong") is True
-    assert strategy._find_best_match({"signal": "CrocBuy", "rsi": 60.0}) is not None
-    assert strategy._enrich_sma({"symbol": "AAPL"}, prices) is not None
-    assert strategy._calc_targets(100.0, 10.0, 1)["main"] == 110.0
-
 
 def test_additional_croc_coverage_branches() -> None:
     """Verifies edge branches: negative SQN, invalid direction, fetch sorting."""

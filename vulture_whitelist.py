@@ -19,8 +19,6 @@ _.get_active_trades
 _.get_all_orders
 _.get_executions_for_order
 _.get_all_daily_data
-_._log_event
-_._process_single_signal
 _.process_daily_signals
 _.get_current_parameters
 _.source
@@ -32,11 +30,6 @@ _.get_folder
 
 # Classes & Class instantiations
 TradeEventType
-CrocContext
-SQNClassification
-PortfolioMetrics
-CrocSignal
-SignalStat
 PortfolioManager
 
 # Functions / Endpoints
@@ -170,7 +163,6 @@ setup_sma_price
 setup_turnover_sma
 setup_atr
 limit_entry
-_write_csv_orders_file
 display_size
 sparkline
 max_days

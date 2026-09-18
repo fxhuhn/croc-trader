@@ -21,7 +21,6 @@ from app.tools.portfolio_analytics import (
     calculate_rolling_3m_metrics,
     calculate_strategy_risk_and_expectancy,
     calculate_unweighted_monthly_pct,
-    calculate_weighted_monthly_pct,
     calculate_win_loss_rois,
     extract_calendar_daily_returns,
     extract_roi_series,
@@ -98,20 +97,6 @@ def test_calculate_unweighted_monthly_pct_empty_and_valid() -> None:
     )
     # Invested = 1000 each. ROI = 50/1000 = 5%, -20/1000 = -2%. Mean = 1.5%
     assert pytest.approx(calculate_unweighted_monthly_pct(df)) == 1.5
-
-
-def test_calculate_weighted_monthly_pct_heterogeneous_capital() -> None:
-    """Verifies that capital-weighted monthly return respects position sizing."""
-    df = pd.DataFrame(
-        {
-            "realized_pnl": [100.0, -900.0],
-            "entry_price": [100.0, 100.0],
-            "initial_size": [10.0, 90.0],  # 1,000 invested vs 9,000 invested
-        }
-    )
-    # Unweighted average would be (+10% + -10%) / 2 = 0.0%
-    # Capital-weighted is -800 / 10,000 = -8.0%
-    assert pytest.approx(calculate_weighted_monthly_pct(df)) == -8.0
 
 
 def test_extract_calendar_daily_returns(
