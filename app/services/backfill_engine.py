@@ -3,7 +3,7 @@
 import json
 import logging
 from datetime import date
-from typing import Any, Protocol
+from typing import Any
 
 import pandas as pd
 
@@ -19,24 +19,6 @@ from .trade_manager.strategies.bridge_scout import BridgeScoutTradeStrategy
 from .trade_manager.strategies.tgim import TGIMTradeStrategy
 
 logger = logging.getLogger(__name__)
-
-
-class ScreenerStrategyProtocol(Protocol):
-    """Protocol for screener strategies used in backfilling."""
-
-    def run(self, days: int = 0, analysis_date: str | None = None) -> int: ...
-
-
-class TradeStrategyEngineProtocol(Protocol):
-    """Protocol for trade execution and lifecycle management strategies."""
-
-    def check_entry(
-        self, trade: dict[str, Any], candle: pd.Series, df_sim: pd.DataFrame
-    ) -> Any: ...
-
-    def manage_active_trade(
-        self, trade: dict[str, Any], df_sim: pd.DataFrame
-    ) -> Any: ...
 
 
 STRATEGY_MAP: dict[str, tuple[type[Any], type[Any], int]] = {

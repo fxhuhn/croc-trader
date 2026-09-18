@@ -291,28 +291,6 @@ def extract_calendar_daily_returns(
     return pd.DataFrame(daily_dict, index=calendar_dates)
 
 
-def _extract_strategy_return_vectors(
-    slice_df: pd.DataFrame,
-    strategy_groups: dict[str, list[Any]],
-) -> tuple[list[str], list[pd.Series], list[float]]:
-    """Extracts aligned ROI series and mean return vectors for strategy groups."""
-    resolved_strategies = slice_df["strategy"].apply(
-        lambda s: STRATEGY_ALIASES.get(str(s).lower(), s)
-    )
-    strat_names = list(strategy_groups.keys())
-    strat_returns: list[pd.Series] = []
-    mus: list[float] = []
-
-    for name in strat_names:
-        filters = strategy_groups[name]
-        strat_slice_df = slice_df[resolved_strategies.isin(filters)]
-        roi_series = extract_roi_series(strat_slice_df)
-        strat_returns.append(roi_series)
-        mus.append(float(roi_series.mean()) if not roi_series.empty else 0.0)
-
-    return strat_names, strat_returns, mus
-
-
 def calculate_mean_variance_allocations(
     slice_df: pd.DataFrame,
     strategy_groups: dict[str, list[Any]],

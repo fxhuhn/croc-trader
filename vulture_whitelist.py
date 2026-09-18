@@ -23,23 +23,12 @@ _._log_event
 _._process_single_signal
 _.process_daily_signals
 _.get_current_parameters
-_.special_symbols
-_.russell_1000_exclusive
 _.source
 _.exit_reason
 _.current_stop_loss
 _.current_target
-_.metric_name
 _.description
 _.get_folder
-_.get_equity_curve
-_._fetch_sorted_trades
-_.get_all_closed_trades
-_.get_calendar_returns
-_.score_trade
-_.detect_current_regime
-_.get_strategy_allocations
-_.detect_regime_shifts
 
 # Classes & Class instantiations
 TradeEventType
@@ -49,11 +38,6 @@ PortfolioMetrics
 CrocSignal
 SignalStat
 PortfolioManager
-TurnoverContext
-MetricsOverview
-RegimeDetector
-EquityDiagnostics
-_ = DipBuyerMarketState
 
 # Functions / Endpoints
 favicon
@@ -66,7 +50,6 @@ ingest_webhook
 trigger_screener
 analyze_dip_buyer
 analyze_turnover
-analyze_croc
 analyze_ndx_momentum
 trigger_orders
 trigger_trades_backfill
@@ -79,7 +62,6 @@ route_honeypot_admin
 view_analytics_dashboard
 view_broker_dashboard
 view_screener_overview
-view_screener_croc
 view_screener_dip_buyer
 view_screener_turnover
 view_screener_twopercent
@@ -90,7 +72,6 @@ view_trades_dip_buyer
 view_trades_turnover
 view_trades_ndx_momentum
 view_trades_twopercent
-view_backtest_dashboard
 on_starting
 calculate_rsi
 calculate_sqn
@@ -197,18 +178,9 @@ version
 holidays
 logconfig_dict
 server
-MAX_LEVERAGE_MULTIPLIER
-trade_count
-saved_profit
-margin_interest_paid
 final_allocation
-COLOR_SLATE
-COLOR_VIOLET
-COLOR_GOLD
-pressure_pct
 matrices
 cache_key
-DEFAULT_SLIPPAGE
 
 # Analyzer Constants & IBKR Check Whitelist additions
 BearSignals
@@ -272,8 +244,6 @@ SHIFT_DEPTH
 DEFAULT_MIN_TRADES
 DEFAULT_INPUT_PATTERN
 DEFAULT_OUTPUT_DIR
-place_strategy_bracket_order
-attach_waterfall_exit_to_existing_position
 signal_definitions
 to_local_tz
 run_matrix_analysis
@@ -305,12 +275,6 @@ BULL_3
 BULL_4
 BULL_5
 BULL_6
-_.orderType
-_.parentId
-_.goodTillDate
-_.ocaGroup
-_.ocaType
-_.goodAfterTime
 _.transmit
 _.extract_symbol_name
 _.process_file

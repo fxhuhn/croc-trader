@@ -1,7 +1,7 @@
 import datetime
 import json
 import logging
-from typing import TypedDict, final, override
+from typing import final, override
 
 import pandas as pd
 
@@ -76,13 +76,6 @@ def calculate_consecutive_green_candles(
     return count
 
 
-class TurnoverContext(TypedDict, total=False):
-    """Context structure for Turnover Strategy signal data."""
-
-    green_candle_count: int
-    last_processed_date: str
-
-
 @final
 class TurnoverTimingStrategy(BaseTradeStrategy):
     """
@@ -97,9 +90,6 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
 
     name: str = str(Strategies.TurnOverTiming)
     """Unique identifier for the strategy."""
-
-    DEFAULT_SLIPPAGE: float = 0.0
-    """Default slippage applied to executions."""
 
     MIN_GREEN_CANDLES_FOR_EXIT: int = 2
     """Threshold of consecutive green candles to trigger early exit."""
@@ -119,18 +109,6 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         if strategy_name:
             self.name = strategy_name
         self._holiday_checker = holiday_checker or MarketHolidayChecker()
-
-    def _is_green_candle(self, open_price: float, close_price: float) -> bool:
-        """Determines if a candle is green (Close > Open).
-
-        Args:
-            open_price: The opening price of the candle.
-            close_price: The closing price of the candle.
-
-        Returns:
-            bool: True if the closing price is greater than the opening price.
-        """
-        return is_green_candle(open_price, close_price)
 
     def _resolve_green_candle_count(
         self,

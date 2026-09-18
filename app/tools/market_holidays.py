@@ -2,17 +2,10 @@ import datetime
 import logging
 import threading
 from pathlib import Path
-from typing import TypedDict
 
 import yaml
 
 logger = logging.getLogger(__name__)
-
-
-class HolidayConfig(TypedDict):
-    """Type definition for the holidays YAML structure."""
-
-    holidays: dict[str, str]
 
 
 class MarketHolidayChecker:

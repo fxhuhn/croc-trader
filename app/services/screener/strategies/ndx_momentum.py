@@ -42,7 +42,6 @@ class NDXMomentumConfiguration:
     """Configuration settings for the NDX Momentum strategy."""
 
     maximum_ticker_count: int = 5
-    maximum_lookback_period: int = 252
 
 
 class NDXAnalysisResult(TypedDict, total=False):

@@ -12,7 +12,6 @@ __all__ = [
     "OrderType",
     "TimeInForce",
     "TradeData",
-    "MetricsOverview",
 ]
 
 # --- Types (originally from trade_manager/types.py) ---
@@ -54,11 +53,3 @@ class TradeData(TypedDict, total=False):
     exit_date: str | None
     exit_reason: str | None
     realized_pnl: float | None
-
-
-class MetricsOverview(TypedDict):
-    """Mapping of metrics to their source (Database vs Runtime Calculation)."""
-
-    metric_name: str
-    source: Literal["Database", "Simulation"]
-    description: str

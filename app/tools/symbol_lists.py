@@ -255,20 +255,6 @@ class ExchangeSymbol:
         return self._russell_1000.copy()
 
     @property
-    def special_symbols(self) -> list[str]:
-        return self._special_symbols.copy()
-
-    @property
-    def russell_1000_exclusive(self) -> list[str]:
-        """
-        Russell 1000 EXCLUDING constituents from S&P 500, Nasdaq 100, and Dow 30.
-        Helps identify 'smaller' large caps that are not in the premier indices.
-        """
-        all_others = set(self._sp_500) | set(self._nasdaq_100) | set(self._dow_30)
-        rus_excl = set(self._russell_1000) - all_others
-        return sorted(rus_excl)
-
-    @property
     def all(self) -> list[str]:
         combined = set(
             self._dow_30

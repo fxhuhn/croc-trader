@@ -43,20 +43,3 @@ class SignalReportItem:
                 row[detail_key] = str(detail_value)
 
         return row
-
-
-@dataclass(frozen=True)
-class StrategyScreeningResult:
-    """Immutable outcome of a single strategy screening execution.
-
-    Attributes:
-        strategy_name: Canonical identifier of the strategy.
-        trading_date: Trading date string (YYYY-MM-DD).
-        signals_count: Total number of signals identified and stored.
-        report_items: List of formatted report items for notifications.
-    """
-
-    strategy_name: str
-    trading_date: str
-    signals_count: int
-    report_items: list[SignalReportItem] = field(default_factory=list)

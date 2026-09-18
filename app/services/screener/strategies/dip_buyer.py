@@ -76,23 +76,6 @@ class DipBuyerConfig:
     LOOKBACK_DAYS: int = 600
 
 
-class DipBuyerMarketState(TypedDict):
-    """Represents the market state for a single symbol at a specific point in time."""
-
-    close: float
-    open: float
-    high: float
-    high_next_target: float | None  # Optional, for future use or verification
-    volume: float
-    sma200: float
-    volume_sma: float
-    atr: float
-    atr_ratio_3day: float
-    ibs: float
-    volatility_ratio: float
-    setup_score: float
-
-
 class SymbolAnalysisResult(TypedDict):
     """Return type for single symbol analysis debugging."""
 

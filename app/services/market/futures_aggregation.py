@@ -29,8 +29,6 @@ US_CASH_START_MINUTE: int = 30
 US_CASH_END_HOUR: int = 15
 US_CASH_END_MINUTE: int = 30
 
-# Number of 30-min bars in a full cash session: 13 bars (09:30 ET through 15:30 ET)
-FULL_CASH_SESSION_BAR_COUNT: int = 13
 # Minimum required bars for a valid partial session
 MINIMUM_CASH_SESSION_BAR_COUNT: int = 10
 
