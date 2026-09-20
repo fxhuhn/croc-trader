@@ -306,3 +306,50 @@ def test_tv_provider_custom_retry_configuration(
     assert len(records) == 1
     assert records[0]["symbol"] == "PENNY"
     assert records[0]["close"] == 10.5
+
+
+@patch("app.services.market.tv_provider.mapper")
+@patch("app.services.market.tv_provider.time.sleep")
+def test_tv_provider_multi_exchange_skips_retries_on_empty(
+    mock_sleep: MagicMock, mock_mapper: MagicMock
+) -> None:
+    """Tests that probing candidate exchanges skips retries when an exchange returns empty."""
+    # Unknown exchange triggers candidate exchanges: ["NASDAQ", "NYSE", "AMEX"]
+    mock_mapper.get_exchange.return_value = None
+
+    dummy_df = pd.DataFrame(
+        {
+            "open": [50.0],
+            "high": [52.0],
+            "low": [49.0],
+            "close": [51.5],
+            "volume": [3000],
+        },
+        index=pd.DatetimeIndex(["2026-07-29"]),
+    )
+
+    mock_tv = MagicMock()
+    # First call (NASDAQ) returns None; second call (NYSE) returns data
+    mock_tv.get_hist.side_effect = [None, dummy_df]
+
+    provider = TradingViewDataProvider(max_retries=2, retry_delay_seconds=0.0)
+
+    with patch.object(provider, "_get_instance", return_value=mock_tv):
+        records = provider.fetch_symbol_history("PSTG", number_of_bars=5)
+
+    assert len(records) == 1
+    assert records[0]["symbol"] == "PSTG"
+    assert records[0]["close"] == 51.5
+    # Crucial: get_hist should be called exactly twice (1x NASDAQ, 1x NYSE), not 2x on NASDAQ!
+    assert mock_tv.get_hist.call_count == 2
+    call_args_list = mock_tv.get_hist.call_args_list
+    assert call_args_list[0].kwargs["exchange"] == "NASDAQ"
+    assert call_args_list[1].kwargs["exchange"] == "NYSE"
+
+
+def test_tv_provider_silences_tvdatafeed_logger() -> None:
+    """Verifies that the noisy external tvDatafeed logger is clamped to CRITICAL."""
+    import logging
+
+    TradingViewDataProvider()
+    assert logging.getLogger("tvDatafeed").level == logging.CRITICAL

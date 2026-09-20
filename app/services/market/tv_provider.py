@@ -16,6 +16,10 @@ from app.mapping import ExchangeMapper, mapper
 logger = logging.getLogger(__name__)
 
 
+# Suppress noisy low-level error logging from tvDatafeed library during multi-exchange probing
+logging.getLogger("tvDatafeed").setLevel(logging.CRITICAL)
+
+
 class TradingViewBarRecord(TypedDict, total=False):
     """Typed representation of a daily price bar record from TradingView."""
 
@@ -46,6 +50,8 @@ class TradingViewDataProvider:
         self._tv: TvDatafeed | None = None
         self._max_retries: int = max_retries
         self._retry_delay_seconds: float = retry_delay_seconds
+        # Ensure external tvDatafeed logger remains suppressed across instances
+        logging.getLogger("tvDatafeed").setLevel(logging.CRITICAL)
 
     def _get_instance(self) -> TvDatafeed:
         """Lazily instantiates and returns the TvDatafeed client connection."""
@@ -120,6 +126,8 @@ class TradingViewDataProvider:
         Returns:
             Pandas DataFrame containing raw price bars, or None if download failed.
         """
+        is_multi_exchange = len(exchanges_to_try) > 1
+
         for exchange_name in exchanges_to_try:
             for attempt in range(1, self._max_retries + 1):
                 try:
@@ -130,29 +138,37 @@ class TradingViewDataProvider:
                         interval=Interval.in_daily,
                         n_bars=number_of_bars,
                     )
-                    if dataframe is not None and not dataframe.empty:
-                        return dataframe
+                    if dataframe is None or dataframe.empty:
+                        self._tv = None
+                        if is_multi_exchange:
+                            logger.debug(
+                                "TradingView returned no data for %s on candidate exchange %s, skipping retries.",
+                                tv_symbol,
+                                exchange_name,
+                            )
+                            break
 
-                    # Reset connection on empty/None response and retry if attempts remain
-                    self._tv = None
-                    if attempt < self._max_retries:
-                        logger.debug(
-                            "TradingView returned no data for %s on %s (attempt %d/%d), retrying in %.1fs...",
-                            tv_symbol,
-                            exchange_name,
-                            attempt,
-                            self._max_retries,
-                            self._retry_delay_seconds,
-                        )
-                        time.sleep(self._retry_delay_seconds)
-                    else:
-                        logger.warning(
-                            "TradingView returned no data for symbol %s (TV: %s) on exchange %s after %d attempts",
-                            standard_symbol,
-                            tv_symbol,
-                            exchange_name,
-                            self._max_retries,
-                        )
+                        if attempt < self._max_retries:
+                            logger.debug(
+                                "TradingView returned no data for %s on %s (attempt %d/%d), retrying in %.1fs...",
+                                tv_symbol,
+                                exchange_name,
+                                attempt,
+                                self._max_retries,
+                                self._retry_delay_seconds,
+                            )
+                            time.sleep(self._retry_delay_seconds)
+                        else:
+                            logger.warning(
+                                "TradingView returned no data for symbol %s (TV: %s) on exchange %s after %d attempts",
+                                standard_symbol,
+                                tv_symbol,
+                                exchange_name,
+                                self._max_retries,
+                            )
+                        continue
+
+                    return dataframe
                 except Exception as error:
                     # Force auto-reconnect on next request if connection dropped
                     self._tv = None
