@@ -316,6 +316,7 @@ def test_tv_provider_multi_exchange_skips_retries_on_empty(
     """Tests that probing candidate exchanges skips retries when an exchange returns empty."""
     # Unknown exchange triggers candidate exchanges: ["NASDAQ", "NYSE", "AMEX"]
     mock_mapper.get_exchange.return_value = None
+    mock_mapper.auto_discover_exchange.return_value = None
 
     dummy_df = pd.DataFrame(
         {
@@ -353,3 +354,67 @@ def test_tv_provider_silences_tvdatafeed_logger() -> None:
 
     TradingViewDataProvider()
     assert logging.getLogger("tvDatafeed").level == logging.CRITICAL
+
+
+@patch("app.services.market.tv_provider.mapper")
+@patch("app.services.market.tv_provider.time.sleep")
+def test_tv_provider_uses_auto_discovered_exchange(
+    mock_sleep: MagicMock, mock_mapper: MagicMock
+) -> None:
+    """Tests that auto_discover_exchange is used if get_exchange returned None."""
+    mock_mapper.get_exchange.return_value = None
+    mock_mapper.auto_discover_exchange.return_value = "NYSE"
+
+    dummy_df = pd.DataFrame(
+        {
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.5],
+            "volume": [1000],
+        },
+        index=pd.DatetimeIndex(["2026-07-29"]),
+    )
+
+    mock_tv = MagicMock()
+    mock_tv.get_hist.return_value = dummy_df
+
+    provider = TradingViewDataProvider()
+    with patch.object(provider, "_get_instance", return_value=mock_tv):
+        records = provider.fetch_symbol_history("NEW_STOCK", number_of_bars=5)
+
+    assert len(records) == 1
+    mock_mapper.auto_discover_exchange.assert_called_once_with("NEW_STOCK")
+    mock_tv.get_hist.assert_called_once()
+    assert mock_tv.get_hist.call_args.kwargs["exchange"] == "NYSE"
+
+
+@patch("app.services.market.tv_provider.mapper")
+@patch("app.services.market.tv_provider.time.sleep")
+def test_tv_provider_auto_learns_unmapped_exchange_on_success(
+    mock_sleep: MagicMock, mock_mapper: MagicMock
+) -> None:
+    """Tests that a successfully probed candidate exchange is registered with the mapper."""
+    mock_mapper.get_exchange.return_value = None
+    mock_mapper.auto_discover_exchange.return_value = None
+
+    dummy_df = pd.DataFrame(
+        {
+            "open": [10.0],
+            "high": [11.0],
+            "low": [9.0],
+            "close": [10.5],
+            "volume": [1000],
+        },
+        index=pd.DatetimeIndex(["2026-07-29"]),
+    )
+
+    mock_tv = MagicMock()
+    # Fails NASDAQ, succeeds NYSE
+    mock_tv.get_hist.side_effect = [None, dummy_df]
+
+    provider = TradingViewDataProvider()
+    with patch.object(provider, "_get_instance", return_value=mock_tv):
+        provider.fetch_symbol_history("UNMAPPED", number_of_bars=5)
+
+    mock_mapper.register_exchange.assert_called_once_with("UNMAPPED", "NYSE")

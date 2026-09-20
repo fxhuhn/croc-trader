@@ -35,7 +35,6 @@ from ..tasks import (
     run_order_generation,
 )
 from ..tools.market_holidays import MarketHolidayChecker
-from ..tools.symbol_exchange import SymbolExchange
 from ..tools.symbol_filter import SymbolFilter
 
 # Strategies
@@ -74,9 +73,6 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
     # Initialize singletons to start background thread/cache loading
     symbol_filter = SymbolFilter()
     app.extensions["symbol_filter"] = symbol_filter
-
-    symbol_exchange = SymbolExchange()
-    app.extensions["symbol_exchange"] = symbol_exchange
 
     # 2. Market Data Infrastructure (Read-Side)
     stocks_session = DatabaseSession(str(db_stocks))

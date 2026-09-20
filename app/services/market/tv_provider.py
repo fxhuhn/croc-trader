@@ -80,6 +80,13 @@ class TradingViewDataProvider:
         # and remove Yahoo's index caret prefix (e.g., ^VIX -> VIX)
         tv_symbol = base_symbol.replace("-", ".").lstrip("^")
         exchange_name = self._exchange_mapper.get_exchange(standard_symbol)
+        if not exchange_name and hasattr(
+            self._exchange_mapper, "auto_discover_exchange"
+        ):
+            exchange_name = self._exchange_mapper.auto_discover_exchange(
+                standard_symbol
+            )
+
         exchanges_to_try = (
             [exchange_name] if exchange_name else ["NASDAQ", "NYSE", "AMEX"]
         )
@@ -167,6 +174,14 @@ class TradingViewDataProvider:
                                 self._max_retries,
                             )
                         continue
+
+                    # Auto-learn discovered exchange if it was unmapped
+                    if is_multi_exchange and hasattr(
+                        self._exchange_mapper, "register_exchange"
+                    ):
+                        self._exchange_mapper.register_exchange(
+                            standard_symbol, exchange_name
+                        )
 
                     return dataframe
                 except Exception as error:
