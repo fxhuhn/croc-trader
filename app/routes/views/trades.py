@@ -35,6 +35,30 @@ TURNOVER_STRATEGIES = [
 ]
 
 
+LEGACY_CROC_STRATEGIES: set[Strategies | str] = {
+    Strategies.CrocSetup,
+    Strategies.HoldTarget,
+    Strategies.SplitTarget,
+    "croc",
+    "croc_setup",
+    "hold_target",
+    "split_target",
+}
+
+
+def _filter_non_croc_trades(
+    trades: list[TradeViewData],
+    service: Any,
+) -> list[TradeViewData]:
+    """Filters out legacy Croc strategy trades."""
+    return [
+        trade
+        for trade in trades
+        if service.resolve_strategy(trade) not in LEGACY_CROC_STRATEGIES
+        and trade.get("strategy") not in LEGACY_CROC_STRATEGIES
+    ]
+
+
 @views_bp.route("/trades", methods=["GET"])
 @views_bp.route("/trades/", methods=["GET"])
 @cache.cached(timeout=86400, query_string=True)
@@ -46,9 +70,19 @@ def view_trades_overview() -> str:
     """
     service = _get_trade_view_service()
 
-    active_trades = service.get_trades(status=TradeStatus.ACTIVE)
+    raw_active_trades = service.get_trades(status=TradeStatus.ACTIVE)
+    active_trades = _filter_non_croc_trades(raw_active_trades, service)
     service.attach_sparklines(active_trades)
-    summary_metrics = service.get_portfolio_summary(active_trades)
+
+    raw_closed_trades = service.get_trades(
+        status=TradeStatus.CLOSED,
+        exclude_exit_reasons=[ExitReason.EXPIRED, ExitReason.INVALIDATED],
+    )
+    closed_trades = _filter_non_croc_trades(raw_closed_trades, service)
+
+    summary_metrics = service.get_portfolio_summary(
+        active_trades=active_trades, closed_trades=closed_trades
+    )
     strategy_stats = _build_strategy_overview_stats(active_trades, service)
 
     allocation_labels = list(strategy_stats.keys())

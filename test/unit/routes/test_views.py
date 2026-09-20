@@ -142,8 +142,8 @@ def test_view_trades_overview_returns_correct_response(
 def test_view_trades_overview_croc_setup_excluded(
     test_client: FlaskClient,
 ) -> None:
-    """Verifies that Croc Setup is excluded from trades overview dashboard and navigation."""
-    mock_trades = [
+    """Verifies that Croc Setup is excluded from trades overview dashboard, KPIs, and navigation."""
+    mock_active_trades = [
         {
             "id": "trade-croc-1",
             "symbol": "AAPL",
@@ -163,14 +163,40 @@ def test_view_trades_overview_croc_setup_excluded(
             "initial_size": 5,
         },
     ]
+    mock_closed_trades = [
+        {
+            "id": "trade-croc-closed-1",
+            "symbol": "NVDA",
+            "exit_date": "2026-06-02",
+            "strategy": "split_target",
+            "realized_pnl": 500.0,
+        },
+        {
+            "id": "trade-dip-closed-1",
+            "symbol": "GOOGL",
+            "exit_date": "2026-06-02",
+            "strategy": "dip_buyer",
+            "realized_pnl": 150.0,
+        },
+    ]
+
     with patch("app.routes.views.trades._get_trade_view_service") as mock_trade_service:
         mock_service_instance = mock_trade_service.return_value
-        mock_service_instance.get_trades.return_value = mock_trades
+
+        def fake_get_trades(status: str = "", **kwargs: Any) -> list[dict[str, Any]]:
+            if status == "ACTIVE":
+                return list(mock_active_trades)
+            return list(mock_closed_trades)
+
+        mock_service_instance.get_trades.side_effect = fake_get_trades
         mock_service_instance.resolve_strategy.side_effect = lambda t: t.get("strategy")
         mock_service_instance.get_portfolio_summary.return_value = {
-            "invested": 2000.0,
-            "open_pnl": 350.0,
+            "invested": 1000.0,
+            "open_pnl": 200.0,
             "win_rate": 1.0,
+            "profit_factor": 2.5,
+            "sqn": 1.8,
+            "count": 1,
         }
         mock_service_instance.generate_donut_chart.return_value = "<div>Donut</div>"
 
@@ -180,6 +206,18 @@ def test_view_trades_overview_croc_setup_excluded(
         assert b"Dip Buyer" in response.data
         assert b"Croc Setup" not in response.data
         assert b'href="/trades/croc"' not in response.data
+
+        # Verify get_portfolio_summary was called with croc-filtered trades
+        assert mock_service_instance.get_portfolio_summary.called
+        call_kwargs = mock_service_instance.get_portfolio_summary.call_args.kwargs
+        passed_active = call_kwargs.get("active_trades")
+        passed_closed = call_kwargs.get("closed_trades")
+
+        assert len(passed_active) == 1
+        assert passed_active[0]["strategy"] == "dip_buyer"
+
+        assert len(passed_closed) == 1
+        assert passed_closed[0]["strategy"] == "dip_buyer"
 
 
 @pytest.mark.parametrize(
