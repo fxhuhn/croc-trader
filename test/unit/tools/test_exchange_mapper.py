@@ -27,6 +27,7 @@ def test_exchange_mapper_heuristics_indices_and_etfs() -> None:
     assert mapper.get_exchange("^RUT") == "RUSSELL"
     assert mapper.get_exchange("SPY") == "AMEX"
     assert mapper.get_exchange("QQQ") == "NASDAQ"
+    assert mapper.get_exchange("TLT") == "NASDAQ"
 
 
 def test_exchange_mapper_normalize_exchange_code() -> None:

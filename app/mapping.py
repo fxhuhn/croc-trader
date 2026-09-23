@@ -32,6 +32,7 @@ class ExchangeMapper:
         "XLB": "AMEX",
         "XLRE": "AMEX",
         "XLC": "AMEX",
+        "TLT": "NASDAQ",
         "SXRV.DE": "XETR",
         "^VIX": "CBOE",
         "VIX": "CBOE",

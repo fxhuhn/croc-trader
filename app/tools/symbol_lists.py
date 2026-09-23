@@ -75,7 +75,14 @@ DEFAULT_INDEX_SOURCES: tuple[IndexSourceDefinition, ...] = (
     ),
 )
 
-DEFAULT_SPECIAL_SYMBOLS: tuple[str, ...] = ("SPY", "QQQ", "SXRV.DE", "DIA", "^VIX")
+DEFAULT_SPECIAL_SYMBOLS: tuple[str, ...] = (
+    "SPY",
+    "QQQ",
+    "SXRV.DE",
+    "DIA",
+    "^VIX",
+    "TLT",
+)
 
 
 # --- Functional Core (Pure Transformations) ---

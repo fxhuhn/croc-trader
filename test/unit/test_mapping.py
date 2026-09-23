@@ -61,6 +61,7 @@ def test_get_exchange_fallback_etf_and_default(
         assert mapper_instance.get_exchange("QQQ") == "NASDAQ"
         assert mapper_instance.get_exchange("SPY") == "AMEX"
         assert mapper_instance.get_exchange("SXRV.DE") == "XETR"
+        assert mapper_instance.get_exchange("TLT") == "NASDAQ"
         assert mapper_instance.get_exchange("^VIX") == "CBOE"
         assert mapper_instance.get_exchange("VIX") == "CBOE"
         # Unknown symbol fallback

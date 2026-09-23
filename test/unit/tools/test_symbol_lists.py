@@ -95,23 +95,37 @@ def test_refresh_data_fetches_all_indices() -> None:
 def test_sp_100_property_and_all_inclusion() -> None:
     """Verifies that sp_100 property returns a copy and is included in all."""
     es = ExchangeSymbol()
-    es._sp_100 = ["AAPL", "GOOGL"]
-    es._special_symbols = []
-    es._sp_500 = []
-    es._nasdaq_100 = []
-    es._dow_30 = []
-    es._russell_1000 = []
+    saved_special = list(es._special_symbols)
+    try:
+        es._sp_100 = ["AAPL", "GOOGL"]
+        es._special_symbols = []
+        es._sp_500 = []
+        es._nasdaq_100 = []
+        es._dow_30 = []
+        es._russell_1000 = []
 
-    result = es.sp_100
-    assert result == ["AAPL", "GOOGL"]
+        result = es.sp_100
+        assert result == ["AAPL", "GOOGL"]
 
-    # Verify copy isolation
-    result.append("NEW_SYM")
-    assert es.sp_100 == ["AAPL", "GOOGL"]
+        # Verify copy isolation
+        result.append("NEW_SYM")
+        assert es.sp_100 == ["AAPL", "GOOGL"]
 
-    # Verify inclusion in all
-    assert "AAPL" in es.all
-    assert "GOOGL" in es.all
+        # Verify inclusion in all
+        assert "AAPL" in es.all
+        assert "GOOGL" in es.all
+    finally:
+        es._special_symbols = saved_special
+
+
+def test_default_special_symbols_contains_tlt() -> None:
+    """Verifies that TLT is included in DEFAULT_SPECIAL_SYMBOLS and ExchangeSymbol.all."""
+    from app.tools.symbol_lists import DEFAULT_SPECIAL_SYMBOLS
+
+    assert "TLT" in DEFAULT_SPECIAL_SYMBOLS
+    es = ExchangeSymbol()
+    assert "TLT" in es._special_symbols
+    assert "TLT" in es.all
 
 
 def test_singleton_returns_same_instance() -> None:
