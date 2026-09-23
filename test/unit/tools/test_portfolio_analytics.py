@@ -202,6 +202,12 @@ def test_calculate_monthly_matrix_data(
     assert portfolio_row["name"] == "Portfolio"
     assert len(portfolio_row["months"]) == 12
     assert len(model_rows) == 4
+    assert [m["key"] for m in model_rows] == [
+        "standard",
+        "evm",
+        "max_sharpe",
+        "risk_parity",
+    ]
     for model in model_rows:
         assert "key" in model
         assert "weights" in model
@@ -229,16 +235,137 @@ def test_calculate_allocation_recommendation_standard(
         active_trades=[],
         strategy_groups=strategy_groups,
     )
-    assert payload["model_name"] == "Standard"
+    assert payload["model_name"] == "Standard (Equal Weight)"
     assert payload["model_key"] == "standard"
     assert payload["reference_capital"] == 100_000.0
     assert len(payload["rows"]) == len(strategy_groups)
     assert payload["total_slots"] == sum(r["slots"] for r in payload["rows"])
+    assert payload["satellite_silo_slots"] >= 1
+    assert payload["satellite_global_slots"] >= 1
+    assert payload["satellite_budget_per_trade"] > 0.0
+    assert payload["global_slots"] == payload["satellite_global_slots"]
+    assert payload["global_budget_per_trade"] == payload["satellite_budget_per_trade"]
+    assert 0.0 <= payload["efficiency_gain_pct"] <= 100.0
     for row in payload["rows"]:
         assert row["name"] in strategy_groups
         assert row["slots"] >= 1
         assert 0.0 <= row["share_pct"] <= 100.0
         assert row["budget_per_trade_dollar"] >= 0.0
+
+
+def test_calculate_allocation_recommendation_core_satellite() -> None:
+    """Verifies that NDX Momentum is identified as core with dedicated slots and budget."""
+    trade_df = pd.DataFrame(
+        [
+            {
+                "strategy": "ndx_momentum",
+                "entry_date": "2026-01-01",
+                "exit_date": "2026-01-30",
+                "realized_pnl": 500.0,
+                "entry_price": 100.0,
+                "initial_size": 10,
+            },
+            {
+                "strategy": "dip_buyer",
+                "entry_date": "2026-01-10",
+                "exit_date": "2026-01-20",
+                "realized_pnl": 200.0,
+                "entry_price": 50.0,
+                "initial_size": 10,
+            },
+        ]
+    )
+    groups = {
+        "NDX Momentum": ["ndx_momentum"],
+        "Dip Buyer": ["dip_buyer"],
+    }
+    context = AllocationRecommendationContext(
+        model_key="standard",
+        model_name="Standard (Equal Weight)",
+        ytd_return_pct=15.0,
+        weights={"NDX Momentum": 0.5, "Dip Buyer": 0.5},
+        reference_capital=100_000.0,
+    )
+    payload = calculate_allocation_recommendation(
+        context=context,
+        dataframe=trade_df,
+        active_trades=[],
+        strategy_groups=groups,
+    )
+    assert payload["core_strategy_name"] == "NDX Momentum"
+    assert payload["core_capital"] == 40_000.0
+    assert payload["core_share_pct"] == 40.0
+    assert payload["satellite_capital"] == 60_000.0
+    assert payload["satellite_share_pct"] == 60.0
+    assert payload["satellite_silo_slots"] >= 1
+    assert payload["satellite_global_slots"] >= 1
+    core_row = next(r for r in payload["rows"] if r["name"] == "NDX Momentum")
+    assert core_row["is_core"] is True
+    assert core_row["share_pct"] == 40.0
+    sat_row = next(r for r in payload["rows"] if r["name"] == "Dip Buyer")
+    assert sat_row["is_core"] is False
+    assert sat_row["share_pct"] == 60.0
+
+    # Also test explicit core_share override (e.g., 50%)
+    custom_payload = calculate_allocation_recommendation(
+        context=context,
+        dataframe=trade_df,
+        active_trades=[],
+        strategy_groups=groups,
+        core_share=0.50,
+    )
+    assert custom_payload["core_capital"] == 50_000.0
+    assert custom_payload["core_share_pct"] == 50.0
+    assert custom_payload["satellite_capital"] == 50_000.0
+    assert custom_payload["satellite_share_pct"] == 50.0
+
+
+def test_calculate_allocation_recommendation_global_concurrency_staggered() -> None:
+    """Verifies that time-staggered strategies result in lower global slots and positive efficiency gain."""
+    staggered_df = pd.DataFrame(
+        [
+            {
+                "strategy": "dip_buyer",
+                "entry_date": "2026-01-01",
+                "exit_date": "2026-01-10",
+                "realized_pnl": 100.0,
+                "entry_price": 50.0,
+                "initial_size": 10,
+            },
+            {
+                "strategy": "turnover_timing",
+                "entry_date": "2026-02-01",
+                "exit_date": "2026-02-10",
+                "realized_pnl": 150.0,
+                "entry_price": 60.0,
+                "initial_size": 10,
+            },
+        ]
+    )
+    strategy_groups = {
+        "Dip Buyer": ["dip_buyer"],
+        "Turnover": ["turnover_timing"],
+    }
+    context = AllocationRecommendationContext(
+        model_key="standard",
+        model_name="Standard",
+        ytd_return_pct=10.0,
+        weights={"Dip Buyer": 0.5, "Turnover": 0.5},
+        reference_capital=100_000.0,
+    )
+    payload = calculate_allocation_recommendation(
+        context=context,
+        dataframe=staggered_df,
+        active_trades=[],
+        strategy_groups=strategy_groups,
+    )
+    # Each strategy needs 1 slot -> silo sum = 2
+    assert payload["total_slots"] == 2
+    # At any point in time, only 1 trade is active -> global peak = 1
+    assert payload["global_slots"] == 1
+    assert payload["global_max_concurrent"] == 1
+    assert payload["global_budget_per_trade"] == 100_000.0
+    assert payload["efficiency_gain_pct"] == 50.0
 
 
 def test_calculate_allocation_recommendation_empty_data(

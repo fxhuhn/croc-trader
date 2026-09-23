@@ -275,21 +275,24 @@
     <!-- Section 4: Allokations-Empfehlung Card Container -->
     <section class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-8">
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse min-w-[600px]">
+            <table class="w-full text-left border-collapse min-w-[700px]">
                 <!-- Table Header -->
                 <thead>
                     <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
                         <th class="py-4 px-4">
                             Strategie
                         </th>
-                        <th class="py-4 px-4 text-center w-32">
+                        <th class="py-4 px-4 text-center w-28">
                             Anteil
                         </th>
-                        <th class="py-4 px-4 text-center w-32">
-                            Slots (P95)
+                        <th class="py-4 px-4 text-center w-36">
+                            Silo Slots (P95)
                         </th>
-                        <th class="py-4 px-4 text-right w-48">
-                            Max. Budget / Trade
+                        <th class="py-4 px-4 text-right w-44">
+                            Silo Budget / Trade
+                        </th>
+                        <th class="py-4 px-4 text-right w-44">
+                            Pool Budget / Trade
                         </th>
                     </tr>
                 </thead>
@@ -302,10 +305,13 @@
                             <div class="flex items-center gap-2">
                                 <span class="w-2.5 h-2.5 rounded-full {{ strategy_color_pills.get(row.name, 'bg-slate-400') }} shrink-0"></span>
                                 <span>{{ row.name }}</span>
+                                <span class="px-1.5 py-0.5 rounded-md text-xs font-bold {% if row.is_core %}bg-indigo-50 text-indigo-600 border border-indigo-100{% else %}bg-slate-100 text-slate-500 border border-slate-200/60{% endif %}">
+                                    {{ "Core" if row.is_core else "Satellite" }}
+                                </span>
                             </div>
                         </td>
                         <td class="py-3 px-4 text-center">
-                            <span class="font-bold text-slate-900 tabular-nums">{{ row.share_pct | de_number(1) }}%</span>
+                            <span class="font-bold text-slate-900 tabular-nums">{{ row.share_pct | de_number(1) }} %</span>
                         </td>
                         <td class="py-3 px-4 text-center">
                             <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold tabular-nums">
@@ -313,12 +319,84 @@
                             </span>
                         </td>
                         <td class="py-3 px-4 text-right">
-                            <span class="font-bold text-indigo-600 tabular-nums">
+                            <span class="font-medium text-slate-600 tabular-nums">
                                 {{ row.budget_per_trade_dollar | de_number(0) }} $
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-right">
+                            <span class="font-bold text-indigo-600 tabular-nums">
+                                {% if row.is_core %}
+                                {{ row.budget_per_trade_dollar | de_number(0) }} $
+                                {% else %}
+                                {{ allocation_recommendation.satellite_budget_per_trade | de_number(0) }} $
+                                {% endif %}
                             </span>
                         </td>
                     </tr>
                     {% endfor %}
+
+                    <!-- Summary Row 1: Core -->
+                    <tr class="border-t-2 border-slate-200 bg-slate-50/80">
+                        <td class="py-3 px-4 font-bold text-slate-900">
+                            <span>Σ Core-Strategien</span>
+                        </td>
+                        <td class="py-3 px-4 text-center font-bold text-slate-900 tabular-nums">
+                            {{ allocation_recommendation.core_share_pct | de_number(1) }} %
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold tabular-nums">
+                                {{ allocation_recommendation.core_slots }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-right font-medium text-slate-600 tabular-nums">
+                            {{ allocation_recommendation.core_budget_per_trade | de_number(0) }} $
+                        </td>
+                        <td class="py-3 px-4 text-right font-bold text-indigo-600 tabular-nums">
+                            {{ allocation_recommendation.core_budget_per_trade | de_number(0) }} $
+                        </td>
+                    </tr>
+
+                    <!-- Summary Row 2: Satellite -->
+                    <tr class="bg-slate-50/80 border-t border-slate-200/60">
+                        <td class="py-3 px-4 font-bold text-slate-900">
+                            <span>Σ Satellite-Strategien</span>
+                        </td>
+                        <td class="py-3 px-4 text-center font-bold text-slate-900 tabular-nums">
+                            {{ allocation_recommendation.satellite_share_pct | de_number(1) }} %
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold tabular-nums">
+                                {{ allocation_recommendation.satellite_silo_slots }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-right font-medium text-slate-400 tabular-nums">
+                            —
+                        </td>
+                        <td class="py-3 px-4 text-right font-bold text-indigo-600 tabular-nums">
+                            {{ allocation_recommendation.satellite_budget_per_trade | de_number(0) }} $
+                        </td>
+                    </tr>
+
+                    <!-- Summary Row 3: Total Portfolio -->
+                    <tr class="border-t-2 border-slate-300 bg-slate-100/70">
+                        <td class="py-3 px-4 font-bold text-slate-900">
+                            <span>Σ Gesamt-Portfolio</span>
+                        </td>
+                        <td class="py-3 px-4 text-center font-bold text-slate-900 tabular-nums">
+                            {{ (allocation_recommendation.core_share_pct + allocation_recommendation.satellite_share_pct) | de_number(1) }} %
+                        </td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-slate-200/80 text-slate-800 font-bold tabular-nums">
+                                {{ allocation_recommendation.total_slots }}
+                            </span>
+                        </td>
+                        <td class="py-3 px-4 text-right font-medium text-slate-400 tabular-nums">
+                            —
+                        </td>
+                        <td class="py-3 px-4 text-right font-medium text-slate-400 tabular-nums">
+                            —
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>

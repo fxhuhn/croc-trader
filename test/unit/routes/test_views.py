@@ -1354,8 +1354,8 @@ def test_view_analytics_monthly_matrix_portfolio_models(
 
         # Section header rendered
         assert b"Portfoliomodell" in response.data
-        # Standard, Frequenz-Modell, and Risikoadjustiertes Modell labels
-        assert b"Standard" in response.data
+        # Standard Equal Weight, Frequenz-Modell, and Risikoadjustiertes Modell labels
+        assert b"Standard (Equal Weight)" in response.data
         assert b"Frequenz-Modell (EV/M)" in response.data
         assert b"Risikoadjustiert (Max-Sharpe)" in response.data
         assert b"Risikoadjustiert (Risk Parity)" in response.data
@@ -1363,8 +1363,11 @@ def test_view_analytics_monthly_matrix_portfolio_models(
         # Section 4: Allokations-Empfehlung rendered
         assert b"Allokations-Empfehlung" in response.data
         assert b"100.000 $ Portfolio" in response.data
-        assert b"Max. Budget / Trade" in response.data
-        assert b"Slots (P95)" in response.data
+        assert b"Silo Budget / Trade" in response.data
+        assert b"Pool Budget / Trade" in response.data
+        assert "Σ Core-Strategien".encode() in response.data
+        assert "Σ Satellite-Strategien".encode() in response.data
+        assert "Σ Gesamt-Portfolio".encode() in response.data
         assert b"Modell:" in response.data
 
 

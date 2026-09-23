@@ -32,6 +32,11 @@ class AllocationRecommendationContext:
     reference_capital: float = 100_000.0
 
 
+CORE_STRATEGY_NAME: str = "NDX Momentum"
+CORE_PORTFOLIO_SHARE: float = 0.40
+SATELLITE_PORTFOLIO_SHARE: float = 0.60
+
+
 class StrategyAllocationRow(TypedDict):
     """Single strategy allocation entry for the portfolio recommendation."""
 
@@ -39,6 +44,7 @@ class StrategyAllocationRow(TypedDict):
     share_pct: float
     budget_per_trade_dollar: float
     slots: int
+    is_core: bool
 
 
 class AllocationRecommendationPayload(TypedDict):
@@ -50,6 +56,22 @@ class AllocationRecommendationPayload(TypedDict):
     total_slots: int
     reference_capital: float
     rows: list[StrategyAllocationRow]
+    core_strategy_name: str
+    core_slots: int
+    core_capital: float
+    core_budget_per_trade: float
+    core_share_pct: float
+    satellite_capital: float
+    satellite_share_pct: float
+    satellite_silo_slots: int
+    satellite_global_slots: int
+    satellite_global_max_concurrent: int
+    satellite_budget_per_trade: float
+    satellite_efficiency_gain_pct: float
+    global_slots: int
+    global_max_concurrent: int
+    global_budget_per_trade: float
+    efficiency_gain_pct: float
 
 
 MIN_SERIES_LEN: int = 2
@@ -655,7 +677,7 @@ def _build_portfolio_models_matrix_rows(
     return [
         {
             "key": "standard",
-            "name": "Standard",
+            "name": "Standard (Equal Weight)",
             "months": standard_monthly,
             "gesamt": round(compound(standard_monthly), 1),
             "weights": equal_weights,
@@ -684,28 +706,147 @@ def _build_portfolio_models_matrix_rows(
     ]
 
 
+def _calculate_satellite_concurrency(
+    dataframe: pd.DataFrame,
+    active_trades: Sequence[dict[str, Any]],
+    resolved_strategies: pd.Series,
+    satellite_filters: list[Any],
+) -> tuple[float, float]:
+    """Calculates peak and 95th percentile concurrent exposure for satellite strategies."""
+    if dataframe.empty and not active_trades:
+        return 0.0, 0.0
+
+    satellite_df = (
+        dataframe[resolved_strategies.isin(satellite_filters)].copy()
+        if not dataframe.empty and not resolved_strategies.empty
+        else pd.DataFrame()
+    )
+    satellite_active = [
+        trade
+        for trade in active_trades
+        if STRATEGY_ALIASES.get(
+            str(trade.get("strategy", "")).lower(), trade.get("strategy")
+        )
+        in satellite_filters
+        or trade.get("strategy") in satellite_filters
+    ]
+    return calculate_concurrent_exposure(satellite_df, satellite_active)
+
+
 def calculate_allocation_recommendation(
     context: AllocationRecommendationContext,
     dataframe: pd.DataFrame,
     active_trades: Sequence[dict[str, Any]],
     strategy_groups: dict[str, list[Any]],
+    core_share: float = CORE_PORTFOLIO_SHARE,
 ) -> AllocationRecommendationPayload:
-    """Calculates allocation recommendation for reference capital based on best model.
+    """Calculates allocation recommendation separating Core and Satellite Pool.
 
     Args:
         context: Encapsulated model context (model_key, model_name, ytd_return_pct, weights, reference_capital).
         dataframe: Historical closed trades DataFrame.
         active_trades: Currently open active trades sequence.
         strategy_groups: Mapping of strategy display names to identifier filters.
+        core_share: Fixed portfolio allocation share for the core strategy (defaults to CORE_PORTFOLIO_SHARE = 0.40).
 
     Returns:
         AllocationRecommendationPayload: Structured recommendation data.
     """
+    rows, total_slots = _build_strategy_allocation_rows(
+        context, dataframe, active_trades, strategy_groups, core_share
+    )
+
+    core_row = next((r for r in rows if r["is_core"]), None)
+    if core_row is not None:
+        core_strategy_name = CORE_STRATEGY_NAME
+        core_slots = core_row["slots"]
+        core_share_pct = core_row["share_pct"]
+        core_capital = round(context.reference_capital * (core_share_pct / 100.0), 0)
+        core_budget_per_trade = core_row["budget_per_trade_dollar"]
+    else:
+        core_strategy_name = ""
+        core_slots = 0
+        core_share_pct = 0.0
+        core_capital = 0.0
+        core_budget_per_trade = 0.0
+
+    satellite_rows = [r for r in rows if not r["is_core"]]
+    satellite_silo_slots = sum(r["slots"] for r in satellite_rows)
+    satellite_share_pct = round(sum(r["share_pct"] for r in satellite_rows), 1)
+    satellite_capital = round(
+        context.reference_capital * (satellite_share_pct / 100.0), 0
+    )
+
     resolved_strategies = (
         dataframe["strategy"].apply(lambda s: STRATEGY_ALIASES.get(str(s).lower(), s))
         if not dataframe.empty and "strategy" in dataframe.columns
         else pd.Series(dtype=object)
     )
+    satellite_filters: list[Any] = []
+    for strat_name, filters in strategy_groups.items():
+        if strat_name != CORE_STRATEGY_NAME:
+            satellite_filters.extend(filters)
+
+    sat_max, sat_p95 = _calculate_satellite_concurrency(
+        dataframe, active_trades, resolved_strategies, satellite_filters
+    )
+    satellite_global_slots = max(int(sat_p95), 1) if satellite_silo_slots > 0 else 0
+    satellite_budget_per_trade = (
+        round(satellite_capital / satellite_global_slots, 0)
+        if satellite_global_slots > 0
+        else 0.0
+    )
+    satellite_efficiency_gain_pct = (
+        round((1.0 - (satellite_global_slots / satellite_silo_slots)) * 100.0, 1)
+        if satellite_silo_slots > 0 and satellite_global_slots > 0
+        else 0.0
+    )
+
+    return {
+        "model_name": context.model_name,
+        "model_key": context.model_key,
+        "ytd_return_pct": context.ytd_return_pct,
+        "total_slots": total_slots,
+        "reference_capital": context.reference_capital,
+        "rows": rows,
+        "core_strategy_name": core_strategy_name,
+        "core_slots": core_slots,
+        "core_capital": core_capital,
+        "core_budget_per_trade": core_budget_per_trade,
+        "core_share_pct": core_share_pct,
+        "satellite_capital": satellite_capital,
+        "satellite_share_pct": satellite_share_pct,
+        "satellite_silo_slots": satellite_silo_slots,
+        "satellite_global_slots": satellite_global_slots,
+        "satellite_global_max_concurrent": int(sat_max),
+        "satellite_budget_per_trade": satellite_budget_per_trade,
+        "satellite_efficiency_gain_pct": satellite_efficiency_gain_pct,
+        "global_slots": satellite_global_slots,
+        "global_max_concurrent": int(sat_max),
+        "global_budget_per_trade": satellite_budget_per_trade,
+        "efficiency_gain_pct": satellite_efficiency_gain_pct,
+    }
+
+
+def _build_strategy_allocation_rows(
+    context: AllocationRecommendationContext,
+    dataframe: pd.DataFrame,
+    active_trades: Sequence[dict[str, Any]],
+    strategy_groups: dict[str, list[Any]],
+    core_share: float,
+) -> tuple[list[StrategyAllocationRow], int]:
+    """Builds individual strategy allocation rows applying the Core-Satellite split."""
+    resolved_strategies = (
+        dataframe["strategy"].apply(lambda s: STRATEGY_ALIASES.get(str(s).lower(), s))
+        if not dataframe.empty and "strategy" in dataframe.columns
+        else pd.Series(dtype=object)
+    )
+
+    core_present = CORE_STRATEGY_NAME in strategy_groups
+    sat_names = [n for n in strategy_groups if n != CORE_STRATEGY_NAME]
+    raw_sat_weights_sum = sum(float(context.weights.get(n, 0.0)) for n in sat_names)
+    effective_core_share = core_share if core_present else 0.0
+    effective_satellite_share = 1.0 - effective_core_share
 
     rows: list[StrategyAllocationRow] = []
     total_slots = 0
@@ -730,7 +871,19 @@ def calculate_allocation_recommendation(
         slots = max(int(percentile_95), 1)
         total_slots += slots
 
-        weight = float(context.weights.get(name, 0.0))
+        is_core = name == CORE_STRATEGY_NAME
+        if is_core:
+            weight = effective_core_share
+        elif core_present:
+            raw_w = float(context.weights.get(name, 0.0))
+            weight = (
+                (raw_w / raw_sat_weights_sum * effective_satellite_share)
+                if raw_sat_weights_sum > 0
+                else (effective_satellite_share / len(sat_names))
+            )
+        else:
+            weight = float(context.weights.get(name, 0.0))
+
         share_pct = round(weight * 100.0, 1)
         strategy_budget = context.reference_capital * weight
         budget_per_trade = round(strategy_budget / slots, 0) if slots > 0 else 0.0
@@ -741,17 +894,12 @@ def calculate_allocation_recommendation(
                 "share_pct": share_pct,
                 "budget_per_trade_dollar": budget_per_trade,
                 "slots": slots,
+                "is_core": is_core,
             }
         )
 
-    return {
-        "model_name": context.model_name,
-        "model_key": context.model_key,
-        "ytd_return_pct": context.ytd_return_pct,
-        "total_slots": total_slots,
-        "reference_capital": context.reference_capital,
-        "rows": rows,
-    }
+    sorted_rows = sorted(rows, key=lambda r: (not r["is_core"], r["name"]))
+    return sorted_rows, total_slots
 
 
 def calculate_strategy_risk_and_expectancy(

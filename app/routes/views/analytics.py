@@ -653,7 +653,7 @@ def view_analytics_monthly_matrix() -> str:
         if portfolio_models_rows
         else {
             "key": "standard",
-            "name": "Standard",
+            "name": "Standard (Equal Weight)",
             "gesamt": 0.0,
             "weights": {name: 1.0 / len(STRATEGY_GROUPS) for name in STRATEGY_GROUPS},
         }
@@ -661,7 +661,7 @@ def view_analytics_monthly_matrix() -> str:
 
     recommendation_context = AllocationRecommendationContext(
         model_key=str(best_model.get("key", "standard")),
-        model_name=str(best_model.get("name", "Standard")),
+        model_name=str(best_model.get("name", "Standard (Equal Weight)")),
         ytd_return_pct=float(str(best_model.get("gesamt", 0.0))),
         weights=cast(dict[str, float], best_model.get("weights", {})),
     )
