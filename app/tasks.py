@@ -177,7 +177,7 @@ def run_active_positions_market_sync(
 ) -> list[str]:
     """Refreshes market data specifically for active and pending trade symbols.
 
-    Runs pre-flight before TradeManager (e.g. at 05:45 Berlin) to reconcile
+    Runs pre-flight before TradeManager (e.g. at 06:15 Berlin) to reconcile
     any unfinalized post-market quotes with official regular market close prices.
 
     Args:

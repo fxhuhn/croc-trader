@@ -199,11 +199,11 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
         replace_existing=True,
     )
 
-    # b) 03:00 Berlin Time (Sanitary Check / Early EU)
+    # b) 05:15 Berlin Time (Sanitary Check / Early EU)
     scheduler.add_job(
         func=run_market_data_update,
         args=[db_stocks],
-        trigger=CronTrigger(hour=3, minute=0, timezone=pytz.timezone("Europe/Berlin")),
+        trigger=CronTrigger(hour=5, minute=15, timezone=pytz.timezone("Europe/Berlin")),
         id="market_data_update_berlin",
         replace_existing=True,
     )
@@ -219,21 +219,21 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
         replace_existing=True,
     )
 
-    # --- JOB 2b: Pre-Flight Market Data Reconciliation for Active Positions (05:45 Berlin) ---
+    # --- JOB 2b: Pre-Flight Market Data Reconciliation for Active Positions (06:15 Berlin) ---
     scheduler.add_job(
         func=run_active_positions_market_sync,
         args=[db_stocks],
         trigger=CronTrigger(
             day_of_week="mon-sat",
-            hour=5,
-            minute=45,
+            hour=6,
+            minute=15,
             timezone=pytz.timezone("Europe/Berlin"),
         ),
         id="market_data_preflight_active_positions",
         replace_existing=True,
     )
 
-    # --- JOB 3: Trade Manager (Active Positions / Orders - 06:00) ---
+    # --- JOB 3: Trade Manager (Active Positions / Orders - 06:30) ---
     # Must run BEFORE screener to resolve yesterday's pending entries and free position slots
     tm = app.extensions.get("trade_manager")
     if tm:
@@ -242,29 +242,29 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
             trigger=CronTrigger(
                 day_of_week="mon-sat",
                 hour=6,
-                minute=0,
+                minute=30,
                 timezone=pytz.timezone("Europe/Berlin"),
             ),
             id="trade_manager_process",
             replace_existing=True,
         )
 
-    # --- JOB 4: Strategy Check (Screener - 06:30) ---
+    # --- JOB 4: Strategy Check (Screener - 07:00) ---
     # Runs AFTER TradeManager on a guaranteed clean state
     scheduler.add_job(
         func=run_daily_strategy_check,
         args=[app],
         trigger=CronTrigger(
             day_of_week="mon-fri",
-            hour=6,
-            minute=30,
+            hour=7,
+            minute=0,
             timezone=pytz.timezone("Europe/Berlin"),
         ),
         id="strategy_check",
         replace_existing=True,
     )
 
-    # --- JOB 4.5: Order Generation (07:00) ---
+    # --- JOB 4.5: Order Generation (07:30) ---
     # Generates orders for active positions and new screener trades
     if tm:
         scheduler.add_job(
@@ -273,21 +273,21 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
             trigger=CronTrigger(
                 day_of_week="mon-sat",
                 hour=7,
-                minute=0,
+                minute=30,
                 timezone=pytz.timezone("Europe/Berlin"),
             ),
             id="order_generation",
             replace_existing=True,
         )
 
-    # --- JOB 4.6: Cache Pre-warming (07:15) ---
+    # --- JOB 4.6: Cache Pre-warming (07:45) ---
     scheduler.add_job(
         func=run_cache_prewarm,
         args=[app],
         trigger=CronTrigger(
             day_of_week="mon-sat",
             hour=7,
-            minute=15,
+            minute=45,
             timezone=pytz.timezone("Europe/Berlin"),
         ),
         id="cache_prewarming",

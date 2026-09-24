@@ -143,7 +143,7 @@ def test_run_active_positions_market_sync_empty_when_no_trades(
 
 
 def test_configure_scheduler_registers_preflight_job() -> None:
-    """Verifies that configure_scheduler registers the 05:45 pre-flight sync job."""
+    """Verifies that configure_scheduler registers the pre-flight sync job."""
     from app.services.setup import configure_scheduler
 
     mock_app = MagicMock()
