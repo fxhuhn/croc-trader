@@ -14,7 +14,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from app.models import MarketPrice
+from app.models import CandleIntegrityError, MarketPrice
 from app.services.market.provider import YahooDataProvider, require_lock
 from app.services.market.quality import MarketQualityService
 from app.services.market.tv_provider import TradingViewDataProvider
@@ -257,7 +257,7 @@ def test_hypothesis_market_price_from_tradingview_invariants(
     close_price: float,
     volume: int,
 ) -> None:
-    """Invariant: MarketPrice.from_tradingview creates valid model matching all numeric values."""
+    """Invariant: MarketPrice.from_tradingview validates geometry or raises CandleIntegrityError."""
     row: Mapping[str, object] = {
         "date": "2026-07-24",
         "open": open_price,
@@ -266,15 +266,24 @@ def test_hypothesis_market_price_from_tradingview_invariants(
         "close": close_price,
         "volume": volume,
     }
-    price_model = MarketPrice.from_tradingview("TEST.SYM", row)
-    assert price_model.symbol == "TEST.SYM"
-    assert price_model.date == "2026-07-24"
-    assert price_model.open == open_price
-    assert price_model.high == high_price
-    assert price_model.low == low_price
-    assert price_model.close == close_price
-    assert price_model.volume == volume
-    assert price_model.provider == "tradingview"
+    is_valid_geometry = (
+        high_price >= max(open_price, close_price) - 1e-4
+        and low_price <= min(open_price, close_price) + 1e-4
+        and high_price >= low_price - 1e-4
+    )
+    if is_valid_geometry:
+        price_model = MarketPrice.from_tradingview("TEST.SYM", row)
+        assert price_model.symbol == "TEST.SYM"
+        assert price_model.date == "2026-07-24"
+        assert price_model.open == open_price
+        assert price_model.high == high_price
+        assert price_model.low == low_price
+        assert price_model.close == close_price
+        assert price_model.volume == volume
+        assert price_model.provider == "tradingview"
+    else:
+        with pytest.raises(CandleIntegrityError):
+            MarketPrice.from_tradingview("TEST.SYM", row)
 
 
 @pytest.mark.tier2
