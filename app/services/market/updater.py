@@ -7,7 +7,7 @@ import pandas as pd
 from app.database.repositories.market import MarketRepository
 from app.database.repositories.trade import TradeRepository
 from app.database.session import DatabaseSession
-from app.models import MarketPrice
+from app.models import CandleIntegrityError, MarketPrice
 from app.services.market.provider import YahooDataProvider, require_lock
 from app.services.market.tv_provider import TradingViewDataProvider
 from app.tools.market_holidays import MarketHolidayChecker
@@ -150,12 +150,19 @@ class MarketDataUpdater:
         symbol: str,
         ignore_today: bool,
         today_str: str,
-    ) -> tuple[list[MarketPrice], str]:
-        """Extracts and cleans market prices for a single symbol from DataFrame."""
+    ) -> tuple[list[MarketPrice], str, bool]:
+        """Extracts and cleans market prices for a single symbol from DataFrame.
+
+        Returns:
+            Tuple of:
+            - list of valid MarketPrice objects
+            - symbol_max_date string
+            - has_integrity_error boolean (True if any candle failed validation)
+        """
         df_sym.columns = df_sym.columns.str.lower()
         df_sym = df_sym.dropna(subset=["close"])
         if df_sym.empty:
-            return [], ""
+            return [], "", False
 
         if self._reconcile_eod:
             df_sym = self.provider.reconcile_eod_candle(symbol, df_sym)
@@ -163,6 +170,7 @@ class MarketDataUpdater:
         df_sym = df_sym.reset_index().rename(columns={"index": "date"})
         symbol_prices: list[MarketPrice] = []
         symbol_max_date = ""
+        has_integrity_error = False
 
         for row_dict in df_sym.to_dict("records"):
             try:
@@ -173,13 +181,36 @@ class MarketDataUpdater:
                         symbol,
                     )
                     continue
+
+                if MarketPrice.is_anomalous_wick(
+                    price_model.open,
+                    price_model.high,
+                    price_model.low,
+                    price_model.close,
+                ):
+                    logger.warning(
+                        "Anomalous wick spike detected for %s on %s (O=%.2f, H=%.2f, L=%.2f, C=%.2f). Flagging for fallback.",
+                        symbol,
+                        price_model.date,
+                        price_model.open,
+                        price_model.high,
+                        price_model.low,
+                        price_model.close,
+                    )
+                    has_integrity_error = True
+
                 symbol_prices.append(price_model)
                 symbol_max_date = max(symbol_max_date, price_model.date)
-            except ValueError as value_error:
-                logger.debug("Skipping row for %s: %s", symbol, value_error)
+            except (CandleIntegrityError, ValueError) as value_error:
+                logger.warning(
+                    "Candle integrity violation for %s: %s",
+                    symbol,
+                    value_error,
+                )
+                has_integrity_error = True
                 continue
 
-        return symbol_prices, symbol_max_date
+        return symbol_prices, symbol_max_date, has_integrity_error
 
     def _handle_batch_failures(
         self,
@@ -198,6 +229,7 @@ class MarketDataUpdater:
         if provider_mode == "yahoo" and full_reload:
             for symbol in failures:
                 self.repo.ignore_symbol(symbol, "No Data (Full Reload)")
+            return 0
         return 0
 
     def _process_batch(
@@ -242,13 +274,20 @@ class MarketDataUpdater:
                 failures.append(symbol)
                 continue
 
-            symbol_prices, symbol_max_date = self._extract_symbol_market_prices(
-                df_sym,
-                symbol,
-                ignore_today,
-                today_str,
+            symbol_prices, symbol_max_date, has_integrity_error = (
+                self._extract_symbol_market_prices(
+                    df_sym,
+                    symbol,
+                    ignore_today,
+                    today_str,
+                )
             )
-            if not symbol_prices:
+            if not symbol_prices or has_integrity_error:
+                if has_integrity_error and provider_mode == "auto":
+                    logger.info(
+                        "Queuing %s for TradingView fallback due to candle integrity violation.",
+                        symbol,
+                    )
                 failures.append(symbol)
                 continue
 

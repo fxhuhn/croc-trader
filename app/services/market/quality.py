@@ -91,6 +91,84 @@ class MarketQualityService:
         except Exception as e:
             logger.error("Gap Check Error: %s", e, exc_info=True)
 
+    def check_and_repair_corrupt_candles(self, lookback_days: int = 10) -> list[str]:
+        """Audits database for candle integrity violations and repairs them via TradingView.
+
+        Finds symbols with geometrically impossible bars (High < Open/Close, Low > Open/Close, etc.)
+        within lookback_days, triggers an automated TradingView re-download, and sends
+        a Telegram notification if repairs were required.
+
+        Args:
+            lookback_days: Number of calendar days to look back for corrupt candles (default 10).
+
+        Returns:
+            List of repaired ticker symbols.
+        """
+        start_date = (datetime.now() - timedelta(days=lookback_days)).strftime(
+            "%Y-%m-%d"
+        )
+        logger.info("Performing candle integrity check (since %s)...", start_date)
+
+        try:
+            corrupt_symbols = self.repo.get_corrupt_candle_symbols(start_date)
+            if not corrupt_symbols:
+                logger.info(
+                    "Candle Integrity Check: All candles are mathematically valid."
+                )
+                return []
+
+            logger.warning(
+                "Candle Integrity Check: Found %d symbols with invalid candles: %s",
+                len(corrupt_symbols),
+                ", ".join(corrupt_symbols),
+            )
+            logger.warning(
+                "Initiating automated TradingView repair for corrupt symbols..."
+            )
+
+            # Run targeted update using TradingView
+            self.updater.run_update(
+                full_reload=False,
+                specific_symbols=corrupt_symbols,
+                provider_mode="tradingview",
+            )
+
+            # Re-verify whether any corrupt candles remain
+            still_corrupt = self.repo.get_corrupt_candle_symbols(start_date)
+            repaired = sorted(set(corrupt_symbols) - set(still_corrupt))
+
+            if repaired:
+                logger.info(
+                    "✓ Successfully repaired %d symbols via TradingView: %s",
+                    len(repaired),
+                    ", ".join(repaired),
+                )
+                if self.telegram_bot:
+                    msg = (
+                        f"🛡️ **[Croc-Trader] Kerzen-Integritätsreparatur:**\n"
+                        f"{len(repaired)} Symbole mit fehlerhaften Yahoo-Kerzen automatisch via TradingView geheilt:\n"
+                        f"• {', '.join(repaired)}"
+                    )
+                    try:
+                        self.telegram_bot.send_message(msg)
+                    except Exception as tg_err:
+                        logger.error(
+                            "Failed to send Telegram repair notice: %s", tg_err
+                        )
+
+            if still_corrupt:
+                logger.warning(
+                    "⚠️ %d symbols still have corrupt candles after repair attempt: %s",
+                    len(still_corrupt),
+                    ", ".join(still_corrupt),
+                )
+
+            return repaired
+
+        except Exception as error:
+            logger.error("Candle Integrity Check Error: %s", error, exc_info=True)
+            return []
+
     def check_last_trading_day_completeness(
         self, max_allowed_missing_ratio: float = 0.05
     ) -> bool:

@@ -47,10 +47,27 @@ class Order:
     last_update: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
+class CandleIntegrityError(ValueError):
+    """Raised when a price candle violates geometric invariants or contains anomalous values."""
+
+
+@dataclass(frozen=True)
+class CandleBar:
+    """Immutable parameter container representing OHLCV values for candle validation."""
+
+    symbol: str
+    date: str
+    open_price: float
+    high_price: float
+    low_price: float
+    close_price: float
+    volume: int
+
+
 @dataclass(frozen=True)
 class MarketPrice:
-    """
-    Immutable representation of a daily price bar.
+    """Immutable representation of a daily price bar.
+
     Strictly typed and validated upon creation via factory.
     """
 
@@ -64,16 +81,92 @@ class MarketPrice:
     provider: str = "yahoo"
     timeframe: str = "1D"
 
+    ANOMALOUS_BODY_RATIO: float = 0.25
+
+    @staticmethod
+    def validate_candle(
+        bar: CandleBar,
+        epsilon: float = 1e-4,
+    ) -> None:
+        """Validates fundamental geometric and boundary invariants for a price candle."""
+        if bar.close_price < 0:
+            raise CandleIntegrityError(
+                f"Negative close price for {bar.symbol}: {bar.close_price}"
+            )
+        if (
+            bar.open_price <= 0
+            or bar.high_price <= 0
+            or bar.low_price <= 0
+            or bar.close_price <= 0
+        ):
+            raise CandleIntegrityError(
+                f"Non-positive price for {bar.symbol} on {bar.date}: "
+                f"O={bar.open_price}, H={bar.high_price}, L={bar.low_price}, C={bar.close_price}"
+            )
+        if bar.volume < 0:
+            raise CandleIntegrityError(
+                f"Negative volume ({bar.volume}) for {bar.symbol} on {bar.date}"
+            )
+        if bar.high_price < bar.low_price - epsilon:
+            raise CandleIntegrityError(
+                f"High ({bar.high_price}) < Low ({bar.low_price}) for {bar.symbol} on {bar.date}"
+            )
+        max_open_close = max(bar.open_price, bar.close_price)
+        if bar.high_price < max_open_close - epsilon:
+            raise CandleIntegrityError(
+                f"High ({bar.high_price}) < max(Open, Close) ({max_open_close}) for {bar.symbol} on {bar.date}"
+            )
+        min_open_close = min(bar.open_price, bar.close_price)
+        if bar.low_price > min_open_close + epsilon:
+            raise CandleIntegrityError(
+                f"Low ({bar.low_price}) > min(Open, Close) ({min_open_close}) for {bar.symbol} on {bar.date}"
+            )
+
+    @classmethod
+    def is_anomalous_wick(
+        cls,
+        open_price: float,
+        high_price: float,
+        low_price: float,
+        close_price: float,
+        spike_threshold: float = 0.12,
+    ) -> bool:
+        """Detects flash-crash or spike bad-print anomalies on lower or upper wicks.
+
+        Identifies candles where an extreme wick exceeds spike_threshold (e.g. 12%)
+        of the closing price, yet the real body is <= 25% of the wick (indicating
+        an abnormal momentary needle and rapid rebound typical of bad prints).
+        """
+        if close_price <= 0:
+            return False
+
+        # Lower wick anomaly (flash crash / bad tick downwards)
+        min_open_close = min(open_price, close_price)
+        lower_wick = min_open_close - low_price
+        if lower_wick > 0 and (lower_wick / close_price) >= spike_threshold:
+            body = abs(close_price - open_price)
+            if body <= cls.ANOMALOUS_BODY_RATIO * lower_wick:
+                return True
+
+        # Upper wick anomaly (bad print spike upwards)
+        max_open_close = max(open_price, close_price)
+        upper_wick = high_price - max_open_close
+        if upper_wick > 0 and (upper_wick / close_price) >= spike_threshold:
+            body = abs(close_price - open_price)
+            if body <= cls.ANOMALOUS_BODY_RATIO * upper_wick:
+                return True
+
+        return False
+
     @classmethod
     def from_yahoo(cls, symbol: str, row: dict[str, Any]) -> MarketPrice:
+        """Factory method to create a MarketPrice from a Yahoo row dictionary.
+
+        Enforces candle integrity invariants (positive prices, High >= max(Open, Close),
+        Low <= min(Open, Close), High >= Low, non-negative volume).
         """
-        Factory method to create a MarketPrice from a Yahoo row dictionary.
-        Validation logic (e.g., non-negative prices) implies here.
-        """
-        # Close must be valid, others can be 0 if missing.
-        close_price = float(row.get("close", 0.0))
-        if close_price < 0:
-            raise ValueError(f"Negative close price for {symbol}")
+        raw_close = row.get("close", 0.0)
+        close_price = float(raw_close) if raw_close is not None else 0.0
 
         # Ensure date format is correct (Yahoo often gives Timestamp)
         date_value = row.get("date")
@@ -87,22 +180,45 @@ class MarketPrice:
                 else datetime.now(UTC).strftime("%Y-%m-%d")
             )
 
+        raw_open = row.get("open")
+        raw_high = row.get("high")
+        raw_low = row.get("low")
+
+        open_price = float(raw_open) if raw_open is not None else close_price
+        high_price = (
+            float(raw_high) if raw_high is not None else max(open_price, close_price)
+        )
+        low_price = (
+            float(raw_low) if raw_low is not None else min(open_price, close_price)
+        )
+        volume = int(float(row.get("volume", 0) or 0))
+
+        bar = CandleBar(
+            symbol=symbol,
+            date=date_string,
+            open_price=open_price,
+            high_price=high_price,
+            low_price=low_price,
+            close_price=close_price,
+            volume=volume,
+        )
+        cls.validate_candle(bar)
+
         return cls(
             symbol=symbol,
             date=date_string,
-            open=float(row.get("open", 0.0)),
-            high=float(row.get("high", 0.0)),
-            low=float(row.get("low", 0.0)),
+            open=open_price,
+            high=high_price,
+            low=low_price,
             close=close_price,
-            volume=int(row.get("volume", 0)),
+            volume=volume,
         )
 
     @classmethod
     def from_tradingview(cls, symbol: str, row: Mapping[str, object]) -> MarketPrice:
         """Factory method to create a MarketPrice from a TradingView row dictionary."""
-        close_price = float(str(row.get("close") or 0.0))
-        if close_price < 0:
-            raise ValueError(f"Negative close price for {symbol}")
+        raw_close = row.get("close") or 0.0
+        close_price = float(str(raw_close))
 
         date_value = row.get("date") or row.get("datetime")
         if hasattr(date_value, "strftime"):
@@ -114,14 +230,40 @@ class MarketPrice:
                 else datetime.now(UTC).strftime("%Y-%m-%d")
             )
 
+        raw_open = row.get("open")
+        raw_high = row.get("high")
+        raw_low = row.get("low")
+
+        open_price = float(str(raw_open)) if raw_open is not None else close_price
+        high_price = (
+            float(str(raw_high))
+            if raw_high is not None
+            else max(open_price, close_price)
+        )
+        low_price = (
+            float(str(raw_low)) if raw_low is not None else min(open_price, close_price)
+        )
+        volume = int(float(str(row.get("volume") or 0)))
+
+        bar = CandleBar(
+            symbol=symbol,
+            date=date_string,
+            open_price=open_price,
+            high_price=high_price,
+            low_price=low_price,
+            close_price=close_price,
+            volume=volume,
+        )
+        cls.validate_candle(bar)
+
         return cls(
             symbol=symbol,
             date=date_string,
-            open=float(str(row.get("open") or 0.0)),
-            high=float(str(row.get("high") or 0.0)),
-            low=float(str(row.get("low") or 0.0)),
+            open=open_price,
+            high=high_price,
+            low=low_price,
             close=close_price,
-            volume=int(float(str(row.get("volume") or 0))),
+            volume=volume,
             provider="tradingview",
             timeframe="1D",
         )

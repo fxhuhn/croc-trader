@@ -165,6 +165,7 @@ def run_market_data_update(
 
         quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
         quality_service.perform_gap_check()
+        quality_service.check_and_repair_corrupt_candles()
         quality_service.check_last_trading_day_completeness()
 
     except Exception as error:

@@ -249,6 +249,41 @@ class MarketRepository(BaseRepository):
         row = self.fetch_one(sql_query, (symbol, date))
         return dict(row) if row else None
 
+    def get_corrupt_candle_symbols(self, start_date: str) -> list[str]:
+        """Finds distinct symbols that have geometric or boundary candle integrity violations.
+
+        Checks:
+        - High < max(Open, Close) - 1e-4
+        - Low > min(Open, Close) + 1e-4
+        - High < Low - 1e-4
+        - Open <= 0 OR Close <= 0 OR High <= 0 OR Low <= 0
+
+        Args:
+            start_date: Start date string (YYYY-MM-DD) to limit audit scope.
+
+        Returns:
+            List of ticker symbols with invalid price records.
+        """
+        sql_query = """
+            SELECT DISTINCT symbol FROM market_prices
+            WHERE date >= ?
+              AND timeframe = '1D'
+              AND (
+                  high < open - 0.0001
+                  OR high < close - 0.0001
+                  OR low > open + 0.0001
+                  OR low > close + 0.0001
+                  OR high < low - 0.0001
+                  OR open <= 0
+                  OR close <= 0
+                  OR high <= 0
+                  OR low <= 0
+              )
+            ORDER BY symbol ASC
+        """
+        rows = self.fetch_all(sql_query, (start_date,))
+        return [str(row["symbol"]) for row in rows if row and row["symbol"]]
+
     # --- Data Access Logic (Bulk / Pandas) ---
 
     def get_data_for_lookback(self, start_date: str = "2020-01-01") -> pd.DataFrame:
