@@ -133,6 +133,18 @@ class MarketQualityService:
                 provider_mode="tradingview",
             )
 
+            # Purge corrupt Yahoo records that have been repaired by TradingView
+            deleted_count = self.repo.delete_corrupt_candles(
+                start_date=start_date,
+                symbols=corrupt_symbols,
+                provider="yahoo",
+            )
+            if isinstance(deleted_count, int | float) and deleted_count > 0:
+                logger.info(
+                    "Purged %d corrupt Yahoo candles superseded by TradingView repair.",
+                    deleted_count,
+                )
+
             # Re-verify whether any corrupt candles remain
             still_corrupt = self.repo.get_corrupt_candle_symbols(start_date)
             repaired = sorted(set(corrupt_symbols) - set(still_corrupt))

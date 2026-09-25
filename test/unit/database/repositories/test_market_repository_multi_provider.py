@@ -16,7 +16,7 @@ def multi_provider_session(tmp_path):
     repo.init_schema()
 
     # Dataset with overlapping and missing dates:
-    # AAPL 2026-07-20: Present in both Yahoo ($150 close) and TradingView ($152 close) -> Yahoo should win
+    # AAPL 2026-07-20: Present in both Yahoo ($150 close) and TradingView ($152 close) -> TradingView should win
     # AAPL 2026-07-21: Present ONLY in TradingView ($155 close) -> TradingView fallback
     # MSFT 2026-07-20: Present ONLY in Yahoo ($300 close)
     records = [
@@ -68,11 +68,11 @@ def multi_provider_session(tmp_path):
 def test_query_dual_provider_priority(multi_provider_session):
     repo = MarketRepository(multi_provider_session)
 
-    # 2026-07-20 has both Yahoo (150.0) and TradingView (152.0)
+    # 2026-07-20 has both Yahoo (150.0) and TradingView (152.0) -> TradingView wins
     ohlcv = repo.get_ohlcv("AAPL", "2026-07-20")
     assert ohlcv is not None
-    assert ohlcv["close"] == 150.0
-    assert ohlcv["provider"] == "yahoo"
+    assert ohlcv["close"] == 152.0
+    assert ohlcv["provider"] == "tradingview"
 
 
 def test_query_tradingview_only_fallback(multi_provider_session):
@@ -88,10 +88,10 @@ def test_query_tradingview_only_fallback(multi_provider_session):
 def test_query_interleaved_date_patching(multi_provider_session):
     repo = MarketRepository(multi_provider_session)
 
-    # get_symbol_history_raw should seamlessly patch 2026-07-20 (Yahoo) and 2026-07-21 (TradingView)
+    # get_symbol_history_raw should prioritize TradingView (152.0) on 2026-07-20 and TradingView (155.0) on 2026-07-21
     df = repo.get_symbol_history_raw("AAPL", "2026-07-20")
     assert len(df) == 2
-    assert df["close"].tolist() == [150.0, 155.0]
+    assert df["close"].tolist() == [152.0, 155.0]
 
 
 def test_get_symbol_history_raw_defaults_start_date_when_omitted(
@@ -106,7 +106,7 @@ def test_get_symbol_history_raw_defaults_start_date_when_omitted(
     # Assert
     assert not df.empty
     assert len(df) == 2
-    assert df["close"].tolist() == [150.0, 155.0]
+    assert df["close"].tolist() == [152.0, 155.0]
 
 
 def test_market_repository_methods_handle_default_parameters_when_omitted(
@@ -136,7 +136,68 @@ def test_market_data_provider_pivoting_with_fallback(multi_provider_session):
     assert data is not None
     close_df = data["close"]
 
-    # AAPL 2026-07-20 should be 150.0 (Yahoo), 2026-07-21 should be 155.0 (TradingView)
+    # AAPL 2026-07-20 should be 152.0 (TradingView), 2026-07-21 should be 155.0 (TradingView)
     assert "AAPL" in close_df.columns
     aapl_values = close_df["AAPL"].dropna().tolist()
-    assert aapl_values == [150.0, 155.0]
+    assert aapl_values == [152.0, 155.0]
+
+
+def test_delete_prices_purges_specific_provider_and_dates(multi_provider_session):
+    repo = MarketRepository(multi_provider_session)
+
+    # Initial state: 2026-07-20 has both Yahoo and TradingView records
+    deleted_count = repo.delete_prices("AAPL", ["2026-07-20"], provider="yahoo")
+    assert deleted_count == 1
+
+    # Empty date list returns 0 safely
+    assert repo.delete_prices("AAPL", [], provider="yahoo") == 0
+
+    # Query directly to ensure Yahoo record is gone but TradingView record remains
+    with multi_provider_session.connect() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT provider FROM market_prices WHERE symbol = 'AAPL' AND date = '2026-07-20'"
+        )
+        remaining_providers = [row[0] for row in cursor.fetchall()]
+        assert remaining_providers == ["tradingview"]
+
+
+def test_delete_corrupt_candles_purges_invalid_geometry(multi_provider_session):
+    repo = MarketRepository(multi_provider_session)
+
+    # Insert corrupt candle (high < low, negative prices, etc.)
+    corrupt_records = [
+        MarketPrice(
+            symbol="CORRUPT",
+            date="2026-07-22",
+            open=100.0,
+            high=90.0,
+            low=105.0,
+            close=95.0,
+            volume=500,
+            provider="yahoo",
+        ),
+        MarketPrice(
+            symbol="VALID",
+            date="2026-07-22",
+            open=100.0,
+            high=105.0,
+            low=95.0,
+            close=102.0,
+            volume=500,
+            provider="yahoo",
+        ),
+    ]
+    repo.save_bulk_prices(corrupt_records)
+
+    deleted_count = repo.delete_corrupt_candles(
+        "2026-07-22", symbols=["CORRUPT"], provider="yahoo"
+    )
+    assert deleted_count == 1
+
+    # Verify corrupt record was removed and valid remains
+    ohlcv_corrupt = repo.get_ohlcv("CORRUPT", "2026-07-22")
+    assert ohlcv_corrupt is None
+
+    ohlcv_valid = repo.get_ohlcv("VALID", "2026-07-22")
+    assert ohlcv_valid is not None

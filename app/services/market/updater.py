@@ -354,6 +354,16 @@ class MarketDataUpdater:
 
         if tv_prices:
             self.repo.save_bulk_prices(tv_prices)
+            saved_dates = [price.date for price in tv_prices]
+            deleted_count = self.repo.delete_prices(
+                symbol, saved_dates, provider="yahoo"
+            )
+            if isinstance(deleted_count, int | float) and deleted_count > 0:
+                logger.debug(
+                    "Purged %d superseded Yahoo records for %s upon TradingView fallback.",
+                    deleted_count,
+                    symbol,
+                )
             logger.debug(
                 "TradingView saved %d records for %s",
                 len(tv_prices),

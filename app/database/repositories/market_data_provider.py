@@ -9,6 +9,7 @@ import logging
 import pandas as pd
 
 from ..session import DatabaseSession
+from .market import PROVIDER_RANK_ORDER
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class MarketDataProvider:
         include_symbol_in_select: bool = True,
         partition_by_symbol: bool = True,
     ) -> str:
-        """Constructs a deduplicated, ranked OHLCV query prioritizing Yahoo over TradingView."""
+        """Constructs a deduplicated, ranked OHLCV query prioritizing TradingView over Yahoo."""
         partition_clause = (
             "PARTITION BY symbol, date" if partition_by_symbol else "PARTITION BY date"
         )
@@ -49,7 +50,7 @@ class MarketDataProvider:
             f"    SELECT date, {symbol_col}open, high, low, close, volume, "
             "           ROW_NUMBER() OVER ( "
             f"               {partition_clause} "
-            "               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END "
+            f"               ORDER BY {PROVIDER_RANK_ORDER} "
             "           ) as rank_idx "
             "    FROM market_prices "
             f"   WHERE {where_filter} AND timeframe = '1D'"  # nosec B608

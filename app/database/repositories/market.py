@@ -16,6 +16,10 @@ logger = logging.getLogger(__name__)
 # Minimum parts after splitting "YYYY-MM-DD HH:MM:SS" → [date, time]
 MIN_TIMESTAMP_PARTS: int = 2
 
+# Deduplicated provider precedence: verified fallback/repair data (TradingView)
+# precedes default historical ingestion (Yahoo).
+PROVIDER_RANK_ORDER: str = "CASE WHEN provider = 'tradingview' THEN 1 WHEN provider = 'yahoo' THEN 2 ELSE 3 END"
+
 
 class MarketRepository(BaseRepository):
     """Repository for querying and persisting market price data and symbol blacklist records."""
@@ -191,7 +195,7 @@ class MarketRepository(BaseRepository):
                 SELECT close,
                        ROW_NUMBER() OVER (
                            PARTITION BY symbol, date
-                           ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                           ORDER BY CASE WHEN provider = 'tradingview' THEN 1 WHEN provider = 'yahoo' THEN 2 ELSE 3 END
                        ) as rank_idx,
                        date
                 FROM market_prices
@@ -243,7 +247,7 @@ class MarketRepository(BaseRepository):
         sql_query = """
             SELECT * FROM market_prices
             WHERE symbol = ? AND date = ? AND timeframe = '1D'
-            ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+            ORDER BY CASE WHEN provider = 'tradingview' THEN 1 WHEN provider = 'yahoo' THEN 2 ELSE 3 END
             LIMIT 1
         """
         row = self.fetch_one(sql_query, (symbol, date))
@@ -300,7 +304,7 @@ class MarketRepository(BaseRepository):
                 SELECT date, symbol, open, high, low, close, volume,
                        ROW_NUMBER() OVER (
                            PARTITION BY symbol, date
-                           ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                           ORDER BY CASE WHEN provider = 'tradingview' THEN 1 WHEN provider = 'yahoo' THEN 2 ELSE 3 END
                        ) as rank_idx
                 FROM market_prices
                 WHERE date >= ? AND timeframe = '1D'
@@ -333,7 +337,7 @@ class MarketRepository(BaseRepository):
                 SELECT date, open, high, low, close, volume,
                        ROW_NUMBER() OVER (
                            PARTITION BY date
-                           ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END
+                           ORDER BY CASE WHEN provider = 'tradingview' THEN 1 WHEN provider = 'yahoo' THEN 2 ELSE 3 END
                        ) as rank_idx
                 FROM market_prices
                 WHERE symbol = ? AND date >= ? AND timeframe = '1D'
@@ -377,7 +381,7 @@ class MarketRepository(BaseRepository):
             "    SELECT symbol, date, open, high, low, close, volume, "
             "           ROW_NUMBER() OVER ( "
             "               PARTITION BY symbol, date "
-            "               ORDER BY CASE WHEN provider = 'yahoo' THEN 1 WHEN provider = 'tradingview' THEN 2 ELSE 3 END "
+            f"               ORDER BY {PROVIDER_RANK_ORDER} "
             "           ) as rank_idx "
             "    FROM market_prices "
             f"   WHERE symbol IN ({placeholders}) AND date >= ? AND date <= ? AND timeframe = '1D'"  # nosec B608
@@ -414,3 +418,78 @@ class MarketRepository(BaseRepository):
         sql_query = "INSERT OR REPLACE INTO market_prices (symbol, date, open, high, low, close, volume, provider, timeframe) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
         with self.session.connect() as connection:
             connection.executemany(sql_query, data_to_insert)
+
+    def delete_prices(
+        self,
+        symbol: str,
+        dates: list[str],
+        provider: str = "yahoo",
+    ) -> int:
+        """Deletes market price records for a specific symbol, dates, and provider.
+
+        Args:
+            symbol: Ticker symbol.
+            dates: List of quote date strings (YYYY-MM-DD).
+            provider: Provider identifier to purge (default 'yahoo').
+
+        Returns:
+            Count of deleted rows.
+        """
+        if not dates:
+            return 0
+        clean_dates = [str(d).split(" ")[0] for d in dates if d]
+        if not clean_dates:
+            return 0
+        placeholders = ",".join("?" for _ in clean_dates)
+        sql_query = f"DELETE FROM market_prices WHERE symbol = ? AND provider = ? AND timeframe = '1D' AND date IN ({placeholders})"  # nosec B608
+        params: list[Any] = [symbol.upper().strip(), provider] + clean_dates
+        with self.session.connect() as connection:
+            cursor = connection.execute(sql_query, params)
+            return cursor.rowcount or 0
+
+    def delete_corrupt_candles(
+        self,
+        start_date: str,
+        symbols: list[str] | None = None,
+        provider: str = "yahoo",
+    ) -> int:
+        """Deletes geometrically invalid or boundary-violating candles for a provider.
+
+        Args:
+            start_date: Start date string (YYYY-MM-DD) to limit audit scope.
+            symbols: Optional list of ticker symbols to restrict deletion.
+            provider: Provider identifier to purge (default 'yahoo').
+
+        Returns:
+            Count of deleted rows.
+        """
+        symbol_clause = ""
+        params: list[Any] = [start_date, provider]
+        if symbols:
+            clean_symbols = [s.upper().strip() for s in symbols if s]
+            if clean_symbols:
+                placeholders = ",".join("?" for _ in clean_symbols)
+                symbol_clause = f" AND symbol IN ({placeholders})"
+                params.extend(clean_symbols)
+
+        sql_query = f"""
+            DELETE FROM market_prices
+            WHERE date >= ?
+              AND provider = ?
+              AND timeframe = '1D'
+              {symbol_clause}
+              AND (
+                  high < open - 0.0001
+                  OR high < close - 0.0001
+                  OR low > open + 0.0001
+                  OR low > close + 0.0001
+                  OR high < low - 0.0001
+                  OR open <= 0
+                  OR close <= 0
+                  OR high <= 0
+                  OR low <= 0
+              )
+        """  # nosec B608
+        with self.session.connect() as connection:
+            cursor = connection.execute(sql_query, params)
+            return cursor.rowcount or 0
