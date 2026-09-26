@@ -11,7 +11,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import render_section_header, render_kpi_card, render_pnl_cell, render_cost_table, tradingview_link %}
+{% from "macros/cards.html" import render_section_header, render_kpi_card, render_pnl_cell, render_cost_table, tradingview_link, render_kpi_amount %}
 {% from "macros/timeline.html" import render_timeline_node %}
 
 <!-- Top-Navigation mit aktivem Broker-Tab -->
@@ -90,7 +90,7 @@
                 Matched Trades
             </div>
             <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
-                {{ summary.matched_count }}
+                {{ summary.matched_count | de_number(0) }}
             </div>
         </article>
 
@@ -100,7 +100,7 @@
                 Net PnL Backtest
             </div>
             <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.net_pnl_bt > 0 %}text-emerald-500{% elif summary.net_pnl_bt < 0 %}text-rose-500{% else %}text-slate-900{% endif %}">
-                {{ summary.net_pnl_bt | de_number(2, prefix_plus=True) }}&nbsp;$
+                {{ render_kpi_amount(summary.net_pnl_bt, prefix_plus=True, currency_symbol="$") }}
             </div>
         </article>
 
@@ -110,7 +110,7 @@
                 Net PnL Broker
             </div>
             <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.net_pnl_broker > 0 %}text-emerald-500{% elif summary.net_pnl_broker < 0 %}text-rose-500{% else %}text-slate-900{% endif %}">
-                {{ summary.net_pnl_broker | de_number(2, prefix_plus=True) }}&nbsp;$
+                {{ render_kpi_amount(summary.net_pnl_broker, prefix_plus=True, currency_symbol="$") }}
             </div>
         </article>
 
@@ -120,7 +120,7 @@
                 Reality Gap
             </div>
             <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.pnl_delta > 0 %}text-emerald-500{% elif summary.pnl_delta < 0 %}text-rose-500{% else %}text-slate-900{% endif %}">
-                {{ summary.pnl_delta | de_number(2, prefix_plus=True) }}&nbsp;$
+                {{ render_kpi_amount(summary.pnl_delta, prefix_plus=True, currency_symbol="$") }}
             </div>
         </article>
 
@@ -130,7 +130,7 @@
                 Commissions
             </div>
             <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
-                {{ summary.total_commissions | de_number(2) }}&nbsp;$
+                {{ render_kpi_amount(summary.total_commissions, prefix_plus=False, currency_symbol="$") }}
             </div>
         </article>
 
@@ -140,7 +140,7 @@
                 Nebenkosten &amp; Erträge
             </div>
             <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.total_secondary_pnl > 0 %}text-emerald-500{% elif summary.total_secondary_pnl < 0 %}text-rose-500{% else %}text-slate-900{% endif %}">
-                {{ summary.total_secondary_pnl | de_number(2, prefix_plus=True) }}&nbsp;€
+                {{ render_kpi_amount(summary.total_secondary_pnl, prefix_plus=True, currency_symbol="€") }}
             </div>
         </article>
 
@@ -150,7 +150,7 @@
                 Entry Slippage
             </div>
             <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.avg_entry_slippage > 0 %}text-rose-500{% elif summary.avg_entry_slippage < 0 %}text-emerald-500{% else %}text-slate-900{% endif %}">
-                {{ summary.avg_entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$
+                {{ render_kpi_amount(summary.avg_entry_slippage, prefix_plus=True, currency_symbol="$") }}
             </div>
         </article>
 
@@ -160,7 +160,7 @@
                 Exit Slippage
             </div>
             <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.avg_exit_slippage < 0 %}text-rose-500{% elif summary.avg_exit_slippage > 0 %}text-emerald-500{% else %}text-slate-900{% endif %}">
-                {{ summary.avg_exit_slippage | de_number(2, prefix_plus=True) }}&nbsp;$
+                {{ render_kpi_amount(summary.avg_exit_slippage, prefix_plus=True, currency_symbol="$") }}
             </div>
         </article>
     </section>
@@ -260,16 +260,16 @@
 
                             <!-- 5. Entry Price -->
                             <div class="text-right tabular-nums text-slate-600">
-                                {{ p.entry_price_broker | de_number(2) }}
+                                {{ p.entry_price_broker | de_number(2) }}&nbsp;$
                             </div>
 
                             <!-- 6. Slippage -->
                             <div class="text-right tabular-nums {% if p.entry_slippage > 0 %}text-rose-500 font-bold{% elif p.entry_slippage < 0 %}text-emerald-500 font-bold{% else %}text-slate-400{% endif %}">
-                                {{ p.entry_slippage | de_number(2, prefix_plus=True) if p.entry_slippage != 0 else '-' }}
+                                {% if p.entry_slippage != 0 %}{{ p.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;${% else %}-{% endif %}
                             </div>
 
                             <!-- 7. Open PnL -->
-                            {{ render_pnl_cell(p.open_pnl_broker, p.pnl_percentage) }}
+                            {{ render_pnl_cell(p.open_pnl_broker, p.pnl_percentage, currency="$") }}
                         </div>
 
                         <!-- Accordion Detail (Positions) -->
@@ -347,26 +347,26 @@
 
                             <!-- 5. Entry Price -->
                             <div class="text-right tabular-nums text-slate-600">
-                                {{ h.entry_price_broker | de_number(2) }}
+                                {{ h.entry_price_broker | de_number(2) }}&nbsp;$
                             </div>
 
                             <!-- 6. Exit Price -->
                             <div class="text-right tabular-nums text-slate-600">
-                                {{ h.exit_price_broker | de_number(2) }}
+                                {{ h.exit_price_broker | de_number(2) }}&nbsp;$
                             </div>
 
                             <!-- 7. Slippage (Total Round Turn) -->
-                            <div class="text-right tabular-nums {% if h.total_slippage > 0 %}text-rose-500 font-bold{% elif h.total_slippage < 0 %}text-emerald-500 font-bold{% else %}text-slate-400{% endif %}" title="Entry: {{ h.entry_slippage | de_number(2, prefix_plus=True) }}, Exit: {{ h.exit_slippage | de_number(2, prefix_plus=True) }}">
-                                {{ h.total_slippage | de_number(2, prefix_plus=True) if h.total_slippage != 0 else '-' }}
+                            <div class="text-right tabular-nums {% if h.total_slippage > 0 %}text-rose-500 font-bold{% elif h.total_slippage < 0 %}text-emerald-500 font-bold{% else %}text-slate-400{% endif %}" title="Entry: {{ h.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$, Exit: {{ h.exit_slippage | de_number(2, prefix_plus=True) }}&nbsp;$">
+                                {% if h.total_slippage != 0 %}{{ h.total_slippage | de_number(2, prefix_plus=True) }}&nbsp;${% else %}-{% endif %}
                             </div>
 
                             <!-- 8. Commissions -->
                             <div class="text-right tabular-nums text-slate-500">
-                                {{ h.commissions | de_number(2) }}
+                                {{ h.commissions | de_number(2) }}&nbsp;$
                             </div>
 
                             <!-- 9. Net PnL -->
-                            {{ render_pnl_cell(h.net_pnl_broker, h.pnl_percentage) }}
+                            {{ render_pnl_cell(h.net_pnl_broker, h.pnl_percentage, currency="$") }}
                         </div>
 
                         <!-- Accordion Detail (History) -->
@@ -459,7 +459,7 @@ document.addEventListener('DOMContentLoaded', function() {
         name: 'Backtest Modell',
         line: { color: '#3b82f6', width: 2.5 },
         marker: { size: 5, color: '#2563eb' },
-        hovertemplate: '<b>Backtest</b>: %{y:.2f} $<extra></extra>'
+        hovertemplate: '<b>Backtest</b>: %{y:,.2f} $<extra></extra>'
     };
 
     const traceBroker = {
@@ -471,10 +471,11 @@ document.addEventListener('DOMContentLoaded', function() {
         marker: { size: 5, color: '#059669' },
         fill: 'tonexty',
         fillcolor: 'rgba(59, 130, 246, 0.08)',
-        hovertemplate: '<b>Broker</b>: %{y:.2f} $<extra></extra>'
+        hovertemplate: '<b>Broker</b>: %{y:,.2f} $<extra></extra>'
     };
 
     const layout = {
+        separators: ',.',
         margin: { t: 15, r: 25, l: 50, b: 35 },
         showlegend: false,
         xaxis: {

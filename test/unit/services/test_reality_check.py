@@ -1,7 +1,7 @@
 """Unit tests for Backtest vs. Broker Reality Check domain logic and service methods."""
 
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from app.services.trade_manager.reality_check import (
     BrokerCostBreakdown,
@@ -618,7 +618,123 @@ class TestRealityCheckRoute:
         assert b"Commissions" in response.data
         assert b"Reality Gap" in response.data
         assert b"Handelsbezogene Nebenkosten" in response.data
-        assert (
-            b"Kommissionen &amp; Fees" in response.data
-            or b"Kommissionen" in response.data
+
+    def test_route_renders_commissions_when_present(self) -> None:
+        from app import create_app
+        from app.services.trade_manager.reality_check import (
+            BrokerCostBreakdown,
+            CashLedgerCategorySummary,
+            RealityCheckSummary,
         )
+
+        app = create_app()
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        mock_service = MagicMock()
+        mock_service.get_reality_check_positions.return_value = []
+        mock_service.get_reality_check_history.return_value = []
+        mock_service.get_reality_check_cost_breakdown.return_value = (
+            BrokerCostBreakdown(
+                trade_items=[
+                    CashLedgerCategorySummary(
+                        category="COMMISSIONS",
+                        label="Kommissionen & Fees",
+                        count=5,
+                        amount=Decimal("-20.00"),
+                        currency="$",
+                    )
+                ],
+                account_items=[],
+                total_trade_amount=Decimal("0.00"),
+                total_trade_count=5,
+                total_account_amount=Decimal("0.00"),
+                total_account_count=0,
+                total_secondary_pnl=Decimal("0.00"),
+                total_all_in_costs=Decimal("-20.00"),
+            )
+        )
+        mock_service.get_reality_check_summary.return_value = RealityCheckSummary(
+            matched_count=0,
+            open_matched_count=0,
+            closed_matched_count=0,
+            net_pnl_bt=Decimal("0.00"),
+            net_pnl_broker=Decimal("0.00"),
+            total_commissions=Decimal("20.00"),
+            avg_entry_slippage=Decimal("0.00"),
+            avg_exit_slippage=Decimal("0.00"),
+            pnl_delta=Decimal("0.00"),
+            total_secondary_pnl=Decimal("0.00"),
+        )
+        mock_service.get_reality_check_equity_curve.return_value = []
+
+        with patch(
+            "app.routes.views.trades._get_trade_view_service",
+            return_value=mock_service,
+        ):
+            response = client.get("/broker/reality-check")
+            assert response.status_code == 200
+            assert b"Kommissionen &amp; Fees" in response.data
+            assert b"-20,00&nbsp;$" in response.data
+
+    def test_kpi_cards_round_amounts_over_100_without_decimals(self) -> None:
+        """Verifies that amounts >= 100 in KPI cards are rounded without decimals and < 100 with 2 decimals."""
+        from app import create_app
+        from app.services.trade_manager.reality_check import (
+            BrokerCostBreakdown,
+            RealityCheckSummary,
+        )
+
+        app = create_app()
+        app.config["TESTING"] = True
+        client = app.test_client()
+
+        mock_service = MagicMock()
+        mock_service.get_reality_check_positions.return_value = []
+        mock_service.get_reality_check_history.return_value = []
+        mock_service.get_reality_check_cost_breakdown.return_value = (
+            BrokerCostBreakdown(
+                trade_items=[],
+                account_items=[],
+                total_trade_amount=Decimal("0.00"),
+                total_trade_count=0,
+                total_account_amount=Decimal("0.00"),
+                total_account_count=0,
+                total_secondary_pnl=Decimal("150.45"),
+                total_all_in_costs=Decimal("0.00"),
+            )
+        )
+        mock_service.get_reality_check_summary.return_value = RealityCheckSummary(
+            matched_count=12,
+            open_matched_count=2,
+            closed_matched_count=10,
+            net_pnl_bt=Decimal("1234.56"),
+            net_pnl_broker=Decimal("-250.80"),
+            total_commissions=Decimal("18.50"),
+            avg_entry_slippage=Decimal("0.25"),
+            avg_exit_slippage=Decimal("-105.20"),
+            pnl_delta=Decimal("45.10"),
+            total_secondary_pnl=Decimal("150.45"),
+        )
+        mock_service.get_reality_check_equity_curve.return_value = []
+
+        with patch(
+            "app.routes.views.trades._get_trade_view_service",
+            return_value=mock_service,
+        ):
+            response = client.get("/broker/reality-check")
+            assert response.status_code == 200
+            # Net PnL Backtest: 1234.56 >= 100 -> rounded without decimals (+1.235 $)
+            assert b"+1.235&nbsp;$" in response.data
+            # Net PnL Broker: -250.80 <= -100 -> rounded without decimals (-251 $)
+            assert b"-251&nbsp;$" in response.data
+            # Commissions: 18.50 < 100 -> 2 decimals (18,50 $)
+            assert b"18,50&nbsp;$" in response.data
+            # Entry Slippage: 0.25 < 100 -> 2 decimals (+0,25 $)
+            assert b"+0,25&nbsp;$" in response.data
+            # Exit Slippage: -105.20 <= -100 -> rounded without decimals (-105 $)
+            assert b"-105&nbsp;$" in response.data
+            # Reality Gap: 45.10 < 100 -> 2 decimals (+45,10 $)
+            assert b"+45,10&nbsp;$" in response.data
+            # Secondary PnL: 150.45 >= 100 -> rounded without decimals (+150 €)
+            assert b"+150&nbsp;\xe2\x82\xac" in response.data
