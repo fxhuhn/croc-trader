@@ -1,3 +1,10 @@
+"""Trading calendar utilities for market trading day calculations.
+
+Provides centralized helper functions for calculating previous/next trading days,
+evaluating market trading days against weekends and holidays, and calculating
+month-end trading windows.
+"""
+
 import datetime
 
 import pandas as pd
@@ -6,6 +13,27 @@ from app.tools.market_holidays import MarketHolidayChecker
 
 # Monday=0 ... Saturday=5, Sunday=6 per datetime.weekday()
 SATURDAY: int = 5
+DECEMBER_MONTH: int = 12
+
+
+def is_trading_day(
+    check_date: datetime.date,
+    holiday_checker: MarketHolidayChecker | None = None,
+) -> bool:
+    """Checks whether check_date is an active market trading day.
+
+    A trading day is defined as a weekday (Monday to Friday) that is not an
+    official market holiday.
+
+    Args:
+        check_date: The date to evaluate.
+        holiday_checker: Optional holiday checker instance. If None, uses default.
+
+    Returns:
+        bool: True if check_date is a trading day, False otherwise.
+    """
+    checker = holiday_checker or MarketHolidayChecker()
+    return check_date.weekday() < SATURDAY and not checker.is_holiday(check_date)
 
 
 def get_last_completed_trading_day(
@@ -28,10 +56,110 @@ def get_last_completed_trading_day(
     checker = holiday_checker or MarketHolidayChecker()
 
     candidate_date = reference_date - datetime.timedelta(days=1)
-    while candidate_date.weekday() >= SATURDAY or checker.is_holiday(candidate_date):
+    while not is_trading_day(candidate_date, checker):
         candidate_date -= datetime.timedelta(days=1)
 
     return candidate_date
+
+
+def get_next_trading_day(
+    reference_date: datetime.date,
+    holiday_checker: MarketHolidayChecker | None = None,
+) -> datetime.date:
+    """Calculates the next market trading day forward from reference_date.
+
+    Checks forwards starting from (reference_date + 1 day). Skips weekend days
+    (Saturday, Sunday) and official market holidays.
+
+    Args:
+        reference_date: The date from which to look forward.
+        holiday_checker: Optional holiday checker instance. If None, uses default.
+
+    Returns:
+        datetime.date: The date of the next market trading day.
+    """
+    checker = holiday_checker or MarketHolidayChecker()
+
+    candidate_date = reference_date + datetime.timedelta(days=1)
+    while not is_trading_day(candidate_date, checker):
+        candidate_date += datetime.timedelta(days=1)
+
+    return candidate_date
+
+
+def get_remaining_trading_days_in_month(
+    check_date: datetime.date,
+    holiday_checker: MarketHolidayChecker | None = None,
+) -> int:
+    """Calculates remaining trading days in check_date's month including check_date.
+
+    Args:
+        check_date: Target date to check.
+        holiday_checker: Optional holiday checker instance.
+
+    Returns:
+        int: Number of remaining trading days (>= 0).
+    """
+    checker = holiday_checker or MarketHolidayChecker()
+
+    if check_date.month == DECEMBER_MONTH:
+        next_month_start = datetime.date(check_date.year + 1, 1, 1)
+    else:
+        next_month_start = datetime.date(check_date.year, check_date.month + 1, 1)
+    last_day_of_month = next_month_start - datetime.timedelta(days=1)
+
+    trading_day_count = 0
+    current = check_date
+    while current <= last_day_of_month:
+        if is_trading_day(current, checker):
+            trading_day_count += 1
+        current += datetime.timedelta(days=1)
+
+    return trading_day_count
+
+
+def is_in_end_of_month_window(
+    check_date: datetime.date,
+    days_before: int = 4,
+    holiday_checker: MarketHolidayChecker | None = None,
+) -> bool:
+    """Checks whether check_date falls within the End-of-Month window.
+
+    Window is active starting days_before trading days prior to the last
+    trading day of the month up to the last trading day.
+
+    Args:
+        check_date: Target date.
+        days_before: Number of trading days before month end (default: 4).
+        holiday_checker: Optional holiday checker.
+
+    Returns:
+        bool: True if in month-end window, False otherwise.
+    """
+    remaining_days = get_remaining_trading_days_in_month(
+        check_date, holiday_checker=holiday_checker
+    )
+    return 1 <= remaining_days <= (days_before + 1)
+
+
+def is_last_trading_day_of_month(
+    check_date: datetime.date,
+    holiday_checker: MarketHolidayChecker | None = None,
+) -> bool:
+    """Checks whether check_date is the last active trading day of its calendar month.
+
+    Args:
+        check_date: Date to evaluate.
+        holiday_checker: Optional holiday checker instance.
+
+    Returns:
+        bool: True if check_date is an active trading day and no further trading days exist in the month.
+    """
+    checker = holiday_checker or MarketHolidayChecker()
+    return (
+        is_trading_day(check_date, checker)
+        and get_remaining_trading_days_in_month(check_date, checker) == 1
+    )
 
 
 def resolve_effective_trading_date(
@@ -77,3 +205,16 @@ def resolve_effective_trading_date(
         return None
 
     return candidate_date
+
+
+__all__ = [
+    "DECEMBER_MONTH",
+    "SATURDAY",
+    "get_last_completed_trading_day",
+    "get_next_trading_day",
+    "get_remaining_trading_days_in_month",
+    "is_in_end_of_month_window",
+    "is_last_trading_day_of_month",
+    "is_trading_day",
+    "resolve_effective_trading_date",
+]

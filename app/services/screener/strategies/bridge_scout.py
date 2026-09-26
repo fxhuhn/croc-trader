@@ -21,14 +21,17 @@ from ....tools.indicators import (
     calculate_rsi,
 )
 from ....tools.market_holidays import MarketHolidayChecker
+from ....tools.trading_calendar import (
+    get_next_trading_day,
+    get_remaining_trading_days_in_month,
+    is_in_end_of_month_window,
+)
 from ...telegram import TelegramBot
 from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
-DECEMBER_MONTH: int = 12
-SATURDAY_WEEKDAY: int = 5
 MIN_BRIDGE_HISTORY_BARS: int = 15
 DEFAULT_ATR_WINDOW: int = 10
 DEFAULT_RSI_WINDOW: int = 2
@@ -67,60 +70,8 @@ class BridgeScoutStrategyContext(TypedDict, total=False):
     source: str
 
 
-def get_remaining_trading_days_in_month(
-    check_date: datetime.date,
-    holiday_checker: MarketHolidayChecker | None = None,
-) -> int:
-    """Calculates remaining trading days in check_date's month including check_date.
-
-    Args:
-        check_date: Target date to check.
-        holiday_checker: Optional holiday checker instance.
-
-    Returns:
-        int: Number of remaining trading days (>= 1).
-    """
-    checker = holiday_checker or MarketHolidayChecker()
-
-    # Find month boundary (last calendar day of the month)
-    if check_date.month == DECEMBER_MONTH:
-        next_month_start = datetime.date(check_date.year + 1, 1, 1)
-    else:
-        next_month_start = datetime.date(check_date.year, check_date.month + 1, 1)
-    last_day_of_month = next_month_start - datetime.timedelta(days=1)
-
-    trading_day_count = 0
-    current = check_date
-    while current <= last_day_of_month:
-        if current.weekday() < SATURDAY_WEEKDAY and not checker.is_holiday(current):
-            trading_day_count += 1
-        current += datetime.timedelta(days=1)
-
-    return trading_day_count
-
-
-def is_in_end_of_month_window(
-    check_date: datetime.date,
-    days_before: int = 4,
-    holiday_checker: MarketHolidayChecker | None = None,
-) -> bool:
-    """Checks whether check_date falls within the End-of-Month window.
-
-    Window is active starting days_before trading days prior to the last
-    trading day of the month up to the last trading day.
-
-    Args:
-        check_date: Target date.
-        days_before: Number of trading days before month end (default: 4).
-        holiday_checker: Optional holiday checker.
-
-    Returns:
-        bool: True if in month-end window, False otherwise.
-    """
-    remaining_days = get_remaining_trading_days_in_month(
-        check_date, holiday_checker=holiday_checker
-    )
-    return 1 <= remaining_days <= (days_before + 1)
+# Calendar functions get_remaining_trading_days_in_month and is_in_end_of_month_window
+# are centrally defined in app.tools.trading_calendar and imported above.
 
 
 def _evaluate_live_same_day(
@@ -380,10 +331,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         EOD bar in market data (yesterday), the target setup date rolls forward to
         the next active trading session.
         """
-        if analysis_date:
-            parsed_date = datetime.datetime.strptime(analysis_date, "%Y-%m-%d").date()
-        else:
-            parsed_date = datetime.date.today() - datetime.timedelta(days=days)
+        parsed_date = self._resolve_analysis_date(days, analysis_date)
 
         if days == 0:
             latest_market_date = self.data_provider.get_latest_date()
@@ -391,12 +339,17 @@ class BridgeScoutStrategy(BaseStrategy[int]):
                 latest_market_date
                 and parsed_date.strftime("%Y-%m-%d") == latest_market_date
             ):
-                next_trading_day = parsed_date + datetime.timedelta(days=1)
-                while (
-                    next_trading_day.weekday() >= SATURDAY_WEEKDAY
-                    or self.holiday_checker.is_holiday(next_trading_day)
-                ):
-                    next_trading_day += datetime.timedelta(days=1)
-                return next_trading_day
+                return get_next_trading_day(parsed_date, self.holiday_checker)
 
         return parsed_date
+
+
+__all__ = [
+    "BridgeScoutParameters",
+    "BridgeScoutSetupResult",
+    "BridgeScoutStrategy",
+    "BridgeScoutStrategyContext",
+    "evaluate_bridge_scout_setup",
+    "get_remaining_trading_days_in_month",
+    "is_in_end_of_month_window",
+]
