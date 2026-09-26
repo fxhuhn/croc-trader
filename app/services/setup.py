@@ -271,7 +271,7 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
             func=run_order_generation,
             args=[app],
             trigger=CronTrigger(
-                day_of_week="mon-sat",
+                day_of_week="mon-fri",
                 hour=7,
                 minute=30,
                 timezone=pytz.timezone("Europe/Berlin"),
