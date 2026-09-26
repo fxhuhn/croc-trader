@@ -57,3 +57,50 @@ def test_extract_safe_float():
     assert extract_safe_float(None, default=0.0) == 0.0
     assert extract_safe_float(float("nan"), default=-1.0) == -1.0
     assert extract_safe_float("invalid", default=99.0) == 99.0
+
+
+def test_calculate_roc_series():
+    """Tests calculate_roc on a price series."""
+    from app.tools.indicators import calculate_roc
+
+    prices = pd.Series([100.0, 110.0, 105.0])
+    roc = calculate_roc(prices, window=1)
+    assert pd.isna(roc.iloc[0])
+    assert roc.iloc[1] == pytest.approx(10.0)
+    assert roc.iloc[2] == pytest.approx(-4.54545, rel=1e-3)
+
+
+def test_calculate_roc_dataframe():
+    """Tests calculate_roc on a multi-symbol price DataFrame."""
+    from app.tools.indicators import calculate_roc
+
+    data = pd.DataFrame(
+        {
+            "AAPL": [100.0, 110.0, 121.0],
+            "MSFT": [200.0, 220.0, 242.0],
+        }
+    )
+    roc = calculate_roc(data, window=1)
+    assert pd.isna(roc["AAPL"].iloc[0])
+    assert roc["AAPL"].iloc[1] == pytest.approx(10.0)
+    assert roc["AAPL"].iloc[2] == pytest.approx(10.0)
+    assert roc["MSFT"].iloc[1] == pytest.approx(10.0)
+    assert roc["MSFT"].iloc[2] == pytest.approx(10.0)
+
+
+def test_calculate_sma_dataframe():
+    """Tests calculate_sma on a multi-symbol price DataFrame."""
+    from app.tools.indicators import calculate_sma
+
+    data = pd.DataFrame(
+        {
+            "AAPL": [10.0, 20.0, 30.0],
+            "MSFT": [100.0, 200.0, 300.0],
+        }
+    )
+    sma = calculate_sma(data, window=2)
+    assert pd.isna(sma["AAPL"].iloc[0])
+    assert sma["AAPL"].iloc[1] == pytest.approx(15.0)
+    assert sma["AAPL"].iloc[2] == pytest.approx(25.0)
+    assert sma["MSFT"].iloc[1] == pytest.approx(150.0)
+    assert sma["MSFT"].iloc[2] == pytest.approx(250.0)

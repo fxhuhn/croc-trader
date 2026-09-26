@@ -61,3 +61,12 @@ def test_calculate_max_close_for_rsi_returns_nan_on_insufficient_length() -> Non
     short_series = pd.Series([100.0])
     max_c = calculate_max_close_for_rsi(short_series, window=2, rsi_target=40.0)
     assert pd.isna(max_c)
+
+
+def test_calculate_roc_raises_value_error_on_empty_series() -> None:
+    """Verifies calculate_roc raises ValueError on empty series."""
+    from app.tools.indicators import calculate_roc
+
+    empty_series = pd.Series(dtype=float)
+    with pytest.raises(ValueError, match="Cannot calculate ROC: series is empty."):
+        calculate_roc(empty_series, window=10)

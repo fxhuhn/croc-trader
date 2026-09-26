@@ -1,11 +1,21 @@
 import pandas as pd
 
 
-def calculate_sma(series: pd.Series, window: int) -> pd.Series:
+def calculate_sma[T: (pd.Series, pd.DataFrame)](series: T, window: int) -> T:
     """Calculates the Simple Moving Average (SMA)."""
     if series.empty:
         raise ValueError("Cannot calculate SMA: series is empty.")
     return series.rolling(window=window).mean()
+
+
+def calculate_roc[T: (pd.Series, pd.DataFrame)](series: T, window: int) -> T:
+    """Calculates the Rate of Change (ROC) in percentage.
+
+    ROC = ((Close_t - Close_{t-window}) / Close_{t-window}) * 100
+    """
+    if series.empty:
+        raise ValueError("Cannot calculate ROC: series is empty.")
+    return series.pct_change(periods=window) * 100
 
 
 def calculate_true_range(

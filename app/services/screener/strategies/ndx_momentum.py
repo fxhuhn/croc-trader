@@ -10,6 +10,7 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
+from ....tools.indicators import calculate_roc, calculate_sma
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_lists import ExchangeSymbol
 from ..models import SignalReportItem
@@ -19,10 +20,31 @@ logger = logging.getLogger(__name__)
 
 SATURDAY_WEEKDAY: int = 5
 MONTH_END_LOOKAHEAD_MAX_DAYS: int = 5
+
 ROC_WINDOW_1M: int = 21
 ROC_WINDOW_3M: int = 63
 ROC_WINDOW_6M: int = 126
 ROC_WINDOW_12M: int = 252
+
+ROC_WINDOWS: tuple[int, ...] = (
+    ROC_WINDOW_1M,
+    ROC_WINDOW_3M,
+    ROC_WINDOW_6M,
+    ROC_WINDOW_12M,
+)
+
+ROC_CONTEXT_KEYS: dict[int, str] = {
+    ROC_WINDOW_1M: "roc_1",
+    ROC_WINDOW_3M: "roc_3",
+    ROC_WINDOW_6M: "roc_6",
+    ROC_WINDOW_12M: "roc_12",
+}
+
+QQQ_TREND_SMA_WINDOW: int = 200
+BREADTH_SMA_WINDOW: int = 100
+BREADTH_FAST_SMA_WINDOW: int = 10
+BREADTH_SLOW_SMA_WINDOW: int = 50
+HISTORY_FETCH_DAYS: int = 450
 
 
 @dataclass(frozen=True)
@@ -61,6 +83,41 @@ class NDXAnalysisResult(TypedDict, total=False):
     price_data: dict[str, pd.DataFrame]
     regime_indicators: dict[str, float | bool]
     error: str
+
+
+def _build_trade_context(
+    symbol: str,
+    context: MomentumTradeContext,
+    date_iso_string: str,
+) -> dict[str, object]:
+    """Constructs the JSON-serializable signal context dictionary for a trade."""
+    total_momentum_score = float(context.momentum_scores.at[symbol])
+    roc_context_values = {
+        context_key: round(
+            float(context.roc_matrices[window].at[context.analysis_date, symbol]),
+            2,
+        )
+        for window, context_key in ROC_CONTEXT_KEYS.items()
+    }
+    qqq_val = context.regime_indicators["qqq"]
+    qqq_sma_val = context.regime_indicators["qqq_sma"]
+    breadth_fast = context.regime_indicators["breadth_fast"]
+    breadth_slow = context.regime_indicators["breadth_slow"]
+    bull_flag = bool(context.regime_indicators["bull"])
+
+    return {
+        "source": "screener",
+        "date": date_iso_string,
+        **roc_context_values,
+        "momentum_score": round(total_momentum_score, 2),
+        "qqq_regime": "BULL" if qqq_val > qqq_sma_val else "BEAR",
+        "breadth_regime": "BULL" if breadth_fast > breadth_slow else "BEAR",
+        "regime": "BULL" if bull_flag else "BEAR",
+        "qqq_abs": qqq_val,
+        "qqq_sma": qqq_sma_val,
+        "breadth_fast": breadth_fast,
+        "breadth_slow": breadth_slow,
+    }
 
 
 class NDXMomentumScreener(BaseStrategy[int]):
@@ -227,8 +284,11 @@ class NDXMomentumScreener(BaseStrategy[int]):
     ) -> NDXAnalysisResult:
         """Executes indicator scoring and builds the final analysis result payload."""
         qqq_close_series = pivoted_data["close"]["QQQ"]
-        current_qqq_price = qqq_close_series.at[effective_date]
-        index_moving_average = qqq_close_series.loc[:effective_date].tail(200).mean()
+        current_qqq_price = float(qqq_close_series.at[effective_date])
+        qqq_sma_series = calculate_sma(
+            qqq_close_series.loc[:effective_date], QQQ_TREND_SMA_WINDOW
+        )
+        index_moving_average = float(qqq_sma_series.iloc[-1])
 
         valid_nasdaq_symbols = [
             symbol
@@ -278,7 +338,7 @@ class NDXMomentumScreener(BaseStrategy[int]):
     ) -> dict[str, pd.DataFrame] | None:
         """Fetches history and pivots it into aligned DataFrames."""
         full_history_map = self.data_provider.get_batch_history(
-            universe_symbols, days=450, end_date=end_date
+            universe_symbols, days=HISTORY_FETCH_DAYS, end_date=end_date
         )
         if not full_history_map:
             logger.warning("[%s] No data found for universe.", self.name)
@@ -392,13 +452,17 @@ class NDXMomentumScreener(BaseStrategy[int]):
             tuple of (is_bull_regime, metrics_dict).
         """
         # Breadth
-        sma100_matrix = nasdaq_closes.rolling(window=100).mean()
+        sma100_matrix = calculate_sma(nasdaq_closes, BREADTH_SMA_WINDOW)
         percentage_above_sma100 = (nasdaq_closes > sma100_matrix).mean(axis=1) * 100
-        breadth_fast_average = (
-            percentage_above_sma100.rolling(window=10).mean().at[effective_date]
+        breadth_fast_average = float(
+            calculate_sma(percentage_above_sma100, BREADTH_FAST_SMA_WINDOW).at[
+                effective_date
+            ]
         )
-        breadth_slow_average = (
-            percentage_above_sma100.rolling(window=50).mean().at[effective_date]
+        breadth_slow_average = float(
+            calculate_sma(percentage_above_sma100, BREADTH_SLOW_SMA_WINDOW).at[
+                effective_date
+            ]
         )
 
         is_bull_regime = (current_qqq_price > index_moving_average) and (
@@ -422,15 +486,12 @@ class NDXMomentumScreener(BaseStrategy[int]):
         Returns:
             tuple or NDXAnalysisResult error dict.
         """
-        rolling_roc_results = {}
-        for window in [21, 63, 126, 252]:
-            rolling_roc_results[window] = nasdaq_closes.pct_change(periods=window) * 100
+        rolling_roc_results: dict[int, pd.DataFrame] = {
+            window: calculate_roc(nasdaq_closes, window) for window in ROC_WINDOWS
+        }
 
-        combined_momentum_matrix = (
-            rolling_roc_results[21]
-            + rolling_roc_results[63]
-            + rolling_roc_results[126]
-            + rolling_roc_results[252]
+        combined_momentum_matrix = sum(
+            rolling_roc_results[window] for window in ROC_WINDOWS
         )
 
         target_date_momentum_sum = combined_momentum_matrix.loc[effective_date].dropna()
@@ -479,17 +540,18 @@ class NDXMomentumScreener(BaseStrategy[int]):
                 closing_price = float(
                     context.price_data["close"].at[context.analysis_date, symbol]
                 )
-                self._create_single_momentum_trade(
+                entry_price = self._create_single_momentum_trade(
                     symbol,
                     context,
                     date_iso_string,
+                    closing_price=closing_price,
                 )
                 created_count += 1
                 created_trades.append(
                     SignalReportItem(
                         symbol=symbol,
                         action="BUY MKT",
-                        entry_price=round(closing_price, 2),
+                        entry_price=entry_price,
                     )
                 )
             except (sqlite3.OperationalError, sqlite3.DatabaseError) as database_error:
@@ -516,74 +578,30 @@ class NDXMomentumScreener(BaseStrategy[int]):
         symbol: str,
         context: MomentumTradeContext,
         date_iso_string: str,
-    ) -> None:
+        closing_price: float | None = None,
+    ) -> float:
         """Helper to compute context and save a single momentum trade.
 
         Calculates individual indicator components and persists trade to repository.
-        """
-        total_momentum_score = float(context.momentum_scores.at[symbol])
-        closing_price = float(
-            context.price_data["close"].at[context.analysis_date, symbol]
-        )
 
-        trade_context = {
-            "source": "screener",
-            "date": date_iso_string,
-            "roc_1": round(
-                float(
-                    context.roc_matrices[ROC_WINDOW_1M].at[
-                        context.analysis_date, symbol
-                    ]
-                ),
-                2,
-            ),
-            "roc_3": round(
-                float(
-                    context.roc_matrices[ROC_WINDOW_3M].at[
-                        context.analysis_date, symbol
-                    ]
-                ),
-                2,
-            ),
-            "roc_6": round(
-                float(
-                    context.roc_matrices[ROC_WINDOW_6M].at[
-                        context.analysis_date, symbol
-                    ]
-                ),
-                2,
-            ),
-            "roc_12": round(
-                float(
-                    context.roc_matrices[ROC_WINDOW_12M].at[
-                        context.analysis_date, symbol
-                    ]
-                ),
-                2,
-            ),
-            "momentum_score": round(total_momentum_score, 2),
-            "qqq_regime": "BULL"
-            if (context.regime_indicators["qqq"] > context.regime_indicators["qqq_sma"])
-            else "BEAR",
-            "breadth_regime": "BULL"
-            if (
-                context.regime_indicators["breadth_fast"]
-                > context.regime_indicators["breadth_slow"]
+        Returns:
+            The rounded entry price.
+        """
+        if closing_price is None:
+            closing_price = float(
+                context.price_data["close"].at[context.analysis_date, symbol]
             )
-            else "BEAR",
-            "regime": "BULL" if context.regime_indicators["bull"] else "BEAR",
-            "qqq_abs": context.regime_indicators["qqq"],
-            "qqq_sma": context.regime_indicators["qqq_sma"],
-            "breadth_fast": context.regime_indicators["breadth_fast"],
-            "breadth_slow": context.regime_indicators["breadth_slow"],
-        }
+
+        entry_price = round(closing_price, 2)
+        trade_context = _build_trade_context(symbol, context, date_iso_string)
 
         self.trade_repository.create_trade(
             symbol=symbol,
             strategy=Strategies.NDXMomentum,
             size=0,
-            entry=round(closing_price, 2),
+            entry=entry_price,
             stop_loss=0.0,
             target=0.0,
             context=trade_context,
         )
+        return entry_price
