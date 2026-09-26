@@ -11,7 +11,7 @@
 
 {% block content %}
 {% from "macros/navigation.html" import render_header %}
-{% from "macros/cards.html" import render_section_header, render_kpi_card, render_pnl_cell, tradingview_link %}
+{% from "macros/cards.html" import render_section_header, render_kpi_card, render_pnl_cell, render_cost_table, tradingview_link %}
 {% from "macros/timeline.html" import render_timeline_node %}
 
 <!-- Top-Navigation mit aktivem Broker-Tab -->
@@ -82,8 +82,8 @@
         </div>
     </div>
 
-    <!-- KPI Cards Grid (Exakt wie analytics.html: 2 Zeilen à 3 Spalten) -->
-    <section class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-6 mb-8" aria-label="Reality Check Kennzahlen">
+    <!-- KPI Cards Grid: 2 Zeilen à 4 Spalten (analog trades_broker.html) -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 mb-8" aria-label="Reality Check Kennzahlen">
         <!-- 1. Matched Trades -->
         <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
@@ -114,9 +114,19 @@
             </div>
         </article>
 
-        <!-- 4. Commissions -->
+        <!-- 4. Reality Gap (Delta) -->
         <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
-            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1" title="Differenz: Net PnL Broker minus Net PnL Backtest">
+                Reality Gap
+            </div>
+            <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.pnl_delta > 0 %}text-emerald-500{% elif summary.pnl_delta < 0 %}text-rose-500{% else %}text-slate-900{% endif %}">
+                {{ summary.pnl_delta | de_number(2, prefix_plus=True) }}&nbsp;$
+            </div>
+        </article>
+
+        <!-- 5. Commissions -->
+        <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1" title="Summe aller Ausführungskommissionen der Broker-Trades">
                 Commissions
             </div>
             <div class="text-2xl md:text-3xl font-bold text-slate-900 leading-none tabular-nums">
@@ -124,7 +134,17 @@
             </div>
         </article>
 
-        <!-- 5. Entry Slippage -->
+        <!-- 6. Nebenkosten & Erträge -->
+        <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
+            <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1" title="Saldo aus Dividenden, Leihgebühren, Zinsen &amp; Marktdaten (Basiswährung EUR)">
+                Nebenkosten &amp; Erträge
+            </div>
+            <div class="text-2xl md:text-3xl font-bold leading-none tabular-nums {% if summary.total_secondary_pnl > 0 %}text-emerald-500{% elif summary.total_secondary_pnl < 0 %}text-rose-500{% else %}text-slate-900{% endif %}">
+                {{ summary.total_secondary_pnl | de_number(2, prefix_plus=True) }}&nbsp;€
+            </div>
+        </article>
+
+        <!-- 7. Entry Slippage -->
         <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 Entry Slippage
@@ -134,7 +154,7 @@
             </div>
         </article>
 
-        <!-- 6. Exit Slippage -->
+        <!-- 8. Exit Slippage -->
         <article class="col-span-1 bg-white border border-slate-200 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-sm flex flex-col items-start justify-start">
             <div class="text-slate-600 text-xs uppercase font-bold tracking-wider mb-1">
                 Exit Slippage
@@ -169,6 +189,14 @@
             {% endif %}
         </div>
     </section>
+
+    <!-- Kosten- & Ertragsaufschlüsselung (2 Spalten analog zu trades_dip_buyer.html) -->
+    {% if cost_breakdown %}
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 mb-8" aria-label="Handelskosten und Erträge">
+        {{ render_cost_table("Handelsbezogene Nebenkosten", "briefcase", cost_breakdown.trade_items, cost_breakdown.total_trade_count, cost_breakdown.total_trade_amount, "Trade-Nebeneffekte") }}
+        {{ render_cost_table("Konto & Infrastruktur", "landmark", cost_breakdown.account_items, cost_breakdown.total_account_count, cost_breakdown.total_account_amount, "Konto-Overhead") }}
+    </section>
+    {% endif %}
 
     <!-- Tabs Container: Positions & History -->
     <div class="space-y-4">

@@ -1,6 +1,7 @@
 import logging
 import warnings
 from collections.abc import Sequence
+from decimal import Decimal
 from typing import Any
 
 from flask import render_template, request
@@ -528,7 +529,18 @@ def view_broker_reality_check() -> str:
 
     positions = service.get_reality_check_positions(active_strategy)
     history = service.get_reality_check_history(active_strategy)
-    summary = service.get_reality_check_summary(positions, history)
+
+    total_commissions = sum((h.commissions for h in history), Decimal("0.00"))
+    commissions_count = sum(1 for h in history if h.commissions > Decimal("0.00"))
+
+    cost_breakdown = service.get_reality_check_cost_breakdown(
+        commissions_amount=total_commissions,
+        commissions_count=commissions_count,
+        commissions_currency="$",
+    )
+    summary = service.get_reality_check_summary(
+        positions, history, total_secondary_pnl=cost_breakdown.total_secondary_pnl
+    )
     equity_points = service.get_reality_check_equity_curve(history)
 
     return render_template(
@@ -536,6 +548,7 @@ def view_broker_reality_check() -> str:
         positions=positions,
         history=history,
         summary=summary,
+        cost_breakdown=cost_breakdown,
         equity_points=equity_points,
         selected_strategy=strategy_param or "all",
     )

@@ -7,7 +7,7 @@ commission impact, and cumulative dual-equity performance.
 
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -103,6 +103,32 @@ class RealityCheckSummary:
     avg_entry_slippage: Decimal
     avg_exit_slippage: Decimal
     pnl_delta: Decimal
+    total_secondary_pnl: Decimal = Decimal("0.00")
+
+
+@dataclass(frozen=True)
+class CashLedgerCategorySummary:
+    """Summary for a single category of secondary costs/yields."""
+
+    category: str
+    label: str
+    count: int
+    amount: Decimal
+    currency: str = "€"
+
+
+@dataclass(frozen=True)
+class BrokerCostBreakdown:
+    """Structured breakdown of trade-attributed and account-level costs."""
+
+    trade_items: list[CashLedgerCategorySummary]
+    account_items: list[CashLedgerCategorySummary]
+    total_trade_amount: Decimal
+    total_trade_count: int
+    total_account_amount: Decimal
+    total_account_count: int
+    total_secondary_pnl: Decimal
+    total_all_in_costs: Decimal
 
 
 @dataclass(frozen=True)
@@ -561,12 +587,14 @@ def cast_executions(raw_executions: object) -> list[dict[str, Any]]:
 def compute_reality_check_summary(
     positions: Sequence[PositionRealityCheck],
     history: Sequence[HistoryRealityCheck],
+    total_secondary_pnl: Decimal = Decimal("0.00"),
 ) -> RealityCheckSummary:
     """Computes aggregate reality check KPIs over matched positions and history.
 
     Args:
         positions: Matched active position comparisons.
         history: Matched closed history comparisons.
+        total_secondary_pnl: Aggregate net secondary carry and financing costs.
 
     Returns:
         RealityCheckSummary: Aggregated KPI record.
@@ -602,6 +630,212 @@ def compute_reality_check_summary(
         avg_entry_slippage=avg_entry.quantize(Decimal("0.01")),
         avg_exit_slippage=avg_exit.quantize(Decimal("0.01")),
         pnl_delta=pnl_delta.quantize(Decimal("0.01")),
+        total_secondary_pnl=total_secondary_pnl.quantize(Decimal("0.01")),
+    )
+
+
+TRADE_COMMISSION_CATEGORIES: frozenset[str] = frozenset(
+    {"COMMISSION", "EXCHANGE_FEE", "CLEARING_FEE", "REGULATORY_FEE"}
+)
+TRADE_DIVIDEND_CATEGORIES: frozenset[str] = frozenset(
+    {"DIVIDEND", "WITHHOLDING_TAX", "PAYMENT_IN_LIEU"}
+)
+TRADE_BORROW_CATEGORIES: frozenset[str] = frozenset({"BORROW_FEE"})
+
+ACCOUNT_MARGIN_CATEGORIES: frozenset[str] = frozenset({"INTEREST_DEBIT"})
+ACCOUNT_MARKET_DATA_CATEGORIES: frozenset[str] = frozenset({"MARKET_DATA"})
+ACCOUNT_CREDIT_INTEREST_CATEGORIES: frozenset[str] = frozenset(
+    {"INTEREST_CREDIT", "SYEP_INCOME", "WITHHOLDING_TAX"}
+)
+
+
+@dataclass
+class _LedgerCategoryTotals:
+    """Internal accumulator for cash ledger category aggregates."""
+
+    trade_comm_count: int = 0
+    trade_comm_amount: Decimal = Decimal("0.00")
+    trade_div_count: int = 0
+    trade_div_amount: Decimal = Decimal("0.00")
+    trade_borrow_count: int = 0
+    trade_borrow_amount: Decimal = Decimal("0.00")
+    account_margin_count: int = 0
+    account_margin_amount: Decimal = Decimal("0.00")
+    account_market_data_count: int = 0
+    account_market_data_amount: Decimal = Decimal("0.00")
+    account_credit_count: int = 0
+    account_credit_amount: Decimal = Decimal("0.00")
+
+
+def _aggregate_ledger_rows(
+    rows: Sequence[Mapping[str, Any]],
+) -> _LedgerCategoryTotals:
+    """Aggregates raw cash ledger mapping rows into categorized totals."""
+    totals = _LedgerCategoryTotals()
+    for row in rows:
+        category = str(row.get("category", "")).upper()
+        is_trade_level = bool(row.get("is_trade_level", 0))
+        count = int(row.get("item_count", 0))
+        amount = to_decimal(row.get("total_amount", 0.0))
+
+        if is_trade_level:
+            if category in TRADE_COMMISSION_CATEGORIES:
+                totals.trade_comm_count += count
+                totals.trade_comm_amount += amount
+            elif category in TRADE_DIVIDEND_CATEGORIES:
+                totals.trade_div_count += count
+                totals.trade_div_amount += amount
+            elif category in TRADE_BORROW_CATEGORIES:
+                totals.trade_borrow_count += count
+                totals.trade_borrow_amount += amount
+        elif category in ACCOUNT_MARGIN_CATEGORIES:
+            totals.account_margin_count += count
+            totals.account_margin_amount += amount
+        elif category in ACCOUNT_MARKET_DATA_CATEGORIES:
+            totals.account_market_data_count += count
+            totals.account_market_data_amount += amount
+        elif category in ACCOUNT_CREDIT_INTEREST_CATEGORIES:
+            totals.account_credit_count += count
+            totals.account_credit_amount += amount
+    return totals
+
+
+def compute_broker_cost_breakdown(
+    rows: Sequence[Mapping[str, Any]],
+    commissions_amount: Decimal = Decimal("0.00"),
+    commissions_count: int = 0,
+    commissions_currency: str = "$",
+) -> BrokerCostBreakdown:
+    """Computes structured cost/yield breakdowns from aggregated cash ledger records.
+
+    Separates trade-attributed transactions from account-level overheads,
+    and isolates secondary carry/overhead impact without double-counting
+    order commissions.
+
+    Args:
+        rows: Sequence of aggregated cash ledger row mappings.
+        commissions_amount: Optional trade commission amount (e.g. from settlements).
+        commissions_count: Optional count of commission events/trades.
+        commissions_currency: Currency symbol for commissions (defaults to '$').
+
+    Returns:
+        BrokerCostBreakdown: Immutable categorized cost breakdown.
+    """
+    totals = _aggregate_ledger_rows(rows)
+    trade_comm_count = totals.trade_comm_count
+    trade_comm_amount = totals.trade_comm_amount
+    trade_comm_currency = "€"
+    trade_div_count = totals.trade_div_count
+    trade_div_amount = totals.trade_div_amount
+    trade_borrow_count = totals.trade_borrow_count
+    trade_borrow_amount = totals.trade_borrow_amount
+
+    account_margin_count = totals.account_margin_count
+    account_margin_amount = totals.account_margin_amount
+    account_market_data_count = totals.account_market_data_count
+    account_market_data_amount = totals.account_market_data_amount
+    account_credit_count = totals.account_credit_count
+    account_credit_amount = totals.account_credit_amount
+
+    # Fallback to trade settlement commissions if cash_ledger does not track commissions
+    if trade_comm_count == 0 and (
+        commissions_count > 0 or commissions_amount != Decimal("0.00")
+    ):
+        trade_comm_count = commissions_count
+        trade_comm_amount = -abs(commissions_amount)
+        trade_comm_currency = commissions_currency
+    elif trade_comm_count > 0:
+        trade_comm_currency = "€"
+
+    trade_items: list[CashLedgerCategorySummary] = []
+    if trade_comm_count > 0 or trade_comm_amount != Decimal("0.00"):
+        trade_items.append(
+            CashLedgerCategorySummary(
+                category="COMMISSIONS",
+                label="Kommissionen & Fees",
+                count=trade_comm_count,
+                amount=trade_comm_amount.quantize(Decimal("0.01")),
+                currency=trade_comm_currency,
+            )
+        )
+    trade_items.extend(
+        [
+            CashLedgerCategorySummary(
+                category="DIVIDENDS",
+                label="Netto-Dividenden",
+                count=trade_div_count,
+                amount=trade_div_amount.quantize(Decimal("0.01")),
+                currency="€",
+            ),
+            CashLedgerCategorySummary(
+                category="BORROW_FEES",
+                label="Leihgebühren (Short)",
+                count=trade_borrow_count,
+                amount=trade_borrow_amount.quantize(Decimal("0.01")),
+                currency="€",
+            ),
+        ]
+    )
+
+    account_items = [
+        CashLedgerCategorySummary(
+            category="MARGIN_INTEREST",
+            label="Margin-Sollzinsen",
+            count=account_margin_count,
+            amount=account_margin_amount.quantize(Decimal("0.01")),
+            currency="€",
+        ),
+        CashLedgerCategorySummary(
+            category="MARKET_DATA",
+            label="Marktdaten & Abos",
+            count=account_market_data_count,
+            amount=account_market_data_amount.quantize(Decimal("0.01")),
+            currency="€",
+        ),
+        CashLedgerCategorySummary(
+            category="CREDIT_INTEREST",
+            label="Guthabenzins & SYEP",
+            count=account_credit_count,
+            amount=account_credit_amount.quantize(Decimal("0.01")),
+            currency="€",
+        ),
+    ]
+
+    if trade_comm_currency == "€":
+        total_trade_amount = (
+            trade_comm_amount + trade_div_amount + trade_borrow_amount
+        ).quantize(Decimal("0.01"))
+    else:
+        total_trade_amount = (trade_div_amount + trade_borrow_amount).quantize(
+            Decimal("0.01")
+        )
+    total_trade_count = trade_comm_count + trade_div_count + trade_borrow_count
+
+    total_account_amount = (
+        account_margin_amount + account_market_data_amount + account_credit_amount
+    ).quantize(Decimal("0.01"))
+    total_account_count = (
+        account_margin_count + account_market_data_count + account_credit_count
+    )
+
+    total_secondary = (
+        trade_div_amount
+        + trade_borrow_amount
+        + account_margin_amount
+        + account_market_data_amount
+        + account_credit_amount
+    ).quantize(Decimal("0.01"))
+    total_all_in = (total_secondary + trade_comm_amount).quantize(Decimal("0.01"))
+
+    return BrokerCostBreakdown(
+        trade_items=trade_items,
+        account_items=account_items,
+        total_trade_amount=total_trade_amount,
+        total_trade_count=total_trade_count,
+        total_account_amount=total_account_amount,
+        total_account_count=total_account_count,
+        total_secondary_pnl=total_secondary,
+        total_all_in_costs=total_all_in,
     )
 
 

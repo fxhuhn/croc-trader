@@ -4,8 +4,10 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 
 from app.services.trade_manager.reality_check import (
+    BrokerCostBreakdown,
     HistoryRealityCheck,
     PositionRealityCheck,
+    compute_broker_cost_breakdown,
     compute_dual_equity_curve,
     compute_reality_check_summary,
     is_future_strategy,
@@ -296,7 +298,9 @@ class TestSummaryAndEquityCurve:
         ]
         positions: list[PositionRealityCheck] = []
 
-        summary = compute_reality_check_summary(positions, history)
+        summary = compute_reality_check_summary(
+            positions, history, total_secondary_pnl=Decimal("15.50")
+        )
         assert summary.matched_count == 1
         assert summary.open_matched_count == 0
         assert summary.closed_matched_count == 1
@@ -306,6 +310,7 @@ class TestSummaryAndEquityCurve:
         assert summary.pnl_delta == Decimal("-7.00")
         assert summary.avg_entry_slippage == Decimal("0.50")
         assert summary.avg_exit_slippage == Decimal("-0.20")
+        assert summary.total_secondary_pnl == Decimal("15.50")
 
     def test_compute_dual_equity_curve(self) -> None:
         history = [
@@ -371,6 +376,179 @@ class TestSummaryAndEquityCurve:
         assert curve[1].pnl_delta == 5.0
 
 
+class TestCostBreakdown:
+    """Tests compute_broker_cost_breakdown for secondary trade costs and account overheads."""
+
+    def test_empty_rows_returns_zero_breakdown(self) -> None:
+        breakdown = compute_broker_cost_breakdown([])
+        assert isinstance(breakdown, BrokerCostBreakdown)
+        assert breakdown.total_trade_amount == Decimal("0.00")
+        assert breakdown.total_trade_count == 0
+        assert breakdown.total_account_amount == Decimal("0.00")
+        assert breakdown.total_account_count == 0
+        assert breakdown.total_secondary_pnl == Decimal("0.00")
+        assert breakdown.total_all_in_costs == Decimal("0.00")
+        assert len(breakdown.trade_items) == 2
+        assert len(breakdown.account_items) == 3
+
+    def test_categorization_and_double_counting_prevention(self) -> None:
+        rows = [
+            # Trade-level rows
+            {
+                "category": "COMMISSION",
+                "is_trade_level": 1,
+                "item_count": 10,
+                "total_amount": -100.00,
+            },
+            {
+                "category": "REGULATORY_FEE",
+                "is_trade_level": 1,
+                "item_count": 5,
+                "total_amount": -2.50,
+            },
+            {
+                "category": "DIVIDEND",
+                "is_trade_level": 1,
+                "item_count": 3,
+                "total_amount": 60.00,
+            },
+            {
+                "category": "WITHHOLDING_TAX",
+                "is_trade_level": 1,
+                "item_count": 3,
+                "total_amount": -9.00,
+            },
+            {
+                "category": "BORROW_FEE",
+                "is_trade_level": 1,
+                "item_count": 2,
+                "total_amount": -0.50,
+            },
+            # Account-level rows
+            {
+                "category": "INTEREST_DEBIT",
+                "is_trade_level": 0,
+                "item_count": 4,
+                "total_amount": -25.00,
+            },
+            {
+                "category": "MARKET_DATA",
+                "is_trade_level": 0,
+                "item_count": 1,
+                "total_amount": -1.33,
+            },
+            {
+                "category": "WITHHOLDING_TAX",
+                "is_trade_level": 0,
+                "item_count": 2,
+                "total_amount": -2.00,
+            },
+            {
+                "category": "INTEREST_CREDIT",
+                "is_trade_level": 0,
+                "item_count": 6,
+                "total_amount": 35.00,
+            },
+            {
+                "category": "SYEP_INCOME",
+                "is_trade_level": 0,
+                "item_count": 2,
+                "total_amount": 5.00,
+            },
+        ]
+        breakdown = compute_broker_cost_breakdown(rows)
+
+        # Trade commissions: -100.00 + -2.50 = -102.50 (15 items)
+        comm_item = next(
+            i for i in breakdown.trade_items if i.category == "COMMISSIONS"
+        )
+        assert comm_item.amount == Decimal("-102.50")
+        assert comm_item.count == 15
+
+        # Net dividends: 60.00 - 9.00 = +51.00 (6 items)
+        div_item = next(i for i in breakdown.trade_items if i.category == "DIVIDENDS")
+        assert div_item.amount == Decimal("51.00")
+        assert div_item.count == 6
+
+        # Borrow fees: -0.50 (2 items)
+        borrow_item = next(
+            i for i in breakdown.trade_items if i.category == "BORROW_FEES"
+        )
+        assert borrow_item.amount == Decimal("-0.50")
+        assert borrow_item.count == 2
+
+        # Trade totals: -102.50 + 51.00 - 0.50 = -52.00 (23 items)
+        assert breakdown.total_trade_amount == Decimal("-52.00")
+        assert breakdown.total_trade_count == 23
+
+        # Account margin: -25.00 (4 items)
+        margin_item = next(
+            i for i in breakdown.account_items if i.category == "MARGIN_INTEREST"
+        )
+        assert margin_item.amount == Decimal("-25.00")
+        assert margin_item.count == 4
+
+        # Account market data: -1.33 (1 item)
+        md_item = next(
+            i for i in breakdown.account_items if i.category == "MARKET_DATA"
+        )
+        assert md_item.amount == Decimal("-1.33")
+        assert md_item.count == 1
+
+        # Account credit, SYEP & tax: 35.00 + 5.00 - 2.00 = +38.00 (10 items)
+        credit_item = next(
+            i for i in breakdown.account_items if i.category == "CREDIT_INTEREST"
+        )
+        assert credit_item.amount == Decimal("38.00")
+        assert credit_item.count == 10
+
+        # Account totals: -25.00 - 1.33 + 38.00 = +11.67 (15 items)
+        assert breakdown.total_account_amount == Decimal("11.67")
+        assert breakdown.total_account_count == 15
+
+        # All-in total: -52.00 + 11.67 = -40.33
+        assert breakdown.total_all_in_costs == Decimal("-40.33")
+
+        # Secondary PnL (excludes order commissions to prevent double subtraction):
+        # total_all_in (-40.33) - commissions (-102.50) = +62.17
+        # Verify: +51.00 (net div) - 0.50 (borrow) - 25.00 (margin) - 3.33 (md) + 40.00 (credit) = +62.17
+        assert breakdown.total_secondary_pnl == Decimal("62.17")
+
+    def test_compute_broker_cost_breakdown_with_supplied_commissions(self) -> None:
+        rows = [
+            {
+                "category": "DIVIDEND",
+                "is_trade_level": 1,
+                "item_count": 5,
+                "total_amount": 94.87,
+            },
+            {
+                "category": "BORROW_FEE",
+                "is_trade_level": 1,
+                "item_count": 2,
+                "total_amount": -0.15,
+            },
+        ]
+        breakdown = compute_broker_cost_breakdown(
+            rows,
+            commissions_amount=Decimal("24.00"),
+            commissions_count=6,
+            commissions_currency="$",
+        )
+        comm_item = next(
+            i for i in breakdown.trade_items if i.category == "COMMISSIONS"
+        )
+        assert comm_item.label == "Kommissionen & Fees"
+        assert comm_item.count == 6
+        assert comm_item.amount == Decimal("-24.00")
+        assert comm_item.currency == "$"
+
+        # In foreign currency, total_trade_amount represents the EUR secondary carry
+        assert breakdown.total_trade_amount == Decimal("94.72")
+        assert breakdown.total_trade_count == 13  # 6 comms + 5 divs + 2 borrows
+        assert breakdown.total_secondary_pnl == Decimal("94.72")
+
+
 class TestTradeViewServiceIntegration:
     """Tests TradeViewService reality check methods with mock repositories."""
 
@@ -382,6 +560,36 @@ class TestTradeViewServiceIntegration:
         )
         assert service.get_reality_check_positions() == []
         assert service.get_reality_check_history() == []
+        breakdown = service.get_reality_check_cost_breakdown()
+        assert breakdown.total_all_in_costs == Decimal("0.00")
+
+    def test_service_with_mock_broker_repository(self) -> None:
+        mock_broker = MagicMock()
+        mock_broker.get_cash_ledger_aggregates.return_value = [
+            {
+                "category": "DIVIDEND",
+                "is_trade_level": 1,
+                "item_count": 1,
+                "total_amount": 47.43,
+            }
+        ]
+        service = TradeViewService(
+            trade_repository=MagicMock(),
+            market_repository=MagicMock(),
+            broker_repository=mock_broker,
+        )
+        breakdown = service.get_reality_check_cost_breakdown(
+            commissions_amount=Decimal("12.00"),
+            commissions_count=3,
+        )
+        assert breakdown.total_trade_amount == Decimal("47.43")
+        assert breakdown.total_trade_count == 4
+        assert breakdown.total_secondary_pnl == Decimal("47.43")
+        comm_item = next(
+            i for i in breakdown.trade_items if i.category == "COMMISSIONS"
+        )
+        assert comm_item.amount == Decimal("-12.00")
+        assert comm_item.count == 3
 
 
 class TestRealityCheckRoute:
@@ -403,3 +611,14 @@ class TestRealityCheckRoute:
         assert b"Quantity" in response.data
         assert b"Entry Price" in response.data
         assert b"Slippage" in response.data
+        assert (
+            "Nebenkosten &amp; Ertr\xc3\xa4ge".encode() in response.data
+            or b"Nebenkosten" in response.data
+        )
+        assert b"Commissions" in response.data
+        assert b"Reality Gap" in response.data
+        assert b"Handelsbezogene Nebenkosten" in response.data
+        assert (
+            b"Kommissionen &amp; Fees" in response.data
+            or b"Kommissionen" in response.data
+        )

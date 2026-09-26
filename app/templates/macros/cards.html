@@ -424,6 +424,37 @@
 {% endmacro %}
 
 
+{% macro render_cost_table(title, icon, items, total_count, total_amount, footer_label, currency="€") %}
+<div>
+    {{ render_section_header(title, icon=icon) }}
+    <div class="bg-white rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="flex flex-col divide-y divide-slate-100">
+            <div class="grid grid-cols-3 gap-4 px-6 py-3.5 text-xs text-slate-500 uppercase font-medium bg-slate-50 border-b border-slate-200">
+                <div>Kategorie</div>
+                <div class="text-center">Buchungen</div>
+                <div class="text-right">Saldo</div>
+            </div>
+            {% for item in items %}
+            <div class="grid grid-cols-3 items-center px-6 py-3 hover:bg-slate-50/50 transition-colors text-sm">
+                <span class="font-medium text-slate-800" {% if item.category == 'COMMISSIONS' %}title="Order-Ausführungskommissionen (in Net PnL verrechnet)"{% endif %}>{{ item.label }}</span>
+                <span class="text-center text-xs font-bold text-slate-500 tabular-nums">{{ item.count }}</span>
+                <span class="text-right font-bold tabular-nums {% if item.amount > 0 %}text-emerald-600{% elif item.amount < 0 %}text-rose-600{% else %}text-slate-600{% endif %}">
+                    {{ item.amount | de_number(2, prefix_plus=True) }}&nbsp;{{ item.currency if item.currency is defined and item.currency else currency }}
+                </span>
+            </div>
+            {% endfor %}
+            <div class="grid grid-cols-3 items-center px-6 py-3.5 bg-slate-50 border-t border-slate-200 text-sm font-bold">
+                <span class="col-span-2 text-slate-900">{{ footer_label }}</span>
+                <span class="text-right tabular-nums {% if total_amount > 0 %}text-emerald-600{% elif total_amount < 0 %}text-rose-600{% else %}text-slate-900{% endif %}">
+                    {{ total_amount | de_number(2, prefix_plus=True) }}&nbsp;{{ currency }}
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+
 
 {% macro trade_card(symbol, strategy_name, entry_date, entry_price, current_price, unrealized_pnl=0.0, pnl_percent=none, size=0) %}
 <div class="bg-white rounded-2xl md:rounded-3xl p-4 md:p-6 border border-slate-200 shadow-sm flex flex-col justify-between gap-4">

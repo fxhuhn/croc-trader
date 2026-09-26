@@ -105,6 +105,15 @@ class ActivePositionRecord(TypedDict):
     strategy_filter: NotRequired[str]
 
 
+class CashLedgerAggregateRow(TypedDict):
+    """Structured dictionary for aggregated cash ledger transactions."""
+
+    category: str
+    is_trade_level: int
+    item_count: int
+    total_amount: float
+
+
 class BrokerRepository(BaseRepository):
     """Handles read-only queries against the TWS trading.db database.
 
@@ -367,3 +376,33 @@ class BrokerRepository(BaseRepository):
                 tws_status = "PreSubmitted"
 
         return tws_status, tws_orders
+
+    def get_cash_ledger_aggregates(self) -> list[CashLedgerAggregateRow]:
+        """Aggregates settled cash ledger transactions by category and trade attribution.
+
+        Filters out external capital flows (deposits/transfers) to ensure only actual
+        trading and operating costs/yields are aggregated.
+
+        Returns:
+            list[CashLedgerAggregateRow]: Aggregated ledger transaction summaries.
+        """
+        query_string = """
+            SELECT
+                category,
+                CASE
+                    WHEN (trade_group_id IS NOT NULL AND trade_group_id != '')
+                         OR (symbol IS NOT NULL AND symbol != '') THEN 1
+                    ELSE 0
+                END AS is_trade_level,
+                COUNT(*) AS item_count,
+                SUM(CAST(amount_in_base AS REAL)) AS total_amount
+            FROM cash_ledger
+            WHERE status = 'SETTLED'
+              AND description NOT LIKE '%CASH RECEIPTS%'
+              AND description NOT LIKE '%FUND TRANSFER%'
+              AND description NOT LIKE '%DEPOSIT%'
+              AND description NOT LIKE '%WITHDRAWAL%'
+            GROUP BY is_trade_level, category
+        """
+        rows = self.fetch_all(query_string)
+        return cast(list[CashLedgerAggregateRow], [dict(row) for row in rows])

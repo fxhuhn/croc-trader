@@ -3,6 +3,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
+from decimal import Decimal
 from typing import Any, TypedDict, cast
 
 import pandas as pd
@@ -27,10 +28,12 @@ from ...database.repositories.trade import TradeRepository
 from ...tools import metrics
 from ...types import TradeData
 from .reality_check import (
+    BrokerCostBreakdown,
     EquityPoint,
     HistoryRealityCheck,
     PositionRealityCheck,
     RealityCheckSummary,
+    compute_broker_cost_breakdown,
     compute_dual_equity_curve,
     compute_reality_check_summary,
     match_active_positions,
@@ -1638,9 +1641,34 @@ class TradeViewService:
         self,
         positions: Sequence[PositionRealityCheck],
         history: Sequence[HistoryRealityCheck],
+        total_secondary_pnl: Decimal = Decimal("0.00"),
     ) -> RealityCheckSummary:
         """Computes aggregate KPIs for the Reality Check view."""
-        return compute_reality_check_summary(positions, history)
+        return compute_reality_check_summary(
+            positions, history, total_secondary_pnl=total_secondary_pnl
+        )
+
+    def get_reality_check_cost_breakdown(
+        self,
+        commissions_amount: Decimal = Decimal("0.00"),
+        commissions_count: int = 0,
+        commissions_currency: str = "$",
+    ) -> BrokerCostBreakdown:
+        """Retrieves and computes structured secondary cost breakdowns from trading.db."""
+        if self.broker_repository is None:
+            return compute_broker_cost_breakdown(
+                [],
+                commissions_amount=commissions_amount,
+                commissions_count=commissions_count,
+                commissions_currency=commissions_currency,
+            )
+        raw_rows = self.broker_repository.get_cash_ledger_aggregates()
+        return compute_broker_cost_breakdown(
+            raw_rows,
+            commissions_amount=commissions_amount,
+            commissions_count=commissions_count,
+            commissions_currency=commissions_currency,
+        )
 
     def get_reality_check_equity_curve(
         self,
