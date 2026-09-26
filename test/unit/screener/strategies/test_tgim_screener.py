@@ -302,3 +302,118 @@ def test_tgim_skips_friday_rolling_to_monday_holiday(
     assert hits == 0
     mock_data_provider.get_batch_history.assert_not_called()
     mock_trade_repo.create_trade.assert_not_called()
+
+
+def test_tgim_rolls_saturday_analysis_date_to_upcoming_monday(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that Saturday rolls to Monday for pre-market screening."""
+    friday = pd.Timestamp("2026-07-17")
+    thursday = pd.Timestamp("2026-07-16")
+    df_history = pd.DataFrame(
+        [
+            {"date": thursday, "close": 500.0},
+            {"date": friday, "close": 495.0},
+        ]
+    )
+    mock_data_provider.get_batch_history.return_value = {"SPY": df_history}
+
+    hits = tgim_strategy.run(days=0, analysis_date="2026-07-18")  # Saturday
+    assert hits == 1
+    mock_trade_repo.create_trade.assert_called_once()
+    context = mock_trade_repo.create_trade.call_args.kwargs["context"]
+    assert context["setup_date"] == "2026-07-20"
+
+
+def test_tgim_rolls_sunday_analysis_date_to_upcoming_monday(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that Sunday rolls to Monday for pre-market screening."""
+    friday = pd.Timestamp("2026-07-17")
+    thursday = pd.Timestamp("2026-07-16")
+    df_history = pd.DataFrame(
+        [
+            {"date": thursday, "close": 500.0},
+            {"date": friday, "close": 495.0},
+        ]
+    )
+    mock_data_provider.get_batch_history.return_value = {"SPY": df_history}
+
+    hits = tgim_strategy.run(days=0, analysis_date="2026-07-19")  # Sunday
+    assert hits == 1
+    mock_trade_repo.create_trade.assert_called_once()
+    context = mock_trade_repo.create_trade.call_args.kwargs["context"]
+    assert context["setup_date"] == "2026-07-20"
+
+
+def test_tgim_insufficient_history_returns_zero(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that empty history or less than 2 bars returns 0."""
+    mock_data_provider.get_batch_history.return_value = {"SPY": pd.DataFrame()}
+    assert tgim_strategy.run(days=0, analysis_date="2026-07-20") == 0
+
+    single_bar = pd.DataFrame([{"date": pd.Timestamp("2026-07-20"), "close": 500.0}])
+    mock_data_provider.get_batch_history.return_value = {"SPY": single_bar}
+    assert tgim_strategy.run(days=0, analysis_date="2026-07-20") == 0
+
+
+def test_tgim_postmarket_insufficient_bars_returns_zero(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that post-market condition with only 2 bars (needs 3) returns 0."""
+    two_bars = pd.DataFrame(
+        [
+            {"date": pd.Timestamp("2026-07-17"), "close": 500.0},
+            {"date": pd.Timestamp("2026-07-20"), "close": 490.0},
+        ]
+    )
+    mock_data_provider.get_batch_history.return_value = {"SPY": two_bars}
+    assert tgim_strategy.run(days=0, analysis_date="2026-07-20") == 0
+
+
+def test_tgim_sends_telegram_report_when_bot_present(
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests that Telegram report is dispatched when bot is injected."""
+    mock_bot = MagicMock()
+    strategy = TGIMStrategy(
+        trade_repository=mock_trade_repo,
+        data_provider=mock_data_provider,
+        telegram_bot=mock_bot,
+    )
+    monday = pd.Timestamp("2026-07-20")
+    friday = pd.Timestamp("2026-07-17")
+    thursday = pd.Timestamp("2026-07-16")
+    df_history = pd.DataFrame(
+        [
+            {"date": thursday, "close": 500.0},
+            {"date": friday, "close": 495.0},
+            {"date": monday, "close": 490.0},
+        ]
+    )
+    mock_data_provider.get_batch_history.return_value = {"SPY": df_history}
+
+    hits = strategy.run(days=0, analysis_date="2026-07-20")
+    assert hits == 1
+    mock_bot.send_dataframe.assert_called_once()
+
+
+def test_tgim_days_relative_date_resolution(
+    tgim_strategy: TGIMStrategy,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Tests date resolution using relative days parameter when analysis_date is None."""
+    mock_data_provider.get_batch_history.return_value = {"SPY": pd.DataFrame()}
+    # Executes _resolve_target_date with analysis_date=None
+    result = tgim_strategy.run(days=10)
+    assert isinstance(result, int)

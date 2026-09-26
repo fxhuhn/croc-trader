@@ -5,6 +5,10 @@ import pandas as pd
 
 from app.tools.market_holidays import MarketHolidayChecker
 from app.tools.trading_calendar import (
+    FRIDAY,
+    MONDAY,
+    SATURDAY,
+    SUNDAY,
     get_last_completed_trading_day,
     get_next_trading_day,
     get_remaining_trading_days_in_month,
@@ -12,6 +16,7 @@ from app.tools.trading_calendar import (
     is_last_trading_day_of_month,
     is_trading_day,
     resolve_effective_trading_date,
+    roll_weekend_to_monday,
 )
 
 
@@ -267,3 +272,34 @@ def test_is_last_trading_day_of_month() -> None:
         is_last_trading_day_of_month(datetime.date(2026, 7, 31), holiday_checker)
         is False
     )
+
+
+def test_weekday_constants() -> None:
+    """Tests that weekday constants match python datetime.weekday() contract."""
+    assert MONDAY == 0
+    assert FRIDAY == 4
+    assert SATURDAY == 5
+    assert SUNDAY == 6
+
+
+def test_roll_weekend_to_monday() -> None:
+    """Tests rolling Friday, Saturday, and Sunday forward to upcoming Monday."""
+    friday = datetime.date(2026, 7, 17)
+    saturday = datetime.date(2026, 7, 18)
+    sunday = datetime.date(2026, 7, 19)
+    expected_monday = datetime.date(2026, 7, 20)
+
+    assert roll_weekend_to_monday(friday) == expected_monday
+    assert roll_weekend_to_monday(saturday) == expected_monday
+    assert roll_weekend_to_monday(sunday) == expected_monday
+
+    # Weekdays Monday through Thursday remain unchanged
+    monday = datetime.date(2026, 7, 20)
+    tuesday = datetime.date(2026, 7, 21)
+    wednesday = datetime.date(2026, 7, 22)
+    thursday = datetime.date(2026, 7, 23)
+
+    assert roll_weekend_to_monday(monday) == monday
+    assert roll_weekend_to_monday(tuesday) == tuesday
+    assert roll_weekend_to_monday(wednesday) == wednesday
+    assert roll_weekend_to_monday(thursday) == thursday

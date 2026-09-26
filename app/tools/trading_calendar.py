@@ -12,7 +12,10 @@ import pandas as pd
 from app.tools.market_holidays import MarketHolidayChecker
 
 # Monday=0 ... Saturday=5, Sunday=6 per datetime.weekday()
+MONDAY: int = 0
+FRIDAY: int = 4
 SATURDAY: int = 5
+SUNDAY: int = 6
 DECEMBER_MONTH: int = 12
 
 
@@ -207,9 +210,30 @@ def resolve_effective_trading_date(
     return candidate_date
 
 
+def roll_weekend_to_monday(reference_date: datetime.date) -> datetime.date:
+    """Rolls Friday, Saturday, or Sunday forward to the upcoming Monday.
+
+    For Monday through Thursday, the date remains unchanged.
+
+    Args:
+        reference_date: The date to evaluate.
+
+    Returns:
+        datetime.date: The upcoming Monday if reference_date is Friday, Saturday,
+            or Sunday; otherwise reference_date unchanged.
+    """
+    weekday = reference_date.weekday()
+    if weekday in (FRIDAY, SATURDAY, SUNDAY):
+        return reference_date + datetime.timedelta(days=7 - weekday)
+    return reference_date
+
+
 __all__ = [
     "DECEMBER_MONTH",
+    "FRIDAY",
+    "MONDAY",
     "SATURDAY",
+    "SUNDAY",
     "get_last_completed_trading_day",
     "get_next_trading_day",
     "get_remaining_trading_days_in_month",
@@ -217,4 +241,5 @@ __all__ = [
     "is_last_trading_day_of_month",
     "is_trading_day",
     "resolve_effective_trading_date",
+    "roll_weekend_to_monday",
 ]
