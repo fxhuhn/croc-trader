@@ -73,10 +73,23 @@ def test_get_broker_active_trades_calculation() -> None:
             "current_price": 100.0,
             "tws_status": "Filled",
             "tws_orders": [],
-        }
+        },
+        {
+            "id": 985,
+            "symbol": "MES",
+            "strategy": "TGIM",
+            "entry_date": "2026-07-01",
+            "current_size": 1.0,
+            "entry_price": 5800.0,
+            "current_price": 5800.0,
+            "tws_status": "Filled",
+            "tws_orders": [],
+        },
     ]
     market_repo_mock = MagicMock()
-    market_repo_mock.get_latest_price.return_value = 110.0
+    market_repo_mock.get_latest_price.side_effect = lambda sym: (
+        110.0 if sym == "INTC" else 5850.0
+    )
 
     service = TradeViewService(
         trade_repository=MagicMock(),
@@ -85,12 +98,14 @@ def test_get_broker_active_trades_calculation() -> None:
     )
 
     active_trades = service.get_broker_active_trades()
-    assert len(active_trades) == 1
+    assert len(active_trades) == 2
     assert active_trades[0]["symbol"] == "INTC"
-    assert active_trades[0]["strategy_filter"] == "NDXMomentum"
-    assert active_trades[0]["current_price"] == 110.0
     assert active_trades[0]["unrealized_pnl"] == 100.0
     assert active_trades[0]["pnl_percentage"] == 10.0
+
+    # MES: Multiplier 5.0 applied -> (5850 - 5800) * 1 * 5 = 250.0
+    assert active_trades[1]["symbol"] == "MES"
+    assert active_trades[1]["unrealized_pnl"] == 250.0
 
 
 def test_get_reconciliation_discrepancies() -> None:
@@ -139,6 +154,7 @@ def test_calculate_capital_allocation_multiple_strategies() -> None:
             "strategy": "DipBuyer",
             "current_size": 10.0,
             "entry_price": 150.0,
+            "current_price": 165.0,
         },
         {
             "symbol": "MSFT",
@@ -173,6 +189,9 @@ def test_calculate_capital_allocation_multiple_strategies() -> None:
     two_pct_item = next(s for s in summary.strategies if s.strategy_key == "TwoPercent")
 
     assert dip_item.invested_capital == Decimal("2000.00")
+    assert dip_item.market_value == Decimal("2150.00")
+    assert dip_item.unrealized_pnl == Decimal("150.00")
+    assert dip_item.pnl_percentage == 7.5
     assert dip_item.position_count == 2
     assert dip_item.allocation_percentage == 40.0
     assert dip_item.color_class == "bg-indigo-500"
@@ -213,3 +232,76 @@ def test_get_broker_capital_allocation_service_method() -> None:
     assert summary.strategies[0].strategy_key == "NDXMomentum"
     assert summary.strategies[0].strategy_label == "NDX Momentum"
     assert summary.strategies[0].color_class == "bg-rose-500"
+
+
+def test_calculate_capital_allocation_futures_margin_and_multiplier() -> None:
+    """Verifies that futures use initial margin for allocation weighting,
+
+    multiplier-adjusted PnL, and compute notional exposure properly.
+    """
+    positions = [
+        {
+            "symbol": "MES",
+            "strategy": "TGIM",
+            "current_size": 1.0,
+            "entry_price": 5800.0,
+            "current_price": 5850.0,
+        },
+        {
+            "symbol": "MNQU2026",
+            "strategy": "BounceBandit",
+            "current_size": 2.0,
+            "entry_price": 20000.0,
+            "current_price": 19950.0,
+        },
+        {
+            "symbol": "AAPL",
+            "strategy": "DipBuyer",
+            "current_size": 10.0,
+            "entry_price": 150.0,
+            "current_price": 160.0,
+        },
+    ]
+
+    summary = calculate_capital_allocation(positions)
+    # MES: 1 * 1600 = 1600 margin.
+    # MNQ: 2 * 2200 = 4400 margin.
+    # AAPL: 10 * 150 = 1500 invested equity.
+    # Total portfolio capital = 1600 + 4400 + 1500 = 7500.
+    assert summary.total_invested == Decimal("7500.00")
+    assert summary.total_positions == 3
+    assert len(summary.strategies) == 3
+
+    bounce_item = next(
+        s for s in summary.strategies if s.strategy_key == "BounceBandit"
+    )
+    tgim_item = next(s for s in summary.strategies if s.strategy_key == "TGIM")
+    dip_item = next(s for s in summary.strategies if s.strategy_key == "DipBuyer")
+
+    # BounceBandit (MNQ): 2 contracts, margin = 4400, notional = 2 * 19950 * 2 = 79800
+    assert bounce_item.is_derivative is True
+    assert bounce_item.invested_capital == Decimal("4400.00")
+    assert bounce_item.notional_exposure == Decimal("79800.00")
+    # PnL: (19950 - 20000) * 2 * 2 = -200.00
+    assert bounce_item.unrealized_pnl == Decimal("-200.00")
+    assert round(bounce_item.pnl_percentage, 2) == -4.55
+    assert bounce_item.color_class == "bg-violet-500"
+    assert bounce_item.strategy_label == "Bounce Bandit"
+
+    # TGIM (MES): 1 contract, margin = 1600, notional = 1 * 5850 * 5 = 29250
+    assert tgim_item.is_derivative is True
+    assert tgim_item.invested_capital == Decimal("1600.00")
+    assert tgim_item.notional_exposure == Decimal("29250.00")
+    # PnL: (5850 - 5800) * 1 * 5 = +250.00
+    assert tgim_item.unrealized_pnl == Decimal("250.00")
+    assert round(tgim_item.pnl_percentage, 2) == 15.62
+    assert tgim_item.color_class == "bg-sky-500"
+    assert tgim_item.strategy_label == "TGIM"
+
+    # DipBuyer (AAPL): stock, notional == market_value = 1600, invested = 1500
+    assert dip_item.is_derivative is False
+    assert dip_item.invested_capital == Decimal("1500.00")
+    assert dip_item.market_value == Decimal("1600.00")
+    assert dip_item.unrealized_pnl == Decimal("100.00")
+    assert round(dip_item.pnl_percentage, 2) == 6.67
+    assert dip_item.color_class == "bg-indigo-500"

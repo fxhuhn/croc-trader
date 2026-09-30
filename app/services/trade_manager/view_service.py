@@ -28,6 +28,7 @@ from ...database.repositories.trade import TradeRepository
 from ...tools import metrics
 from ...types import TradeData
 from .reality_check import (
+    FUTURES_STRATEGY_MAP,
     BrokerCostBreakdown,
     EquityPoint,
     HistoryRealityCheck,
@@ -269,15 +270,76 @@ def map_strategy_filter_key(
 
 
 @dataclass(frozen=True)
+class FutureInstrumentSpec:
+    """Instrument specification for derivative futures."""
+
+    multiplier: Decimal
+    initial_margin: Decimal
+
+
+FUTURES_INSTRUMENT_SPECS: dict[str, FutureInstrumentSpec] = {
+    "MES": FutureInstrumentSpec(
+        multiplier=Decimal("5.0"),
+        initial_margin=Decimal("1600.00"),
+    ),
+    "MNQ": FutureInstrumentSpec(
+        multiplier=Decimal("2.0"),
+        initial_margin=Decimal("2200.00"),
+    ),
+    "ES": FutureInstrumentSpec(
+        multiplier=Decimal("50.0"),
+        initial_margin=Decimal("16000.00"),
+    ),
+    "NQ": FutureInstrumentSpec(
+        multiplier=Decimal("20.0"),
+        initial_margin=Decimal("22000.00"),
+    ),
+}
+
+
+def resolve_futures_spec(
+    symbol: str, strategy: str = ""
+) -> tuple[str, FutureInstrumentSpec] | None:
+    """Resolves futures instrument specification from symbol or strategy name.
+
+    Args:
+        symbol: Ticker symbol (e.g. 'MES', 'MESM6', 'MNQ', 'AAPL').
+        strategy: Strategy identifier (e.g. 'TGIM', 'BounceBandit', 'DipBuyer').
+
+    Returns:
+        tuple[str, FutureInstrumentSpec] | None: Matched futures key and spec, or None.
+    """
+    clean_sym = symbol.upper().strip()
+    clean_strat = strategy.lower().replace(" ", "").replace("_", "")
+
+    sorted_keys = sorted(FUTURES_INSTRUMENT_SPECS.keys(), key=len, reverse=True)
+    for fut_key in sorted_keys:
+        if clean_sym.startswith(fut_key):
+            return fut_key, FUTURES_INSTRUMENT_SPECS[fut_key]
+
+    for fut_strat, fut_key in FUTURES_STRATEGY_MAP.items():
+        if fut_strat.lower() in clean_strat:
+            if fut_key in FUTURES_INSTRUMENT_SPECS:
+                return fut_key, FUTURES_INSTRUMENT_SPECS[fut_key]
+
+    return None
+
+
+@dataclass(frozen=True)
 class StrategyCapitalAllocation:
     """Represents capital deployed for a single strategy."""
 
     strategy_key: str
     strategy_label: str
     invested_capital: Decimal
+    market_value: Decimal
+    unrealized_pnl: Decimal
+    pnl_percentage: float
     allocation_percentage: float
     position_count: int
     color_class: str
+    notional_exposure: Decimal = Decimal("0.00")
+    is_derivative: bool = False
 
 
 @dataclass(frozen=True)
@@ -322,6 +384,11 @@ def calculate_capital_allocation(
 ) -> CapitalAllocationSummary:
     """Calculates deployed capital and percentage per strategy from active positions.
 
+    For equities, deployed capital equals the invested purchase amount (size * entry_price).
+    For futures (derivatives), deployed capital equals the required initial margin
+    to maintain realistic portfolio allocation weighting, and PnL incorporates
+    the contract point multiplier.
+
     Args:
         positions: Sequence of active broker position records.
 
@@ -336,18 +403,56 @@ def calculate_capital_allocation(
         )
 
     strategy_totals: dict[str, Decimal] = {}
+    strategy_market_values: dict[str, Decimal] = {}
+    strategy_notionals: dict[str, Decimal] = {}
+    strategy_pnls: dict[str, Decimal] = {}
+    strategy_is_deriv: dict[str, bool] = {}
     strategy_counts: dict[str, int] = {}
 
     for pos in positions:
         raw_strat = str(pos.get("strategy_filter") or pos.get("strategy") or "Sonstige")
         strat_key = map_strategy_filter_key(raw_strat, fallback_to_unknown=True)
+        symbol = str(pos.get("symbol") or "")
 
         size = Decimal(str(pos.get("current_size") or 0))
         entry_price = Decimal(str(pos.get("entry_price") or 0))
-        invested = size * entry_price
+        current_price = Decimal(
+            str(pos.get("current_price") or pos.get("entry_price") or 0)
+        )
+
+        fut_match = resolve_futures_spec(symbol, raw_strat)
+        if fut_match is not None:
+            _, spec = fut_match
+            # Margin represents the actual capital commitment in the account
+            invested = size * spec.initial_margin
+            notional = size * current_price * spec.multiplier
+            market_val = notional
+            if entry_price > Decimal("0.00"):
+                unrealized_pnl = (current_price - entry_price) * size * spec.multiplier
+            else:
+                unrealized_pnl = Decimal("0.00")
+            is_deriv = True
+        else:
+            invested = size * entry_price
+            market_val = size * current_price
+            notional = market_val
+            unrealized_pnl = market_val - invested
+            is_deriv = False
 
         strategy_totals[strat_key] = (
             strategy_totals.get(strat_key, Decimal("0.00")) + invested
+        )
+        strategy_market_values[strat_key] = (
+            strategy_market_values.get(strat_key, Decimal("0.00")) + market_val
+        )
+        strategy_notionals[strat_key] = (
+            strategy_notionals.get(strat_key, Decimal("0.00")) + notional
+        )
+        strategy_pnls[strat_key] = (
+            strategy_pnls.get(strat_key, Decimal("0.00")) + unrealized_pnl
+        )
+        strategy_is_deriv[strat_key] = (
+            strategy_is_deriv.get(strat_key, False) or is_deriv
         )
         strategy_counts[strat_key] = strategy_counts.get(strat_key, 0) + 1
 
@@ -365,6 +470,14 @@ def calculate_capital_allocation(
             if total_invested > Decimal("0.00")
             else 0.0
         )
+        market_val = strategy_market_values.get(strat_key, Decimal("0.00"))
+        notional_val = strategy_notionals.get(strat_key, Decimal("0.00"))
+        unrealized_pnl = strategy_pnls.get(strat_key, Decimal("0.00"))
+        pnl_pct = (
+            float((unrealized_pnl / invested) * 100)
+            if invested > Decimal("0.00")
+            else 0.0
+        )
         color = STRATEGY_COLOR_MAP.get(strat_key, DEFAULT_STRATEGY_COLOR)
         label = STRATEGY_DISPLAY_LABEL_MAP.get(strat_key, strat_key)
         allocations.append(
@@ -372,9 +485,14 @@ def calculate_capital_allocation(
                 strategy_key=strat_key,
                 strategy_label=label,
                 invested_capital=invested,
+                market_value=market_val,
+                unrealized_pnl=unrealized_pnl,
+                pnl_percentage=pnl_pct,
                 allocation_percentage=allocation_pct,
                 position_count=strategy_counts[strat_key],
                 color_class=color,
+                notional_exposure=notional_val,
+                is_derivative=strategy_is_deriv.get(strat_key, False),
             )
         )
 
@@ -1669,7 +1787,9 @@ class TradeViewService:
 
             entry_price = pos["entry_price"]
             size = pos["current_size"]
-            unrealized_pnl = (current_price - entry_price) * size
+            fut_match = resolve_futures_spec(symbol, pos.get("strategy") or "")
+            multiplier = float(fut_match[1].multiplier) if fut_match else 1.0
+            unrealized_pnl = (current_price - entry_price) * size * multiplier
             pnl_percentage = (
                 ((current_price - entry_price) / entry_price * 100)
                 if entry_price > 0

@@ -404,11 +404,55 @@
                     {% if capital_summary and capital_summary.strategies %}
                     <!-- Integrated Allocation Bar (Desktop) -->
                     <div class="px-6 py-3.5 bg-slate-50/50 border-b border-slate-200 space-y-2.5">
-                        <div class="w-full h-1.5 rounded-full overflow-hidden flex bg-slate-200/60 gap-0.5">
+                        <div class="relative w-full h-2 rounded-full flex bg-slate-200/60 gap-0.5">
                             {% for item in capital_summary.strategies %}
-                            <div class="{{ item.color_class }} h-full transition-all duration-300"
+                            <div class="relative group h-full cursor-pointer {% if loop.first %}rounded-l-full{% endif %} {% if loop.last %}rounded-r-full{% endif %}"
                                  style="width: {{ item.allocation_percentage }}%;"
-                                 title="{{ item.strategy_label }}: {{ item.invested_capital | de_number(0) }} $ ({{ item.allocation_percentage | de_number(1) }}%)"></div>
+                                 title="{{ item.strategy_label }} ({{ item.position_count }} Pos.): {{ item.invested_capital | de_number(0) }} $ ({{ item.allocation_percentage | de_number(1) }}%)">
+                                <div class="{{ item.color_class }} h-full w-full {% if loop.first %}rounded-l-full{% endif %} {% if loop.last %}rounded-r-full{% endif %} transition-all duration-150 group-hover:scale-y-125 group-hover:brightness-110"></div>
+                                <!-- Floating Micro-Card Tooltip -->
+                                <div class="absolute top-full {% if loop.first or (loop.index <= 2 and item.allocation_percentage < 15) %}left-0{% elif loop.last or (loop.revindex <= 2 and item.allocation_percentage < 15) %}right-0{% else %}left-1/2 -translate-x-1/2{% endif %} mt-2.5 hidden group-hover:flex flex-col z-30 pointer-events-none w-56 bg-slate-900/95 text-white p-2.5 rounded-xl shadow-xl backdrop-blur-sm border border-slate-700/50 text-xs">
+                                    <div class="flex items-center justify-between font-bold border-b border-slate-700/60 pb-1 mb-1.5">
+                                        <span class="flex items-center gap-1.5 truncate">
+                                            <span class="w-2 h-2 rounded-full {{ item.color_class }} shrink-0"></span>
+                                            <span class="text-white truncate">{{ item.strategy_label }}</span>
+                                        </span>
+                                        <span class="font-sans font-bold tabular-nums text-slate-300 ml-1 shrink-0">{{ item.allocation_percentage | de_number(1) }}&nbsp;%</span>
+                                    </div>
+                                    <div class="space-y-1 text-slate-300">
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Positionen:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.position_count }}</span>
+                                        </div>
+                                        {% if item.is_derivative %}
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Margin (gebunden):</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.invested_capital | de_number(0) }}&nbsp;$</span>
+                                        </div>
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Notional Exposure:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.notional_exposure | de_number(0) }}&nbsp;$</span>
+                                        </div>
+                                        {% else %}
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Investiert:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.invested_capital | de_number(0) }}&nbsp;$</span>
+                                        </div>
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Marktwert:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.market_value | de_number(0) }}&nbsp;$</span>
+                                        </div>
+                                        {% endif %}
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Offener PnL:</span>
+                                            <span class="font-sans font-bold tabular-nums {% if item.unrealized_pnl >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">
+                                                {{ item.unrealized_pnl | de_number(2, prefix_plus=True) }}&nbsp;$ ({{ item.pnl_percentage | de_number(1, prefix_plus=True) }}&nbsp;%)
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="absolute bottom-full {% if loop.first or (loop.index <= 2 and item.allocation_percentage < 15) %}left-4{% elif loop.last or (loop.revindex <= 2 and item.allocation_percentage < 15) %}right-4{% else %}left-1/2 -translate-x-1/2{% endif %} border-4 border-transparent border-b-slate-900/95"></div>
+                                </div>
+                            </div>
                             {% endfor %}
                         </div>
                         <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
@@ -476,10 +520,55 @@
                     {% if capital_summary and capital_summary.strategies %}
                     <!-- Integrated Allocation Bar (Mobile) -->
                     <div class="px-4 py-3 bg-slate-50/50 space-y-2">
-                        <div class="w-full h-1.5 rounded-full overflow-hidden flex bg-slate-200/60 gap-0.5">
+                        <div class="relative w-full h-2 rounded-full flex bg-slate-200/60 gap-0.5">
                             {% for item in capital_summary.strategies %}
-                            <div class="{{ item.color_class }} h-full"
-                                 style="width: {{ item.allocation_percentage }}%;"></div>
+                            <div class="relative group h-full {% if loop.first %}rounded-l-full{% endif %} {% if loop.last %}rounded-r-full{% endif %}"
+                                 style="width: {{ item.allocation_percentage }}%;"
+                                 title="{{ item.strategy_label }} ({{ item.position_count }} Pos.): {{ item.invested_capital | de_number(0) }} $ ({{ item.allocation_percentage | de_number(0) }}%)">
+                                <div class="{{ item.color_class }} h-full w-full {% if loop.first %}rounded-l-full{% endif %} {% if loop.last %}rounded-r-full{% endif %} transition-all duration-150 group-hover:scale-y-125 group-hover:brightness-110"></div>
+                                <!-- Floating Micro-Card Tooltip -->
+                                <div class="absolute top-full {% if loop.first or (loop.index <= 2 and item.allocation_percentage < 20) %}left-0{% elif loop.last or (loop.revindex <= 2 and item.allocation_percentage < 20) %}right-0{% else %}left-1/2 -translate-x-1/2{% endif %} mt-2 hidden group-hover:flex flex-col z-30 pointer-events-none w-48 bg-slate-900/95 text-white p-2 rounded-xl shadow-xl backdrop-blur-sm border border-slate-700/50 text-xs">
+                                    <div class="flex items-center justify-between font-bold border-b border-slate-700/60 pb-1 mb-1">
+                                        <span class="flex items-center gap-1.5 truncate">
+                                            <span class="w-2 h-2 rounded-full {{ item.color_class }} shrink-0"></span>
+                                            <span class="text-white truncate">{{ item.strategy_label }}</span>
+                                        </span>
+                                        <span class="font-sans font-bold tabular-nums text-slate-300 ml-1 shrink-0">{{ item.allocation_percentage | de_number(0) }}&nbsp;%</span>
+                                    </div>
+                                    <div class="space-y-1 text-slate-300">
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Positionen:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.position_count }}</span>
+                                        </div>
+                                        {% if item.is_derivative %}
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Margin:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.invested_capital | de_number(0) }}&nbsp;$</span>
+                                        </div>
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Notional:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.notional_exposure | de_number(0) }}&nbsp;$</span>
+                                        </div>
+                                        {% else %}
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Investiert:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.invested_capital | de_number(0) }}&nbsp;$</span>
+                                        </div>
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Marktwert:</span>
+                                            <span class="font-sans font-bold tabular-nums text-white">{{ item.market_value | de_number(0) }}&nbsp;$</span>
+                                        </div>
+                                        {% endif %}
+                                        <div class="flex justify-between items-center">
+                                            <span class="font-normal text-slate-400">Offener PnL:</span>
+                                            <span class="font-sans font-bold tabular-nums {% if item.unrealized_pnl >= 0 %}text-emerald-400{% else %}text-rose-400{% endif %}">
+                                                {{ item.unrealized_pnl | de_number(2, prefix_plus=True) }}&nbsp;$
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="absolute bottom-full {% if loop.first or (loop.index <= 2 and item.allocation_percentage < 20) %}left-4{% elif loop.last or (loop.revindex <= 2 and item.allocation_percentage < 20) %}right-4{% else %}left-1/2 -translate-x-1/2{% endif %} border-4 border-transparent border-b-slate-900/95"></div>
+                                </div>
+                            </div>
                             {% endfor %}
                         </div>
                         <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
