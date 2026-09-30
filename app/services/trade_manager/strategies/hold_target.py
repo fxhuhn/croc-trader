@@ -6,7 +6,7 @@ from typing import final, override
 import pandas as pd
 
 from ....const import Strategies
-from ....models import Order, OrderLeg, TradeParams
+from ....models import Order, OrderLeg
 from ....types import EntryReason, ExitReason, TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderPayload
@@ -36,32 +36,6 @@ class HoldTargetStrategy(BaseTradeStrategy):
             stacklevel=2,
         )
         super().__init__()
-
-    @override
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None = None,
-    ) -> TradeParams:
-        """
-        Calculates current strategy parameters for display/logging.
-
-        Args:
-            trade: The trade data structure.
-            dataframe_history: Historical price data (unused here).
-
-        Returns:
-            TradeParams: Container with stop loss, target, and extras.
-        """
-        # Note: realized_pnl is kept as is per user requirement
-        return TradeParams(
-            stop_loss=float(trade.get("current_stop_loss") or 0.0),
-            take_profit_1=float(trade.get("current_target") or 0.0),
-            extras={
-                "entry_limit": float(trade.get("entry_price") or 0.0),
-                "current_size": float(trade.get("current_size") or 0.0),
-            },
-        )
 
     def _is_signal_timing_valid(
         self,

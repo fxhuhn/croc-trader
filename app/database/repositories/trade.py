@@ -59,12 +59,6 @@ class TradeRepository(BaseRepository):
     def init_schema(self) -> None:
         """Recreates the DB schema (Unified Table)."""
         with self.session.connect() as connection:
-            # self.execute("DROP TABLE IF EXISTS active_trades", connection=connection)
-            # self.execute("DROP TABLE IF EXISTS trades_croc", connection=connection)
-            # self.execute("DROP TABLE IF EXISTS trades_dip_buyer", connection=connection)
-            # self.execute("DROP TABLE IF EXISTS trades", connection=connection)
-            # self.execute("DROP TABLE IF EXISTS trade_logs", connection=connection)
-
             self.execute(
                 """
                 CREATE TABLE IF NOT EXISTS trades (

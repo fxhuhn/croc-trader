@@ -34,7 +34,6 @@ class AllocationRecommendationContext:
 
 CORE_STRATEGY_NAME: str = "NDX Momentum"
 CORE_PORTFOLIO_SHARE: float = 0.40
-SATELLITE_PORTFOLIO_SHARE: float = 0.60
 
 
 class StrategyAllocationRow(TypedDict):

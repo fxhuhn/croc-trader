@@ -12,7 +12,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
-from constants import ColumnNames
+try:
+    from src.constants import ColumnNames
+except ImportError:
+    from scripts.analyzer.src.constants import ColumnNames
 
 logger = logging.getLogger(__name__)
 

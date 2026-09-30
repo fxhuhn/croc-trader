@@ -5,7 +5,7 @@ from typing import final, override
 import pandas as pd
 
 from ....const import ExitReason, Strategies
-from ....models import Order, OrderLeg, TradeParams
+from ....models import Order, OrderLeg
 from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderPayload
@@ -27,30 +27,6 @@ class DipBuyerStrategy(BaseTradeStrategy):
     TIME_STOP_DAYS: int = 8
     MIN_HISTORY_FOR_PREVIOUS_CANDLE: int = 2
     EXIT_TP_FACTOR: float = 0.8
-
-    @override
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None = None,
-    ) -> TradeParams | None:
-        """Extracts current strategy parameters for display.
-
-        Args:
-            trade: Current trade data.
-            dataframe_history: Historical price data.
-
-        Returns:
-            TradeParams: Extracted parameters for UI display.
-        """
-        return TradeParams(
-            stop_loss=0.0,  # No stop loss
-            take_profit_1=float(trade.get("current_target") or 0.0),
-            extras={
-                "entry_limit": self._extract_entry_price(trade),
-                "current_size": float(trade.get("current_size") or 0.0),
-            },
-        )
 
     @override
     def check_entry(

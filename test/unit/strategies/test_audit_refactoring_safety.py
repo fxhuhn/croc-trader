@@ -6,6 +6,7 @@ Validates exact financial target calculation, exception logging, and strategy co
 
 import json
 import logging
+from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -58,11 +59,6 @@ class DummyStrategy(BaseTradeStrategy):
         budget: float,
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
-    ):
-        return None
-
-    def get_current_parameters(
-        self, trade: dict, dataframe_history: pd.DataFrame | None = None
     ):
         return None
 
@@ -143,15 +139,9 @@ def test_two_percent_target_price_precision():
     """Validates exact target price calculation for fractional entry prices."""
     strategy = TwoPercentStrategy()
 
-    trade = {
-        "id": 10,
-        "entry_price": 10.33,
-        "current_target": 0.0,
-        "current_size": 100,
-    }
-    params = strategy.get_current_parameters(trade)
     # 10.33 * 1.02 = 10.5366 -> round to 2 decimal places = 10.54
-    assert params.take_profit_1 == 10.54
+    target_price = strategy._calculate_target_price(Decimal("10.33"))
+    assert target_price == Decimal("10.54")
 
 
 def test_two_percent_generate_exit_order_early_returns():

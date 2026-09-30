@@ -6,7 +6,7 @@ from typing import final, override
 import pandas as pd
 
 from ....const import ExitReason, Strategies
-from ....models import Order, TradeParams
+from ....models import Order
 from ....tools.market_holidays import MarketHolidayChecker
 from ....types import TradeData
 from ..types import TradeTransition
@@ -140,30 +140,6 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             dataframe_history=dataframe_history,
             start_date=setup_date,
             initial_setup_candle_green=setup_was_green,
-        )
-
-    @override
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None = None,
-    ) -> TradeParams:
-        """Standardizes TradeParams for turnover strategy.
-
-        Args:
-            trade: The trade data dictionary.
-            dataframe_history: Optional historical market data.
-
-        Returns:
-            TradeParams: Object containing strategy parameters.
-        """
-        return TradeParams(
-            stop_loss=0.0,
-            take_profit_1=0.0,
-            extras={
-                "variant": trade.get("strategy", "Standard"),
-                "current_size": float(trade.get("current_size") or 0.0),
-            },
         )
 
     @override

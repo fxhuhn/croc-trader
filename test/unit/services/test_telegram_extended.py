@@ -24,7 +24,6 @@ def test_telegram_send_disabled_or_unconfigured() -> None:
     """Tests send and send_message when disabled or missing credentials."""
     # Disabled bot
     bot_disabled = TelegramBot(token="123", chat_id="456", enabled=False)
-    assert bot_disabled.send("test") is None
     assert bot_disabled.send_message("test") is None
 
     # Enabled but missing credentials

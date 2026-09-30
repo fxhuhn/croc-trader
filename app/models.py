@@ -14,17 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class TradeParams:
-    """Immutable container for strategy-specific state parameters."""
-
-    stop_loss: float
-    take_profit_1: float | None = None
-    take_profit_2: float | None = None
-    take_profit_3: float | None = None
-    extras: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
 class OrderLeg:
     """Immutable representation of a single order leg (entry or exit)."""
 

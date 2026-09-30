@@ -20,7 +20,6 @@ _.get_all_orders
 _.get_executions_for_order
 _.get_all_daily_data
 _.process_daily_signals
-_.get_current_parameters
 _.source
 _.exit_reason
 _.current_stop_loss
@@ -68,7 +67,6 @@ view_trades_twopercent
 on_starting
 calculate_rsi
 calculate_sqn
-send
 
 # Module-level variables & settings keys
 timeout
@@ -236,7 +234,6 @@ SHIFT_DEPTH
 DEFAULT_MIN_TRADES
 DEFAULT_INPUT_PATTERN
 DEFAULT_OUTPUT_DIR
-signal_definitions
 to_local_tz
 run_matrix_analysis
 BullSignals

@@ -6,7 +6,7 @@ from typing import final, override
 import pandas as pd
 
 from ....const import Strategies
-from ....models import Order, TradeParams
+from ....models import Order
 from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderOptions
@@ -30,33 +30,6 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
     name = Strategies.NDXMomentum
     MIN_HISTORY_FOR_MONTH_SWITCH: int = 2
     _rebalance_cache: _RebalanceCache | None = None
-
-    @override
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None = None,
-    ) -> TradeParams:
-        """
-        Extracts current strategy parameters for display and evaluation.
-
-        Args:
-            trade: The trade data to extract parameters from.
-            dataframe_history: Optional historical price data.
-
-        Returns:
-            A TradeParams object containing the current strategy settings.
-        """
-        return TradeParams(
-            stop_loss=0.0,
-            take_profit_1=0.0,
-            extras={
-                "momentum_score": self._get_context_value(trade, "momentum_score"),
-                "qqq_regime": self._get_context_value(trade, "qqq_regime"),
-                "regime": f"{self._get_context_value(trade, 'regime')} (UNUSED)",
-                "signal_date": self._get_context_value(trade, "date"),
-            },
-        )
 
     @override
     def check_entry(

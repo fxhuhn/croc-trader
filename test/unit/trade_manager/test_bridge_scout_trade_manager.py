@@ -55,17 +55,6 @@ def sample_history() -> pd.DataFrame:
     )
 
 
-def test_get_current_parameters(
-    strategy: BridgeScoutTradeStrategy, sample_trade: dict
-) -> None:
-    params = strategy.get_current_parameters(sample_trade)
-    assert params is not None
-    assert params.stop_loss == 0.0
-    assert params.take_profit_1 == 0.0
-    assert params.extras["entry_price"] == 150.0
-    assert params.extras["current_size"] == 10.0
-
-
 def test_generate_entry_order(
     strategy: BridgeScoutTradeStrategy,
     sample_trade: dict,

@@ -27,7 +27,11 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import yaml
-from constants import ColumnNames
+
+try:
+    from scripts.analyzer.src.constants import ColumnNames
+except ImportError:
+    from analyzer.src.constants import ColumnNames
 
 logger = logging.getLogger(__name__)
 
@@ -669,7 +673,6 @@ class ResultExporter:
     def save_statistics(
         self,
         statistics: dict[str, dict[str, list[dict[str, Any]]]],
-        signal_definitions: dict[str, str],
         output_file: Path,
     ) -> None:
         rows = self._flatten_statistics(statistics)
@@ -1046,9 +1049,7 @@ class TradingAnalysisPipeline:
         if total_stats > 0:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             output_file = self._config.output_dir / f"statistik_{timestamp}.csv"
-            self._exporter.save_statistics(
-                statistics, self._config.signals, output_file
-            )
+            self._exporter.save_statistics(statistics, output_file)
         else:
             logger.warning(
                 f"No statistics with at least {self._config.min_trades} trades found"

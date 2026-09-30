@@ -11,7 +11,7 @@ import pandas as pd
 
 from ....config import settings
 from ....const import Strategies
-from ....models import Order, OrderLeg, TradeParams
+from ....models import Order, OrderLeg
 from ....types import ExitReason, OrderType, TimeInForce, TradeData, TradeStatus
 from ..types import TradeTransition
 
@@ -251,24 +251,6 @@ class BaseTradeStrategy(ABC):
         reference_date: str | None = None,
     ) -> Order | None:
         pass
-
-    @abstractmethod
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None,
-    ) -> TradeParams | None:
-        """
-        Calculates parameters for logging or display.
-
-        Args:
-            trade: The trade data from the database.
-            dataframe_history: Historical price data (optional).
-
-        Returns:
-            TradeParams | None: The calculated trade parameters.
-        """
-        raise NotImplementedError("Subclasses must implement get_current_parameters")
 
     def get_daily_updates(
         self,

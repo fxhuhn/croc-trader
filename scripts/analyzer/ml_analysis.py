@@ -15,7 +15,10 @@ import pandas as pd
 # Importiere Projekt-Module
 try:
     sys.path.append(str(Path(__file__).parent.parent))
-    from constants import ColumnNames
+    try:
+        from src.constants import ColumnNames
+    except ImportError:
+        from scripts.analyzer.src.constants import ColumnNames
     from trading_analysis import (
         DataProcessor,
         TradingRangeAnalyzer,

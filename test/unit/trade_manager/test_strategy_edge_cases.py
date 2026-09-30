@@ -24,9 +24,6 @@ class DummyConcreteStrategy(BaseTradeStrategy):
 
     name = "dummy"
 
-    def get_current_parameters(self, trade, dataframe_history=None):
-        return None
-
     def check_entry(self, trade, candle, dataframe_history, active_symbols=None):
         return None
 
@@ -189,14 +186,8 @@ def test_base_trade_strategy_get_strategy_budget(
 
 
 def test_turnover_timing_strategy_edge_cases() -> None:
-    """Tests TurnoverTimingStrategy parameters and order generation edge cases."""
+    """Tests TurnoverTimingStrategy order generation edge cases."""
     strategy = TurnoverTimingStrategy()
-
-    # get_current_parameters
-    trade = {"entry_price": 100.0, "current_size": 50}
-    params = strategy.get_current_parameters(trade)
-    assert params is not None
-    assert params.extras["current_size"] == 50.0
 
     # _generate_entry_order edge cases
     df_empty = pd.DataFrame()
@@ -221,15 +212,8 @@ def test_turnover_timing_strategy_edge_cases() -> None:
 
 
 def test_hold_target_strategy_edge_cases() -> None:
-    """Tests HoldTargetStrategy parameters and order generation edge cases."""
+    """Tests HoldTargetStrategy order generation edge cases."""
     strategy = HoldTargetStrategy()
-
-    # get_current_parameters
-    trade = {"entry_price": 100.0, "current_stop_loss": 90.0, "current_target": 110.0}
-    params = strategy.get_current_parameters(trade)
-    assert params is not None
-    assert params.stop_loss == 90.0
-    assert params.take_profit_1 == 110.0
 
     # _generate_entry_order edge cases
     df_empty = pd.DataFrame()
@@ -250,13 +234,8 @@ def test_hold_target_strategy_edge_cases() -> None:
 
 
 def test_dip_buyer_strategy_edge_cases() -> None:
-    """Tests DipBuyerStrategy parameters and order generation edge cases."""
+    """Tests DipBuyerStrategy order generation edge cases."""
     strategy = DipBuyerStrategy()
-
-    # get_current_parameters
-    trade = {"entry_price": 100.0, "current_stop_loss": 90.0, "current_target": 110.0}
-    params = strategy.get_current_parameters(trade)
-    assert params is not None
 
     # _generate_entry_order edge cases
     df_empty = pd.DataFrame()
@@ -277,13 +256,8 @@ def test_dip_buyer_strategy_edge_cases() -> None:
 
 
 def test_two_percent_strategy_edge_cases() -> None:
-    """Tests TwoPercentStrategy parameters and order generation edge cases."""
+    """Tests TwoPercentStrategy order generation edge cases."""
     strategy = TwoPercentStrategy()
-
-    # get_current_parameters
-    trade = {"entry_price": 100.0, "current_target": 110.0}
-    params = strategy.get_current_parameters(trade)
-    assert params is not None
 
     # _generate_entry_order edge cases
     df_empty = pd.DataFrame()
@@ -300,13 +274,8 @@ def test_two_percent_strategy_edge_cases() -> None:
 
 
 def test_ndx_momentum_strategy_edge_cases() -> None:
-    """Tests NDXMomentumTradeStrategy parameters and order generation edge cases."""
+    """Tests NDXMomentumTradeStrategy order generation edge cases."""
     strategy = NDXMomentumTradeStrategy()
-
-    # get_current_parameters
-    trade = {"entry_price": 100.0, "current_stop_loss": 90.0, "current_target": 110.0}
-    params = strategy.get_current_parameters(trade)
-    assert params is not None
 
     # Duplicate active symbol check in check_entry
     dup_trade = {

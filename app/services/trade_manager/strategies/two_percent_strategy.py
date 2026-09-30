@@ -6,7 +6,7 @@ from typing import final, override
 import pandas as pd
 
 from ....const import ExitReason, Strategies
-from ....models import Order, TradeParams
+from ....models import Order
 from ....tools.market_holidays import MarketHolidayChecker
 from ....types import TradeData
 from ..types import TradeTransition
@@ -74,29 +74,6 @@ class TwoPercentStrategy(BaseTradeStrategy):
             return Decimal("0.0")
         multiplier = Decimal(str(self.REWARD_TARGET_MULTIPLIER))
         return (entry_price * multiplier).quantize(Decimal("0.01"))
-
-    @override
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None = None,
-    ) -> TradeParams | None:
-        """Calculates current strategy parameters for display."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-        target_exit_price = (
-            float(self._calculate_target_price(Decimal(str(entry_price))))
-            if entry_price > 0
-            else float(trade.get("current_target") or 0.0)
-        )
-
-        return TradeParams(
-            stop_loss=0.0,
-            take_profit_1=target_exit_price,
-            extras={
-                "entry_limit": entry_price,
-                "current_size": float(trade.get("current_size") or 0.0),
-            },
-        )
 
     @override
     def _generate_entry_order(

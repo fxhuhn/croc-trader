@@ -17,7 +17,7 @@ from typing import final, override
 import pandas as pd
 
 from ....const import ExitReason, Strategies
-from ....models import Order, TradeParams
+from ....models import Order
 from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderOptions
@@ -109,35 +109,6 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         """
         completed_bars = self._calculate_bars_held(trade, dataframe_history)
         return completed_bars + 1
-
-    @override
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None = None,
-    ) -> TradeParams | None:
-        """Calculates current strategy parameters for display."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-        current_size = float(trade.get("current_size") or 0.0)
-
-        upcoming_bar = self._get_upcoming_execution_bar(trade, dataframe_history)
-        is_bar1 = upcoming_bar < MAX_TGIM_HOLDING_BARS
-
-        take_profit = entry_price if is_bar1 else 0.0
-        exit_rule_label = (
-            f"LOC: > {entry_price:,.2f}" if is_bar1 else "Time Exit (Wed MOC)"
-        )
-
-        return TradeParams(
-            stop_loss=0.0,
-            take_profit_1=take_profit,
-            extras={
-                "entry_price": entry_price,
-                "current_size": current_size,
-                "exit_rule_label": exit_rule_label,
-                "max_holding_bars": MAX_TGIM_HOLDING_BARS,
-            },
-        )
 
     @override
     def _generate_entry_order(

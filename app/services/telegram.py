@@ -215,19 +215,6 @@ class TelegramBot:
         if not self.bot_token or not self.chat_id:
             logger.warning("Telegram bot not fully configured (token/chat_id missing).")
 
-    def send(self, text: str, parse_mode: str = "Markdown") -> dict[str, object] | None:
-        """Legacy compatibility wrapper for message dispatching.
-
-        Args:
-            text: Message body to transmit.
-            parse_mode: Formatting engine designation.
-
-        Returns:
-            dict[str, object] | None: Parsed JSON response payload from Telegram.
-        """
-        logger.debug("Executing legacy Telegram send wrapper.")
-        return self.send_message(text, parse_mode)
-
     def send_message(
         self, text: str, parse_mode: str = "Markdown"
     ) -> dict[str, object] | None:

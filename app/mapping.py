@@ -42,8 +42,6 @@ class ExchangeMapper:
         "^DJI": "DJ",
         "^RUT": "RUSSELL",
     }
-    # Backward-compatibility alias
-    DEFAULT_ETF_EXCHANGES = CANONICAL_EXCHANGES
 
     def __new__(cls) -> "ExchangeMapper":
         if cls._instance is None:

@@ -9,16 +9,7 @@ from app.models import (
     MarketPrice,
     Order,
     OrderLeg,
-    TradeParams,
 )
-
-
-def test_trade_params() -> None:
-    params = TradeParams(stop_loss=10.0, take_profit_1=15.0, extras={"key": "val"})
-    assert params.stop_loss == 10.0
-    assert params.take_profit_1 == 15.0
-    assert params.take_profit_2 is None
-    assert params.extras == {"key": "val"}
 
 
 def test_order_and_order_leg() -> None:

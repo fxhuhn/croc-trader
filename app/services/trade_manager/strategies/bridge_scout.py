@@ -16,7 +16,7 @@ from typing import final, override
 import pandas as pd
 
 from ....const import ExitReason, Strategies
-from ....models import Order, TradeParams
+from ....models import Order
 from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderOptions
@@ -35,24 +35,6 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
 
     STRATEGY_IDENTIFIER = Strategies.BridgeScout
     name = Strategies.BridgeScout
-
-    @override
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None = None,
-    ) -> TradeParams | None:
-        """Calculates current strategy parameters for display."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-
-        return TradeParams(
-            stop_loss=0.0,
-            take_profit_1=0.0,
-            extras={
-                "entry_price": entry_price,
-                "current_size": float(trade.get("current_size") or 0.0),
-            },
-        )
 
     @override
     def _generate_entry_order(

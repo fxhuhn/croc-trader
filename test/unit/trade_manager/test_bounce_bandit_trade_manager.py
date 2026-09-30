@@ -241,23 +241,6 @@ def test_resolve_history_start_date_includes_lookback_buffer() -> None:
     assert start_date == "2026-05-25"
 
 
-def test_bounce_bandit_get_current_parameters(
-    trade_strategy: BounceBanditTradeStrategy,
-) -> None:
-    """Tests get_current_parameters returns TradeParams with correct extras."""
-    trade = {
-        "id": 1,
-        "entry_price": 500.0,
-        "current_size": 20,
-    }
-    params = trade_strategy.get_current_parameters(trade)
-    assert params is not None
-    assert params.extras["entry_price"] == 500.0
-    assert params.extras["current_size"] == 20.0
-    assert params.extras["exit_sma_len"] == 8
-    assert params.extras["rsi_exit_threshold"] == 75.0
-
-
 def test_bounce_bandit_generate_entry_order(
     trade_strategy: BounceBanditTradeStrategy,
 ) -> None:

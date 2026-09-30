@@ -18,7 +18,7 @@ from typing import final, override
 import pandas as pd
 
 from ....const import Strategies
-from ....models import Order, OrderLeg, TradeParams
+from ....models import Order, OrderLeg
 from ....tools.indicators import calculate_rsi, calculate_sma
 from ....types import TradeData
 from ..types import TradeTransition
@@ -90,26 +90,6 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
 
     EXIT_SMA_LEN = 8
     RSI_EXIT_THRESHOLD = 75.0
-
-    @override
-    def get_current_parameters(
-        self,
-        trade: TradeData,
-        dataframe_history: pd.DataFrame | None = None,
-    ) -> TradeParams | None:
-        """Calculates current strategy parameters for display."""
-        entry_price = float(trade.get("entry_price") or 0.0)
-
-        return TradeParams(
-            stop_loss=0.0,
-            take_profit_1=0.0,
-            extras={
-                "entry_price": entry_price,
-                "current_size": float(trade.get("current_size") or 0.0),
-                "exit_sma_len": self.EXIT_SMA_LEN,
-                "rsi_exit_threshold": self.RSI_EXIT_THRESHOLD,
-            },
-        )
 
     @override
     def get_daily_updates(
