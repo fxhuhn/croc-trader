@@ -506,6 +506,7 @@ def view_broker_dashboard() -> str:
     settlements = service.get_broker_settlements()
     discrepancies = service.get_reconciliation_discrepancies()
     active_trades = service.get_broker_active_trades()
+    capital_summary = service.get_broker_capital_allocation(active_trades)
 
     return render_template(
         "trades_broker.html",
@@ -515,6 +516,7 @@ def view_broker_dashboard() -> str:
         settlements=settlements,
         discrepancies=discrepancies,
         active_trades=active_trades,
+        capital_summary=capital_summary,
     )
 
 

@@ -1,6 +1,6 @@
 import json
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -266,6 +266,123 @@ def map_strategy_filter_key(
     if fallback_to_unknown:
         return strategy_name or "Unknown"
     return strategy_name
+
+
+@dataclass(frozen=True)
+class StrategyCapitalAllocation:
+    """Represents capital deployed for a single strategy."""
+
+    strategy_key: str
+    strategy_label: str
+    invested_capital: Decimal
+    allocation_percentage: float
+    position_count: int
+    color_class: str
+
+
+@dataclass(frozen=True)
+class CapitalAllocationSummary:
+    """Aggregated portfolio capital exposure across strategies."""
+
+    total_invested: Decimal
+    total_positions: int
+    strategies: tuple[StrategyCapitalAllocation, ...]
+
+
+STRATEGY_COLOR_MAP: dict[str, str] = {
+    "DipBuyer": "bg-indigo-500",
+    "Dip Buyer": "bg-indigo-500",
+    "TurnoverTiming": "bg-amber-500",
+    "Turnover": "bg-amber-500",
+    "TwoPercent": "bg-purple-500",
+    "Two Percent": "bg-purple-500",
+    "NDXMomentum": "bg-rose-500",
+    "NDX Momentum": "bg-rose-500",
+    "TGIM": "bg-sky-500",
+    "BridgeScout": "bg-teal-500",
+    "Bridge Scout": "bg-teal-500",
+    "BounceBandit": "bg-violet-500",
+    "Bounce Bandit": "bg-violet-500",
+}
+DEFAULT_STRATEGY_COLOR: str = "bg-slate-400"
+
+STRATEGY_DISPLAY_LABEL_MAP: dict[str, str] = {
+    "DipBuyer": "Dip Buyer",
+    "TurnoverTiming": "Turnover",
+    "TwoPercent": "Two Percent",
+    "NDXMomentum": "NDX Momentum",
+    "TGIM": "TGIM",
+    "BridgeScout": "Bridge Scout",
+    "BounceBandit": "Bounce Bandit",
+}
+
+
+def calculate_capital_allocation(
+    positions: Sequence[ActivePositionRecord | Mapping[str, Any]],
+) -> CapitalAllocationSummary:
+    """Calculates deployed capital and percentage per strategy from active positions.
+
+    Args:
+        positions: Sequence of active broker position records.
+
+    Returns:
+        CapitalAllocationSummary: Summary with total invested capital and strategy breakdown.
+    """
+    if not positions:
+        return CapitalAllocationSummary(
+            total_invested=Decimal("0.00"),
+            total_positions=0,
+            strategies=(),
+        )
+
+    strategy_totals: dict[str, Decimal] = {}
+    strategy_counts: dict[str, int] = {}
+
+    for pos in positions:
+        raw_strat = str(pos.get("strategy_filter") or pos.get("strategy") or "Sonstige")
+        strat_key = map_strategy_filter_key(raw_strat, fallback_to_unknown=True)
+
+        size = Decimal(str(pos.get("current_size") or 0))
+        entry_price = Decimal(str(pos.get("entry_price") or 0))
+        invested = size * entry_price
+
+        strategy_totals[strat_key] = (
+            strategy_totals.get(strat_key, Decimal("0.00")) + invested
+        )
+        strategy_counts[strat_key] = strategy_counts.get(strat_key, 0) + 1
+
+    total_invested = sum(strategy_totals.values(), Decimal("0.00"))
+    total_positions = len(positions)
+
+    allocations: list[StrategyCapitalAllocation] = []
+    sorted_strategies = sorted(
+        strategy_totals.items(), key=lambda item: item[1], reverse=True
+    )
+
+    for strat_key, invested in sorted_strategies:
+        allocation_pct = (
+            float((invested / total_invested) * 100)
+            if total_invested > Decimal("0.00")
+            else 0.0
+        )
+        color = STRATEGY_COLOR_MAP.get(strat_key, DEFAULT_STRATEGY_COLOR)
+        label = STRATEGY_DISPLAY_LABEL_MAP.get(strat_key, strat_key)
+        allocations.append(
+            StrategyCapitalAllocation(
+                strategy_key=strat_key,
+                strategy_label=label,
+                invested_capital=invested,
+                allocation_percentage=allocation_pct,
+                position_count=strategy_counts[strat_key],
+                color_class=color,
+            )
+        )
+
+    return CapitalAllocationSummary(
+        total_invested=total_invested,
+        total_positions=total_positions,
+        strategies=tuple(allocations),
+    )
 
 
 class TradeViewData(TradeData, total=False):
@@ -1573,6 +1690,12 @@ class TradeViewService:
             pos["strategy_filter"] = _map_order_strategy_filter(pos["strategy"])
 
         return positions
+
+    def get_broker_capital_allocation(
+        self, positions: Sequence[ActivePositionRecord | Mapping[str, Any]]
+    ) -> CapitalAllocationSummary:
+        """Computes strategy capital allocation from active positions."""
+        return calculate_capital_allocation(positions)
 
     def get_broker_active_orders(self) -> list[dict[str, Any]]:
         """Fetches active submitted and presubmitted orders from TWS broker database.

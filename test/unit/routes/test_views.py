@@ -7,6 +7,7 @@ metrics without touching the actual database or disk.
 """
 
 from collections.abc import Generator
+from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +17,7 @@ from flask import Flask, template_rendered
 from flask.testing import FlaskClient
 
 from app.const import Strategies
+from app.services.trade_manager.view_service import CapitalAllocationSummary
 from app.types import TradeStatus
 
 
@@ -658,6 +660,7 @@ def test_view_trades_dip_buyer_weekday_stats_populated_and_rendered(
                 "settlements",
                 "discrepancies",
                 "active_trades",
+                "capital_summary",
             },
         ),
     ],
@@ -714,6 +717,13 @@ def test_view_trades_template_context_contract_enforced(
         mock_service.get_broker_settlements.return_value = []
         mock_service.get_reconciliation_discrepancies.return_value = []
         mock_service.get_broker_active_trades.return_value = []
+        mock_service.get_broker_capital_allocation.return_value = (
+            CapitalAllocationSummary(
+                total_invested=Decimal("0.00"),
+                total_positions=0,
+                strategies=(),
+            )
+        )
 
         response = test_client.get(trades_route)
 
@@ -1193,6 +1203,13 @@ def test_view_broker_dashboard_renders_dom_elements_and_headers(
             ]
         }
         mock_service_instance.get_broker_active_trades.return_value = []
+        mock_service_instance.get_broker_capital_allocation.return_value = (
+            CapitalAllocationSummary(
+                total_invested=Decimal("0.00"),
+                total_positions=0,
+                strategies=(),
+            )
+        )
         mock_service_instance.get_broker_settlements.return_value = []
         mock_service_instance.broker_repository.get_orders_by_status.return_value = [
             mock_order

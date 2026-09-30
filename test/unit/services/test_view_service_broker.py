@@ -1,6 +1,10 @@
+from decimal import Decimal
 from unittest.mock import MagicMock
 
-from app.services.trade_manager.view_service import TradeViewService
+from app.services.trade_manager.view_service import (
+    TradeViewService,
+    calculate_capital_allocation,
+)
 
 
 def test_get_broker_summary_none() -> None:
@@ -117,3 +121,95 @@ def test_get_reconciliation_discrepancies() -> None:
     assert discrepancies[0]["symbol"] == "TSLA"
     assert discrepancies[0]["strategy"] == "DipBuyer"
     assert discrepancies[0]["discrepancy_type"] == "MISSING_EXECUTION"
+
+
+def test_calculate_capital_allocation_empty() -> None:
+    """Verifies that an empty positions list produces zero allocation summary."""
+    summary = calculate_capital_allocation([])
+    assert summary.total_invested == Decimal("0.00")
+    assert summary.total_positions == 0
+    assert summary.strategies == ()
+
+
+def test_calculate_capital_allocation_multiple_strategies() -> None:
+    """Verifies proportional allocation, ordering, position count, and colors."""
+    positions = [
+        {
+            "symbol": "AAPL",
+            "strategy": "DipBuyer",
+            "current_size": 10.0,
+            "entry_price": 150.0,
+        },
+        {
+            "symbol": "MSFT",
+            "strategy_filter": "DipBuyer",
+            "current_size": 5.0,
+            "entry_price": 100.0,
+        },
+        {
+            "symbol": "QQQ",
+            "strategy": "TurnoverTiming",
+            "current_size": 20.0,
+            "entry_price": 100.0,
+        },
+        {
+            "symbol": "SPY",
+            "strategy": "TwoPercent",
+            "current_size": 10.0,
+            "entry_price": 100.0,
+        },
+    ]
+
+    summary = calculate_capital_allocation(positions)
+    assert summary.total_positions == 4
+    # AAPL: 1500 + MSFT: 500 = 2000. QQQ: 2000. SPY: 1000. Total = 5000.
+    assert summary.total_invested == Decimal("5000.00")
+    assert len(summary.strategies) == 3
+
+    dip_item = next(s for s in summary.strategies if s.strategy_key == "DipBuyer")
+    turnover_item = next(
+        s for s in summary.strategies if s.strategy_key == "TurnoverTiming"
+    )
+    two_pct_item = next(s for s in summary.strategies if s.strategy_key == "TwoPercent")
+
+    assert dip_item.invested_capital == Decimal("2000.00")
+    assert dip_item.position_count == 2
+    assert dip_item.allocation_percentage == 40.0
+    assert dip_item.color_class == "bg-indigo-500"
+    assert dip_item.strategy_label == "Dip Buyer"
+
+    assert turnover_item.invested_capital == Decimal("2000.00")
+    assert turnover_item.position_count == 1
+    assert turnover_item.allocation_percentage == 40.0
+    assert turnover_item.color_class == "bg-amber-500"
+    assert turnover_item.strategy_label == "Turnover"
+
+    assert two_pct_item.invested_capital == Decimal("1000.00")
+    assert two_pct_item.position_count == 1
+    assert two_pct_item.allocation_percentage == 20.0
+    assert two_pct_item.color_class == "bg-purple-500"
+    assert two_pct_item.strategy_label == "Two Percent"
+
+
+def test_get_broker_capital_allocation_service_method() -> None:
+    """Verifies that TradeViewService delegates correctly to calculate_capital_allocation."""
+    service = TradeViewService(
+        trade_repository=MagicMock(),
+        market_repository=MagicMock(),
+        broker_repository=MagicMock(),
+    )
+    positions = [
+        {
+            "symbol": "INTC",
+            "strategy": "NDXMomentum",
+            "current_size": 10.0,
+            "entry_price": 50.0,
+        }
+    ]
+    summary = service.get_broker_capital_allocation(positions)
+    assert summary.total_invested == Decimal("500.00")
+    assert summary.total_positions == 1
+    assert len(summary.strategies) == 1
+    assert summary.strategies[0].strategy_key == "NDXMomentum"
+    assert summary.strategies[0].strategy_label == "NDX Momentum"
+    assert summary.strategies[0].color_class == "bg-rose-500"
