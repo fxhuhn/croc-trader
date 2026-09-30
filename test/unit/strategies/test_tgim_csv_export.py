@@ -296,11 +296,10 @@ def test_tgim_strategy_to_csv_end_to_end(tmp_path: Path) -> None:
         history_bar1 = pd.DataFrame(
             [
                 {"date": "2026-09-14", "close": 500.0},
-                {"date": "2026-09-15", "close": 505.0},
             ]
         )
         order_exit_bar1 = strategy._generate_exit_order(
-            trade_active, history_bar1, budget=10000.0
+            trade_active, history_bar1, budget=10000.0, reference_date="2026-09-15"
         )
         assert order_exit_bar1 is not None
         assert order_exit_bar1.entry is None
@@ -331,11 +330,10 @@ def test_tgim_strategy_to_csv_end_to_end(tmp_path: Path) -> None:
             [
                 {"date": "2026-09-14", "close": 500.0},
                 {"date": "2026-09-15", "close": 498.0},
-                {"date": "2026-09-16", "close": 495.0},
             ]
         )
         order_exit_bar2 = strategy._generate_exit_order(
-            trade_active, history_bar2, budget=10000.0
+            trade_active, history_bar2, budget=10000.0, reference_date="2026-09-16"
         )
         assert order_exit_bar2 is not None
         assert order_exit_bar2.entry is None

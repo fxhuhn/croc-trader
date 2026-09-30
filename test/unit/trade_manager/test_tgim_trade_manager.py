@@ -272,8 +272,7 @@ def test_tgim_get_current_parameters_bar2_time_exit(
     }
     monday_candle = {"date": pd.Timestamp("2026-07-20"), "close": 500.0}
     tuesday_candle = {"date": pd.Timestamp("2026-07-21"), "close": 497.0}
-    wednesday_candle = {"date": pd.Timestamp("2026-07-22"), "close": 495.0}
-    df_history = pd.DataFrame([monday_candle, tuesday_candle, wednesday_candle])
+    df_history = pd.DataFrame([monday_candle, tuesday_candle])
 
     params = trade_strategy.get_current_parameters(trade, df_history)
     assert params is not None
@@ -327,14 +326,15 @@ def test_tgim_generate_exit_order(
         "entry_price": 500.0,
         "entry_date": "2026-07-20",
     }
-    # Bar 1 (Tuesday) -> LOC exit order at entry_price
+    # Bar 1 (Tuesday pre-market) -> History has Monday only -> LOC exit order at entry_price
     df_bar1 = pd.DataFrame(
         [
             {"date": "2026-07-20", "close": 500.0},
-            {"date": "2026-07-21", "close": 505.0},
         ]
     )
-    order_bar1 = trade_strategy._generate_exit_order(trade, df_bar1, budget=10000.0)
+    order_bar1 = trade_strategy._generate_exit_order(
+        trade, df_bar1, budget=10000.0, reference_date="2026-07-21"
+    )
     assert order_bar1 is not None
     assert order_bar1.symbol == "SPY"
     assert order_bar1.quantity == 20
@@ -343,22 +343,23 @@ def test_tgim_generate_exit_order(
     assert order_bar1.exits[0].price == Decimal("500.0")
     assert order_bar1.exits[0].time_in_force == "DAY"
 
-    # Bar 2 (Wednesday) -> MOC exit order
+    # Bar 2 (Wednesday pre-market) -> History has Monday and Tuesday -> MOC exit order
     df_bar2 = pd.DataFrame(
         [
             {"date": "2026-07-20", "close": 500.0},
             {"date": "2026-07-21", "close": 498.0},
-            {"date": "2026-07-22", "close": 495.0},
         ]
     )
-    order_bar2 = trade_strategy._generate_exit_order(trade, df_bar2, budget=10000.0)
+    order_bar2 = trade_strategy._generate_exit_order(
+        trade, df_bar2, budget=10000.0, reference_date="2026-07-22"
+    )
     assert order_bar2 is not None
     assert order_bar2.symbol == "SPY"
     assert order_bar2.quantity == 20
     assert len(order_bar2.exits) == 1
     assert order_bar2.exits[0].type == "MOC"
     assert order_bar2.exits[0].time_in_force == "DAY"
-    assert order_bar2.exits[0].price == Decimal("495.0")
+    assert order_bar2.exits[0].price == Decimal("498.0")
 
     # Quantity <= 0
     assert (
@@ -373,6 +374,29 @@ def test_tgim_generate_exit_order(
         trade_strategy._generate_exit_order(trade, pd.DataFrame(), budget=10000.0)
         is None
     )
+
+
+def test_tgim_generate_exit_order_lookahead_bias_raises_error(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests _generate_exit_order raises ValueError when history contains candles on or after reference_date."""
+    trade = {
+        "symbol": "SPY",
+        "current_size": 20,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+    }
+    df_with_lookahead = pd.DataFrame(
+        [
+            {"date": "2026-07-20", "close": 500.0},
+            {"date": "2026-07-21", "close": 498.0},
+            {"date": "2026-07-22", "close": 495.0},
+        ]
+    )
+    with pytest.raises(ValueError, match="Lookahead bias"):
+        trade_strategy._generate_exit_order(
+            trade, df_with_lookahead, budget=10000.0, reference_date="2026-07-22"
+        )
 
 
 def test_tgim_check_entry_zero_threshold_returns_none(
@@ -516,3 +540,54 @@ def test_tgim_check_entry_rejects_past_monday_candle(
     assert transition is not None
     assert transition.updates["status"] == TradeStatus.INVALID.value
     assert transition.updates["exit_reason"] == ExitReason.INVALIDATED.value
+
+
+def test_tgim_lifecycle_timeline_replay(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Verifies full sequential multi-day order timeline without lookahead bias.
+
+    Monday EOD: Entry at 500.0.
+    Tuesday Pre-Market (reference_date=2026-07-21, history=Monday): Emits LOC.
+    Tuesday EOD: Tuesday close at 498.0 (no profit exit).
+    Wednesday Pre-Market (reference_date=2026-07-22, history=Monday+Tuesday): Emits MOC.
+    """
+    trade = {
+        "id": 10,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.ACTIVE.value,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+        "current_size": 20,
+        "budget": 10000.0,
+    }
+
+    # Step 1: Tuesday morning pre-market (only Monday in database)
+    history_tuesday_morning = pd.DataFrame(
+        [
+            {"date": "2026-07-20", "close": 500.0},
+        ]
+    )
+    tuesday_order = trade_strategy._generate_exit_order(
+        trade, history_tuesday_morning, budget=10000.0, reference_date="2026-07-21"
+    )
+    assert tuesday_order is not None
+    assert len(tuesday_order.exits) == 1
+    assert tuesday_order.exits[0].type == "LOC"
+    assert tuesday_order.exits[0].price == Decimal("500.0")
+
+    # Step 2: Wednesday morning pre-market (Monday and Tuesday in database)
+    history_wednesday_morning = pd.DataFrame(
+        [
+            {"date": "2026-07-20", "close": 500.0},
+            {"date": "2026-07-21", "close": 498.0},
+        ]
+    )
+    wednesday_order = trade_strategy._generate_exit_order(
+        trade, history_wednesday_morning, budget=10000.0, reference_date="2026-07-22"
+    )
+    assert wednesday_order is not None
+    assert len(wednesday_order.exits) == 1
+    assert wednesday_order.exits[0].type == "MOC"
+    assert wednesday_order.exits[0].price == Decimal("498.0")

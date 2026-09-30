@@ -97,6 +97,19 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         history_from_entry = dataframe_history[dates >= entry_date]
         return max(0, len(history_from_entry) - 1)
 
+    def _get_upcoming_execution_bar(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame | None,
+    ) -> int:
+        """Calculates 1-based index of the upcoming trading session for order generation.
+
+        - Tuesday pre-market: 0 completed bars held -> returns 1 (Bar 1).
+        - Wednesday pre-market: 1 completed bar held -> returns 2 (Bar 2).
+        """
+        completed_bars = self._calculate_bars_held(trade, dataframe_history)
+        return completed_bars + 1
+
     @override
     def get_current_parameters(
         self,
@@ -107,11 +120,12 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         entry_price = float(trade.get("entry_price") or 0.0)
         current_size = float(trade.get("current_size") or 0.0)
 
-        bars_held = self._calculate_bars_held(trade, dataframe_history)
+        upcoming_bar = self._get_upcoming_execution_bar(trade, dataframe_history)
+        is_bar1 = upcoming_bar < MAX_TGIM_HOLDING_BARS
 
-        take_profit = entry_price if bars_held <= 1 else 0.0
+        take_profit = entry_price if is_bar1 else 0.0
         exit_rule_label = (
-            f"LOC: > {entry_price:,.2f}" if bars_held <= 1 else "Time Exit (Wed MOC)"
+            f"LOC: > {entry_price:,.2f}" if is_bar1 else "Time Exit (Wed MOC)"
         )
 
         return TradeParams(
@@ -166,11 +180,23 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         if quantity <= 0 or dataframe_history.empty:
             return None
 
-        bars_held = self._calculate_bars_held(trade, dataframe_history)
+        if reference_date and not dataframe_history.empty:
+            latest_candle_date = pd.to_datetime(
+                dataframe_history["date"].iloc[-1]
+            ).date()
+            target_execution_date = pd.to_datetime(reference_date).date()
+            if latest_candle_date >= target_execution_date:
+                raise ValueError(
+                    f"Lookahead bias in TGIM order generation: history contains data "
+                    f"from {latest_candle_date} on or after execution date "
+                    f"{target_execution_date}"
+                )
+
+        upcoming_bar = self._get_upcoming_execution_bar(trade, dataframe_history)
         entry_price_val = trade.get("entry_price") or 0.0
         entry_price = Decimal(str(entry_price_val))
 
-        if bars_held >= MAX_TGIM_HOLDING_BARS:
+        if upcoming_bar >= MAX_TGIM_HOLDING_BARS:
             last_candle = dataframe_history.iloc[-1]
             close_price = Decimal(str(last_candle["close"]))
             return self._create_exit_order(
