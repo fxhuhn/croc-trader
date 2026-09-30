@@ -1,10 +1,14 @@
+import datetime
+
 import pandas as pd
 import pytest
 
 from app.tools.indicators import (
     calculate_max_close_for_rsi,
+    calculate_mtd_return,
     calculate_rsi,
     calculate_rsi_exit_target,
+    calculate_up_days_count,
     extract_safe_float,
 )
 
@@ -104,3 +108,98 @@ def test_calculate_sma_dataframe():
     assert sma["AAPL"].iloc[2] == pytest.approx(25.0)
     assert sma["MSFT"].iloc[1] == pytest.approx(150.0)
     assert sma["MSFT"].iloc[2] == pytest.approx(250.0)
+
+
+def test_calculate_up_days_count_insufficient_data() -> None:
+    """Tests calculate_up_days_count returns None when history < lookback + 1."""
+    assert calculate_up_days_count(pd.Series([], dtype=float), lookback=225) is None
+    # 225 items with lookback 225 -> not enough to compute 225 changes (needs 226)
+    short_series = pd.Series([100.0 + i for i in range(225)])
+    assert calculate_up_days_count(short_series, lookback=225) is None
+
+
+def test_calculate_up_days_count_normal() -> None:
+    """Tests calculate_up_days_count accurately counts positive daily changes."""
+    # Lookback = 5, requires 6 prices
+    prices = pd.Series([10.0, 12.0, 11.0, 13.0, 14.0, 12.0])
+    # 10->12 (up), 12->11 (down), 11->13 (up), 13->14 (up), 14->12 (down) => 3 up-days
+    assert calculate_up_days_count(prices, lookback=5) == 3
+
+    # Default lookback = 225, exactly 226 bars: all strictly increasing
+    full_up = pd.Series([100.0 + i for i in range(226)])
+    assert calculate_up_days_count(full_up, lookback=225) == 225
+
+    # Exactly 226 bars: all strictly decreasing
+    full_down = pd.Series([500.0 - i for i in range(226)])
+    assert calculate_up_days_count(full_down, lookback=225) == 0
+
+
+def test_calculate_mtd_return_normal() -> None:
+    """Tests calculate_mtd_return with standard prior month and current month bars."""
+    dates = pd.Series(
+        [
+            datetime.date(2026, 6, 29),
+            datetime.date(2026, 6, 30),
+            datetime.date(2026, 7, 1),
+            datetime.date(2026, 7, 2),
+        ]
+    )
+    prices = pd.Series([100.0, 102.0, 105.0, 104.04])
+    ref_date = datetime.date(2026, 7, 2)
+
+    # Base close is 102.0 (2026-06-30), current close is 104.04 (2026-07-02)
+    # Return = 104.04 / 102.0 - 1.0 = 0.02 (2.0%)
+    result = calculate_mtd_return(prices, dates, ref_date)
+    assert result == pytest.approx(0.02, abs=1e-5)
+
+
+def test_calculate_mtd_return_with_datetime_index() -> None:
+    """Tests calculate_mtd_return when dates are provided via DatetimeIndex."""
+    datetime_index = pd.to_datetime(["2026-06-30", "2026-07-01", "2026-07-02"])
+    prices = pd.Series([100.0, 105.0, 110.0], index=datetime_index)
+    ref_date = datetime.date(2026, 7, 2)
+
+    result = calculate_mtd_return(prices, datetime_index, ref_date)
+    assert result == pytest.approx(0.10, abs=1e-5)
+
+
+def test_calculate_mtd_return_missing_prior_month() -> None:
+    """Tests calculate_mtd_return returns 0.0 when no prior month data exists."""
+    dates = pd.Series([datetime.date(2026, 7, 1), datetime.date(2026, 7, 2)])
+    prices = pd.Series([100.0, 105.0])
+    ref_date = datetime.date(2026, 7, 2)
+
+    assert calculate_mtd_return(prices, dates, ref_date) == 0.0
+
+
+def test_calculate_mtd_return_empty_or_zero_base() -> None:
+    """Tests calculate_mtd_return handles empty series and zero base close gracefully."""
+    empty_series = pd.Series([], dtype=float)
+    empty_dates = pd.Series([], dtype="object")
+    assert (
+        calculate_mtd_return(empty_series, empty_dates, datetime.date(2026, 7, 2))
+        == 0.0
+    )
+
+    dates = pd.Series([datetime.date(2026, 6, 30), datetime.date(2026, 7, 1)])
+    prices_zero = pd.Series([0.0, 10.0])
+    assert calculate_mtd_return(prices_zero, dates, datetime.date(2026, 7, 1)) == 0.0
+
+
+def test_calculate_mtd_return_lookahead_guard() -> None:
+    """Tests that bars after reference_date are strictly excluded (Zero Lookahead-Bias)."""
+    dates = pd.Series(
+        [
+            datetime.date(2026, 6, 30),
+            datetime.date(2026, 7, 1),
+            datetime.date(2026, 7, 2),
+            datetime.date(2026, 7, 3),  # Future bar relative to ref_date
+            datetime.date(2026, 7, 6),  # Future bar relative to ref_date
+        ]
+    )
+    prices = pd.Series([100.0, 102.0, 104.0, 120.0, 150.0])
+    ref_date = datetime.date(2026, 7, 2)
+
+    # Must calculate using 2026-07-02 (104.0) vs 2026-06-30 (100.0) -> +4%
+    result = calculate_mtd_return(prices, dates, ref_date)
+    assert result == pytest.approx(0.04, abs=1e-5)

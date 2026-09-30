@@ -1,3 +1,5 @@
+import datetime
+
 import pandas as pd
 
 
@@ -161,3 +163,65 @@ def extract_safe_float(value: object, default: float = 0.0) -> float:
         return float(value)  # type: ignore[arg-type]
     except (ValueError, TypeError):
         return default
+
+
+def calculate_up_days_count(close_series: pd.Series, lookback: int = 225) -> int | None:
+    """Counts up-days (Close > Close[1]) over the specified lookback window.
+
+    Returns the integer count of positive daily returns for a single symbol,
+    or None if the close series has fewer than (lookback + 1) bars.
+    """
+    if close_series.empty or len(close_series) < lookback + 1:
+        return None
+    daily_returns = close_series.iloc[-(lookback + 1) :].diff().iloc[1:]
+    return int((daily_returns > 0).sum())
+
+
+def calculate_mtd_return(
+    close_series: pd.Series,
+    date_series: pd.Series | pd.DatetimeIndex,
+    reference_date: datetime.date,
+) -> float:
+    """Calculates Month-to-Date (MTD) return relative to prior month-end close.
+
+    Zero Lookahead-Bias Guard: Strictly restricts series up to reference_date.
+    Returns 0.0 if no prior month-end close exists or input series is empty.
+    """
+    if close_series.empty:
+        return 0.0
+
+    current_month = reference_date.month
+    current_year = reference_date.year
+
+    if isinstance(date_series, pd.DatetimeIndex):
+        dates = pd.Series(date_series.date, index=close_series.index)
+    else:
+        dates = pd.to_datetime(date_series).dt.date
+
+    # Lookahead Guard: Restrict strictly to historical bars at or before reference_date
+    historical_mask = (dates <= reference_date).to_numpy()
+    valid_closes = close_series[historical_mask]
+    valid_dates = dates[historical_mask]
+
+    if valid_closes.empty:
+        return 0.0
+
+    # Find bars belonging strictly to prior months/years
+    prior_month_mask = (
+        (valid_dates.apply(lambda d: d.year) < current_year)
+        | (
+            (valid_dates.apply(lambda d: d.year) == current_year)
+            & (valid_dates.apply(lambda d: d.month) < current_month)
+        )
+    ).to_numpy()
+    prior_closes = valid_closes[prior_month_mask]
+
+    if prior_closes.empty:
+        return 0.0
+
+    base_close = float(prior_closes.iloc[-1])
+    if base_close <= 0.0:
+        return 0.0
+
+    current_close = float(valid_closes.iloc[-1])
+    return (current_close / base_close) - 1.0

@@ -145,6 +145,9 @@ class PortfolioConfig:
     split_target: PortfolioStrategyConfig = field(
         default_factory=lambda: PortfolioStrategyConfig(risk_amount=100.0)
     )
+    wounded_bull_sprint: PortfolioStrategyConfig = field(
+        default_factory=lambda: PortfolioStrategyConfig(budget=10000.0)
+    )
 
     def get_budget(self, strategy_key: str) -> float:
         """Returns the budget for a strategy. 0.0 if not budget-based."""
@@ -265,6 +268,9 @@ def _parse_portfolio_config(portfolio_data: dict[str, Any]) -> PortfolioConfig:
         croc_setup=get_strat_config("croc_setup", default_risk=100.0),
         hold_target=get_strat_config("hold_target", default_risk=100.0),
         split_target=get_strat_config("split_target", default_risk=100.0),
+        wounded_bull_sprint=get_strat_config(
+            "wounded_bull_sprint", default_budget=10000.0
+        ),
     )
 
 

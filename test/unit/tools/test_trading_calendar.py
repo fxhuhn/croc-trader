@@ -12,6 +12,7 @@ from app.tools.trading_calendar import (
     get_last_completed_trading_day,
     get_next_trading_day,
     get_remaining_trading_days_in_month,
+    get_trading_day_of_month,
     is_in_end_of_month_window,
     is_last_trading_day_of_month,
     is_trading_day,
@@ -303,3 +304,71 @@ def test_roll_weekend_to_monday() -> None:
     assert roll_weekend_to_monday(tuesday) == tuesday
     assert roll_weekend_to_monday(wednesday) == wednesday
     assert roll_weekend_to_monday(thursday) == thursday
+
+
+def test_get_trading_day_of_month_regular_weekday() -> None:
+    """Tests get_trading_day_of_month counts trading days up to check_date."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+
+    # July 2026:
+    # 2026-07-01: Wednesday (day 1)
+    # 2026-07-02: Thursday (day 2)
+    # 2026-07-03: Friday (day 3)
+    # 2026-07-04: Saturday (count remains 3)
+    # 2026-07-05: Sunday (count remains 3)
+    # 2026-07-06: Monday (day 4)
+    assert get_trading_day_of_month(datetime.date(2026, 7, 1), holiday_checker) == 1
+    assert get_trading_day_of_month(datetime.date(2026, 7, 2), holiday_checker) == 2
+    assert get_trading_day_of_month(datetime.date(2026, 7, 3), holiday_checker) == 3
+    assert get_trading_day_of_month(datetime.date(2026, 7, 4), holiday_checker) == 3
+    assert get_trading_day_of_month(datetime.date(2026, 7, 5), holiday_checker) == 3
+    assert get_trading_day_of_month(datetime.date(2026, 7, 6), holiday_checker) == 4
+
+
+def test_get_trading_day_of_month_first_day_of_month() -> None:
+    """Tests get_trading_day_of_month when the 1st is a weekend vs weekday."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+
+    # March 2026: March 1 is Sunday
+    assert get_trading_day_of_month(datetime.date(2026, 3, 1), holiday_checker) == 0
+    # March 2 is Monday -> First trading day
+    assert get_trading_day_of_month(datetime.date(2026, 3, 2), holiday_checker) == 1
+
+
+def test_get_trading_day_of_month_with_holidays() -> None:
+    """Tests get_trading_day_of_month skips market holidays correctly."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+
+    # In July 2026, let's simulate Friday 2026-07-03 as a holiday (Independence Day observed)
+    def is_holiday_side_effect(dt: datetime.date | str) -> bool:
+        return dt == datetime.date(2026, 7, 3)
+
+    holiday_checker.is_holiday.side_effect = is_holiday_side_effect
+
+    # 2026-07-01: Wednesday -> 1
+    # 2026-07-02: Thursday -> 2
+    # 2026-07-03: Holiday Friday -> remains 2
+    # 2026-07-06: Monday -> 3
+    assert get_trading_day_of_month(datetime.date(2026, 7, 1), holiday_checker) == 1
+    assert get_trading_day_of_month(datetime.date(2026, 7, 2), holiday_checker) == 2
+    assert get_trading_day_of_month(datetime.date(2026, 7, 3), holiday_checker) == 2
+    assert get_trading_day_of_month(datetime.date(2026, 7, 6), holiday_checker) == 3
+
+
+def test_get_trading_day_of_month_monotonicity() -> None:
+    """Tests monotonicity of trading day counts throughout the entire month."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+
+    previous_count = 0
+    for day in range(1, 32):
+        check_date = datetime.date(2026, 7, day)
+        count = get_trading_day_of_month(check_date, holiday_checker)
+        assert count >= previous_count
+        if is_trading_day(check_date, holiday_checker):
+            assert count == previous_count + 1
+        else:
+            assert count == previous_count
+        previous_count = count

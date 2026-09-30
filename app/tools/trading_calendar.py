@@ -121,6 +121,34 @@ def get_remaining_trading_days_in_month(
     return trading_day_count
 
 
+def get_trading_day_of_month(
+    check_date: datetime.date,
+    holiday_checker: MarketHolidayChecker | None = None,
+) -> int:
+    """Calculates the 1-based trading day index within check_date's month up to check_date.
+
+    Counts valid trading days (Monday to Friday excluding market holidays)
+    from the 1st of the month up to and including check_date.
+
+    Args:
+        check_date: Target date to check.
+        holiday_checker: Optional holiday checker instance.
+
+    Returns:
+        int: 1-based trading day count (e.g. 1 on first trading day of month).
+    """
+    checker = holiday_checker or MarketHolidayChecker()
+    current = datetime.date(check_date.year, check_date.month, 1)
+
+    trading_day_count = 0
+    while current <= check_date:
+        if is_trading_day(current, checker):
+            trading_day_count += 1
+        current += datetime.timedelta(days=1)
+
+    return trading_day_count
+
+
 def is_in_end_of_month_window(
     check_date: datetime.date,
     days_before: int = 4,
@@ -237,6 +265,7 @@ __all__ = [
     "get_last_completed_trading_day",
     "get_next_trading_day",
     "get_remaining_trading_days_in_month",
+    "get_trading_day_of_month",
     "is_in_end_of_month_window",
     "is_last_trading_day_of_month",
     "is_trading_day",

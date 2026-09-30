@@ -37,6 +37,9 @@ class Strategies(StrEnum):
     # Bounce Bandit Strategy
     BounceBandit = "bounce_bandit"
 
+    # Wounded Bull Sprint Strategy
+    WoundedBullSprint = "wounded_bull_sprint"
+
 
 STRATEGY_ALIASES = {
     # Bounce Bandit
@@ -97,6 +100,11 @@ STRATEGY_ALIASES = {
     "crocsetup": Strategies.CrocSetup,
     "croc_setup": Strategies.CrocSetup,
     "croc setup": Strategies.CrocSetup,
+    # Wounded Bull Sprint
+    "wounded_bull_sprint": Strategies.WoundedBullSprint,
+    "woundedbullsprint": Strategies.WoundedBullSprint,
+    "wounded bull sprint": Strategies.WoundedBullSprint,
+    "wbs": Strategies.WoundedBullSprint,
 }
 
 # --- Trade Management Enums ---
@@ -120,6 +128,7 @@ class ExitReason(StrEnum):
     TAKE_PROFIT = "TAKE_PROFIT"
     LOC_PROFIT = "LOC_PROFIT"
     TARGET_HIT = "TARGET_HIT"
+    CLOSE_ABOVE_PREV_HIGH = "CLOSE_ABOVE_PREV_HIGH"
 
     # Stop / Time Exits
     STOP_LOSS = "STOP_LOSS"
