@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.database.repositories.broker import BrokerRepository
+from app.database.repositories.broker import BrokerRepository, ExecutionRecord
 from app.database.session import DatabaseSession
 
 
@@ -189,18 +189,19 @@ def test_tws_status_and_helpers_edge_cases(broker_session: DatabaseSession) -> N
     assert len(tws_orders) == 2
 
     # Sell-only execution to test _resolve_latest_buy_execution fallback
-    sell_exec = {
+    sell_exec: ExecutionRecord = {
         "exec_id": "exec-501",
         "order_id": 501,
         "price": 250.0,
         "qty": 10.0,
+        "commission": 0.0,
         "action": "SELL",
     }
-    latest_buy = repo._resolve_latest_buy_execution([sell_exec])  # type: ignore[arg-type]
+    latest_buy = repo._resolve_latest_buy_execution([sell_exec])
     assert latest_buy == sell_exec
 
     # Price fallback with empty database row
-    price_fallback = repo._resolve_latest_price_fallback("UNKNOWN", [sell_exec])  # type: ignore[arg-type]
+    price_fallback = repo._resolve_latest_price_fallback("UNKNOWN", [sell_exec])
     assert price_fallback == 250.0
 
     price_fallback_empty = repo._resolve_latest_price_fallback("UNKNOWN", [])
@@ -254,3 +255,40 @@ def test_get_active_positions_non_numeric_trade_group_id(
     assert active[0]["id"] == 0
     assert active[0]["symbol"] == "NFLX"
     assert active[0]["entry_price"] == 600.0
+
+
+def test_trade_group_prefix_matching(
+    broker_session: DatabaseSession,
+) -> None:
+    """Verifies that _determine_tws_status and get_executions_for_trade_group match via prefix."""
+    repo = BrokerRepository(broker_session)
+
+    with broker_session.connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO orders (order_id, trade_group_id, account_id, symbol, action, quantity, order_type, strategy_name, status)
+            VALUES (801, '1563_TurnoverTiming_0.5_MU', 'U12345', 'MU', 'BUY', 10, 'LMT', 'TurnoverTiming', 'Filled'),
+                   (802, '1563_TurnoverTiming_0.5_MU_SL', 'U12345', 'MU', 'SELL', 10, 'STP', 'TurnoverTiming', 'Submitted'),
+                   (803, '15630_DipBuyer_XYZ', 'U12345', 'XYZ', 'BUY', 20, 'LMT', 'DipBuyer', 'Filled')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO executions (exec_id, order_id, price, qty, commission, executed_at)
+            VALUES ('exec-801', 801, 100.0, 10, 1.0, '2026-08-06T10:00:00Z'),
+                   ('exec-802', 802, 95.0, 10, 1.0, '2026-08-06T11:00:00Z'),
+                   ('exec-803', 803, 50.0, 20, 1.0, '2026-08-06T12:00:00Z')
+            """
+        )
+
+    status, orders = repo._determine_tws_status("1563_TurnoverTiming_0.5_MU")
+    assert status == "Submitted"
+    assert len(orders) == 2
+    order_ids = {o["order_id"] for o in orders}
+    assert order_ids == {801, 802}
+    assert 803 not in order_ids
+
+    executions = repo.get_executions_for_trade_group("1563_TurnoverTiming_0.5_MU")
+    assert len(executions) == 2
+    exec_ids = {e["exec_id"] for e in executions}
+    assert exec_ids == {"exec-801", "exec-802"}

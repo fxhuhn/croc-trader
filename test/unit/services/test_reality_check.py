@@ -10,6 +10,7 @@ from app.services.trade_manager.reality_check import (
     compute_broker_cost_breakdown,
     compute_dual_equity_curve,
     compute_reality_check_summary,
+    extract_strategy_from_trade_group_id,
     is_future_strategy,
     match_active_positions,
     match_closed_history,
@@ -28,11 +29,22 @@ class TestParsingAndClassification:
         assert parse_trade_id_from_trade_group_id("769_TurnoverTiming_1.0_TSLA") == 769
         assert parse_trade_id_from_trade_group_id("1163_TwoPercent_SXRV.DE") == 1163
         assert parse_trade_id_from_trade_group_id("984_NDXMomentum_INTC") == 984
+        assert parse_trade_id_from_trade_group_id("1563") == 1563
 
     def test_parse_trade_id_invalid_or_none(self) -> None:
         assert parse_trade_id_from_trade_group_id(None) is None
         assert parse_trade_id_from_trade_group_id("") is None
         assert parse_trade_id_from_trade_group_id("INVALID_PREFIX_TEST") is None
+
+    def test_extract_strategy_from_trade_group_id(self) -> None:
+        assert (
+            extract_strategy_from_trade_group_id("1563_TurnoverTiming_0.5_MU")
+            == "TurnoverTiming_0.5"
+        )
+        assert extract_strategy_from_trade_group_id("1110_DipBuyer_SNDK") == "DipBuyer"
+        assert extract_strategy_from_trade_group_id("100_TGIM") == "TGIM"
+        assert extract_strategy_from_trade_group_id("") == ""
+        assert extract_strategy_from_trade_group_id("100") == ""
 
     def test_is_future_strategy(self) -> None:
         assert is_future_strategy("TGIM") is True
@@ -177,6 +189,40 @@ class TestMatchActivePositions:
         )
         assert len(dip_result) == 1
         assert dip_result[0].trade_id == 1
+
+    def test_match_active_positions_includes_tws_orders_and_multipart_strategy(
+        self,
+    ) -> None:
+        signals_active = [
+            {
+                "id": 1563,
+                "symbol": "MU",
+                "strategy": "",
+                "entry_price": 100.0,
+                "current_size": 10.0,
+            }
+        ]
+        broker_positions = [
+            {
+                "trade_group_id": "1563_TurnoverTiming_0.5_MU",
+                "symbol": "MU",
+                "entry_price": 100.0,
+                "current_size": 10.0,
+                "tws_status": "Submitted",
+                "tws_orders": [
+                    {"order_id": 801, "status": "Filled", "action": "BUY"},
+                    {"order_id": 802, "status": "Submitted", "action": "SELL"},
+                ],
+            }
+        ]
+        results = match_active_positions(signals_active, broker_positions)
+        assert len(results) == 1
+        pos = results[0]
+        assert pos.trade_id == 1563
+        assert pos.strategy == "TurnoverTiming_0.5"
+        assert pos.order_status == "Submitted"
+        assert len(pos.tws_orders) == 2
+        assert pos.tws_orders[0]["order_id"] == 801
 
 
 class TestMatchClosedHistory:

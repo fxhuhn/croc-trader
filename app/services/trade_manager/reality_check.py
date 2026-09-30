@@ -53,6 +53,7 @@ class PositionRealityCheck:
     has_entry_price_diff: bool = False
     has_pnl_diff: bool = False
     pnl_percentage: float | None = None
+    tws_orders: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -176,10 +177,29 @@ def parse_trade_id_from_trade_group_id(trade_group_id: str | None) -> int | None
     """
     if not trade_group_id:
         return None
-    match = re.match(r"^(\d+)_", str(trade_group_id).strip())
+    match = re.match(r"^(\d+)(?:_|$)", str(trade_group_id).strip())
     if match:
         return int(match.group(1))
     return None
+
+
+def extract_strategy_from_trade_group_id(trade_group_id: str) -> str:
+    """Extracts the strategy name from a trade_group_id.
+
+    Handles multi-segment strategy names like 'TurnoverTiming_0.5'.
+
+    Args:
+        trade_group_id: Raw string identifier (e.g. '1563_TurnoverTiming_0.5_MU').
+
+    Returns:
+        str: Extracted strategy name or empty string.
+    """
+    parts = trade_group_id.split("_")
+    if len(parts) > MIN_PARTS_FOR_STRATEGY_EXTRACTION:
+        return "_".join(parts[1:-1])
+    if len(parts) == MIN_PARTS_FOR_STRATEGY_EXTRACTION:
+        return parts[1]
+    return ""
 
 
 def is_future_strategy(strategy_name: str) -> bool:
@@ -321,9 +341,7 @@ def _build_position_comparison(
         or ""
     )
     if not strat and trade_group_id:
-        parts = trade_group_id.split("_")
-        if len(parts) >= MIN_PARTS_FOR_STRATEGY_EXTRACTION:
-            strat = parts[1]
+        strat = extract_strategy_from_trade_group_id(trade_group_id)
 
     strat_filter_val = str(pos.get("strategy_filter") or strat)
     strat_display, strat_badge = resolve_strategy_meta(strat)
@@ -354,6 +372,13 @@ def _build_position_comparison(
     has_entry_diff = entry_bt != entry_broker
     has_pnl_diff = open_pnl_bt != open_pnl_broker
 
+    raw_orders = pos.get("tws_orders")
+    tws_orders: tuple[dict[str, Any], ...] = (
+        tuple(dict(o) for o in raw_orders if isinstance(o, dict))
+        if isinstance(raw_orders, list)
+        else ()
+    )
+
     return PositionRealityCheck(
         trade_id=trade_id,
         symbol=str(pos.get("symbol") or bt_trade.get("symbol") or ""),
@@ -377,6 +402,7 @@ def _build_position_comparison(
         has_entry_price_diff=has_entry_diff,
         has_pnl_diff=has_pnl_diff,
         pnl_percentage=pnl_pct,
+        tws_orders=tws_orders,
     )
 
 
@@ -449,9 +475,7 @@ def _build_history_comparison(
         or ""
     )
     if not strat and trade_group_id:
-        parts = trade_group_id.split("_")
-        if len(parts) >= MIN_PARTS_FOR_STRATEGY_EXTRACTION:
-            strat = parts[1]
+        strat = extract_strategy_from_trade_group_id(trade_group_id)
 
     strat_filter_val = str(settlement.get("strategy_filter") or strat)
     is_fut = is_future_strategy(strat)

@@ -171,14 +171,15 @@ class BrokerRepository(BaseRepository):
         Returns:
             list[ExecutionRecord]: A list of execution records with order details.
         """
-        query_string = """
+        where_filter, query_params = _build_trade_group_filter(trade_group_identifier)
+        query_string = f"""
             SELECT e.*, o.strategy_name, o.action, o.symbol, o.bracket_role, o.order_type, o.target_price
             FROM executions e
             JOIN orders o ON e.order_id = o.order_id
-            WHERE o.trade_group_id = ?
+            WHERE {where_filter}
             ORDER BY e.executed_at ASC
-        """
-        rows = self.fetch_all(query_string, (trade_group_identifier,))
+        """  # nosec B608
+        rows = self.fetch_all(query_string, query_params)
         return cast(list[ExecutionRecord], [dict(row) for row in rows])
 
     def get_settlements(self) -> list[SettlementRecord]:
@@ -226,8 +227,9 @@ class BrokerRepository(BaseRepository):
         Returns:
             list[OrderRecord]: List of matching order records.
         """
-        query_string = "SELECT * FROM orders WHERE trade_group_id LIKE ?"
-        rows = self.fetch_all(query_string, (f"{local_trade_id}_%",))
+        prefix = f"{local_trade_id}_"
+        query_string = "SELECT * FROM orders WHERE substr(trade_group_id, 1, ?) = ?"
+        rows = self.fetch_all(query_string, (len(prefix), prefix))
         return cast(list[OrderRecord], [dict(row) for row in rows])
 
     def get_active_positions(self) -> list[ActivePositionRecord]:
@@ -349,20 +351,21 @@ class BrokerRepository(BaseRepository):
         self, trade_group_id: str
     ) -> tuple[str, list[OrderRecord]]:
         """Resolves TWS state and loads associated orders strictly for a trade group."""
-        orders_query = """
+        where_filter, query_params = _build_trade_group_filter(trade_group_id)
+        orders_query = f"""
             SELECT o.*,
                    COALESCE(MAX(e.price), NULLIF(o.target_price, 0)) AS display_price,
                    COALESCE(MAX(e.executed_at), o.transmitted_at) AS display_date,
                    SUM(e.commission) AS commission
             FROM orders o
             LEFT JOIN executions e ON e.order_id = o.order_id
-            WHERE o.trade_group_id = ?
+            WHERE {where_filter}
             GROUP BY o.order_id
             ORDER BY COALESCE(MAX(e.executed_at), o.transmitted_at) ASC
-        """
+        """  # nosec B608
         tws_orders = cast(
             list[OrderRecord],
-            [dict(row) for row in self.fetch_all(orders_query, (trade_group_id,))],
+            [dict(row) for row in self.fetch_all(orders_query, query_params)],
         )
         tws_status = "Filled"
 
@@ -406,3 +409,20 @@ class BrokerRepository(BaseRepository):
         """
         rows = self.fetch_all(query_string)
         return cast(list[CashLedgerAggregateRow], [dict(row) for row in rows])
+
+
+def _build_trade_group_filter(
+    trade_group_identifier: str,
+) -> tuple[str, tuple[object, ...]]:
+    """Builds a parameterized SQL WHERE fragment and params for trade group matching.
+
+    Matches exact trade_group_id or prefix '{trade_id}_' if identifier starts with digits.
+    """
+    parts = trade_group_identifier.split("_")
+    if parts and parts[0].isdigit():
+        prefix = f"{parts[0]}_"
+        return (
+            "(o.trade_group_id = ? OR substr(o.trade_group_id, 1, ?) = ?)",
+            (trade_group_identifier, len(prefix), prefix),
+        )
+    return ("o.trade_group_id = ?", (trade_group_identifier,))
