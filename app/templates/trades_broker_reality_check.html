@@ -221,10 +221,10 @@
         <section id="tab-content-positions" aria-label="Offene Positionen">
             <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                 <!-- Desktop Header -->
-                <div class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+                <div class="sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur z-10 border-b border-slate-200 dark:border-slate-800 grid grid-cols-7 gap-4 py-1.5 px-2.5 text-xs text-slate-500 font-medium">
                     <div>ID &amp; Symbol</div>
                     <div>Strategy</div>
-                    <div>Date</div>
+                    <div class="text-center font-sans tabular-nums">Date</div>
                     <div class="text-right">Quantity</div>
                     <div class="text-right">Entry Price</div>
                     <div class="text-right">Slippage</div>
@@ -234,43 +234,43 @@
                 <!-- Positions List -->
                 <div class="divide-y divide-slate-100">
                     {% for p in positions %}
-                    <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 group-linkable"
+                    <div class="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer transition-colors transition-all duration-200 group-linkable"
                         onclick="toggleRow('acc-reality-pos-{{ loop.index }}')">
-                        <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
+                        <div class="grid grid-cols-7 gap-4 py-1.5 px-2.5 items-center text-xs">
                             <!-- 1. ID & Symbol -->
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-2">
                                 <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{ p.trade_id }}</span>
-                                <span class="font-bold text-slate-900 text-sm whitespace-nowrap">{{ tradingview_link(p.symbol, is_button=false) }}</span>
+                                <span class="font-bold text-slate-900 text-xs whitespace-nowrap">{{ tradingview_link(p.symbol, is_button=false) }}</span>
                             </div>
 
                             <!-- 2. Strategy -->
-                            <div class="text-slate-600 font-medium whitespace-nowrap truncate">
+                            <div class="text-slate-600 font-medium text-xs whitespace-nowrap truncate">
                                 {{ p.strategy_display or p.strategy or '—' }}
                             </div>
 
                             <!-- 3. Date -->
-                            <div class="text-slate-600 tabular-nums whitespace-nowrap">
+                            <div class="text-center font-sans tabular-nums text-slate-600 whitespace-nowrap">
                                 {{ p.entry_date }} ({{ p.days_held }}d)
                             </div>
 
                             <!-- 4. Quantity -->
-                            <div class="text-right tabular-nums text-slate-600">
+                            <div class="text-right font-sans font-bold tabular-nums text-slate-700">
                                 {{ p.quantity_broker | de_number(0) }}
                             </div>
 
                             <!-- 5. Entry Price -->
-                            <div class="text-right tabular-nums text-slate-600">
+                            <div class="text-right font-sans font-bold tabular-nums text-slate-700">
                                 {{ p.entry_price_broker | de_number(2) }}&nbsp;$
                             </div>
 
                             <!-- 6. Slippage -->
-                            <div class="text-right tabular-nums">
+                            <div class="text-right font-sans font-bold tabular-nums">
                                 {% if p.has_timing_drift %}
                                 <span class="inline-flex items-center text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200" title="Zeitversatz zwischen Backtest-Signal und Broker-Ausführung ({{ p.timing_drift_days }} Tage). Kursdifferenz: {{ p.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$">
                                     Drift ({{ p.timing_drift_days }}d)
                                 </span>
                                 {% elif p.entry_slippage != 0 %}
-                                <span class="{% if p.entry_slippage > 0 %}text-rose-500 font-bold{% elif p.entry_slippage < 0 %}text-emerald-500 font-bold{% else %}text-slate-400{% endif %}">
+                                <span class="{% if p.entry_slippage > 0.0001 %}text-rose-600 dark:text-rose-400{% elif p.entry_slippage < -0.0001 %}text-emerald-600 dark:text-emerald-400{% else %}text-slate-400{% endif %}">
                                     {{ p.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$
                                 </span>
                                 {% else %}
@@ -332,10 +332,10 @@
         <section id="tab-content-history" class="hidden" aria-label="Geschlossene Trades">
             <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                 <!-- Desktop Header -->
-                <div class="grid grid-cols-9 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
+                <div class="sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur z-10 border-b border-slate-200 dark:border-slate-800 grid grid-cols-9 gap-4 py-1.5 px-2.5 text-xs text-slate-500 font-medium">
                     <div>ID &amp; Symbol</div>
                     <div>Strategy</div>
-                    <div>Date</div>
+                    <div class="text-center font-sans tabular-nums">Date</div>
                     <div class="text-right">Quantity</div>
                     <div class="text-right">Entry Price</div>
                     <div class="text-right">Exit Price</div>
@@ -347,47 +347,47 @@
                 <!-- History List -->
                 <div class="divide-y divide-slate-100">
                     {% for h in history %}
-                    <div class="hover:bg-slate-50/50 cursor-pointer transition-colors transition-all duration-200 group-linkable"
+                    <div class="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 cursor-pointer transition-colors transition-all duration-200 group-linkable"
                         onclick="toggleRow('acc-reality-hist-{{ loop.index }}')">
-                        <div class="grid grid-cols-9 gap-4 px-4 py-3.5 items-center text-sm">
+                        <div class="grid grid-cols-9 gap-4 py-1.5 px-2.5 items-center text-xs">
                             <!-- 1. ID & Symbol -->
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-2">
                                 <span class="text-xs font-bold text-slate-400 font-mono w-10 shrink-0">{{ h.trade_id }}</span>
-                                <span class="font-bold text-slate-900 text-sm whitespace-nowrap">{{ tradingview_link(h.symbol, is_button=false) }}</span>
+                                <span class="font-bold text-slate-900 text-xs whitespace-nowrap">{{ tradingview_link(h.symbol, is_button=false) }}</span>
                             </div>
 
                             <!-- 2. Strategy -->
-                            <div class="text-slate-600 font-medium whitespace-nowrap truncate">
+                            <div class="text-slate-600 font-medium text-xs whitespace-nowrap truncate">
                                 {{ h.strategy_display or h.strategy or '—' }}
                             </div>
 
                             <!-- 3. Date -->
-                            <div class="text-slate-600 tabular-nums whitespace-nowrap">
+                            <div class="text-center font-sans tabular-nums text-slate-600 whitespace-nowrap">
                                 {{ h.date }}
                             </div>
 
                             <!-- 4. Quantity -->
-                            <div class="text-right tabular-nums text-slate-600">
+                            <div class="text-right font-sans font-bold tabular-nums text-slate-700">
                                 {{ h.quantity_broker | de_number(0) }}
                             </div>
 
                             <!-- 5. Entry Price -->
-                            <div class="text-right tabular-nums text-slate-600">
+                            <div class="text-right font-sans font-bold tabular-nums text-slate-700">
                                 {{ h.entry_price_broker | de_number(2) }}&nbsp;$
                             </div>
 
                             <!-- 6. Exit Price -->
-                            <div class="text-right tabular-nums text-slate-600">
+                            <div class="text-right font-sans font-bold tabular-nums text-slate-700">
                                 {{ h.exit_price_broker | de_number(2) }}&nbsp;$
                             </div>
 
                             <!-- 7. Slippage (Total Round Turn) -->
-                            <div class="text-right tabular-nums {% if h.total_slippage > 0 %}text-rose-500 font-bold{% elif h.total_slippage < 0 %}text-emerald-500 font-bold{% else %}text-slate-400{% endif %}" title="Entry: {{ h.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$, Exit: {{ h.exit_slippage | de_number(2, prefix_plus=True) }}&nbsp;$">
+                            <div class="text-right font-sans font-bold tabular-nums {% if h.total_slippage > 0.0001 %}text-rose-600 dark:text-rose-400{% elif h.total_slippage < -0.0001 %}text-emerald-600 dark:text-emerald-400{% else %}text-slate-400{% endif %}" title="Entry: {{ h.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$, Exit: {{ h.exit_slippage | de_number(2, prefix_plus=True) }}&nbsp;$">
                                 {% if h.total_slippage != 0 %}{{ h.total_slippage | de_number(2, prefix_plus=True) }}&nbsp;${% else %}-{% endif %}
                             </div>
 
                             <!-- 8. Commissions -->
-                            <div class="text-right tabular-nums text-slate-500">
+                            <div class="text-right font-sans font-bold tabular-nums text-slate-500">
                                 {{ h.commissions | de_number(2) }}&nbsp;$
                             </div>
 
@@ -483,8 +483,8 @@ document.addEventListener('DOMContentLoaded', function() {
         y: pnlBt,
         mode: 'lines+markers',
         name: 'Backtest Modell',
-        line: { color: '#3b82f6', width: 2.5 },
-        marker: { size: 5, color: '#2563eb' },
+        line: { color: '#94a3b8', width: 2, dash: 'dash' },
+        marker: { size: 4, color: '#94a3b8' },
         hovertemplate: '<b>Backtest</b>: %{y:,.2f} $<extra></extra>'
     };
 
@@ -496,7 +496,7 @@ document.addEventListener('DOMContentLoaded', function() {
         line: { color: '#10b981', width: 2.5 },
         marker: { size: 5, color: '#059669' },
         fill: 'tonexty',
-        fillcolor: 'rgba(59, 130, 246, 0.08)',
+        fillcolor: 'rgba(16, 185, 129, 0.08)',
         hovertemplate: '<b>Broker</b>: %{y:,.2f} $<extra></extra>'
     };
 
@@ -507,12 +507,12 @@ document.addEventListener('DOMContentLoaded', function() {
         xaxis: {
             showgrid: true,
             gridcolor: '#f1f5f9',
-            tickfont: { family: 'Inter, sans-serif', size: 11, color: '#64748b' }
+            tickfont: { family: 'Inter, sans-serif', size: 12, color: '#64748b' }
         },
         yaxis: {
             showgrid: true,
             gridcolor: '#f1f5f9',
-            tickfont: { family: 'Inter, sans-serif', size: 11, color: '#64748b' },
+            tickfont: { family: 'Inter, sans-serif', size: 12, color: '#64748b' },
             ticksuffix: ' $'
         },
         plot_bgcolor: '#ffffff',
