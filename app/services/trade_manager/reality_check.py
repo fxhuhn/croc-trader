@@ -9,6 +9,7 @@ import logging
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -25,6 +26,7 @@ FUTURES_STRATEGY_MAP: dict[str, str] = {
 }
 
 MIN_PARTS_FOR_STRATEGY_EXTRACTION: int = 2
+MAX_MATCH_DRIFT_DAYS: int = 10
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,9 @@ class PositionRealityCheck:
     has_pnl_diff: bool = False
     pnl_percentage: float | None = None
     tws_orders: tuple[dict[str, Any], ...] = ()
+    has_timing_drift: bool = False
+    timing_drift_days: int = 0
+    timing_drift_cost: Decimal = Decimal("0.00")
 
 
 @dataclass(frozen=True)
@@ -200,6 +205,36 @@ def extract_strategy_from_trade_group_id(trade_group_id: str) -> str:
     if len(parts) == MIN_PARTS_FOR_STRATEGY_EXTRACTION:
         return parts[1]
     return ""
+
+
+def check_timing_drift(
+    date_a_str: str | None,
+    date_b_str: str | None,
+    max_drift_days: int = MAX_MATCH_DRIFT_DAYS,
+) -> tuple[bool, int]:
+    """Calculates whether two date strings diverge by more than max_drift_days.
+
+    Args:
+        date_a_str: First date string (e.g. ISO format 'YYYY-MM-DD').
+        date_b_str: Second date string (e.g. ISO format 'YYYY-MM-DD').
+        max_drift_days: Threshold in days beyond which difference is considered timing drift.
+
+    Returns:
+        tuple[bool, int]: (has_timing_drift, drift_days)
+    """
+    if not date_a_str or not date_b_str or date_a_str == "-" or date_b_str == "-":
+        return False, 0
+
+    clean_a = str(date_a_str).strip()[:10]
+    clean_b = str(date_b_str).strip()[:10]
+
+    try:
+        date_a = date.fromisoformat(clean_a)
+        date_b = date.fromisoformat(clean_b)
+        drift_days = abs((date_b - date_a).days)
+        return drift_days > max_drift_days, drift_days
+    except (ValueError, TypeError):
+        return False, 0
 
 
 def is_future_strategy(strategy_name: str) -> bool:
@@ -354,7 +389,33 @@ def _build_position_comparison(
     entry_broker = to_decimal(pos.get("entry_price"))
 
     entry_slip = entry_broker - entry_bt
-    slip_cost = entry_slip * to_decimal(qty_broker)
+
+    raw_orders = pos.get("tws_orders")
+    bt_date_raw = bt_trade.get("entry_date")
+    broker_date_raw = pos.get("entry_date")
+    if (
+        (not broker_date_raw or broker_date_raw == "-")
+        and isinstance(raw_orders, list)
+        and raw_orders
+    ):
+        first_order = raw_orders[0]
+        if isinstance(first_order, dict):
+            broker_date_raw = first_order.get("display_date") or first_order.get(
+                "transmitted_at"
+            )
+
+    has_drift, drift_days = check_timing_drift(
+        str(bt_date_raw) if bt_date_raw else None,
+        str(broker_date_raw) if broker_date_raw else None,
+    )
+
+    total_cost_diff = entry_slip * to_decimal(qty_broker)
+    if has_drift:
+        slip_cost = Decimal("0.00")
+        drift_cost = total_cost_diff
+    else:
+        slip_cost = total_cost_diff
+        drift_cost = Decimal("0.00")
 
     open_pnl_bt = to_decimal(bt_trade.get("unrealized_pnl"))
     if open_pnl_bt == Decimal("0.00") and qty_bt > 0:
@@ -372,7 +433,6 @@ def _build_position_comparison(
     has_entry_diff = entry_bt != entry_broker
     has_pnl_diff = open_pnl_bt != open_pnl_broker
 
-    raw_orders = pos.get("tws_orders")
     tws_orders: tuple[dict[str, Any], ...] = (
         tuple(dict(o) for o in raw_orders if isinstance(o, dict))
         if isinstance(raw_orders, list)
@@ -403,6 +463,9 @@ def _build_position_comparison(
         has_pnl_diff=has_pnl_diff,
         pnl_percentage=pnl_pct,
         tws_orders=tws_orders,
+        has_timing_drift=has_drift,
+        timing_drift_days=drift_days,
+        timing_drift_cost=drift_cost,
     )
 
 

@@ -264,8 +264,18 @@
                             </div>
 
                             <!-- 6. Slippage -->
-                            <div class="text-right tabular-nums {% if p.entry_slippage > 0 %}text-rose-500 font-bold{% elif p.entry_slippage < 0 %}text-emerald-500 font-bold{% else %}text-slate-400{% endif %}">
-                                {% if p.entry_slippage != 0 %}{{ p.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;${% else %}-{% endif %}
+                            <div class="text-right tabular-nums">
+                                {% if p.has_timing_drift %}
+                                <span class="inline-flex items-center text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200" title="Zeitversatz zwischen Backtest-Signal und Broker-Ausführung ({{ p.timing_drift_days }} Tage). Kursdifferenz: {{ p.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$">
+                                    Drift ({{ p.timing_drift_days }}d)
+                                </span>
+                                {% elif p.entry_slippage != 0 %}
+                                <span class="{% if p.entry_slippage > 0 %}text-rose-500 font-bold{% elif p.entry_slippage < 0 %}text-emerald-500 font-bold{% else %}text-slate-400{% endif %}">
+                                    {{ p.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$
+                                </span>
+                                {% else %}
+                                <span class="text-slate-400">-</span>
+                                {% endif %}
                             </div>
 
                             <!-- 7. Open PnL -->
@@ -275,8 +285,14 @@
                         <!-- Accordion Detail (Positions) -->
                         <div id="acc-reality-pos-{{ loop.index }}" class="hidden px-4 pb-4 bg-slate-50/10 border-t border-slate-100">
                             <div class="md:pl-[4.25rem] pt-3">
-                                <div class="space-y-1">
+                                <div class="space-y-1.5">
                                     <div class="text-xs font-bold text-slate-700">Backtest vs. Broker Abgleich:</div>
+                                    {% if p.has_timing_drift %}
+                                    <div class="text-xs font-normal text-amber-800 bg-amber-50 px-2.5 py-1.5 rounded-lg border border-amber-200/80">
+                                        <span class="font-bold">⚠️ Zeitversatz ({{ p.timing_drift_days }} Tage):</span>
+                                        Die Kursdifferenz von <span class="font-bold tabular-nums">{{ p.entry_slippage | de_number(2, prefix_plus=True) }}&nbsp;$</span> (Auswirkung: <span class="font-bold tabular-nums">{{ p.timing_drift_cost | de_number(2, prefix_plus=True) }}&nbsp;$</span>) beruht auf verzögerter Broker-Ausführung und ist keine reguläre Ausführungs-Slippage.
+                                    </div>
+                                    {% endif %}
                                     <div class="text-xs text-slate-500 font-medium">
                                         Slippage-Kosten: <span class="font-bold tabular-nums {% if p.slippage_cost > 0 %}text-rose-500{% elif p.slippage_cost < 0 %}text-emerald-500{% else %}text-slate-700{% endif %}">{{ p.slippage_cost | de_number(2, prefix_plus=True) }}&nbsp;$</span>
                                         {% if p.has_quantity_diff %}

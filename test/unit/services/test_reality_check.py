@@ -7,6 +7,7 @@ from app.services.trade_manager.reality_check import (
     BrokerCostBreakdown,
     HistoryRealityCheck,
     PositionRealityCheck,
+    check_timing_drift,
     compute_broker_cost_breakdown,
     compute_dual_equity_curve,
     compute_reality_check_summary,
@@ -97,6 +98,22 @@ class TestParsingAndClassification:
         assert to_decimal("100.50") == Decimal("100.50")
         assert to_decimal(None) == Decimal("0.00")
         assert to_decimal("invalid", fallback="5.00") == Decimal("5.00")
+
+    def test_check_timing_drift_within_tolerance(self) -> None:
+        has_drift, days = check_timing_drift("2026-06-25", "2026-06-29")
+        assert has_drift is False
+        assert days == 4
+
+    def test_check_timing_drift_exceeds_tolerance(self) -> None:
+        has_drift, days = check_timing_drift("2026-05-01", "2026-06-29")
+        assert has_drift is True
+        assert days == 59
+
+    def test_check_timing_drift_invalid_or_missing(self) -> None:
+        assert check_timing_drift(None, "2026-06-29") == (False, 0)
+        assert check_timing_drift("2026-06-29", None) == (False, 0)
+        assert check_timing_drift("-", "2026-06-29") == (False, 0)
+        assert check_timing_drift("invalid-date", "2026-06-29") == (False, 0)
 
 
 class TestMatchActivePositions:
@@ -223,6 +240,65 @@ class TestMatchActivePositions:
         assert pos.order_status == "Submitted"
         assert len(pos.tws_orders) == 2
         assert pos.tws_orders[0]["order_id"] == 801
+
+    def test_match_active_positions_neutralizes_slippage_on_timing_drift(self) -> None:
+        signals_active = [
+            {
+                "id": 609,
+                "symbol": "SNDK",
+                "strategy": "NDXMomentum",
+                "entry_price": 1059.02,
+                "entry_date": "2026-05-01",
+                "current_size": 1.0,
+            }
+        ]
+        broker_positions = [
+            {
+                "trade_group_id": "609_NDXMomentum_SNDK",
+                "symbol": "SNDK",
+                "entry_price": 1951.44,
+                "entry_date": "2026-06-29",
+                "current_size": 1.0,
+            }
+        ]
+        results = match_active_positions(signals_active, broker_positions)
+        assert len(results) == 1
+        pos = results[0]
+        assert pos.trade_id == 609
+        assert pos.has_timing_drift is True
+        assert pos.timing_drift_days == 59
+        assert pos.entry_slippage == Decimal("892.42")
+        assert pos.slippage_cost == Decimal("0.00")
+        assert pos.timing_drift_cost == Decimal("892.42")
+
+    def test_match_active_positions_normal_execution_window(self) -> None:
+        signals_active = [
+            {
+                "id": 700,
+                "symbol": "AAPL",
+                "strategy": "DipBuyer",
+                "entry_price": 200.0,
+                "entry_date": "2026-06-25",
+                "current_size": 10.0,
+            }
+        ]
+        broker_positions = [
+            {
+                "trade_group_id": "700_DipBuyer_AAPL",
+                "symbol": "AAPL",
+                "entry_price": 201.0,
+                "entry_date": "2026-06-26",
+                "current_size": 10.0,
+            }
+        ]
+        results = match_active_positions(signals_active, broker_positions)
+        assert len(results) == 1
+        pos = results[0]
+        assert pos.has_timing_drift is False
+        assert pos.timing_drift_days == 1
+        assert pos.entry_slippage == Decimal("1.00")
+        assert pos.slippage_cost == Decimal("10.00")
+        assert pos.timing_drift_cost == Decimal("0.00")
 
 
 class TestMatchClosedHistory:
