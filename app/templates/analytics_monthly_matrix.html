@@ -53,16 +53,16 @@
             <table class="w-full text-left border-collapse min-w-[850px]">
                 <!-- Table Header (Consistent bg-slate-50) -->
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
-                        <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
+                    <tr class="sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur z-20 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-medium uppercase text-xs tracking-wider">
+                        <th class="py-2 px-4 w-48 sticky left-0 bg-slate-50 z-30">
                             Strategie
                         </th>
                         {% for month in months %}
-                        <th class="py-4 px-1.5 text-center w-16">
+                        <th class="py-2 px-1.5 text-center w-16">
                             {{ month }}
                         </th>
                         {% endfor %}
-                        <th class="py-4 px-3 text-center w-20">
+                        <th class="py-2 px-3 text-center w-20">
                             Gesamt
                         </th>
                     </tr>
@@ -71,9 +71,9 @@
                 <!-- Strategy Rows -->
                 <tbody class="divide-y divide-slate-100 text-xs">
                     {% for row in matrix_rows %}
-                    <tr class="hover:bg-slate-50/60 transition-colors">
+                    <tr class="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors">
                         <!-- Strategy Name with Indicator Dot -->
-                        <td class="py-2.5 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10 truncate max-w-[190px]" title="{{ row.name }}">
+                        <td class="py-2 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10 truncate max-w-[190px]" title="{{ row.name }}">
                             <div class="flex items-center gap-2">
                                 <div class="w-2.5 h-2.5 rounded-full shrink-0 {{ strategy_color_pills.get(row.name, 'bg-slate-400') }}"></div>
                                 <span class="truncate">{{ row.name }}</span>
@@ -89,23 +89,23 @@
 
                         <!-- Gesamt Cell -->
                         <td class="p-1 text-center">
-                            <div class="py-1.5 px-1 text-xs tabular-nums font-bold text-center flex items-center justify-center
-                                {% if row.gesamt > 0.0 %}
-                                    text-emerald-600
-                                {% elif row.gesamt < 0.0 %}
-                                    text-rose-600
+                            <div class="py-1 px-1 text-xs tabular-nums font-sans font-bold text-center flex items-center justify-center
+                                {% if row.gesamt > 0.0001 %}
+                                    text-emerald-600 dark:text-emerald-400
+                                {% elif row.gesamt < -0.0001 %}
+                                    text-rose-600 dark:text-rose-400
                                 {% else %}
-                                    text-slate-400
+                                    text-slate-400 dark:text-slate-500
                                 {% endif %}">
-                                {% if row.gesamt > 0.0 %}+{{ row.gesamt | de_number(1) }}%{% elif row.gesamt < 0.0 %}{{ row.gesamt | de_number(1) }}%{% else %}{% endif %}
+                                {% if row.gesamt > 0.0001 %}+{{ row.gesamt | de_number(1) }}%{% elif row.gesamt < -0.0001 %}{{ row.gesamt | de_number(1) }}%{% else %}{% endif %}
                             </div>
                         </td>
                     </tr>
                     {% endfor %}
 
                     <!-- Gesamt Portfolio Row -->
-                    <tr class="border-t-2 border-slate-200 bg-slate-50/80">
-                        <td class="py-4 px-4 font-bold text-slate-900 sticky left-0 bg-slate-50 z-10">
+                    <tr class="border-t-2 border-slate-200 bg-slate-50/80 hover:bg-slate-100/60 transition-colors">
+                        <td class="py-2 px-4 font-bold text-slate-900 sticky left-0 bg-slate-50 z-10">
                             <div class="flex items-center gap-2">
                                 <div class="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0"></div>
                                 <span>Portfolio</span>
@@ -113,28 +113,28 @@
                         </td>
                         {% for val in portfolio_row.months %}
                         <td class="p-1 text-center">
-                            <div class="py-2 px-1 text-xs tabular-nums text-center font-bold flex items-center justify-center
-                                {% if val > 0.0 %}
-                                    text-emerald-600
-                                {% elif val < 0.0 %}
-                                    text-rose-600
+                            <div class="py-1 px-1 text-xs tabular-nums font-sans text-center font-bold flex items-center justify-center
+                                {% if val > 0.0001 %}
+                                    text-emerald-600 dark:text-emerald-400
+                                {% elif val < -0.0001 %}
+                                    text-rose-600 dark:text-rose-400
                                 {% else %}
-                                    text-slate-400
+                                    text-slate-400 dark:text-slate-500
                                 {% endif %}">
-                                {% if val > 0.0 %}+{{ val | de_number(1) }}%{% elif val < 0.0 %}{{ val | de_number(1) }}%{% else %}{% endif %}
+                                {% if val > 0.0001 %}+{{ val | de_number(1) }}%{% elif val < -0.0001 %}{{ val | de_number(1) }}%{% else %}{% endif %}
                             </div>
                         </td>
                         {% endfor %}
                         <td class="p-1 text-center">
-                            <div class="py-2 px-1 text-xs tabular-nums font-bold text-center flex items-center justify-center
-                                {% if portfolio_row.gesamt > 0.0 %}
-                                    text-emerald-600
-                                {% elif portfolio_row.gesamt < 0.0 %}
-                                    text-rose-600
+                            <div class="py-1 px-1 text-xs tabular-nums font-sans font-bold text-center flex items-center justify-center
+                                {% if portfolio_row.gesamt > 0.0001 %}
+                                    text-emerald-600 dark:text-emerald-400
+                                {% elif portfolio_row.gesamt < -0.0001 %}
+                                    text-rose-600 dark:text-rose-400
                                 {% else %}
-                                    text-slate-400
+                                    text-slate-400 dark:text-slate-500
                                 {% endif %}">
-                                {% if portfolio_row.gesamt > 0.0 %}+{{ portfolio_row.gesamt | de_number(1) }}%{% elif portfolio_row.gesamt < 0.0 %}{{ portfolio_row.gesamt | de_number(1) }}%{% else %}{% endif %}
+                                {% if portfolio_row.gesamt > 0.0001 %}+{{ portfolio_row.gesamt | de_number(1) }}%{% elif portfolio_row.gesamt < -0.0001 %}{{ portfolio_row.gesamt | de_number(1) }}%{% else %}{% endif %}
                             </div>
                         </td>
                     </tr>
@@ -154,16 +154,16 @@
             <table class="w-full text-left border-collapse min-w-[850px]">
                 <!-- Table Header -->
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
-                        <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
+                    <tr class="sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur z-20 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-medium uppercase text-xs tracking-wider">
+                        <th class="py-2 px-4 w-48 sticky left-0 bg-slate-50 z-30">
                             Modell
                         </th>
                         {% for month in months %}
-                        <th class="py-4 px-1.5 text-center w-16">
+                        <th class="py-2 px-1.5 text-center w-16">
                             {{ month }}
                         </th>
                         {% endfor %}
-                        <th class="py-4 px-3 text-center w-20">
+                        <th class="py-2 px-3 text-center w-20">
                             Gesamt
                         </th>
                     </tr>
@@ -172,8 +172,8 @@
                 <!-- Portfolio Models Rows (Standard & Frequenz-Modell EV/M) -->
                 <tbody class="divide-y divide-slate-100 text-xs">
                     {% for row in portfolio_models_rows %}
-                    <tr class="hover:bg-slate-50/60 transition-colors">
-                        <td class="py-3 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10">
+                    <tr class="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors">
+                        <td class="py-2 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10">
                             <div class="flex items-center gap-2">
                                 <i data-lucide="sliders" class="w-3.5 h-3.5 text-indigo-500 shrink-0"></i>
                                 <span>{{ row.name }}</span>
@@ -185,15 +185,15 @@
                         </td>
                         {% endfor %}
                         <td class="p-1 text-center">
-                            <div class="py-1.5 px-1 text-xs tabular-nums font-bold text-center flex items-center justify-center
-                                {% if row.gesamt > 0.0 %}
-                                    text-emerald-600
-                                {% elif row.gesamt < 0.0 %}
-                                    text-rose-600
+                            <div class="py-1 px-1 text-xs tabular-nums font-sans font-bold text-center flex items-center justify-center
+                                {% if row.gesamt > 0.0001 %}
+                                    text-emerald-600 dark:text-emerald-400
+                                {% elif row.gesamt < -0.0001 %}
+                                    text-rose-600 dark:text-rose-400
                                 {% else %}
-                                    text-slate-400
+                                    text-slate-400 dark:text-slate-500
                                 {% endif %}">
-                                {% if row.gesamt > 0.0 %}+{{ row.gesamt | de_number(1) }}%{% elif row.gesamt < 0.0 %}{{ row.gesamt | de_number(1) }}%{% else %}{% endif %}
+                                {% if row.gesamt > 0.0001 %}+{{ row.gesamt | de_number(1) }}%{% elif row.gesamt < -0.0001 %}{{ row.gesamt | de_number(1) }}%{% else %}{% endif %}
                             </div>
                         </td>
                     </tr>
@@ -214,16 +214,16 @@
             <table class="w-full text-left border-collapse min-w-[850px]">
                 <!-- Table Header -->
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
-                        <th class="py-4 px-4 w-48 sticky left-0 bg-slate-50 z-20">
+                    <tr class="sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur z-20 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-medium uppercase text-xs tracking-wider">
+                        <th class="py-2 px-4 w-48 sticky left-0 bg-slate-50 z-30">
                             Index
                         </th>
                         {% for month in months %}
-                        <th class="py-4 px-1.5 text-center w-16">
+                        <th class="py-2 px-1.5 text-center w-16">
                             {{ month }}
                         </th>
                         {% endfor %}
-                        <th class="py-4 px-3 text-center w-20">
+                        <th class="py-2 px-3 text-center w-20">
                             Gesamt
                         </th>
                     </tr>
@@ -232,8 +232,8 @@
                 <!-- Benchmark Rows (SPY & QQQ) -->
                 <tbody class="divide-y divide-slate-100 text-xs">
                     {% for row in benchmark_rows %}
-                    <tr class="hover:bg-slate-50/60 transition-colors">
-                        <td class="py-3 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10">
+                    <tr class="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors">
+                        <td class="py-2 px-4 font-bold text-slate-900 sticky left-0 bg-white z-10">
                             <div class="flex items-center gap-2">
                                 <i data-lucide="trending-up" class="w-3.5 h-3.5 text-indigo-500 shrink-0"></i>
                                 <span>{{ row.name }}</span>
@@ -245,15 +245,15 @@
                         </td>
                         {% endfor %}
                         <td class="p-1 text-center">
-                            <div class="py-1.5 px-1 text-xs tabular-nums font-bold text-center flex items-center justify-center
-                                {% if row.gesamt > 0.0 %}
-                                    text-emerald-600
-                                {% elif row.gesamt < 0.0 %}
-                                    text-rose-600
+                            <div class="py-1 px-1 text-xs tabular-nums font-sans font-bold text-center flex items-center justify-center
+                                {% if row.gesamt > 0.0001 %}
+                                    text-emerald-600 dark:text-emerald-400
+                                {% elif row.gesamt < -0.0001 %}
+                                    text-rose-600 dark:text-rose-400
                                 {% else %}
-                                    text-slate-400
+                                    text-slate-400 dark:text-slate-500
                                 {% endif %}">
-                                {% if row.gesamt > 0.0 %}+{{ row.gesamt | de_number(1) }}%{% elif row.gesamt < 0.0 %}{{ row.gesamt | de_number(1) }}%{% else %}{% endif %}
+                                {% if row.gesamt > 0.0001 %}+{{ row.gesamt | de_number(1) }}%{% elif row.gesamt < -0.0001 %}{{ row.gesamt | de_number(1) }}%{% else %}{% endif %}
                             </div>
                         </td>
                     </tr>
@@ -278,20 +278,20 @@
             <table class="w-full text-left border-collapse min-w-[700px]">
                 <!-- Table Header -->
                 <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-medium uppercase text-xs tracking-wider">
-                        <th class="py-4 px-4">
+                    <tr class="sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur z-10 border-b border-slate-200 dark:border-slate-800 text-slate-500 font-medium uppercase text-xs tracking-wider">
+                        <th class="py-2.5 px-4 text-left">
                             Strategie
                         </th>
-                        <th class="py-4 px-4 text-center w-28">
+                        <th class="py-2.5 px-3 text-right w-28">
                             Anteil
                         </th>
-                        <th class="py-4 px-4 text-center w-36">
+                        <th class="py-2.5 px-3 text-right w-36">
                             Silo Slots (P95)
                         </th>
-                        <th class="py-4 px-4 text-right w-44">
+                        <th class="py-2.5 px-4 text-right w-44">
                             Silo Budget / Trade
                         </th>
-                        <th class="py-4 px-4 text-right w-44">
+                        <th class="py-2.5 px-4 text-right w-44">
                             Pool Budget / Trade
                         </th>
                     </tr>
@@ -300,8 +300,8 @@
                 <!-- Recommendation Rows -->
                 <tbody class="divide-y divide-slate-100 text-xs">
                     {% for row in allocation_recommendation.rows %}
-                    <tr class="hover:bg-slate-50/60 transition-colors">
-                        <td class="py-3 px-4 font-bold text-slate-900">
+                    <tr class="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors">
+                        <td class="py-2 px-4 font-bold text-slate-900 text-left">
                             <div class="flex items-center gap-2">
                                 <span class="w-2.5 h-2.5 rounded-full {{ strategy_color_pills.get(row.name, 'bg-slate-400') }} shrink-0"></span>
                                 <span>{{ row.name }}</span>
@@ -310,25 +310,25 @@
                                 </span>
                             </div>
                         </td>
-                        <td class="py-3 px-4 text-center">
-                            <span class="font-bold text-slate-900 tabular-nums">{{ row.share_pct | de_number(1) }} %</span>
+                        <td class="py-2 px-3 text-right">
+                            <span class="font-sans font-bold text-slate-900 tabular-nums">{{ row.share_pct | de_number(2) }}&nbsp;%</span>
                         </td>
-                        <td class="py-3 px-4 text-center">
-                            <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold tabular-nums">
+                        <td class="py-2 px-3 text-right">
+                            <span class="font-sans font-bold text-slate-700 tabular-nums">
                                 {{ row.slots }}
                             </span>
                         </td>
-                        <td class="py-3 px-4 text-right">
-                            <span class="font-medium text-slate-600 tabular-nums">
-                                {{ row.budget_per_trade_dollar | de_number(0) }} $
+                        <td class="py-2 px-4 text-right">
+                            <span class="font-sans font-bold text-slate-700 tabular-nums">
+                                {{ row.budget_per_trade_dollar | de_number(0) }}&nbsp;$
                             </span>
                         </td>
-                        <td class="py-3 px-4 text-right">
-                            <span class="font-bold text-indigo-600 tabular-nums">
+                        <td class="py-2 px-4 text-right">
+                            <span class="font-sans font-bold text-indigo-600 tabular-nums">
                                 {% if row.is_core %}
-                                {{ row.budget_per_trade_dollar | de_number(0) }} $
+                                {{ row.budget_per_trade_dollar | de_number(0) }}&nbsp;$
                                 {% else %}
-                                {{ allocation_recommendation.satellite_budget_per_trade | de_number(0) }} $
+                                {{ allocation_recommendation.satellite_budget_per_trade | de_number(0) }}&nbsp;$
                                 {% endif %}
                             </span>
                         </td>
@@ -336,64 +336,64 @@
                     {% endfor %}
 
                     <!-- Summary Row 1: Core -->
-                    <tr class="border-t-2 border-slate-200 bg-slate-50/80">
-                        <td class="py-3 px-4 font-bold text-slate-900">
+                    <tr class="border-t-2 border-slate-200 bg-slate-50/80 hover:bg-slate-100/60 transition-colors">
+                        <td class="py-2 px-4 font-bold text-slate-900 text-left">
                             <span>Σ Core-Strategien</span>
                         </td>
-                        <td class="py-3 px-4 text-center font-bold text-slate-900 tabular-nums">
-                            {{ allocation_recommendation.core_share_pct | de_number(1) }} %
+                        <td class="py-2 px-3 text-right font-sans font-bold text-slate-900 tabular-nums">
+                            {{ allocation_recommendation.core_share_pct | de_number(2) }}&nbsp;%
                         </td>
-                        <td class="py-3 px-4 text-center">
-                            <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold tabular-nums">
+                        <td class="py-2 px-3 text-right">
+                            <span class="font-sans font-bold text-slate-700 tabular-nums">
                                 {{ allocation_recommendation.core_slots }}
                             </span>
                         </td>
-                        <td class="py-3 px-4 text-right font-medium text-slate-600 tabular-nums">
-                            {{ allocation_recommendation.core_budget_per_trade | de_number(0) }} $
+                        <td class="py-2 px-4 text-right font-sans font-bold text-slate-700 tabular-nums">
+                            {{ allocation_recommendation.core_budget_per_trade | de_number(0) }}&nbsp;$
                         </td>
-                        <td class="py-3 px-4 text-right font-bold text-indigo-600 tabular-nums">
-                            {{ allocation_recommendation.core_budget_per_trade | de_number(0) }} $
+                        <td class="py-2 px-4 text-right font-sans font-bold text-indigo-600 tabular-nums">
+                            {{ allocation_recommendation.core_budget_per_trade | de_number(0) }}&nbsp;$
                         </td>
                     </tr>
 
                     <!-- Summary Row 2: Satellite -->
-                    <tr class="bg-slate-50/80 border-t border-slate-200/60">
-                        <td class="py-3 px-4 font-bold text-slate-900">
+                    <tr class="bg-slate-50/80 border-t border-slate-200/60 hover:bg-slate-100/60 transition-colors">
+                        <td class="py-2 px-4 font-bold text-slate-900 text-left">
                             <span>Σ Satellite-Strategien</span>
                         </td>
-                        <td class="py-3 px-4 text-center font-bold text-slate-900 tabular-nums">
-                            {{ allocation_recommendation.satellite_share_pct | de_number(1) }} %
+                        <td class="py-2 px-3 text-right font-sans font-bold text-slate-900 tabular-nums">
+                            {{ allocation_recommendation.satellite_share_pct | de_number(2) }}&nbsp;%
                         </td>
-                        <td class="py-3 px-4 text-center">
-                            <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold tabular-nums">
+                        <td class="py-2 px-3 text-right">
+                            <span class="font-sans font-bold text-slate-700 tabular-nums">
                                 {{ allocation_recommendation.satellite_silo_slots }}
                             </span>
                         </td>
-                        <td class="py-3 px-4 text-right font-medium text-slate-400 tabular-nums">
+                        <td class="py-2 px-4 text-right font-medium text-slate-400 tabular-nums">
                             —
                         </td>
-                        <td class="py-3 px-4 text-right font-bold text-indigo-600 tabular-nums">
-                            {{ allocation_recommendation.satellite_budget_per_trade | de_number(0) }} $
+                        <td class="py-2 px-4 text-right font-sans font-bold text-indigo-600 tabular-nums">
+                            {{ allocation_recommendation.satellite_budget_per_trade | de_number(0) }}&nbsp;$
                         </td>
                     </tr>
 
                     <!-- Summary Row 3: Total Portfolio -->
-                    <tr class="border-t-2 border-slate-300 bg-slate-100/70">
-                        <td class="py-3 px-4 font-bold text-slate-900">
+                    <tr class="border-t-2 border-slate-300 bg-slate-100/70 hover:bg-slate-200/50 transition-colors">
+                        <td class="py-2 px-4 font-bold text-slate-900 text-left">
                             <span>Σ Gesamt-Portfolio</span>
                         </td>
-                        <td class="py-3 px-4 text-center font-bold text-slate-900 tabular-nums">
-                            {{ (allocation_recommendation.core_share_pct + allocation_recommendation.satellite_share_pct) | de_number(1) }} %
+                        <td class="py-2 px-3 text-right font-sans font-bold text-slate-900 tabular-nums">
+                            {{ (allocation_recommendation.core_share_pct + allocation_recommendation.satellite_share_pct) | de_number(2) }}&nbsp;%
                         </td>
-                        <td class="py-3 px-4 text-center">
-                            <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md bg-slate-200/80 text-slate-800 font-bold tabular-nums">
+                        <td class="py-2 px-3 text-right">
+                            <span class="font-sans font-bold text-slate-800 tabular-nums">
                                 {{ allocation_recommendation.total_slots }}
                             </span>
                         </td>
-                        <td class="py-3 px-4 text-right font-medium text-slate-400 tabular-nums">
+                        <td class="py-2 px-4 text-right font-medium text-slate-400 tabular-nums">
                             —
                         </td>
-                        <td class="py-3 px-4 text-right font-medium text-slate-400 tabular-nums">
+                        <td class="py-2 px-4 text-right font-medium text-slate-400 tabular-nums">
                             —
                         </td>
                     </tr>
