@@ -40,6 +40,44 @@ This skill defines the role, scope, rules, and design guidelines of the speciali
 
 ---
 
+## Platin-Standards für Quantitative Backtesting- & EoD-UIs
+
+### 1. Quantitatives Zahlen- & Spalten-Alignment
+- **Numerische Werte**: Strikte Rechtsbündigkeit (`text-right font-sans font-bold tabular-nums` bzw. `font-medium`) für alle Kurse, P&L-Werte, Notional Values, Kontrakte, Positionsgrößen und Quant-Ratios. Tabellen-Header (`<th>`) numerischer Spalten müssen synchron rechtsbündig (`text-right`) ausgerichtet sein.
+- **Text & Datumsspalten**:
+  - Text, Ticker, Strategienamen und Status-Labels strikt linksbündig (`text-left`).
+  - EoD-Datumsangaben (`entry_date`, `exit_date`, Handelstage) zentriert (`text-center font-sans tabular-nums`) im Format `DD.MM.YYYY`.
+- **Feste Rundungs- & Vorzeichenregeln**:
+  - **Quant-Ratios**: Sharpe Ratio, Sortino Ratio, Calmar Ratio, Profit Factor exakt mit 2 Dezimalstellen formatieren (z. B. `1,45`).
+  - **Prozentuale Performance- & Drawdown-Werte**: Zwingend mit explizitem Vorzeichen (z. B. `+12,40 %` / `-3,15 %`).
+  - **Neutrale Werte**: `0,00 %` bzw. `0,00 $` in neutraler Textfarbe (`text-slate-500 dark:text-slate-400`) ohne irreführende Gewinn-/Verlust-Farbe.
+
+### 2. Barrierefreie P&L- und Performance-Semantik (WCAG-Konformität)
+- **Verbot reiner Farbkodierung**: Keine ausschließliche Unterscheidung von Gewinn/Verlust über Grün/Rot (Gefahr bei Rot-Grün-Sehschwäche).
+- **Mandatorische Vorzeichen- und Badge-Kombination**:
+  - Verpflichtende Kombination aus gedämpften Background-Chips und expliziter Vorzeichenführung (`+` / `-`).
+  - **Gewinn (Positiv)**: `bg-emerald-500/10 text-emerald-700 dark:text-emerald-400` mit führendem `+`.
+  - **Verlust (Negativ)**: `bg-rose-500/10 text-rose-700 dark:text-rose-400` mit führendem `-`.
+  - **Neutral**: `bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400`.
+
+### 3. Data-Dense Backtest-Tabellen
+- **Kompakte Zeilenabstände**: Für tabellarische Trade-Historien, Signal-Logs und Performance-Matrizen gilt maximale Informationsdichte mit `py-1.5 px-2.5 text-xs` für Datenzellen (`<td>`) und Header (`<th>`).
+- **Sticky Header Pflicht**: Alle Datentabellen mit potenziell langem Scroll-Inhalt müssen zwingend Sticky Header aufweisen:
+  `sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur z-10 border-b border-slate-200 dark:border-slate-800`
+- **Standardisierte Row-Hover-States**: Jede Datenzeile muss eine visuelle Führung beim Überfahren bieten:
+  `hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors`
+
+### 4. Visualisierungs- & Chart-Standards (Equity & Drawdown)
+- **Farb-Tokens (Tailwind-Slate-Theme)**:
+  - **Hauptstrategie (Equity Curve)**: `emerald-500` (Stroke: `#10b981`) oder `indigo-500` (Stroke: `#6366f1`).
+  - **Benchmark / Buy & Hold**: `slate-400` (Stroke: `#94a3b8`, gestrichelt / sekundäre Opazität).
+  - **Underwater-/Drawdown-Fläche**: `rose-500/20` (Fill: `rgba(244, 63, 94, 0.2)`) mit Borderline in `rose-500` (Stroke: `#f43f5e`).
+- **Achsen-Beschriftungen & Tooltips**:
+  - Achsen-Ticks, Achsen-Labels und Tooltip-Zahlenwerte strikt in `font-sans text-xs tabular-nums`.
+  - Zahlenwerte in Tooltips müssen deutsches Zahlenformat (`de-DE`) und Währungssuffix verwenden.
+
+---
+
 ## Context Isolation Invariants
 
 - **Separation of Concerns**: Controllers/routes must **NOT** contain raw SQL, state updates, or quantitative mathematics logic.
@@ -61,3 +99,4 @@ In this mode:
 - show hierarchy, content regions, actions, and responsive alternatives,
 - do not select new UI frameworks,
 - do not present the wireframe as implemented behavior.
+
