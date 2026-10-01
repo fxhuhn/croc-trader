@@ -5,26 +5,17 @@
 {% block show_history_signal %}false{% endblock %}
 
 {% block active_trades %}
-{% if active_groups %}
+{% if active_trades %}
 <section class="mb-8 md:mb-12">
     {{ render_section_header("Positions", icon="zap") }}
 
     <div class="flex flex-col gap-4">
-        {% for group in active_groups %}
-        {% set active_badges = [] %}
-        {% if group.variant_05 %}
-            {% set _ = active_badges.append({'text': '0.5', 'class': 'bg-indigo-50 text-indigo-600'}) %}
-        {% endif %}
-        {% if group.variant_10 %}
-            {% set _ = active_badges.append({'text': '1.0', 'class': 'bg-indigo-50 text-indigo-600'}) %}
-        {% endif %}
-
+        {% for trade in active_trades %}
         {% call cards.trade_accordion_card(
-            symbol=group.symbol,
-            badges=active_badges,
-            pnl_value=group.total_pnl,
-            pnl_percentage=group.total_pnl_percentage,
-            progress_current=group.max_days,
+            symbol=trade.symbol,
+            pnl_value=trade.unrealized_pnl,
+            pnl_percentage=trade.pnl_percentage,
+            progress_current=trade.days_held,
             progress_max=5
         ) %}
             <div class="grid grid-cols-2 gap-8 items-start">
@@ -33,55 +24,36 @@
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">Date</span>
                         <span class="text-slate-700 font-bold text-xs tabular-nums">
-                            {{ group.variants[0].entry_date if group.variants else '-' }} ({{ group.max_days }}d)
+                            {{ trade.entry_date }} ({{ trade.days_held }}d)
                         </span>
                     </div>
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
                         <span class="text-slate-500 font-medium text-xs">Quantity</span>
-                        <span class="text-slate-700 font-bold text-xs tabular-nums">{{ group.total_quantity }}</span>
+                        <span class="text-slate-700 font-bold text-xs tabular-nums">{{ trade.current_size|int }}</span>
                     </div>
                 </div>
 
                 <!-- Right Column: Entry & Target Prices -->
                 <div class="flex flex-col">
-                    {% if group.variant_05 %}
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs">0.5 Entry</span>
-                        <span class="tabular-nums text-slate-500 font-bold text-xs">
-                            {{ group.variant_05.entry_price | de_number(2) }}
+                        <span class="text-slate-500 font-medium text-xs">Entry</span>
+                        <span class="tabular-nums text-slate-700 font-bold text-xs">
+                            {{ trade.entry_price | de_number(2) }}
                         </span>
                     </div>
-                    {% if group.variant_05.current_target %}
+                    {% if trade.current_target %}
                     <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs text-emerald-600">0.5 Target</span>
+                        <span class="text-slate-500 font-medium text-xs text-emerald-600">Target</span>
                         <span class="tabular-nums text-emerald-600 font-bold text-xs">
-                            {{ group.variant_05.current_target | de_number(2) }}
+                            {{ trade.current_target | de_number(2) }}
                         </span>
                     </div>
-                    {% endif %}
-                    {% endif %}
-
-                    {% if group.variant_10 %}
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs">1.0 Entry</span>
-                        <span class="tabular-nums text-slate-500 font-bold text-xs">
-                            {{ group.variant_10.entry_price | de_number(2) }}
-                        </span>
-                    </div>
-                    {% if group.variant_10.current_target %}
-                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
-                        <span class="text-slate-500 font-medium text-xs text-emerald-600">1.0 Target</span>
-                        <span class="tabular-nums text-emerald-600 font-bold text-xs">
-                            {{ group.variant_10.current_target | de_number(2) }}
-                        </span>
-                    </div>
-                    {% endif %}
                     {% endif %}
                 </div>
             </div>
 
             <!-- Full Width Button (Fat-finger safe) -->
-            {{ tradingview_link(group.symbol, text="View on TradingView", is_button=true) }}
+            {{ tradingview_link(trade.symbol, text="View on TradingView", is_button=true) }}
         {% endcall %}
         {% endfor %}
     </div>
