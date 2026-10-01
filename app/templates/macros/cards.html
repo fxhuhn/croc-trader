@@ -256,23 +256,31 @@
 </div>
 <!-- Desktop Explicit Footer -->
 <div class="hidden md:block bg-slate-50 border-t border-slate-200">
-    <div class="grid grid-cols-{{ cols }} gap-4 p-4 items-center">
+    {% set avg_val = closed_summary.average_pnl|float if closed_summary.average_pnl is not none else 0.0 %}
+    {% set is_avg_pos = avg_val > 0.0001 %}
+    {% set is_avg_neg = avg_val < -0.0001 %}
+    {% set avg_color = "text-emerald-600 dark:text-emerald-400" if is_avg_pos else ("text-rose-600 dark:text-rose-400" if is_avg_neg else "text-slate-500 dark:text-slate-400") %}
+    {% set tot_val = closed_summary.total_pnl|float if closed_summary.total_pnl is not none else 0.0 %}
+    {% set is_tot_pos = tot_val > 0.0001 %}
+    {% set is_tot_neg = tot_val < -0.0001 %}
+    {% set tot_color = "text-emerald-600 dark:text-emerald-400" if is_tot_pos else ("text-rose-600 dark:text-rose-400" if is_tot_neg else "text-slate-500 dark:text-slate-400") %}
+    <div class="grid grid-cols-{{ cols }} gap-4 py-2 px-2.5 items-center text-xs">
         <!-- Assuming the first columns need roughly half span -->
         <div
-            class="col-span-{{ (cols|int) - 3 }} text-right font-bold text-slate-500 uppercase tracking-widest text-xs pr-4">
+            class="col-span-{{ (cols|int) - 3 }} text-right font-bold text-slate-500 uppercase tracking-wider text-xs pr-4">
             Total History Metrics</div>
         <div class="text-right">
-            <div class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1">Avg / Trade</div>
+            <div class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-0.5">Avg / Trade</div>
             <div
-                class="text-sm font-bold {{ 'text-emerald-500' if closed_summary.average_pnl >= 0 else 'text-rose-500' }} tabular-nums">
-                {{ closed_summary.average_pnl | de_number(2, prefix_plus=True) }}{% if show_currency %}&nbsp;${% endif %}
+                class="font-sans font-bold text-xs tabular-nums whitespace-nowrap {{ avg_color }}">
+                {{ avg_val | de_number(2, prefix_plus=(is_avg_pos or is_avg_neg)) }}{% if show_currency %}&nbsp;${% endif %}
             </div>
         </div>
         <div class="text-right">
-            <div class="text-xs font-bold text-slate-600 uppercase tracking-wide mb-1">Total PnL</div>
+            <div class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-0.5">Total PnL</div>
             <div
-                class="text-lg font-bold {{ 'text-emerald-500' if closed_summary.total_pnl >= 0 else 'text-rose-500' }} tabular-nums">
-                {{ closed_summary.total_pnl | de_number(2, prefix_plus=True) }}{% if show_currency %}&nbsp;${% endif %}
+                class="font-sans font-bold text-xs tabular-nums whitespace-nowrap {{ tot_color }}">
+                {{ tot_val | de_number(2, prefix_plus=(is_tot_pos or is_tot_neg)) }}{% if show_currency %}&nbsp;${% endif %}
             </div>
         </div>
         {% if cols|int > 6 %}
@@ -283,25 +291,33 @@
 {% endmacro %}
 
 {% macro render_mobile_table_footer(label, total_val, avg_val=none, count=0) %}
-<div class="grid grid-cols-12 items-center gap-1 px-4 py-3 bg-slate-50 border-t border-slate-200">
-    <div class="col-span-8 text-slate-500 font-medium text-sm">
+{% set tot = total_val|float if total_val is not none else 0.0 %}
+{% set is_tot_pos = tot > 0.0001 %}
+{% set is_tot_neg = tot < -0.0001 %}
+{% set tot_color = "text-emerald-600 dark:text-emerald-400" if is_tot_pos else ("text-rose-600 dark:text-rose-400" if is_tot_neg else "text-slate-500 dark:text-slate-400") %}
+<div class="grid grid-cols-12 items-center gap-1 px-4 py-2.5 bg-slate-50 border-t border-slate-200">
+    <div class="col-span-7 text-slate-500 font-medium text-xs">
         {{ label }}
     </div>
-    <div class="col-span-4 text-right pr-6 font-bold tabular-nums">
-        <div class="text-sm {% if total_val >= 0 %}text-emerald-500{% else %}text-rose-500{% endif %}">
-            {{ total_val | de_number(2, prefix_plus=True) }}
+    <div class="col-span-5 text-right pr-4 font-bold tabular-nums flex flex-col items-end gap-0.5">
+        <div class="font-sans font-bold text-xs tabular-nums whitespace-nowrap {{ tot_color }}">
+            {{ tot | de_number(2, prefix_plus=(is_tot_pos or is_tot_neg)) }}
         </div>
         {% if avg_val is not none and count > 0 %}
-        <div class="text-xs font-medium {% if avg_val >= 0 %}text-emerald-600/90{% else %}text-rose-600/90{% endif %} mt-0.5">
-            {{ avg_val | de_number(2, prefix_plus=True) }}&nbsp;∅
-        </div>
+        {% set avg = avg_val|float %}
+        {% set is_avg_pos = avg > 0.0001 %}
+        {% set is_avg_neg = avg < -0.0001 %}
+        {% set avg_color = "text-emerald-600 dark:text-emerald-400" if is_avg_pos else ("text-rose-600 dark:text-rose-400" if is_avg_neg else "text-slate-500") %}
+        <span class="text-xs font-medium tabular-nums {{ avg_color }}">
+            {{ avg | de_number(2, prefix_plus=(is_avg_pos or is_avg_neg)) }}&nbsp;∅
+        </span>
         {% endif %}
     </div>
 </div>
 {% endmacro %}
 
 {% macro render_mobile_table_header(col1="Symbol", col2="Quantity", col3="Open PnL") %}
-<div class="grid grid-cols-12 items-center gap-1 px-4 py-3.5 bg-slate-50 text-slate-500 font-medium text-sm">
+<div class="grid grid-cols-12 items-center gap-1 px-4 py-2.5 bg-slate-50 text-slate-500 font-medium text-xs">
     <div class="col-span-5">{{ col1 }}</div>
     <div class="col-span-3 text-right">{{ col2 }}</div>
     <div class="col-span-4 text-right pr-6">{{ col3 }}</div>
@@ -309,14 +325,21 @@
 {% endmacro %}
 
 {% macro render_pnl_cell(pnl_val, pnl_pct, show_sign=true, currency="") %}
-<div class="flex flex-col items-end text-right whitespace-nowrap">
-    <div class="font-bold {{ 'text-emerald-500' if pnl_val >= 0 else 'text-rose-500' }} tabular-nums whitespace-nowrap">
-        {{ pnl_val | de_number(2, prefix_plus=show_sign) }}{% if currency %}&nbsp;{{ currency }}{% endif %}
+{% set num = pnl_val|float if (pnl_val is not none and pnl_val != '') else 0.0 %}
+{% set is_pos = num > 0.0001 %}
+{% set is_neg = num < -0.0001 %}
+{% set pnl_color = "text-emerald-600 dark:text-emerald-400" if is_pos else
+                  ("text-rose-600 dark:text-rose-400" if is_neg else
+                  "text-slate-500 dark:text-slate-400") %}
+<div class="flex flex-col items-end text-right whitespace-nowrap gap-0.5">
+    <div class="font-sans font-bold text-xs tabular-nums whitespace-nowrap {{ pnl_color }}">
+        {{ num | de_number(2, prefix_plus=(show_sign if (is_pos or is_neg) else false)) }}{% if currency %}&nbsp;{{ currency }}{% endif %}
     </div>
     {% if pnl_pct is defined and pnl_pct is not none and pnl_pct != '' %}
-    <div class="text-xs text-slate-500 tabular-nums whitespace-nowrap">
-        {{ pnl_pct | de_number(2, prefix_plus=True) }}&nbsp;%
-    </div>
+    {% set pct_num = pnl_pct|float if pnl_pct != '' else 0.0 %}
+    <span class="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums whitespace-nowrap">
+        {{ pct_num | de_number(2, prefix_plus=(pct_num > 0.0001 or pct_num < -0.0001)) }}&nbsp;%
+    </span>
     {% endif %}
 </div>
 {% endmacro %}
@@ -655,13 +678,13 @@ progress_current=none, progress_max=none) %}
 
     <!-- Desktop Grid View -->
     {% set desktop_cols = "8" if show_signal else "7" %}
-    <div class="hidden md:block bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+    <div class="hidden md:block bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <!-- Desktop Header -->
         <div
-            class="grid grid-cols-{{ desktop_cols }} gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-500 font-medium text-sm">
-            <div>Date</div>
-            <div>Symbol</div>
-            {% if show_signal %}<div>Signal</div>{% endif %}
+            class="sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur z-10 border-b border-slate-200 dark:border-slate-800 grid grid-cols-{{ desktop_cols }} gap-4 py-1.5 px-2.5 text-xs text-slate-500 font-medium">
+            <div class="text-center font-sans tabular-nums">Date</div>
+            <div class="text-left">Symbol</div>
+            {% if show_signal %}<div class="text-left">Signal</div>{% endif %}
             <div class="text-right">Quantity</div>
             <div class="text-right">Entry Price</div>
             <div class="text-right">Exit Price</div>
@@ -678,24 +701,24 @@ progress_current=none, progress_max=none) %}
             {% set raw_sig = trade.version or trade.variant or (trade.context.get('original_signal') or (trade.context.get('match_rule') or {}).get('Signal') or trade.strategy or '') if trade.context else (trade.version or trade.variant or trade.strategy or '') %}
             {% set clean_sig = (raw_sig | string).replace('Croc_', '') %}
 
-            <div class="cursor-pointer transition-colors transition-all duration-200 group-linkable hover:bg-slate-50/50"
+            <div class="cursor-pointer transition-colors duration-150 group-linkable hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
                 onclick="toggleRow('acc-settle-{{ history_desktop_counter.idx }}')">
-                <div class="grid grid-cols-{{ desktop_cols }} gap-4 px-4 py-3.5 items-center text-sm">
+                <div class="grid grid-cols-{{ desktop_cols }} gap-4 py-1.5 px-2.5 items-center text-xs">
                     <!-- 1. Date -->
-                    <div class="text-slate-600 tabular-nums whitespace-nowrap">
+                    <div class="text-center font-sans tabular-nums text-slate-600 whitespace-nowrap">
                         {{ trade.entry_date or trade.display_entry }} ({{ trade.days_held }}d)
                     </div>
 
                     <!-- 2. Symbol -->
-                    <div class="font-bold text-slate-900 text-sm whitespace-nowrap">
+                    <div class="font-bold text-slate-900 text-xs whitespace-nowrap text-left">
                         {{ tradingview_link(trade.symbol, is_button=false) }}
                     </div>
 
                     <!-- 3. Signal (Optional) -->
                     {% if show_signal %}
-                    <div class="flex flex-wrap gap-1 whitespace-nowrap">
+                    <div class="flex flex-wrap gap-1 whitespace-nowrap text-left">
                         {% if clean_sig %}
-                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
+                        <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 uppercase whitespace-nowrap">
                             {{ clean_sig }}
                         </span>
                         {% else %}
@@ -705,17 +728,17 @@ progress_current=none, progress_max=none) %}
                     {% endif %}
 
                     <!-- 4. Quantity -->
-                    <div class="text-right tabular-nums text-slate-600">
+                    <div class="text-right font-sans font-bold tabular-nums text-slate-700">
                         {{ trade.initial_size|int }}
                     </div>
 
                     <!-- 5. Entry Price -->
-                    <div class="text-right tabular-nums text-slate-600">
+                    <div class="text-right font-sans font-bold tabular-nums text-slate-700">
                         {{ trade.entry_price|float | de_number(2) }}
                     </div>
 
                     <!-- 6. Exit Price -->
-                    <div class="text-right tabular-nums text-slate-600">
+                    <div class="text-right font-sans font-bold tabular-nums text-slate-700">
                         {{ (trade.exit_price|float | de_number(2)) if trade.exit_price else '-' }}
                     </div>
 
@@ -727,17 +750,17 @@ progress_current=none, progress_max=none) %}
                         {% if 'TARGET' in trade.exit_reason or 'PROFIT' in trade.exit_reason or 'LOC' in
                         trade.exit_reason %}
                         <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50 whitespace-nowrap">
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50 whitespace-nowrap">
                             {{ trade.exit_reason | replace('_', ' ') | title }}
                         </span>
                         {% elif 'STOP_LOSS' in trade.exit_reason %}
                         <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50 whitespace-nowrap">
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50 whitespace-nowrap">
                             STOP
                         </span>
                         {% else %}
                         <span
-                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
+                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
                             {{ trade.exit_reason | replace('_', ' ') | title }}
                         </span>
                         {% endif %}

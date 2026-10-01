@@ -52,13 +52,14 @@ This skill defines the role, scope, rules, and design guidelines of the speciali
   - **Percentage Performance & Drawdown Values**: Mandatory explicit sign prefix (e.g. `+12,40 %` / `-3,15 %`).
   - **Neutral Values**: `0,00 %` or `0,00 $` must render in neutral text color (`text-slate-500 dark:text-slate-400`) without misleading gain/loss coloration.
 
-### 2. Accessible PnL & Performance Semantics (WCAG Compliance)
-- **Prohibition of Pure Color Coding**: Never differentiate profit and loss solely by green/red text colors (red-green color vision deficiency).
-- **Mandatory Sign & Badge Pill Combination**:
-  - Mandatory pairing of muted background chips and explicit sign prefixes (`+` / `-`).
-  - **Profit (Positive)**: `bg-emerald-500/10 text-emerald-700 dark:text-emerald-400` with leading `+`.
-  - **Loss (Negative)**: `bg-rose-500/10 text-rose-700 dark:text-rose-400` with leading `-`.
-  - **Neutral**: `bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400`.
+### 2. PnL & Performance Semantics (Clean Text-Only & WCAG Sign Rules)
+- **Strict Prohibition of Background Chips / Badges**: Numerical PnL figures, percentage returns, and slippage amounts must **NEVER** use background chips, pills, or highlight boxes (such as `bg-emerald-500/10`, `bg-rose-500/10`, `rounded-full`). These create visual irritation, clutter, and optical vibration in dense financial tables.
+- **Clean Text-Only Presentation**: All financial PnL metrics in tables, cards, and summary footers must be rendered as clean, unboxed text (`font-sans font-bold tabular-nums text-xs` or `text-sm`).
+- **Unambiguous Sign & 3-Way Neutrality**:
+  - Differentiate profit and loss through explicit sign prefixes (`+` / `-`) combined with semantic text colors:
+  - **Profit (Positive)**: `text-emerald-600 dark:text-emerald-400 font-sans font-bold tabular-nums` with explicit leading `+` (e.g. `+1.234,56 $` / `+12,40 %`).
+  - **Loss (Negative)**: `text-rose-600 dark:text-rose-400 font-sans font-bold tabular-nums` with explicit leading `-` (e.g. `-450,20 $` / `-3,15 %`).
+  - **Neutral (Zero / Break-Even)**: `0,00 %` or `0,00 $` must render strictly in `text-slate-500 dark:text-slate-400 font-sans font-bold tabular-nums` without green/red tinting or `+` sign.
 
 ### 3. Data-Dense Backtest Tables
 - **Compact Row Spacing**: High information density for tabular trade histories, signal logs, and performance matrices using `py-1.5 px-2.5 text-xs` for data cells (`<td>`) and header cells (`<th>`).
