@@ -55,6 +55,10 @@ def test_bva_ndx_momentum_rebalance_day_resolution() -> None:
         thursday_date = pd.Timestamp("2026-04-30")
         assert screener._is_last_trading_day(thursday_date) is True
 
+    # 4. Weekend day on last calendar day of month (2026-01-31 is Saturday) -> returns False
+    weekend_month_end = pd.Timestamp("2026-01-31")
+    assert screener._is_last_trading_day(weekend_month_end) is False
+
 
 @pytest.mark.tier1
 def test_bva_ndx_momentum_screener_universe_boundaries() -> None:

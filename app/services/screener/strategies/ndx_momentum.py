@@ -13,13 +13,11 @@ from ....services.telegram import TelegramBot
 from ....tools.indicators import calculate_roc, calculate_sma
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_lists import ExchangeSymbol
+from ....tools.trading_calendar import is_last_trading_day_of_month
 from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
-
-SATURDAY_WEEKDAY: int = 5
-MONTH_END_LOOKAHEAD_MAX_DAYS: int = 5
 
 ROC_WINDOW_1M: int = 21
 ROC_WINDOW_3M: int = 63
@@ -511,18 +509,10 @@ class NDXMomentumScreener(BaseStrategy[int]):
 
     def _is_last_trading_day(self, date: pd.Timestamp) -> bool:
         """Checks if the date represents the last trading day of its month."""
-        current_month = date.month
-        lookahead_date = date + pd.Timedelta(days=1)
-        for _ in range(MONTH_END_LOOKAHEAD_MAX_DAYS):
-            if lookahead_date.month != current_month:
-                return True
-            if (
-                lookahead_date.dayofweek < SATURDAY_WEEKDAY
-                and not self.holiday_checker.is_holiday(lookahead_date)
-            ):
-                return False
-            lookahead_date += pd.Timedelta(days=1)
-        return True
+        check_date = date.date() if hasattr(date, "date") else date
+        return is_last_trading_day_of_month(
+            check_date, holiday_checker=self.holiday_checker
+        )
 
     def _create_trades_direct(
         self,
