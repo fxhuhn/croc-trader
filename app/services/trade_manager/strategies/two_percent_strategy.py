@@ -10,6 +10,7 @@ from ....models import Order
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.trading_calendar import SATURDAY
 from ....types import TradeData
+from ...screener.strategies.two_percent_strategy import TwoPercentConfiguration
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, HolidayCheckerProtocol, OrderOptions
 
@@ -60,20 +61,26 @@ class TwoPercentStrategy(BaseTradeStrategy):
     DAY_ONE_INDEX: int = 1
     DAY_TWO_INDEX: int = 2
 
-    def __init__(self, holiday_checker: HolidayCheckerProtocol | None = None) -> None:
-        """Initializes the strategy with optional holiday checking support.
+    def __init__(
+        self,
+        holiday_checker: HolidayCheckerProtocol | None = None,
+        configuration: TwoPercentConfiguration | None = None,
+    ) -> None:
+        """Initializes the strategy with optional holiday checking and configuration.
 
         Args:
             holiday_checker: Optional holiday checking protocol instance.
+            configuration: Optional configuration parameters for the strategy.
         """
         super().__init__()
         self.holiday_checker = holiday_checker or MarketHolidayChecker()
+        self.configuration = configuration or TwoPercentConfiguration()
 
     def _calculate_target_price(self, entry_price: Decimal) -> Decimal:
-        """Calculates exact 2% take profit target using Decimal precision and banker's rounding."""
+        """Calculates exact take profit target using Decimal precision and banker's rounding."""
         if entry_price <= Decimal("0"):
             return Decimal("0.0")
-        multiplier = Decimal(str(self.REWARD_TARGET_MULTIPLIER))
+        multiplier = Decimal(str(self.configuration.reward_target_multiplier))
         return (entry_price * multiplier).quantize(Decimal("0.01"))
 
     @override

@@ -1,6 +1,7 @@
 import datetime
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import TypedDict, override
 
 import pandas as pd
@@ -31,6 +32,16 @@ class TwoPercentStrategyContext(TypedDict):
     source: str
 
 
+@dataclass(frozen=True)
+class TwoPercentConfiguration:
+    """Central configuration parameters for the TwoPercent trading strategy."""
+
+    entry_limit_discount: float = 0.99
+    reward_target_multiplier: float = 1.02
+    default_lookback_period: int = 20
+    target_symbols: tuple[str, ...] = ("SXRV.DE", "QQQ")
+
+
 class TwoPercentStrategy(BaseStrategy[int]):
     """
     Implementation of the TwoPercent trading strategy.
@@ -55,22 +66,24 @@ class TwoPercentStrategy(BaseStrategy[int]):
         telegram_bot: TelegramBot | None = None,
         *,
         symbols: Sequence[str] | None = None,
+        configuration: TwoPercentConfiguration | None = None,
     ) -> None:
-        """
-        Initializes the TwoPercent strategy with required dependencies.
+        """Initializes the TwoPercent strategy with required dependencies.
 
         Args:
-           trade_repository: Repository for trade persistence.
-           data_provider: Provider for market historical data.
-           telegram_bot: Optional bot for reporting signals.
-           symbols: Optional sequence of ticker symbols to screen. Defaults to SYMBOLS.
+            trade_repository: Repository for trade persistence.
+            data_provider: Provider for market historical data.
+            telegram_bot: Optional bot for reporting signals.
+            symbols: Optional sequence of ticker symbols to screen. Overrides configuration.target_symbols.
+            configuration: Optional configuration parameters for the strategy.
         """
         super().__init__(data_provider, telegram_bot)
         self.name = self.STRATEGY_IDENTIFIER
         self.trade_repository = trade_repository
         self.holiday_checker = MarketHolidayChecker()
+        self.configuration = configuration or TwoPercentConfiguration()
         self.symbols: tuple[str, ...] = (
-            tuple(symbols) if symbols is not None else self.SYMBOLS
+            tuple(symbols) if symbols is not None else self.configuration.target_symbols
         )
 
     @override
@@ -161,10 +174,10 @@ class TwoPercentStrategy(BaseStrategy[int]):
     ) -> pd.DataFrame:
         """Fetches historical price data with sufficient lookback."""
         target_symbol = symbol or self.SYMBOL
-        lookback = self.DEFAULT_LOOKBACK_PERIOD
+        lookback = self.configuration.default_lookback_period
         if analysis_timestamp < pd.Timestamp.now().normalize():
             days_ago = (pd.Timestamp.now() - analysis_timestamp).days
-            lookback = max(self.DEFAULT_LOOKBACK_PERIOD, days_ago + 20)
+            lookback = max(self.configuration.default_lookback_period, days_ago + 20)
 
         history = self.data_provider.get_symbol_history(target_symbol, days=lookback)
 
@@ -287,7 +300,7 @@ class TwoPercentStrategy(BaseStrategy[int]):
 
     def _calculate_entry_price(self, close_price: float) -> float:
         """Calculates the limit entry price based on the discount."""
-        return round(close_price * self.ENTRY_LIMIT_DISCOUNT, 2)
+        return round(close_price * self.configuration.entry_limit_discount, 2)
 
     def _trade_exists(self, date_str: str, symbol: str | None = None) -> bool:
         """Checks if a trade for this strategy and date already exists."""
