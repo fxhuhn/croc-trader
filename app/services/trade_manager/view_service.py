@@ -275,24 +275,39 @@ class FutureInstrumentSpec:
 
     multiplier: Decimal
     initial_margin: Decimal
+    initial_margin_short: Decimal = Decimal("0.00")
+    maintenance_margin: Decimal = Decimal("0.00")
+    maintenance_margin_short: Decimal = Decimal("0.00")
 
 
 FUTURES_INSTRUMENT_SPECS: dict[str, FutureInstrumentSpec] = {
     "MES": FutureInstrumentSpec(
         multiplier=Decimal("5.0"),
-        initial_margin=Decimal("1600.00"),
+        initial_margin=Decimal("3471.98"),
+        initial_margin_short=Decimal("2560.80"),
+        maintenance_margin=Decimal("2608.00"),
+        maintenance_margin_short=Decimal("2328.00"),
     ),
     "MNQ": FutureInstrumentSpec(
         multiplier=Decimal("2.0"),
-        initial_margin=Decimal("2200.00"),
+        initial_margin=Decimal("3800.00"),
+        initial_margin_short=Decimal("3100.00"),
+        maintenance_margin=Decimal("3040.00"),
+        maintenance_margin_short=Decimal("2480.00"),
     ),
     "ES": FutureInstrumentSpec(
         multiplier=Decimal("50.0"),
-        initial_margin=Decimal("16000.00"),
+        initial_margin=Decimal("34719.80"),
+        initial_margin_short=Decimal("25608.00"),
+        maintenance_margin=Decimal("26080.00"),
+        maintenance_margin_short=Decimal("23280.00"),
     ),
     "NQ": FutureInstrumentSpec(
         multiplier=Decimal("20.0"),
-        initial_margin=Decimal("22000.00"),
+        initial_margin=Decimal("38000.00"),
+        initial_margin_short=Decimal("31000.00"),
+        maintenance_margin=Decimal("30400.00"),
+        maintenance_margin_short=Decimal("24800.00"),
     ),
 }
 
@@ -524,8 +539,14 @@ def _aggregate_strategy_metrics(
         fut_match = resolve_futures_spec(symbol, raw_strat)
         if fut_match is not None:
             _, spec = fut_match
-            invested = size * spec.initial_margin
-            notional = size * current_price * spec.multiplier
+            margin_per_contract = (
+                spec.initial_margin_short
+                if size < Decimal("0.00")
+                and spec.initial_margin_short > Decimal("0.00")
+                else spec.initial_margin
+            )
+            invested = abs(size) * margin_per_contract
+            notional = abs(size) * current_price * spec.multiplier
             market_val = notional
             unrealized_pnl = (
                 (current_price - entry_price) * size * spec.multiplier
@@ -1965,11 +1986,26 @@ class TradeViewService:
             fut_match = resolve_futures_spec(symbol, pos.get("strategy") or "")
             multiplier = float(fut_match[1].multiplier) if fut_match else 1.0
             unrealized_pnl = (current_price - entry_price) * size * multiplier
-            pnl_percentage = (
-                ((current_price - entry_price) / entry_price * 100)
-                if entry_price > 0
-                else 0.0
-            )
+
+            if fut_match is not None:
+                spec = fut_match[1]
+                margin_req = (
+                    float(spec.initial_margin_short)
+                    if size < 0 and spec.initial_margin_short > Decimal("0.00")
+                    else float(spec.initial_margin)
+                )
+                invested_capital = abs(size) * margin_req
+                pnl_percentage = (
+                    (unrealized_pnl / invested_capital * 100)
+                    if invested_capital > 0
+                    else 0.0
+                )
+            else:
+                pnl_percentage = (
+                    ((current_price - entry_price) / entry_price * 100)
+                    if entry_price > 0
+                    else 0.0
+                )
 
             pos["unrealized_pnl"] = unrealized_pnl
             pos["pnl_percentage"] = pnl_percentage

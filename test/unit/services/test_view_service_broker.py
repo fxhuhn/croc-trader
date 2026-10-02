@@ -264,11 +264,11 @@ def test_calculate_capital_allocation_futures_margin_and_multiplier() -> None:
     ]
 
     summary = calculate_capital_allocation(positions)
-    # MES: 1 * 1600 = 1600 margin.
-    # MNQ: 2 * 2200 = 4400 margin.
+    # MES: 1 * 3471.98 = 3471.98 margin.
+    # MNQ: 2 * 3800 = 7600 margin.
     # AAPL: 10 * 150 = 1500 invested equity.
-    # Total portfolio capital = 1600 + 4400 + 1500 = 7500.
-    assert summary.total_invested == Decimal("7500.00")
+    # Total portfolio capital = 3471.98 + 7600 + 1500 = 12571.98.
+    assert summary.total_invested == Decimal("12571.98")
     assert summary.total_positions == 3
     assert len(summary.strategies) == 3
 
@@ -278,23 +278,23 @@ def test_calculate_capital_allocation_futures_margin_and_multiplier() -> None:
     tgim_item = next(s for s in summary.strategies if s.strategy_key == "TGIM")
     dip_item = next(s for s in summary.strategies if s.strategy_key == "DipBuyer")
 
-    # BounceBandit (MNQ): 2 contracts, margin = 4400, notional = 2 * 19950 * 2 = 79800
+    # BounceBandit (MNQ): 2 contracts, margin = 7600, notional = 2 * 19950 * 2 = 79800
     assert bounce_item.is_derivative is True
-    assert bounce_item.invested_capital == Decimal("4400.00")
+    assert bounce_item.invested_capital == Decimal("7600.00")
     assert bounce_item.notional_exposure == Decimal("79800.00")
     # PnL: (19950 - 20000) * 2 * 2 = -200.00
     assert bounce_item.unrealized_pnl == Decimal("-200.00")
-    assert round(bounce_item.pnl_percentage, 2) == -4.55
+    assert round(bounce_item.pnl_percentage, 2) == -2.63
     assert bounce_item.color_class == "bg-violet-500"
     assert bounce_item.strategy_label == "Bounce Bandit"
 
-    # TGIM (MES): 1 contract, margin = 1600, notional = 1 * 5850 * 5 = 29250
+    # TGIM (MES): 1 contract, margin = 3471.98, notional = 1 * 5850 * 5 = 29250
     assert tgim_item.is_derivative is True
-    assert tgim_item.invested_capital == Decimal("1600.00")
+    assert tgim_item.invested_capital == Decimal("3471.98")
     assert tgim_item.notional_exposure == Decimal("29250.00")
     # PnL: (5850 - 5800) * 1 * 5 = +250.00
     assert tgim_item.unrealized_pnl == Decimal("250.00")
-    assert round(tgim_item.pnl_percentage, 2) == 15.62
+    assert round(tgim_item.pnl_percentage, 2) == 7.20
     assert tgim_item.color_class == "bg-sky-500"
     assert tgim_item.strategy_label == "TGIM"
 
@@ -305,6 +305,27 @@ def test_calculate_capital_allocation_futures_margin_and_multiplier() -> None:
     assert dip_item.unrealized_pnl == Decimal("100.00")
     assert round(dip_item.pnl_percentage, 2) == 6.67
     assert dip_item.color_class == "bg-indigo-500"
+
+
+def test_calculate_capital_allocation_futures_short_margin() -> None:
+    """Verifies that short futures positions use initial_margin_short."""
+    positions = [
+        {
+            "symbol": "MES",
+            "strategy": "TGIM",
+            "current_size": -1.0,
+            "entry_price": 5800.0,
+            "current_price": 5750.0,
+        },
+    ]
+    summary = calculate_capital_allocation(positions)
+    tgim_item = summary.strategies[0]
+    assert tgim_item.is_derivative is True
+    assert tgim_item.invested_capital == Decimal("2560.80")
+    assert tgim_item.notional_exposure == Decimal("28750.00")
+    # PnL: (5750 - 5800) * (-1) * 5 = +250.00
+    assert tgim_item.unrealized_pnl == Decimal("250.00")
+    assert round(tgim_item.pnl_percentage, 2) == 9.76
 
 
 def test_calculate_capital_allocation_with_account_metrics_free_cash() -> None:
