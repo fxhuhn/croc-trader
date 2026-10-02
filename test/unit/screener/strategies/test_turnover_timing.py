@@ -220,3 +220,43 @@ def test_run_last_trading_day_mismatch(
 
     # Assert
     assert result == 0
+
+
+def test_is_setup_day_comprehensive_matrix(strategy: TurnoverTimingStrategy) -> None:
+    """Verifies that _is_setup_day accurately detects week-end boundaries across all weekdays."""
+    # Monday 2026-07-13 -> False
+    assert strategy._is_setup_day(pd.Timestamp("2026-07-13")) is False
+    # Tuesday 2026-07-14 -> False
+    assert strategy._is_setup_day(pd.Timestamp("2026-07-14")) is False
+    # Wednesday 2026-07-15 -> False
+    assert strategy._is_setup_day(pd.Timestamp("2026-07-15")) is False
+    # Normal Thursday 2026-07-16 -> False
+    assert strategy._is_setup_day(pd.Timestamp("2026-07-16")) is False
+    # Normal Friday 2026-07-17 -> True
+    assert strategy._is_setup_day(pd.Timestamp("2026-07-17")) is True
+    # Saturday 2026-07-18 -> False
+    assert strategy._is_setup_day(pd.Timestamp("2026-07-18")) is False
+    # Sunday 2026-07-19 -> False
+    assert strategy._is_setup_day(pd.Timestamp("2026-07-19")) is False
+
+    # Thursday before Good Friday 2026-04-03 -> True
+    thursday_before_holiday = pd.Timestamp("2026-04-02")
+    assert strategy._is_setup_day(thursday_before_holiday) is True
+
+
+def test_is_setup_day_parity_with_trading_calendar(
+    strategy: TurnoverTimingStrategy,
+) -> None:
+    """Verifies 100% bit-level parity between _is_setup_day and is_last_trading_day_of_week."""
+    from app.tools.trading_calendar import is_last_trading_day_of_week
+
+    start_date = pd.Timestamp("2026-01-01")
+    for day_offset in range(60):
+        current_date = start_date + pd.Timedelta(days=day_offset)
+        expected = is_last_trading_day_of_week(
+            current_date, holiday_checker=strategy.holiday_checker
+        )
+        actual = strategy._is_setup_day(current_date)
+        assert actual == expected, (
+            f"Mismatch on {current_date}: expected {expected}, got {actual}"
+        )

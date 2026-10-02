@@ -12,14 +12,13 @@ from ....tools.indicators import extract_safe_float
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
+from ....tools.trading_calendar import is_last_trading_day_of_week
 from ...telegram import TelegramBot
 from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
-FRIDAY_WEEKDAY: int = 4
-THURSDAY_WEEKDAY: int = 3
 FACTOR_HALF: float = 0.5
 FACTOR_FULL: float = 1.0
 MIN_SMA_LOOKBACK_BARS: int = 200
@@ -184,17 +183,9 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
 
     def _is_setup_day(self, analysis_timestamp: pd.Timestamp) -> bool:
         """Verifies if today is Friday or a holiday-adjusted Thursday."""
-        day_of_week = analysis_timestamp.dayofweek  # Monday=0, Sunday=6
-
-        if day_of_week == FRIDAY_WEEKDAY:  # Friday
-            return True
-
-        if day_of_week == THURSDAY_WEEKDAY:  # Thursday
-            tomorrow = analysis_timestamp + pd.Timedelta(days=1)
-            if self.holiday_checker.is_holiday(tomorrow.date()):
-                return True
-
-        return False
+        return is_last_trading_day_of_week(
+            analysis_timestamp, holiday_checker=self.holiday_checker
+        )
 
     def _compile_target_universe(
         self,

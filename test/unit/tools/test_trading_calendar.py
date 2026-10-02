@@ -9,12 +9,14 @@ from app.tools.trading_calendar import (
     MONDAY,
     SATURDAY,
     SUNDAY,
+    THURSDAY,
     get_last_completed_trading_day,
     get_next_trading_day,
     get_remaining_trading_days_in_month,
     get_trading_day_of_month,
     is_in_end_of_month_window,
     is_last_trading_day_of_month,
+    is_last_trading_day_of_week,
     is_trading_day,
     resolve_effective_trading_date,
     roll_weekend_to_monday,
@@ -372,3 +374,107 @@ def test_get_trading_day_of_month_monotonicity() -> None:
         else:
             assert count == previous_count
         previous_count = count
+
+
+def test_thursday_constant_value() -> None:
+    """Verifies that THURSDAY constant corresponds to weekday index 3."""
+    assert THURSDAY == 3
+    sample_thursday = datetime.date(2026, 7, 23)
+    assert sample_thursday.weekday() == THURSDAY
+
+
+def test_is_last_trading_day_of_week_regular_friday() -> None:
+    """Verifies regular Friday evaluates to True for is_last_trading_day_of_week."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+
+    friday = datetime.date(2026, 7, 17)  # Regular Friday
+    assert is_last_trading_day_of_week(friday, holiday_checker) is True
+
+
+def test_is_last_trading_day_of_week_thursday_with_friday_holiday() -> None:
+    """Verifies Thursday evaluates to True when following Friday is an official holiday."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+
+    def is_holiday_mock(date_to_check: datetime.date) -> bool:
+        return date_to_check == datetime.date(2026, 4, 3)
+
+    holiday_checker.is_holiday.side_effect = is_holiday_mock
+
+    thursday = datetime.date(2026, 4, 2)  # Thursday before Good Friday 2026-04-03
+    assert is_last_trading_day_of_week(thursday, holiday_checker) is True
+
+
+def test_is_last_trading_day_of_week_thursday_normal() -> None:
+    """Verifies Thursday evaluates to False when following Friday is a normal trading day."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+
+    normal_thursday = datetime.date(2026, 7, 16)
+    assert is_last_trading_day_of_week(normal_thursday, holiday_checker) is False
+
+
+def test_is_last_trading_day_of_week_other_weekdays() -> None:
+    """Verifies Monday, Tuesday, Wednesday, Saturday, Sunday evaluate to False."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+
+    # July 2026:
+    # 2026-07-13: Monday
+    # 2026-07-14: Tuesday
+    # 2026-07-15: Wednesday
+    # 2026-07-18: Saturday
+    # 2026-07-19: Sunday
+    assert (
+        is_last_trading_day_of_week(datetime.date(2026, 7, 13), holiday_checker)
+        is False
+    )
+    assert (
+        is_last_trading_day_of_week(datetime.date(2026, 7, 14), holiday_checker)
+        is False
+    )
+    assert (
+        is_last_trading_day_of_week(datetime.date(2026, 7, 15), holiday_checker)
+        is False
+    )
+    assert (
+        is_last_trading_day_of_week(datetime.date(2026, 7, 18), holiday_checker)
+        is False
+    )
+    assert (
+        is_last_trading_day_of_week(datetime.date(2026, 7, 19), holiday_checker)
+        is False
+    )
+
+
+def test_is_last_trading_day_of_week_input_types() -> None:
+    """Verifies support for datetime.date, pd.Timestamp, and ISO formatted string."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+
+    friday_str = "2026-07-17"
+    friday_date = datetime.date(2026, 7, 17)
+    friday_timestamp = pd.Timestamp("2026-07-17")
+
+    assert is_last_trading_day_of_week(friday_str, holiday_checker) is True
+    assert is_last_trading_day_of_week(friday_date, holiday_checker) is True
+    assert is_last_trading_day_of_week(friday_timestamp, holiday_checker) is True
+
+    thursday_str = "2026-07-16"
+    thursday_date = datetime.date(2026, 7, 16)
+    thursday_timestamp = pd.Timestamp("2026-07-16")
+
+    assert is_last_trading_day_of_week(thursday_str, holiday_checker) is False
+    assert is_last_trading_day_of_week(thursday_date, holiday_checker) is False
+    assert is_last_trading_day_of_week(thursday_timestamp, holiday_checker) is False
+
+
+def test_is_last_trading_day_of_week_default_holiday_checker() -> None:
+    """Verifies function works with default MarketHolidayChecker on real calendar data."""
+    # 2026-04-03 is Good Friday in US market holiday calendar
+    real_thursday_before_good_friday = datetime.date(2026, 4, 2)
+    assert is_last_trading_day_of_week(real_thursday_before_good_friday) is True
+
+    # 2026-07-16 is a normal Thursday (Friday 2026-07-17 is not a holiday)
+    normal_thursday = datetime.date(2026, 7, 16)
+    assert is_last_trading_day_of_week(normal_thursday) is False

@@ -13,6 +13,7 @@ from app.tools.market_holidays import MarketHolidayChecker
 
 # Monday=0 ... Saturday=5, Sunday=6 per datetime.weekday()
 MONDAY: int = 0
+THURSDAY: int = 3
 FRIDAY: int = 4
 SATURDAY: int = 5
 SUNDAY: int = 6
@@ -193,6 +194,45 @@ def is_last_trading_day_of_month(
     )
 
 
+def is_last_trading_day_of_week(
+    check_date: datetime.date | pd.Timestamp | str,
+    holiday_checker: MarketHolidayChecker | None = None,
+) -> bool:
+    """Checks whether check_date is the last active trading day of its calendar week.
+
+    Accounts for Friday holidays by evaluating if check_date is Thursday and the
+    following Friday is an official market holiday.
+
+    Args:
+        check_date: Date to evaluate (datetime.date, pd.Timestamp, or ISO string).
+        holiday_checker: Optional holiday checker instance or protocol.
+
+    Returns:
+        bool: True if check_date is Friday or holiday-adjusted Thursday, False otherwise.
+    """
+    if isinstance(check_date, str):
+        date_val = datetime.date.fromisoformat(check_date)
+    elif hasattr(check_date, "date") and callable(check_date.date):
+        date_val = check_date.date()
+    else:
+        date_val = check_date
+
+    weekday = date_val.weekday()
+    if weekday == FRIDAY:
+        return True
+
+    if weekday == THURSDAY:
+        checker = (
+            holiday_checker if holiday_checker is not None else MarketHolidayChecker()
+        )
+        is_holiday_fn = getattr(checker, "is_holiday", None)
+        if is_holiday_fn is not None:
+            next_day = date_val + datetime.timedelta(days=1)
+            return bool(is_holiday_fn(next_day))
+
+    return False
+
+
 def resolve_effective_trading_date(
     available_dates: pd.Index,
     target_date: pd.Timestamp | datetime.date | str,
@@ -262,12 +302,14 @@ __all__ = [
     "MONDAY",
     "SATURDAY",
     "SUNDAY",
+    "THURSDAY",
     "get_last_completed_trading_day",
     "get_next_trading_day",
     "get_remaining_trading_days_in_month",
     "get_trading_day_of_month",
     "is_in_end_of_month_window",
     "is_last_trading_day_of_month",
+    "is_last_trading_day_of_week",
     "is_trading_day",
     "resolve_effective_trading_date",
     "roll_weekend_to_monday",
