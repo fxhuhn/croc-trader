@@ -2,7 +2,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TypedDict, override
+from typing import Literal, TypedDict, override
 
 import pandas as pd
 
@@ -57,11 +57,21 @@ class MomentumTradeContext:
     regime_indicators: dict[str, float | bool]
 
 
+type RegimeFilterMode = Literal["qqq_only", "combined", "breadth_only", "none"]
+
+
 @dataclass(frozen=True)
 class NDXMomentumConfiguration:
     """Configuration settings for the NDX Momentum strategy."""
 
     maximum_ticker_count: int = 5
+    regime_mode: RegimeFilterMode = "qqq_only"
+    qqq_trend_sma_window: int = QQQ_TREND_SMA_WINDOW
+    breadth_sma_window: int = BREADTH_SMA_WINDOW
+    breadth_fast_sma_window: int = BREADTH_FAST_SMA_WINDOW
+    breadth_slow_sma_window: int = BREADTH_SLOW_SMA_WINDOW
+    roc_windows: tuple[int, ...] = ROC_WINDOWS
+    history_fetch_days: int = HISTORY_FETCH_DAYS
 
 
 class NDXAnalysisResult(TypedDict, total=False):
@@ -284,7 +294,8 @@ class NDXMomentumScreener(BaseStrategy[int]):
         qqq_close_series = pivoted_data["close"]["QQQ"]
         current_qqq_price = float(qqq_close_series.at[effective_date])
         qqq_sma_series = calculate_sma(
-            qqq_close_series.loc[:effective_date], QQQ_TREND_SMA_WINDOW
+            qqq_close_series.loc[:effective_date],
+            self.configuration.qqq_trend_sma_window,
         )
         index_moving_average = float(qqq_sma_series.iloc[-1])
 
@@ -336,7 +347,9 @@ class NDXMomentumScreener(BaseStrategy[int]):
     ) -> dict[str, pd.DataFrame] | None:
         """Fetches history and pivots it into aligned DataFrames."""
         full_history_map = self.data_provider.get_batch_history(
-            universe_symbols, days=HISTORY_FETCH_DAYS, end_date=end_date
+            universe_symbols,
+            days=self.configuration.history_fetch_days,
+            end_date=end_date,
         )
         if not full_history_map:
             logger.warning("[%s] No data found for universe.", self.name)
@@ -450,17 +463,21 @@ class NDXMomentumScreener(BaseStrategy[int]):
             tuple of (is_bull_regime, metrics_dict).
         """
         # Breadth
-        sma100_matrix = calculate_sma(nasdaq_closes, BREADTH_SMA_WINDOW)
+        sma100_matrix = calculate_sma(
+            nasdaq_closes, self.configuration.breadth_sma_window
+        )
         percentage_above_sma100 = (nasdaq_closes > sma100_matrix).mean(axis=1) * 100
         breadth_fast_average = float(
-            calculate_sma(percentage_above_sma100, BREADTH_FAST_SMA_WINDOW).at[
-                effective_date
-            ]
+            calculate_sma(
+                percentage_above_sma100,
+                self.configuration.breadth_fast_sma_window,
+            ).at[effective_date]
         )
         breadth_slow_average = float(
-            calculate_sma(percentage_above_sma100, BREADTH_SLOW_SMA_WINDOW).at[
-                effective_date
-            ]
+            calculate_sma(
+                percentage_above_sma100,
+                self.configuration.breadth_slow_sma_window,
+            ).at[effective_date]
         )
 
         is_bull_regime = (current_qqq_price > index_moving_average) and (
@@ -485,11 +502,12 @@ class NDXMomentumScreener(BaseStrategy[int]):
             tuple or NDXAnalysisResult error dict.
         """
         rolling_roc_results: dict[int, pd.DataFrame] = {
-            window: calculate_roc(nasdaq_closes, window) for window in ROC_WINDOWS
+            window: calculate_roc(nasdaq_closes, window)
+            for window in self.configuration.roc_windows
         }
 
         combined_momentum_matrix = sum(
-            rolling_roc_results[window] for window in ROC_WINDOWS
+            rolling_roc_results[window] for window in self.configuration.roc_windows
         )
 
         target_date_momentum_sum = combined_momentum_matrix.loc[effective_date].dropna()

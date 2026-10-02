@@ -8,6 +8,7 @@ import pandas as pd
 from ....const import Strategies
 from ....models import Order
 from ....types import TradeData
+from ...screener.strategies.ndx_momentum import NDXMomentumConfiguration
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderOptions
 
@@ -31,6 +32,13 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
     MIN_HISTORY_FOR_MONTH_SWITCH: int = 2
     _rebalance_cache: _RebalanceCache | None = None
 
+    def __init__(
+        self,
+        configuration: NDXMomentumConfiguration | None = None,
+    ) -> None:
+        super().__init__()
+        self.configuration = configuration or NDXMomentumConfiguration()
+
     @override
     def check_entry(
         self,
@@ -42,11 +50,9 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         """
         Evaluates and executes entry for a candidate trade.
 
-        This method checks for market regime favorability (QQQ SMA Filter)
+        This method checks for market regime favorability (based on regime_mode)
         and ensures no duplicate positions exist before activating a trade
         at the current market open.
-
-        Note: The breadth-based combined regime is currently ignored.
 
         Args:
             trade: The candidate trade data.
@@ -57,14 +63,29 @@ class NDXMomentumTradeStrategy(BaseTradeStrategy):
         Returns:
             TradeTransition | None: Computed transition if entry occurred.
         """
-        # 1. Regime Check (Using QQQ SMA Filter, ignoring Breadth)
+        # 1. Regime Check
+        regime_mode = self.configuration.regime_mode
         qqq_regime = self._get_context_value(trade, "qqq_regime")
+        breadth_regime = self._get_context_value(trade, "breadth_regime")
         symbol = trade.get("symbol")
 
-        if qqq_regime != "BULL":
-            return self._reject_setup(
-                trade, str(candle["date"]), f"QQQ Regime: {qqq_regime}"
-            )
+        if regime_mode == "combined":
+            if qqq_regime != "BULL" or breadth_regime != "BULL":
+                return self._reject_setup(
+                    trade,
+                    str(candle["date"]),
+                    f"Combined Regime: QQQ={qqq_regime}, Breadth={breadth_regime}",
+                )
+        elif regime_mode == "breadth_only":
+            if breadth_regime != "BULL":
+                return self._reject_setup(
+                    trade, str(candle["date"]), f"Breadth Regime: {breadth_regime}"
+                )
+        elif regime_mode == "qqq_only":
+            if qqq_regime != "BULL":
+                return self._reject_setup(
+                    trade, str(candle["date"]), f"QQQ Regime: {qqq_regime}"
+                )
 
         # 2. Duplicate Check (Active positions in the same strategy)
         if active_symbols and symbol in active_symbols:
