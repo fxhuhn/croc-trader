@@ -9,6 +9,7 @@ from ....const import ExitReason, Strategies
 from ....models import Order
 from ....tools.market_holidays import MarketHolidayChecker
 from ....types import TradeData
+from ...screener.strategies.turnover_timing import TurnoverConfiguration
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, HolidayCheckerProtocol, OrderOptions
 
@@ -98,17 +99,20 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         self,
         strategy_name: str | None = None,
         holiday_checker: HolidayCheckerProtocol | None = None,
+        configuration: TurnoverConfiguration | None = None,
     ) -> None:
-        """Initializes the strategy, optionally overriding the default name or holiday checker.
+        """Initializes the strategy, optionally overriding the default name, holiday checker, or configuration.
 
         Args:
             strategy_name: Optional override for the strategy registry key.
             holiday_checker: Optional holiday checking protocol instance.
+            configuration: Optional configuration parameters for indicators and exits.
         """
         super().__init__()
         if strategy_name:
             self.name = strategy_name
         self._holiday_checker = holiday_checker or MarketHolidayChecker()
+        self.configuration = configuration or TurnoverConfiguration()
 
     def _resolve_green_candle_count(
         self,
@@ -175,7 +179,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         green_candle_count = self._resolve_green_candle_count(trade, dataframe_history)
 
         # a) Green Sequence Exit (TRIGGERED)
-        if green_candle_count >= self.MIN_GREEN_CANDLES_FOR_EXIT:
+        if green_candle_count >= self.configuration.min_green_candles_for_exit:
             return self._create_exit_order(
                 trade["symbol"],
                 quantity,
@@ -335,7 +339,7 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             green_candle_count = int(str(context.get("green_candle_count") or 0))
 
         # Check for Exit Trigger (Next Open)
-        if green_candle_count >= self.MIN_GREEN_CANDLES_FOR_EXIT:
+        if green_candle_count >= self.configuration.min_green_candles_for_exit:
             return self._close_trade(
                 trade,
                 float(current_candle["open"]),

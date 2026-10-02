@@ -70,6 +70,10 @@ class TurnoverConfiguration:
     entry_factors: list[float] = field(default_factory=lambda: [0.5, 1.0])
     sma_window: int = 200
     minimum_lookback_days: int = 800
+    trend_sma_window: int = 150
+    turnover_sma_window: int = 20
+    min_sma_lookback_bars: int = 200
+    min_green_candles_for_exit: int = 2
 
 
 class TurnoverTimingStrategy(BaseStrategy[int]):
@@ -283,14 +287,18 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
     ) -> dict[str, pd.DataFrame]:
         """Calculates indicators on sliced data."""
         turnover = closes * volumes
-        sma_turnover_20 = indicators.calculate_sma(turnover, 20)
-        sma_price_150 = indicators.calculate_sma(closes, 150)
+        sma_turnover = indicators.calculate_sma(
+            turnover, self.configuration.turnover_sma_window
+        )
+        sma_price = indicators.calculate_sma(
+            closes, self.configuration.trend_sma_window
+        )
         atr_series = indicators.calculate_atr(
             highs, lows, closes, self.configuration.atr_window
         )
         return {
-            "sma_turnover": sma_turnover_20,
-            "sma_price": sma_price_150,
+            "sma_turnover": sma_turnover,
+            "sma_price": sma_price,
             "atr": atr_series,
         }
 
@@ -514,15 +522,19 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         except (KeyError, ValueError, TypeError) as error:
             return {"symbol": symbol, "error": f"Data Frame Error: {str(error)}"}
 
-        if len(closes) < MIN_SMA_LOOKBACK_BARS:
+        if len(closes) < self.configuration.min_sma_lookback_bars:
             return {
                 "symbol": symbol,
-                "error": f"Not enough data (Found {len(closes)}, Need {MIN_SMA_LOOKBACK_BARS}+)",
+                "error": f"Not enough data (Found {len(closes)}, Need {self.configuration.min_sma_lookback_bars}+)",
             }
 
         turnover = closes * volumes
-        sma_turnover_20 = indicators.calculate_sma(turnover, 20)
-        sma_price_150 = indicators.calculate_sma(closes, 150)
+        sma_turnover = indicators.calculate_sma(
+            turnover, self.configuration.turnover_sma_window
+        )
+        sma_price = indicators.calculate_sma(
+            closes, self.configuration.trend_sma_window
+        )
 
         # ATR Calculation
         atr_series = indicators.calculate_atr(
@@ -531,8 +543,8 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
 
         # Extract Last Values
         current_close = closes.iloc[-1]
-        current_sma150 = sma_price_150.iloc[-1]
-        current_turnover_sma = sma_turnover_20.iloc[-1]
+        current_sma150 = sma_price.iloc[-1]
+        current_turnover_sma = sma_turnover.iloc[-1]
         current_atr = atr_series.iloc[-1]
 
         # Trend Logic Check
