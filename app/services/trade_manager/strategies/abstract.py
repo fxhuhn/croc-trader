@@ -12,6 +12,11 @@ import pandas as pd
 from ....config import settings
 from ....const import Strategies
 from ....models import Order, OrderLeg
+from ....tools.trading_calendar import (
+    FRIDAY,
+    THURSDAY,
+    is_last_trading_day_of_week,
+)
 from ....types import ExitReason, OrderType, TimeInForce, TradeData, TradeStatus
 from ..types import TradeTransition
 
@@ -53,8 +58,8 @@ class BaseTradeStrategy(ABC):
     """
 
     name: str | Strategies = ""
-    FRIDAY_INDEX: int = 4
-    THURSDAY_INDEX: int = 3
+    FRIDAY_INDEX: int = FRIDAY
+    THURSDAY_INDEX: int = THURSDAY
 
     def _is_end_of_trading_week(
         self,
@@ -64,7 +69,7 @@ class BaseTradeStrategy(ABC):
         """Checks if today is the last trading day of the week.
 
         Accounts for Friday holidays by treating Thursday as week-end.
-        This is the single authoritative end-of-week check (DRY).
+        Delegates to central trading calendar logic (DRY).
 
         Args:
             current_date: The date to evaluate.
@@ -73,16 +78,9 @@ class BaseTradeStrategy(ABC):
         Returns:
             bool: True if this is the last trading day of the week.
         """
-        if current_date.dayofweek == self.FRIDAY_INDEX:
-            return True
-
-        if current_date.dayofweek == self.THURSDAY_INDEX:
-            next_day = current_date + pd.Timedelta(days=1)
-            is_holiday_fn = getattr(holiday_checker, "is_holiday", None)
-            if is_holiday_fn and is_holiday_fn(next_day.date()):
-                return True
-
-        return False
+        return is_last_trading_day_of_week(
+            current_date, holiday_checker=holiday_checker
+        )
 
     def _generate_time_stop_exit_order(
         self,

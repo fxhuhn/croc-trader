@@ -5,9 +5,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from app.const import Strategies
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.trade import TradeRepository
 from app.services.screener.strategies.turnover_timing import (
+    TurnoverCandidate,
     TurnoverConfiguration,
     TurnoverTimingStrategy,
 )
@@ -260,3 +262,126 @@ def test_is_setup_day_parity_with_trading_calendar(
         assert actual == expected, (
             f"Mismatch on {current_date}: expected {expected}, got {actual}"
         )
+
+
+def test_factor_strategy_name_resolution_canonical(
+    strategy: TurnoverTimingStrategy,
+) -> None:
+    """TC-TT-01: Verifies that factors 0.5 and 1.0 resolve to canonical strategy names."""
+    assert strategy._resolve_strategy_name_for_factor(0.5) == str(
+        Strategies.TurnOverTiming_05
+    )
+    assert strategy._resolve_strategy_name_for_factor(1.0) == str(
+        Strategies.TurnOverTiming_10
+    )
+
+
+def test_factor_strategy_name_resolution_custom(
+    strategy: TurnoverTimingStrategy,
+) -> None:
+    """TC-TT-02: Verifies that an unmapped custom factor dynamically formats as f'{strategy.name}_{factor}'."""
+    assert strategy._resolve_strategy_name_for_factor(0.75) == "turnover_timing_0.75"
+    assert strategy._resolve_strategy_name_for_factor(2.0) == "turnover_timing_2.0"
+
+
+def test_signal_creation_parity_pre_post(
+    strategy: TurnoverTimingStrategy,
+    mock_trade_repository: MagicMock,
+) -> None:
+    """TC-TT-03: Verifies candidate signal creation creates exact trades in repository."""
+    candidate: TurnoverCandidate = {
+        "symbol": "AAPL",
+        "close": 150.0,
+        "sma_price": 140.0,
+        "sma_turnover": 5000000.0,
+        "atr": 4.0,
+        "indices": "NDX",
+    }
+    setup_date = pd.Timestamp("2026-07-17")
+    data_frames = {"open": pd.DataFrame({"AAPL": [148.0]}, index=[setup_date])}
+
+    count = strategy._store_turnover_signals_for_candidate(
+        candidate=candidate,
+        data_frames=data_frames,
+        setup_date=setup_date,
+        setup_date_str="2026-07-17",
+    )
+
+    assert count == 2
+    assert mock_trade_repository.create_trade.call_count == 2
+
+    # First call: Factor 0.5 -> Entry = 150 - (0.5 * 4) = 148.0
+    call_05 = mock_trade_repository.create_trade.call_args_list[0].kwargs
+    assert call_05["symbol"] == "AAPL"
+    assert call_05["strategy"] == str(Strategies.TurnOverTiming_05)
+    assert call_05["entry"] == 148.0
+    assert call_05["context"]["factor"] == 0.5
+
+    # Second call: Factor 1.0 -> Entry = 150 - (1.0 * 4) = 146.0
+    call_10 = mock_trade_repository.create_trade.call_args_list[1].kwargs
+    assert call_10["symbol"] == "AAPL"
+    assert call_10["strategy"] == str(Strategies.TurnOverTiming_10)
+    assert call_10["entry"] == 146.0
+    assert call_10["context"]["factor"] == 1.0
+
+
+def test_duplicate_signal_prevention_with_mapping(
+    strategy: TurnoverTimingStrategy,
+    mock_trade_repository: MagicMock,
+) -> None:
+    """TC-TT-04: Verifies that existing signals are skipped when exists returns True."""
+    candidate: TurnoverCandidate = {
+        "symbol": "AAPL",
+        "close": 150.0,
+        "sma_price": 140.0,
+        "sma_turnover": 5000000.0,
+        "atr": 4.0,
+        "indices": "NDX",
+    }
+    setup_date = pd.Timestamp("2026-07-17")
+    data_frames = {"open": pd.DataFrame({"AAPL": [148.0]}, index=[setup_date])}
+
+    # Simulate TurnOverTiming_05 already exists, TurnOverTiming_10 does not
+    def exists_side_effect(symbol: str, strategy_name: str, date: str) -> bool:
+        return strategy_name == str(Strategies.TurnOverTiming_05)
+
+    mock_trade_repository.exists.side_effect = exists_side_effect
+
+    count = strategy._store_turnover_signals_for_candidate(
+        candidate=candidate,
+        data_frames=data_frames,
+        setup_date=setup_date,
+        setup_date_str="2026-07-17",
+    )
+
+    # Only TurnOverTiming_10 should be created
+    assert count == 1
+    assert mock_trade_repository.create_trade.call_count == 1
+    call_kwargs = mock_trade_repository.create_trade.call_args.kwargs
+    assert call_kwargs["strategy"] == str(Strategies.TurnOverTiming_10)
+
+
+def test_telegram_reporting_factor_labels(strategy: TurnoverTimingStrategy) -> None:
+    """TC-TT-05: Verifies Telegram reporting creates correctly labeled items for all factors."""
+    mock_bot = MagicMock()
+    strategy.telegram_bot = mock_bot
+
+    candidates: list[TurnoverCandidate] = [
+        {
+            "symbol": "MSFT",
+            "close": 300.0,
+            "sma_price": 280.0,
+            "sma_turnover": 8000000.0,
+            "atr": 6.0,
+            "indices": "NDX, SPX",
+        }
+    ]
+    setup_date = pd.Timestamp("2026-07-17")
+
+    strategy._report_signals_to_telegram(candidates, setup_date)
+
+    mock_bot.send_dataframe.assert_called_once()
+    reported_df = mock_bot.send_dataframe.call_args[0][0]
+    actions = reported_df["Action"].tolist()
+    assert "BUY LMT (0.5 ATR)" in actions
+    assert "BUY LMT (1.0 ATR)" in actions

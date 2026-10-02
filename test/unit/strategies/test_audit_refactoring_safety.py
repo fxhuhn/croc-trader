@@ -15,6 +15,12 @@ from app.services.trade_manager.strategies.abstract import BaseTradeStrategy
 from app.services.trade_manager.strategies.two_percent_strategy import (
     TwoPercentStrategy,
 )
+from app.tools.trading_calendar import (
+    FRIDAY,
+    SATURDAY,
+    THURSDAY,
+    is_last_trading_day_of_week,
+)
 from app.types import ExitReason, TradeStatus
 
 
@@ -196,3 +202,28 @@ def test_two_percent_day_one_entry_target_calculation():
     assert transition.updates["entry_price"] == 195.0
     # Target = 195.0 * 1.02 = 198.9
     assert transition.updates["current_target"] == 198.9
+
+
+def test_abstract_is_end_of_trading_week_parity_with_trading_calendar() -> None:
+    """TC-TM-01: Verifies parity between BaseTradeStrategy._is_end_of_trading_week and is_last_trading_day_of_week."""
+    strategy = DummyStrategy()
+    mock_checker = MagicMock()
+    mock_checker.is_holiday.return_value = False
+
+    start_date = pd.Timestamp("2026-01-01")
+    for day_offset in range(60):
+        current_date = start_date + pd.Timedelta(days=day_offset)
+        expected = is_last_trading_day_of_week(
+            current_date, holiday_checker=mock_checker
+        )
+        actual = strategy._is_end_of_trading_week(current_date, mock_checker)
+        assert actual == expected, (
+            f"Mismatch on {current_date}: expected {expected}, got {actual}"
+        )
+
+
+def test_strategy_weekday_constants_match_trading_calendar() -> None:
+    """TC-TM-02: Verifies that abstract and two_percent strategy weekday constants match trading_calendar."""
+    assert BaseTradeStrategy.FRIDAY_INDEX == FRIDAY
+    assert BaseTradeStrategy.THURSDAY_INDEX == THURSDAY
+    assert TwoPercentStrategy.SATURDAY_WEEKDAY == SATURDAY

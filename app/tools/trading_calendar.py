@@ -6,13 +6,22 @@ month-end trading windows.
 """
 
 import datetime
+from typing import Protocol
 
 import pandas as pd
 
 from app.tools.market_holidays import MarketHolidayChecker
 
+
+class HolidayCheckerProtocol(Protocol):
+    """Protocol defining the required holiday checking interface."""
+
+    def is_holiday(self, check_date: datetime.date) -> bool: ...
+
+
 # Monday=0 ... Saturday=5, Sunday=6 per datetime.weekday()
 MONDAY: int = 0
+WEDNESDAY: int = 2
 THURSDAY: int = 3
 FRIDAY: int = 4
 SATURDAY: int = 5
@@ -196,7 +205,7 @@ def is_last_trading_day_of_month(
 
 def is_last_trading_day_of_week(
     check_date: datetime.date | pd.Timestamp | str,
-    holiday_checker: MarketHolidayChecker | None = None,
+    holiday_checker: HolidayCheckerProtocol | None = None,
 ) -> bool:
     """Checks whether check_date is the last active trading day of its calendar week.
 
@@ -299,10 +308,12 @@ def roll_weekend_to_monday(reference_date: datetime.date) -> datetime.date:
 __all__ = [
     "DECEMBER_MONTH",
     "FRIDAY",
+    "HolidayCheckerProtocol",
     "MONDAY",
     "SATURDAY",
     "SUNDAY",
     "THURSDAY",
+    "WEDNESDAY",
     "get_last_completed_trading_day",
     "get_next_trading_day",
     "get_remaining_trading_days_in_month",

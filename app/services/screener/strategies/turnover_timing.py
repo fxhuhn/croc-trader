@@ -19,8 +19,6 @@ from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
-FACTOR_HALF: float = 0.5
-FACTOR_FULL: float = 1.0
 MIN_SMA_LOOKBACK_BARS: int = 200
 
 
@@ -76,6 +74,17 @@ class TurnoverConfiguration:
 
 class TurnoverTimingStrategy(BaseStrategy[int]):
     name: str = str(Strategies.TurnOverTiming)
+    FACTOR_STRATEGY_MAP: dict[float, Strategies] = {
+        0.5: Strategies.TurnOverTiming_05,
+        1.0: Strategies.TurnOverTiming_10,
+    }
+
+    def _resolve_strategy_name_for_factor(self, factor: float) -> str:
+        """Resolves the canonical strategy identifier for a given entry factor."""
+        strategy_enum = self.FACTOR_STRATEGY_MAP.get(factor)
+        if strategy_enum is not None:
+            return str(strategy_enum)
+        return f"{self.name}_{factor}"
 
     def __init__(
         self,
@@ -406,12 +415,7 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         created_signals = 0
 
         for factor in self.configuration.entry_factors:
-            if factor == FACTOR_HALF:
-                strategy_name = str(Strategies.TurnOverTiming_05)
-            elif factor == FACTOR_FULL:
-                strategy_name = str(Strategies.TurnOverTiming_10)
-            else:
-                strategy_name = f"{self.name}_{factor}"
+            strategy_name = self._resolve_strategy_name_for_factor(factor)
 
             # Calculate Limit Entry: Close - (Factor * ATR)
             limit_price = round(close_price - (atr_value * factor), 2)

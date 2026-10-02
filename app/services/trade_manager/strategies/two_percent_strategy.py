@@ -8,6 +8,7 @@ import pandas as pd
 from ....const import ExitReason, Strategies
 from ....models import Order
 from ....tools.market_holidays import MarketHolidayChecker
+from ....tools.trading_calendar import SATURDAY
 from ....types import TradeData
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, HolidayCheckerProtocol, OrderOptions
@@ -54,7 +55,7 @@ class TwoPercentStrategy(BaseTradeStrategy):
     STRATEGY_IDENTIFIER = Strategies.TwoPercent
     name = Strategies.TwoPercent
     REWARD_TARGET_MULTIPLIER = 1.02
-    SATURDAY_WEEKDAY: int = 5
+    SATURDAY_WEEKDAY: int = SATURDAY
     WEEKEND_DAY_OFFSET: int = 3
     DAY_ONE_INDEX: int = 1
     DAY_TWO_INDEX: int = 2

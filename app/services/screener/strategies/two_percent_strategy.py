@@ -9,15 +9,16 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....tools.market_holidays import MarketHolidayChecker
+from ....tools.trading_calendar import FRIDAY, THURSDAY, WEDNESDAY
 from ...telegram import TelegramBot
 from ..models import SignalReportItem
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 
-WEDNESDAY_WEEKDAY: int = 2
-THURSDAY_WEEKDAY: int = 3
-FRIDAY_WEEKDAY: int = 4
+WEDNESDAY_WEEKDAY: int = WEDNESDAY
+THURSDAY_WEEKDAY: int = THURSDAY
+FRIDAY_WEEKDAY: int = FRIDAY
 
 
 class TwoPercentStrategyContext(TypedDict):

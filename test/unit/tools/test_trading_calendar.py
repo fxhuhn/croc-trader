@@ -10,6 +10,7 @@ from app.tools.trading_calendar import (
     SATURDAY,
     SUNDAY,
     THURSDAY,
+    WEDNESDAY,
     get_last_completed_trading_day,
     get_next_trading_day,
     get_remaining_trading_days_in_month,
@@ -374,6 +375,13 @@ def test_get_trading_day_of_month_monotonicity() -> None:
         else:
             assert count == previous_count
         previous_count = count
+
+
+def test_wednesday_constant_value() -> None:
+    """Verifies that WEDNESDAY constant corresponds to weekday index 2."""
+    assert WEDNESDAY == 2
+    sample_wednesday = datetime.date(2026, 7, 22)
+    assert sample_wednesday.weekday() == WEDNESDAY
 
 
 def test_thursday_constant_value() -> None:
