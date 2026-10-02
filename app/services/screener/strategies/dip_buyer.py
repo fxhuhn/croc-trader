@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import TypedDict, override
+from typing import Any, TypedDict, cast, override
 
 import pandas as pd
 
@@ -52,28 +52,51 @@ class DipBuyerAnalysisSnapshot:
 
 
 @dataclass(frozen=True)
-class DipBuyerConfig:
-    """Configuration for the DipBuyer strategy logic."""
+class DipBuyerConfiguration:
+    """Configuration for technical analysis thresholds and exits in Dip Buyer strategy."""
 
     # 1. Basic Filters
-    MIN_VOLUME: int = 1_000_000
-    MIN_PRICE: float = 5.0
+    min_volume: int = 1_000_000
+    min_price: float = 5.0
 
     # 2. Indicator Parameters
-    ATR_WINDOW: int = 5
-    ENTRY_FACTOR: float = 1.0  # Entry = Close - (ATR * ENTRY_FACTOR)
-    SMA_TREND_WINDOW: int = 200
+    atr_window: int = 5
+    entry_factor: float = 1.0  # Entry = Close - (ATR * entry_factor)
+    sma_trend_window: int = 200
+    volume_sma_window: int = 20
+    price_drop_days: int = 3
+    calculation_window_size: int = 250
+    min_history_bars: int = 2
 
     # 3. Logic Thresholds
-    MIN_VOLATILITY_RATIO: float = 0.03  # ATR must be > 3% of Price
-    MAX_IBS: float = 0.2  # Close in bottom 20% of High-Low range
-    MAX_ATR_RATIO_3DAY: float = -1.0  # 3-Day drop > 1 ATR (negative value)
+    min_volatility_ratio: float = 0.03  # ATR must be > 3% of Price
+    max_ibs: float = 0.2  # Close in bottom 20% of High-Low range
+    max_atr_ratio_3day: float = -1.0  # 3-Day drop > 1 ATR (negative value)
 
     # 4. Exit Parameters
-    EXIT_TP_FACTOR: float = 0.8  # Target = Entry + (ATR * EXIT_TP_FACTOR)
+    exit_tp_factor: float = 0.8  # Target = Entry + (ATR * exit_tp_factor)
+    time_stop_days: int = 8
+    min_history_for_previous_candle: int = 2
 
-    # Data Fetching
-    LOOKBACK_DAYS: int = 600
+    # 5. Data Fetching
+    lookback_days: int = 600
+
+    def __getattr__(self, name: str) -> Any:
+        """Provides backwards compatibility for legacy uppercase attribute access."""
+        lower_name = name.lower()
+        if lower_name in self.__dataclass_fields__:
+            return getattr(self, lower_name)
+        raise AttributeError(
+            f"'{type(self).__name__}' object has no attribute '{name}'"
+        )
+
+
+class DipBuyerConfig(DipBuyerConfiguration):
+    """Backwards-compatible wrapper allowing uppercase keyword arguments."""
+
+    def __init__(self, **kwargs: object) -> None:
+        normalized_kwargs = {key.lower(): value for key, value in kwargs.items()}
+        super().__init__(**cast(dict[str, Any], normalized_kwargs))
 
 
 class SymbolAnalysisResult(TypedDict):
@@ -111,11 +134,15 @@ class DipBuyerStrategy(BaseStrategy[int]):
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
-        config: DipBuyerConfig | None = None,
+        config: DipBuyerConfiguration | None = None,
+        *,
+        configuration: DipBuyerConfiguration | None = None,
     ) -> None:
         super().__init__(data_provider, telegram_bot)
         self.trade_repository = trade_repository
-        self.config = config or DipBuyerConfig()
+        resolved_config = configuration or config or DipBuyerConfiguration()
+        self.configuration = resolved_config
+        self.config = resolved_config
 
         self._initialize_symbol_sets()
 
@@ -146,7 +173,7 @@ class DipBuyerStrategy(BaseStrategy[int]):
             int: Number of trades created.
         """
         # 1. Determine Lookback
-        historical_lookback_days = self.config.LOOKBACK_DAYS
+        historical_lookback_days = self.configuration.lookback_days
 
         # 2. Determine Universe
         self._initialize_symbol_sets()
@@ -326,7 +353,9 @@ class DipBuyerStrategy(BaseStrategy[int]):
         current_location: int,
     ) -> DipBuyerMarketFrames | None:
         """Slices the dataframes to the required calculation window."""
-        start_location = max(0, current_location - CALCULATION_WINDOW_SIZE)
+        start_location = max(
+            0, current_location - self.configuration.calculation_window_size
+        )
         # Python slicing excludes upper bound, so +1
         end_location = current_location + 1
 
@@ -350,16 +379,20 @@ class DipBuyerStrategy(BaseStrategy[int]):
     ) -> dict[str, pd.DataFrame]:
         """Calculates all technical indicators efficiently."""
         # A) Trend: SMA 200
-        sma200 = indicators.calculate_sma(closes, self.config.SMA_TREND_WINDOW)
+        sma200 = indicators.calculate_sma(closes, self.configuration.sma_trend_window)
 
         # B) Volume: SMA 20
-        volume_sma20 = indicators.calculate_volume_sma(volumes, VOLUME_SMA_WINDOW)
+        volume_sma20 = indicators.calculate_volume_sma(
+            volumes, self.configuration.volume_sma_window
+        )
 
         # C) ATR
-        atr = indicators.calculate_atr(highs, lows, closes, self.config.ATR_WINDOW)
+        atr = indicators.calculate_atr(
+            highs, lows, closes, self.configuration.atr_window
+        )
 
         # D) Dip Metrics
-        price_drop_3day = closes - closes.shift(PRICE_DROP_DAYS)
+        price_drop_3day = closes - closes.shift(self.configuration.price_drop_days)
         atr_safe = atr.replace(0.0, float("nan"))
         atr_ratio_3day = price_drop_3day / atr_safe
 
@@ -386,17 +419,17 @@ class DipBuyerStrategy(BaseStrategy[int]):
         """Applies configuration rules to filter candidates."""
 
         # 1. Liquidity & Price
-        mask = (current["volume_sma"] > self.config.MIN_VOLUME) & (
-            current["close"] > self.config.MIN_PRICE
+        mask = (current["volume_sma"] > self.configuration.min_volume) & (
+            current["close"] > self.configuration.min_price
         )
 
         # 2. Trend (Above SMA200)
         mask &= current["close"] > current["sma200"]
 
         # 3. Dip Conditions
-        mask &= current["atr_ratio_3day"] < self.config.MAX_ATR_RATIO_3DAY
-        mask &= current["volatility_ratio"] > self.config.MIN_VOLATILITY_RATIO
-        mask &= current["ibs"] < self.config.MAX_IBS
+        mask &= current["atr_ratio_3day"] < self.configuration.max_atr_ratio_3day
+        mask &= current["volatility_ratio"] > self.configuration.min_volatility_ratio
+        mask &= current["ibs"] < self.configuration.max_ibs
 
         # 4. Candles (Today Red, Yesterday Red)
         mask &= current["close"] < current["open"]
@@ -472,7 +505,7 @@ class DipBuyerStrategy(BaseStrategy[int]):
             bool: True if trade was successfully written.
         """
         entry_price = signal_row["close"] - (
-            signal_row["atr"] * self.config.ENTRY_FACTOR
+            signal_row["atr"] * self.configuration.entry_factor
         )
         high_next_target = signal_row["high"] + 0.01
 
@@ -522,7 +555,7 @@ class DipBuyerStrategy(BaseStrategy[int]):
 
         Returns detailed check results.
         """
-        historical_lookback_days = self.config.LOOKBACK_DAYS
+        historical_lookback_days = self.configuration.lookback_days
 
         # 1. Fetch Data
         df = self.data_provider.get_symbol_history(
@@ -549,7 +582,7 @@ class DipBuyerStrategy(BaseStrategy[int]):
         # 3. Indicators
         indicators_dict = self._compute_indicators(closes, highs, lows, volumes)
 
-        if len(closes) < MIN_DIP_HISTORY_BARS:
+        if len(closes) < self.configuration.min_history_bars:
             return {
                 "symbol": symbol,
                 "indices": [],
@@ -623,16 +656,16 @@ class DipBuyerStrategy(BaseStrategy[int]):
     ) -> dict[str, bool]:
         """Runs the validation checks for a single symbol analysis."""
         return {
-            "min_volume": bool(snapshot.volume_sma > self.config.MIN_VOLUME),
-            "min_price": bool(snapshot.current_close > self.config.MIN_PRICE),
+            "min_volume": bool(snapshot.volume_sma > self.configuration.min_volume),
+            "min_price": bool(snapshot.current_close > self.configuration.min_price),
             "uptrend_sma200": bool(snapshot.current_close > snapshot.sma200),
             "dip_atr_ratio_3day": bool(
-                snapshot.atr_ratio_3day < self.config.MAX_ATR_RATIO_3DAY
+                snapshot.atr_ratio_3day < self.configuration.max_atr_ratio_3day
             ),
             "volatility_ratio": bool(
-                snapshot.volatility_ratio > self.config.MIN_VOLATILITY_RATIO
+                snapshot.volatility_ratio > self.configuration.min_volatility_ratio
             ),
-            "low_ibs": bool(snapshot.ibs < self.config.MAX_IBS),
+            "low_ibs": bool(snapshot.ibs < self.configuration.max_ibs),
             "red_candle_today": bool(snapshot.current_close < snapshot.current_open),
             "red_candle_yesterday": bool(
                 snapshot.previous_close < snapshot.previous_open
@@ -654,3 +687,17 @@ class DipBuyerStrategy(BaseStrategy[int]):
             "ibs": round(extract_safe_float(snapshot.ibs), 2),
             "volatility_ratio": round(extract_safe_float(snapshot.volatility_ratio), 3),
         }
+
+
+__all__ = [
+    "CALCULATION_WINDOW_SIZE",
+    "DipBuyerAnalysisSnapshot",
+    "DipBuyerConfig",
+    "DipBuyerConfiguration",
+    "DipBuyerMarketFrames",
+    "DipBuyerStrategy",
+    "MIN_DIP_HISTORY_BARS",
+    "PRICE_DROP_DAYS",
+    "SymbolAnalysisResult",
+    "VOLUME_SMA_WINDOW",
+]

@@ -7,6 +7,7 @@ import pandas as pd
 from ....const import ExitReason, Strategies
 from ....models import Order, OrderLeg
 from ....types import TradeData
+from ...screener.strategies.dip_buyer import DipBuyerConfiguration
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderPayload
 
@@ -27,6 +28,15 @@ class DipBuyerStrategy(BaseTradeStrategy):
     TIME_STOP_DAYS: int = 8
     MIN_HISTORY_FOR_PREVIOUS_CANDLE: int = 2
     EXIT_TP_FACTOR: float = 0.8
+
+    def __init__(
+        self,
+        configuration: DipBuyerConfiguration | None = None,
+    ) -> None:
+        """Initializes the Dip Buyer trade manager strategy with optional configuration."""
+        super().__init__()
+        self.configuration = configuration or DipBuyerConfiguration()
+        self.config = self.configuration
 
     @override
     def check_entry(
@@ -92,7 +102,9 @@ class DipBuyerStrategy(BaseTradeStrategy):
         raw_atr = context.get("atr5") or context.get("setup_atr")
         atr_value = float(str(raw_atr)) if raw_atr is not None else 0.0
         if atr_value > 0:
-            target_price = round(fill_price + (atr_value * self.EXIT_TP_FACTOR), 2)
+            target_price = round(
+                fill_price + (atr_value * self.configuration.exit_tp_factor), 2
+            )
             extra_updates["current_target"] = target_price
 
         return self._execute_activation(
@@ -140,7 +152,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
 
         # 3. LOC (Limit On Close) Logic
         # Rule: Only Limit on Close is possible for same day.
-        if len(dataframe_history) >= self.MIN_HISTORY_FOR_PREVIOUS_CANDLE:
+        if len(dataframe_history) >= self.configuration.min_history_for_previous_candle:
             previous_candle = dataframe_history.iloc[-2]
             previous_day_high = float(previous_candle["high"])
             close_price = float(current_candle["close"])
@@ -155,7 +167,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
             trading_days_held = len(
                 dataframe_history[dataframe_history["date"] >= entry_date_str]
             )
-            if trading_days_held >= self.TIME_STOP_DAYS:
+            if trading_days_held >= self.configuration.time_stop_days:
                 close_price = float(current_candle["close"])
                 return self._close_trade(
                     trade,
@@ -296,7 +308,7 @@ class DipBuyerStrategy(BaseTradeStrategy):
             trading_days_held = len(
                 dataframe_history[dataframe_history["date"] >= entry_date_str]
             )
-            if trading_days_held >= self.TIME_STOP_DAYS - 1:
+            if trading_days_held >= self.configuration.time_stop_days - 1:
                 is_time_stop = True
 
         if is_time_stop:
