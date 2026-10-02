@@ -114,6 +114,19 @@ class CashLedgerAggregateRow(TypedDict):
     total_amount: float
 
 
+class AccountMetricsRecord(TypedDict):
+    """Structured dictionary representation of an account_metrics row."""
+
+    account_id: str
+    net_liquidation: float
+    total_cash_value: float
+    available_funds: float
+    maint_margin_req: float
+    cushion_pct: float
+    buying_power: float
+    updated_at: NotRequired[str | None]
+
+
 class BrokerRepository(BaseRepository):
     """Handles read-only queries against the TWS trading.db database.
 
@@ -409,6 +422,28 @@ class BrokerRepository(BaseRepository):
         """
         rows = self.fetch_all(query_string)
         return cast(list[CashLedgerAggregateRow], [dict(row) for row in rows])
+
+    def get_account_metrics(self) -> AccountMetricsRecord | None:
+        """Retrieves the latest IBKR account metrics from the account_metrics table.
+
+        Returns:
+            AccountMetricsRecord | None: The latest metrics record, or None if unavailable.
+        """
+        query_string = (
+            "SELECT account_id, net_liquidation, total_cash_value, available_funds, "
+            "maint_margin_req, cushion_pct, buying_power, updated_at "
+            "FROM account_metrics ORDER BY updated_at DESC LIMIT 1"
+        )
+        try:
+            row = self.fetch_one(query_string)
+            if row is None:
+                return None
+            return cast(AccountMetricsRecord, dict(row))
+        except Exception:
+            logger.warning(
+                "Failed to fetch account metrics from trading.db", exc_info=True
+            )
+            return None
 
 
 def _build_trade_group_filter(

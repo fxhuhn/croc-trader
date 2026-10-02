@@ -305,3 +305,97 @@ def test_calculate_capital_allocation_futures_margin_and_multiplier() -> None:
     assert dip_item.unrealized_pnl == Decimal("100.00")
     assert round(dip_item.pnl_percentage, 2) == 6.67
     assert dip_item.color_class == "bg-indigo-500"
+
+
+def test_calculate_capital_allocation_with_account_metrics_free_cash() -> None:
+    """Verifies that free cash from account metrics is correctly integrated,
+
+    normalizing allocation percentages against total capital (invested + free cash).
+    """
+    positions = [
+        {
+            "symbol": "AAPL",
+            "strategy": "DipBuyer",
+            "current_size": 10.0,
+            "entry_price": 100.0,
+            "current_price": 110.0,
+        },
+        {
+            "symbol": "QQQ",
+            "strategy": "TurnoverTiming",
+            "current_size": 30.0,
+            "entry_price": 100.0,
+            "current_price": 100.0,
+        },
+    ]
+    account_metrics = {
+        "account_id": "U12345",
+        "net_liquidation": 12000.0,
+        "total_cash_value": 6000.0,
+        "available_funds": 8000.0,
+        "maint_margin_req": 2000.0,
+        "cushion_pct": 83.33,
+        "buying_power": 32000.0,
+        "updated_at": "2026-10-01 09:00:00",
+    }
+
+    summary = calculate_capital_allocation(positions, account_metrics=account_metrics)
+
+    # Positions: AAPL 1000 + QQQ 3000 = 4000 invested.
+    assert summary.total_invested == Decimal("4000.00")
+    assert summary.free_cash == Decimal("6000.00")
+    # Total capital = 4000 + 6000 = 10000.
+    assert summary.total_capital == Decimal("10000.00")
+    assert summary.net_liquidation == Decimal("12000.00")
+    assert summary.available_funds == Decimal("8000.00")
+    assert summary.buying_power == Decimal("32000.00")
+    assert summary.cushion_pct == 83.33
+    assert summary.metrics_updated_at == "2026-10-01 09:00:00"
+
+    # Strategies list includes TurnoverTiming, DipBuyer, and FreeCash
+    assert len(summary.strategies) == 3
+    turnover_item = next(
+        s for s in summary.strategies if s.strategy_key == "TurnoverTiming"
+    )
+    dip_item = next(s for s in summary.strategies if s.strategy_key == "DipBuyer")
+    cash_item = next(s for s in summary.strategies if s.strategy_key == "FreeCash")
+
+    assert turnover_item.invested_capital == Decimal("3000.00")
+    assert turnover_item.allocation_percentage == 30.0  # 3000 / 10000
+
+    assert dip_item.invested_capital == Decimal("1000.00")
+    assert dip_item.allocation_percentage == 10.0  # 1000 / 10000
+
+    assert cash_item.invested_capital == Decimal("6000.00")
+    assert cash_item.allocation_percentage == 60.0  # 6000 / 10000
+    assert cash_item.strategy_label == "Free Cash"
+    assert cash_item.color_class == "bg-emerald-500"
+    assert cash_item.is_cash is True
+
+    # Total allocations sum to exactly 100%
+    total_pct = sum(s.allocation_percentage for s in summary.strategies)
+    assert round(total_pct, 1) == 100.0
+
+    # Test convenience properties for UX badge and tooltip
+    assert summary.invested_percentage == 40.0
+    assert summary.cash_percentage == 60.0
+    assert summary.total_market_value == Decimal("4100.00")
+    assert summary.total_unrealized_pnl == Decimal("100.00")
+
+
+def test_calculate_capital_allocation_empty_positions_with_free_cash() -> None:
+    """Verifies that an account with 0 positions but positive cash returns Free Cash at 100%."""
+    account_metrics = {
+        "account_id": "U12345",
+        "net_liquidation": 5000.0,
+        "total_cash_value": 5000.0,
+        "available_funds": 5000.0,
+    }
+    summary = calculate_capital_allocation([], account_metrics=account_metrics)
+    assert summary.total_invested == Decimal("0.00")
+    assert summary.free_cash == Decimal("5000.00")
+    assert summary.total_capital == Decimal("5000.00")
+    assert len(summary.strategies) == 1
+    assert summary.strategies[0].strategy_key == "FreeCash"
+    assert summary.strategies[0].allocation_percentage == 100.0
+    assert summary.strategies[0].is_cash is True

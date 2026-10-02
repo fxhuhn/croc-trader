@@ -292,3 +292,54 @@ def test_trade_group_prefix_matching(
     assert len(executions) == 2
     exec_ids = {e["exec_id"] for e in executions}
     assert exec_ids == {"exec-801", "exec-802"}
+
+
+def test_get_account_metrics(broker_session: DatabaseSession) -> None:
+    """Verifies that get_account_metrics returns None if table missing,
+
+    and returns the latest record when table exists.
+    """
+    repo = BrokerRepository(broker_session)
+
+    # 1. Table does not exist in standard broker_session fixture yet
+    assert repo.get_account_metrics() is None
+
+    # 2. Create account_metrics table
+    with broker_session.connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE account_metrics (
+                account_id TEXT PRIMARY KEY,
+                net_liquidation REAL NOT NULL,
+                total_cash_value REAL NOT NULL,
+                available_funds REAL NOT NULL,
+                maint_margin_req REAL NOT NULL,
+                cushion_pct REAL NOT NULL,
+                buying_power REAL NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+    # Table is empty
+    assert repo.get_account_metrics() is None
+
+    # 3. Insert records
+    with broker_session.connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO account_metrics (account_id, net_liquidation, total_cash_value, available_funds, maint_margin_req, cushion_pct, buying_power, updated_at)
+            VALUES ('U111', 50000.0, 10000.0, 30000.0, 15000.0, 70.0, 120000.0, '2026-09-30 08:00:00'),
+                   ('U222', 86923.63, 14779.08, 56974.83, 26736.74, 69.24, 379832.17, '2026-10-01 09:00:00')
+            """
+        )
+
+    latest = repo.get_account_metrics()
+    assert latest is not None
+    assert latest["account_id"] == "U222"
+    assert latest["net_liquidation"] == 86923.63
+    assert latest["total_cash_value"] == 14779.08
+    assert latest["available_funds"] == 56974.83
+    assert latest["maint_margin_req"] == 26736.74
+    assert latest["cushion_pct"] == 69.24
+    assert latest["buying_power"] == 379832.17

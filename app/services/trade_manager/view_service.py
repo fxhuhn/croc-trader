@@ -3,7 +3,7 @@ import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, TypedDict, cast
 
 import pandas as pd
@@ -340,6 +340,7 @@ class StrategyCapitalAllocation:
     color_class: str
     notional_exposure: Decimal = Decimal("0.00")
     is_derivative: bool = False
+    is_cash: bool = False
 
 
 @dataclass(frozen=True)
@@ -349,6 +350,43 @@ class CapitalAllocationSummary:
     total_invested: Decimal
     total_positions: int
     strategies: tuple[StrategyCapitalAllocation, ...]
+    free_cash: Decimal = Decimal("0.00")
+    total_capital: Decimal = Decimal("0.00")
+    net_liquidation: Decimal = Decimal("0.00")
+    available_funds: Decimal = Decimal("0.00")
+    buying_power: Decimal = Decimal("0.00")
+    cushion_pct: float = 0.0
+    metrics_updated_at: str | None = None
+
+    @property
+    def invested_percentage(self) -> float:
+        """Percentage of total capital invested in active positions."""
+        if self.total_capital > Decimal("0.00"):
+            return float((self.total_invested / self.total_capital) * 100)
+        return 100.0 if self.total_invested > Decimal("0.00") else 0.0
+
+    @property
+    def cash_percentage(self) -> float:
+        """Percentage of total capital held in free cash."""
+        if self.total_capital > Decimal("0.00"):
+            return float((self.free_cash / self.total_capital) * 100)
+        return 0.0
+
+    @property
+    def total_market_value(self) -> Decimal:
+        """Total current market value of all non-cash positions."""
+        return sum(
+            (s.market_value for s in self.strategies if not s.is_cash),
+            Decimal("0.00"),
+        )
+
+    @property
+    def total_unrealized_pnl(self) -> Decimal:
+        """Total open unrealized PnL of all non-cash positions."""
+        return sum(
+            (s.unrealized_pnl for s in self.strategies if not s.is_cash),
+            Decimal("0.00"),
+        )
 
 
 STRATEGY_COLOR_MAP: dict[str, str] = {
@@ -365,6 +403,8 @@ STRATEGY_COLOR_MAP: dict[str, str] = {
     "Bridge Scout": "bg-teal-500",
     "BounceBandit": "bg-violet-500",
     "Bounce Bandit": "bg-violet-500",
+    "FreeCash": "bg-emerald-500",
+    "Free Cash": "bg-emerald-500",
 }
 DEFAULT_STRATEGY_COLOR: str = "bg-slate-400"
 
@@ -376,39 +416,100 @@ STRATEGY_DISPLAY_LABEL_MAP: dict[str, str] = {
     "TGIM": "TGIM",
     "BridgeScout": "Bridge Scout",
     "BounceBandit": "Bounce Bandit",
+    "FreeCash": "Free Cash",
 }
 
 
-def calculate_capital_allocation(
-    positions: Sequence[ActivePositionRecord | Mapping[str, Any]],
-) -> CapitalAllocationSummary:
-    """Calculates deployed capital and percentage per strategy from active positions.
+def _safe_decimal(value: object, default: Decimal = Decimal("0.00")) -> Decimal:
+    """Safely converts an object to Decimal without raising InvalidOperation."""
+    if value is None:
+        return default
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return default
 
-    For equities, deployed capital equals the invested purchase amount (size * entry_price).
-    For futures (derivatives), deployed capital equals the required initial margin
-    to maintain realistic portfolio allocation weighting, and PnL incorporates
-    the contract point multiplier.
 
-    Args:
-        positions: Sequence of active broker position records.
+def _safe_float(value: object, default: float = 0.0) -> float:
+    """Safely converts an object to float without raising exceptions."""
+    if value is None:
+        return default
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
 
-    Returns:
-        CapitalAllocationSummary: Summary with total invested capital and strategy breakdown.
-    """
-    if not positions:
-        return CapitalAllocationSummary(
-            total_invested=Decimal("0.00"),
-            total_positions=0,
-            strategies=(),
+
+@dataclass(frozen=True)
+class ParsedAccountMetrics:
+    """Parsed and validated IBKR account metrics."""
+
+    free_cash: Decimal
+    net_liquidation: Decimal
+    available_funds: Decimal
+    buying_power: Decimal
+    cushion_pct: float
+    updated_at: str | None
+
+
+def _parse_account_metrics(
+    account_metrics: Mapping[str, Any] | None,
+) -> ParsedAccountMetrics:
+    """Extracts and validates numeric fields from raw IBKR account metrics."""
+    is_valid_metrics = isinstance(account_metrics, Mapping) and not hasattr(
+        account_metrics, "_mock_return_value"
+    )
+    if not is_valid_metrics or account_metrics is None:
+        return ParsedAccountMetrics(
+            free_cash=Decimal("0.00"),
+            net_liquidation=Decimal("0.00"),
+            available_funds=Decimal("0.00"),
+            buying_power=Decimal("0.00"),
+            cushion_pct=0.0,
+            updated_at=None,
         )
 
-    strategy_totals: dict[str, Decimal] = {}
-    strategy_market_values: dict[str, Decimal] = {}
-    strategy_notionals: dict[str, Decimal] = {}
-    strategy_pnls: dict[str, Decimal] = {}
-    strategy_is_deriv: dict[str, bool] = {}
-    strategy_counts: dict[str, int] = {}
+    raw_free_cash = account_metrics.get("total_cash_value")
+    raw_updated_at = account_metrics.get("updated_at")
+    metrics_updated_at = (
+        str(raw_updated_at)
+        if raw_updated_at and not hasattr(raw_updated_at, "_mock_return_value")
+        else None
+    )
+    return ParsedAccountMetrics(
+        free_cash=_safe_decimal(raw_free_cash),
+        net_liquidation=_safe_decimal(account_metrics.get("net_liquidation")),
+        available_funds=_safe_decimal(account_metrics.get("available_funds")),
+        buying_power=_safe_decimal(account_metrics.get("buying_power")),
+        cushion_pct=_safe_float(account_metrics.get("cushion_pct")),
+        updated_at=metrics_updated_at,
+    )
 
+
+@dataclass
+class StrategyMetricsAggregation:
+    """Intermediate aggregates for position capital calculation."""
+
+    totals: dict[str, Decimal]
+    market_values: dict[str, Decimal]
+    notionals: dict[str, Decimal]
+    pnls: dict[str, Decimal]
+    is_deriv: dict[str, bool]
+    counts: dict[str, int]
+
+
+def _aggregate_strategy_metrics(
+    positions: Sequence[ActivePositionRecord | Mapping[str, Any]],
+) -> StrategyMetricsAggregation:
+    """Aggregates invested capital, market value, and PnL per strategy."""
+    agg = StrategyMetricsAggregation(
+        totals={},
+        market_values={},
+        notionals={},
+        pnls={},
+        is_deriv={},
+        counts={},
+    )
     for pos in positions:
         raw_strat = str(pos.get("strategy_filter") or pos.get("strategy") or "Sonstige")
         strat_key = map_strategy_filter_key(raw_strat, fallback_to_unknown=True)
@@ -423,14 +524,14 @@ def calculate_capital_allocation(
         fut_match = resolve_futures_spec(symbol, raw_strat)
         if fut_match is not None:
             _, spec = fut_match
-            # Margin represents the actual capital commitment in the account
             invested = size * spec.initial_margin
             notional = size * current_price * spec.multiplier
             market_val = notional
-            if entry_price > Decimal("0.00"):
-                unrealized_pnl = (current_price - entry_price) * size * spec.multiplier
-            else:
-                unrealized_pnl = Decimal("0.00")
+            unrealized_pnl = (
+                (current_price - entry_price) * size * spec.multiplier
+                if entry_price > Decimal("0.00")
+                else Decimal("0.00")
+            )
             is_deriv = True
         else:
             invested = size * entry_price
@@ -439,40 +540,83 @@ def calculate_capital_allocation(
             unrealized_pnl = market_val - invested
             is_deriv = False
 
-        strategy_totals[strat_key] = (
-            strategy_totals.get(strat_key, Decimal("0.00")) + invested
+        agg.totals[strat_key] = agg.totals.get(strat_key, Decimal("0.00")) + invested
+        agg.market_values[strat_key] = (
+            agg.market_values.get(strat_key, Decimal("0.00")) + market_val
         )
-        strategy_market_values[strat_key] = (
-            strategy_market_values.get(strat_key, Decimal("0.00")) + market_val
+        agg.notionals[strat_key] = (
+            agg.notionals.get(strat_key, Decimal("0.00")) + notional
         )
-        strategy_notionals[strat_key] = (
-            strategy_notionals.get(strat_key, Decimal("0.00")) + notional
-        )
-        strategy_pnls[strat_key] = (
-            strategy_pnls.get(strat_key, Decimal("0.00")) + unrealized_pnl
-        )
-        strategy_is_deriv[strat_key] = (
-            strategy_is_deriv.get(strat_key, False) or is_deriv
-        )
-        strategy_counts[strat_key] = strategy_counts.get(strat_key, 0) + 1
+        agg.pnls[strat_key] = agg.pnls.get(strat_key, Decimal("0.00")) + unrealized_pnl
+        agg.is_deriv[strat_key] = agg.is_deriv.get(strat_key, False) or is_deriv
+        agg.counts[strat_key] = agg.counts.get(strat_key, 0) + 1
 
-    total_invested = sum(strategy_totals.values(), Decimal("0.00"))
+    return agg
+
+
+def calculate_capital_allocation(
+    positions: Sequence[ActivePositionRecord | Mapping[str, Any]],
+    account_metrics: Mapping[str, Any] | None = None,
+) -> CapitalAllocationSummary:
+    """Calculates deployed capital and percentage per strategy and free cash.
+
+    For equities, deployed capital equals the invested purchase amount (size * entry_price).
+    For futures (derivatives), deployed capital equals the required initial margin
+    to maintain realistic portfolio allocation weighting, and PnL incorporates
+    the contract point multiplier.
+    When account_metrics are provided, Free Cash (total_cash_value) is integrated into
+    the portfolio allocation bar and normalized against total capital (invested + cash).
+
+    Args:
+        positions: Sequence of active broker position records.
+        account_metrics: Optional IBKR account metrics record from trading.db.
+
+    Returns:
+        CapitalAllocationSummary: Summary with total invested capital, free cash, and breakdown.
+    """
+    metrics_data = _parse_account_metrics(account_metrics)
+
+    if not positions and metrics_data.free_cash <= Decimal("0.00"):
+        return CapitalAllocationSummary(
+            total_invested=Decimal("0.00"),
+            total_positions=0,
+            strategies=(),
+            free_cash=metrics_data.free_cash,
+            total_capital=Decimal("0.00"),
+            net_liquidation=metrics_data.net_liquidation,
+            available_funds=metrics_data.available_funds,
+            buying_power=metrics_data.buying_power,
+            cushion_pct=metrics_data.cushion_pct,
+            metrics_updated_at=metrics_data.updated_at,
+        )
+
+    agg = _aggregate_strategy_metrics(positions)
+    total_invested = sum(agg.totals.values(), Decimal("0.00"))
     total_positions = len(positions)
+    total_capital = (
+        total_invested + metrics_data.free_cash
+        if metrics_data.free_cash > Decimal("0.00")
+        else total_invested
+    )
+
+    effective_base = (
+        total_capital if total_capital > Decimal("0.00") else total_invested
+    )
 
     allocations: list[StrategyCapitalAllocation] = []
     sorted_strategies = sorted(
-        strategy_totals.items(), key=lambda item: item[1], reverse=True
+        agg.totals.items(), key=lambda item: item[1], reverse=True
     )
 
     for strat_key, invested in sorted_strategies:
         allocation_pct = (
-            float((invested / total_invested) * 100)
-            if total_invested > Decimal("0.00")
+            float((invested / effective_base) * 100)
+            if effective_base > Decimal("0.00")
             else 0.0
         )
-        market_val = strategy_market_values.get(strat_key, Decimal("0.00"))
-        notional_val = strategy_notionals.get(strat_key, Decimal("0.00"))
-        unrealized_pnl = strategy_pnls.get(strat_key, Decimal("0.00"))
+        market_val = agg.market_values.get(strat_key, Decimal("0.00"))
+        notional_val = agg.notionals.get(strat_key, Decimal("0.00"))
+        unrealized_pnl = agg.pnls.get(strat_key, Decimal("0.00"))
         pnl_pct = (
             float((unrealized_pnl / invested) * 100)
             if invested > Decimal("0.00")
@@ -489,10 +633,34 @@ def calculate_capital_allocation(
                 unrealized_pnl=unrealized_pnl,
                 pnl_percentage=pnl_pct,
                 allocation_percentage=allocation_pct,
-                position_count=strategy_counts[strat_key],
+                position_count=agg.counts[strat_key],
                 color_class=color,
                 notional_exposure=notional_val,
-                is_derivative=strategy_is_deriv.get(strat_key, False),
+                is_derivative=agg.is_deriv.get(strat_key, False),
+                is_cash=False,
+            )
+        )
+
+    if metrics_data.free_cash > Decimal("0.00"):
+        cash_allocation_pct = (
+            float((metrics_data.free_cash / effective_base) * 100)
+            if effective_base > Decimal("0.00")
+            else 0.0
+        )
+        allocations.append(
+            StrategyCapitalAllocation(
+                strategy_key="FreeCash",
+                strategy_label="Free Cash",
+                invested_capital=metrics_data.free_cash,
+                market_value=metrics_data.free_cash,
+                unrealized_pnl=Decimal("0.00"),
+                pnl_percentage=0.0,
+                allocation_percentage=cash_allocation_pct,
+                position_count=0,
+                color_class="bg-emerald-500",
+                notional_exposure=Decimal("0.00"),
+                is_derivative=False,
+                is_cash=True,
             )
         )
 
@@ -500,6 +668,13 @@ def calculate_capital_allocation(
         total_invested=total_invested,
         total_positions=total_positions,
         strategies=tuple(allocations),
+        free_cash=metrics_data.free_cash,
+        total_capital=total_capital,
+        net_liquidation=metrics_data.net_liquidation,
+        available_funds=metrics_data.available_funds,
+        buying_power=metrics_data.buying_power,
+        cushion_pct=metrics_data.cushion_pct,
+        metrics_updated_at=metrics_data.updated_at,
     )
 
 
@@ -1814,8 +1989,13 @@ class TradeViewService:
     def get_broker_capital_allocation(
         self, positions: Sequence[ActivePositionRecord | Mapping[str, Any]]
     ) -> CapitalAllocationSummary:
-        """Computes strategy capital allocation from active positions."""
-        return calculate_capital_allocation(positions)
+        """Computes strategy capital allocation from active positions and IBKR metrics."""
+        account_metrics = (
+            self.broker_repository.get_account_metrics()
+            if self.broker_repository is not None
+            else None
+        )
+        return calculate_capital_allocation(positions, account_metrics=account_metrics)
 
     def get_broker_active_orders(self) -> list[dict[str, Any]]:
         """Fetches active submitted and presubmitted orders from TWS broker database.

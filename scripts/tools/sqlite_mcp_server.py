@@ -28,7 +28,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATABASE_MAP: dict[str, Path] = {
     "stocks": PROJECT_ROOT / "data" / "stocks.db",
     "signals": PROJECT_ROOT / "data" / "signals.db",
-    "trading": PROJECT_ROOT / "data" / "trading.db",
+    "trading": (
+        PROJECT_ROOT / "tws" / "data" / "trading.db"
+        if (PROJECT_ROOT / "tws" / "data" / "trading.db").exists()
+        else PROJECT_ROOT / "data" / "trading.db"
+    ),
     "futures": PROJECT_ROOT / "data" / "futures.db",
 }
 
