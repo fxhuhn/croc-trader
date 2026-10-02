@@ -77,6 +77,17 @@ def evaluate_tgim_setup(
     )
 
 
+@dataclass(frozen=True)
+class TGIMConfiguration:
+    """Central configuration parameters for the TGIM (Thank God It's Monday) trading strategy."""
+
+    target_symbol: str = "SPY"
+    max_holding_bars: int = 2
+    lookback_period: int = 30
+    min_premarket_history_bars: int = 2
+    min_postmarket_history_bars: int = 3
+
+
 class TGIMStrategy(BaseStrategy[int]):
     """Implementation of the TGIM trading strategy.
 
@@ -103,11 +114,13 @@ class TGIMStrategy(BaseStrategy[int]):
         telegram_bot: TelegramBot | None = None,
         *,
         holiday_checker: MarketHolidayChecker | None = None,
+        configuration: TGIMConfiguration | None = None,
     ) -> None:
         """Initializes the TGIM screener strategy with required dependencies."""
         super().__init__(data_provider=data_provider, telegram_bot=telegram_bot)
         self.trade_repository = trade_repository
         self.holiday_checker = holiday_checker or MarketHolidayChecker()
+        self.configuration = configuration or TGIMConfiguration()
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
@@ -119,16 +132,21 @@ class TGIMStrategy(BaseStrategy[int]):
         target_date_str = target_date.strftime("%Y-%m-%d")
 
         history_map = self.data_provider.get_batch_history(
-            symbols=[self.TARGET_SYMBOL],
-            days=self.DEFAULT_LOOKBACK_PERIOD,
+            symbols=[self.configuration.target_symbol],
+            days=self.configuration.lookback_period,
             end_date=target_date_str,
         )
-        price_history = history_map.get(self.TARGET_SYMBOL, pd.DataFrame())
+        price_history = history_map.get(
+            self.configuration.target_symbol, pd.DataFrame()
+        )
 
-        if price_history.empty or len(price_history) < MIN_PREMARKET_HISTORY_BARS:
+        if (
+            price_history.empty
+            or len(price_history) < self.configuration.min_premarket_history_bars
+        ):
             logger.warning(
                 "Insufficient price history for %s on %s.",
-                self.TARGET_SYMBOL,
+                self.configuration.target_symbol,
                 target_date_str,
             )
             return 0
@@ -143,7 +161,7 @@ class TGIMStrategy(BaseStrategy[int]):
 
         if candle_date == target_date:
             # Monday candle is present in history (post-market or historical backtest)
-            if len(price_history) < MIN_POSTMARKET_HISTORY_BARS:
+            if len(price_history) < self.configuration.min_postmarket_history_bars:
                 return 0
             current_close = Decimal(str(latest_candle["close"]))
             friday_close = Decimal(str(price_history.iloc[-2]["close"]))
@@ -157,7 +175,8 @@ class TGIMStrategy(BaseStrategy[int]):
 
             if not setup_result.is_signal:
                 logger.debug(
-                    "TGIM setup condition failed for SPY on %s: close=%s not < min(%s, %s).",
+                    "TGIM setup condition failed for %s on %s: close=%s not < min(%s, %s).",
+                    self.configuration.target_symbol,
                     target_date_str,
                     current_close,
                     friday_close,
@@ -183,22 +202,22 @@ class TGIMStrategy(BaseStrategy[int]):
             "friday_close": float(friday_close),
             "thursday_close": float(thursday_close),
             "day": "Monday",
-            "max_holding_bars": self.DEFAULT_MAX_HOLDING_BARS,
+            "max_holding_bars": self.configuration.max_holding_bars,
             "source": "ScreenerEngine",
         }
 
         if self.trade_repository.exists(
-            self.TARGET_SYMBOL, self.STRATEGY_IDENTIFIER, target_date_str
+            self.configuration.target_symbol, self.STRATEGY_IDENTIFIER, target_date_str
         ):
             logger.info(
                 "TGIM trade already exists for %s on %s.",
-                self.TARGET_SYMBOL,
+                self.configuration.target_symbol,
                 target_date_str,
             )
             return 0
 
         self.trade_repository.create_trade(
-            symbol=self.TARGET_SYMBOL,
+            symbol=self.configuration.target_symbol,
             strategy=self.STRATEGY_IDENTIFIER,
             size=0.0,
             entry=threshold_price_float,
@@ -209,7 +228,7 @@ class TGIMStrategy(BaseStrategy[int]):
         logger.info(
             "[%s] CREATED trade recorded for %s @ %s (threshold: %s).",
             self.name,
-            self.TARGET_SYMBOL,
+            self.configuration.target_symbol,
             threshold_price_float,
             threshold_price_float,
         )
@@ -219,7 +238,7 @@ class TGIMStrategy(BaseStrategy[int]):
                 "TGIM",
                 [
                     SignalReportItem(
-                        symbol=self.TARGET_SYMBOL,
+                        symbol=self.configuration.target_symbol,
                         action="BUY MOC",
                         entry_price=round(threshold_price_float, 2),
                     )
@@ -260,6 +279,7 @@ class TGIMStrategy(BaseStrategy[int]):
 __all__ = [
     "MIN_POSTMARKET_HISTORY_BARS",
     "MIN_PREMARKET_HISTORY_BARS",
+    "TGIMConfiguration",
     "TGIMSetupResult",
     "TGIMStrategy",
     "TGIMStrategyContext",

@@ -19,6 +19,7 @@ import pandas as pd
 from ....const import ExitReason, Strategies
 from ....models import Order
 from ....types import TradeData
+from ...screener.strategies.tgim import TGIMConfiguration
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderOptions
 
@@ -31,6 +32,7 @@ def evaluate_tgim_exit(
     bars_held: int,
     current_close: Decimal,
     previous_close: Decimal,
+    max_holding_bars: int = MAX_TGIM_HOLDING_BARS,
 ) -> ExitReason | None:
     """Pure calculation: Evaluates TGIM exit logic without side effects.
 
@@ -43,7 +45,7 @@ def evaluate_tgim_exit(
     if current_close > previous_close:
         return ExitReason.TAKE_PROFIT
 
-    if bars_held >= MAX_TGIM_HOLDING_BARS:
+    if bars_held >= max_holding_bars:
         return ExitReason.TIME_STOP
 
     return None
@@ -77,6 +79,15 @@ class TGIMTradeStrategy(BaseTradeStrategy):
 
     STRATEGY_IDENTIFIER = Strategies.TGIM
     name = Strategies.TGIM
+    MAX_HOLDING_BARS = MAX_TGIM_HOLDING_BARS
+
+    def __init__(
+        self,
+        configuration: TGIMConfiguration | None = None,
+    ) -> None:
+        """Initializes the TGIM trade manager strategy with optional configuration."""
+        super().__init__()
+        self.configuration = configuration or TGIMConfiguration()
 
     def _calculate_bars_held(
         self,
@@ -167,7 +178,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         entry_price_val = trade.get("entry_price") or 0.0
         entry_price = Decimal(str(entry_price_val))
 
-        if upcoming_bar >= MAX_TGIM_HOLDING_BARS:
+        if upcoming_bar >= self.configuration.max_holding_bars:
             last_candle = dataframe_history.iloc[-1]
             close_price = Decimal(str(last_candle["close"]))
             return self._create_exit_order(
@@ -263,6 +274,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
             bars_held=bars_held,
             current_close=current_close,
             previous_close=prev_close,
+            max_holding_bars=self.configuration.max_holding_bars,
         )
 
         if exit_reason is not None:
