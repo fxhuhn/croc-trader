@@ -7,7 +7,7 @@ trading day of the next month.
 
 import datetime
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TypedDict, override
 
 import pandas as pd
@@ -38,12 +38,21 @@ DEFAULT_RSI_WINDOW: int = 2
 
 
 @dataclass(frozen=True)
-class BridgeScoutParameters:
-    """Configuration parameters for Bridge Scout setup evaluation."""
+class BridgeScoutConfiguration:
+    """Central configuration parameters for Bridge Scout trading strategy."""
 
-    is_live_same_day: bool = False
+    target_symbol: str = "QQQ"
+    entry_days_before: int = 4
     rsi_threshold: float = 40.0
     max_atr_pct: float = 3.5
+    lookback_period: int = 60
+    min_history_bars: int = 15
+    atr_window: int = 10
+    rsi_window: int = 2
+    is_live_same_day: bool = False
+
+
+BridgeScoutParameters = BridgeScoutConfiguration
 
 
 @dataclass(frozen=True)
@@ -77,12 +86,12 @@ class BridgeScoutStrategyContext(TypedDict, total=False):
 def _evaluate_live_same_day(
     close_series: pd.Series,
     current_atr: float,
-    cfg: BridgeScoutParameters,
+    cfg: BridgeScoutConfiguration,
 ) -> BridgeScoutSetupResult | None:
     current_close = float(close_series.iloc[-1])
     if current_close <= 0:
         return None
-    rsi_series = calculate_rsi(close_series, DEFAULT_RSI_WINDOW)
+    rsi_series = calculate_rsi(close_series, cfg.rsi_window)
     current_rsi = float(rsi_series.iloc[-1])
     atr_pct = (current_atr / current_close) * 100.0
 
@@ -98,7 +107,7 @@ def _evaluate_live_same_day(
 
     req_close_rsi40 = calculate_max_close_for_rsi(
         close_series.iloc[:-1],
-        window=DEFAULT_RSI_WINDOW,
+        window=cfg.rsi_window,
         rsi_target=cfg.rsi_threshold,
     )
     return BridgeScoutSetupResult(
@@ -114,7 +123,7 @@ def _evaluate_live_same_day(
 def _evaluate_premarket(
     close_series: pd.Series,
     current_atr: float,
-    cfg: BridgeScoutParameters,
+    cfg: BridgeScoutConfiguration,
 ) -> BridgeScoutSetupResult | None:
     last_close = float(close_series.iloc[-1])
     if last_close <= 0:
@@ -133,10 +142,10 @@ def _evaluate_premarket(
 
     req_close_rsi40 = calculate_max_close_for_rsi(
         close_series,
-        window=DEFAULT_RSI_WINDOW,
+        window=cfg.rsi_window,
         rsi_target=cfg.rsi_threshold,
     )
-    rsi_series = calculate_rsi(close_series, DEFAULT_RSI_WINDOW)
+    rsi_series = calculate_rsi(close_series, cfg.rsi_window)
     rsi_2_val = round(float(rsi_series.iloc[-1]), 2)
 
     return BridgeScoutSetupResult(
@@ -153,16 +162,14 @@ def evaluate_bridge_scout_setup(
     close_series: pd.Series,
     high_series: pd.Series,
     low_series: pd.Series,
-    params: BridgeScoutParameters | None = None,
+    params: BridgeScoutConfiguration | None = None,
 ) -> BridgeScoutSetupResult | None:
     """Pure calculation: Evaluates Bridge Scout setup conditions without side effects."""
-    cfg = params or BridgeScoutParameters()
-    if close_series.empty or len(close_series) < MIN_BRIDGE_HISTORY_BARS:
+    cfg = params or BridgeScoutConfiguration()
+    if close_series.empty or len(close_series) < cfg.min_history_bars:
         return None
 
-    atr_series = calculate_atr(
-        high_series, low_series, close_series, DEFAULT_ATR_WINDOW
-    )
+    atr_series = calculate_atr(high_series, low_series, close_series, cfg.atr_window)
     current_atr = float(atr_series.iloc[-1])
 
     if cfg.is_live_same_day:
@@ -195,11 +202,14 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
         holiday_checker: MarketHolidayChecker | None = None,
+        *,
+        configuration: BridgeScoutConfiguration | None = None,
     ) -> None:
         """Initializes Bridge Scout screener strategy."""
         super().__init__(data_provider=data_provider, telegram_bot=telegram_bot)
         self.trade_repository = trade_repository
         self.holiday_checker = holiday_checker or MarketHolidayChecker()
+        self.configuration = configuration or BridgeScoutConfiguration()
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
@@ -209,7 +219,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
 
         if not is_in_end_of_month_window(
             target_date,
-            days_before=self.DEFAULT_ENTRY_DAYS_BEFORE,
+            days_before=self.configuration.entry_days_before,
             holiday_checker=self.holiday_checker,
         ):
             logger.debug(
@@ -218,16 +228,21 @@ class BridgeScoutStrategy(BaseStrategy[int]):
             return 0
 
         history_map = self.data_provider.get_batch_history(
-            symbols=[self.TARGET_SYMBOL],
-            days=self.DEFAULT_LOOKBACK_PERIOD,
+            symbols=[self.configuration.target_symbol],
+            days=self.configuration.lookback_period,
             end_date=target_date_str,
         )
-        price_history = history_map.get(self.TARGET_SYMBOL, pd.DataFrame())
+        price_history = history_map.get(
+            self.configuration.target_symbol, pd.DataFrame()
+        )
 
-        if price_history.empty or len(price_history) < MIN_BRIDGE_HISTORY_BARS:
+        if (
+            price_history.empty
+            or len(price_history) < self.configuration.min_history_bars
+        ):
             logger.warning(
                 "Insufficient price history for %s on %s.",
-                self.TARGET_SYMBOL,
+                self.configuration.target_symbol,
                 target_date_str,
             )
             return 0
@@ -235,13 +250,13 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         # Strict single position check (MaxPositions = 1)
         if self._has_existing_trade_or_position(
             self.trade_repository,
-            self.TARGET_SYMBOL,
+            self.configuration.target_symbol,
             self.STRATEGY_IDENTIFIER,
             target_date_str,
         ):
             logger.info(
                 "Bridge Scout trade or active position already exists for %s on %s.",
-                self.TARGET_SYMBOL,
+                self.configuration.target_symbol,
                 target_date_str,
             )
             return 0
@@ -258,10 +273,9 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         high_series = price_history["high"].astype(float)
         low_series = price_history["low"].astype(float)
 
-        params = BridgeScoutParameters(
+        params = replace(
+            self.configuration,
             is_live_same_day=(candle_date == target_date),
-            rsi_threshold=self.DEFAULT_RSI_THRESHOLD,
-            max_atr_pct=self.DEFAULT_MAX_ATR_PCT,
         )
         setup_result = evaluate_bridge_scout_setup(
             close_series=close_series,
@@ -284,7 +298,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
         }
 
         trade_id = self.trade_repository.create_trade(
-            symbol=self.TARGET_SYMBOL,
+            symbol=self.configuration.target_symbol,
             strategy=self.STRATEGY_IDENTIFIER,
             size=0.0,
             entry=setup_result.entry_price,
@@ -295,7 +309,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
 
         logger.info(
             "Generated Bridge Scout signal for %s on %s (Trade ID: %s, Threshold: <= %.2f).",
-            self.TARGET_SYMBOL,
+            self.configuration.target_symbol,
             target_date_str,
             trade_id,
             setup_result.req_close_rsi40,
@@ -306,7 +320,7 @@ class BridgeScoutStrategy(BaseStrategy[int]):
                 "Bridge Scout",
                 [
                     SignalReportItem(
-                        symbol=self.TARGET_SYMBOL,
+                        symbol=self.configuration.target_symbol,
                         action="BUY MOC",
                         entry_price=setup_result.entry_price,
                         details={
@@ -345,6 +359,10 @@ class BridgeScoutStrategy(BaseStrategy[int]):
 
 
 __all__ = [
+    "DEFAULT_ATR_WINDOW",
+    "DEFAULT_RSI_WINDOW",
+    "MIN_BRIDGE_HISTORY_BARS",
+    "BridgeScoutConfiguration",
     "BridgeScoutParameters",
     "BridgeScoutSetupResult",
     "BridgeScoutStrategy",

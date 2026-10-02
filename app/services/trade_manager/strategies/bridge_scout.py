@@ -18,6 +18,7 @@ import pandas as pd
 from ....const import ExitReason, Strategies
 from ....models import Order
 from ....types import TradeData
+from ...screener.strategies.bridge_scout import BridgeScoutConfiguration
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderOptions
 
@@ -35,6 +36,11 @@ class BridgeScoutTradeStrategy(BaseTradeStrategy):
 
     STRATEGY_IDENTIFIER = Strategies.BridgeScout
     name = Strategies.BridgeScout
+
+    def __init__(self, configuration: BridgeScoutConfiguration | None = None) -> None:
+        """Initializes Bridge Scout trade strategy with optional configuration."""
+        super().__init__()
+        self.configuration = configuration or BridgeScoutConfiguration()
 
     @override
     def _generate_entry_order(
