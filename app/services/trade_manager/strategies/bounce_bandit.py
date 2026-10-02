@@ -21,40 +21,59 @@ from ....const import Strategies
 from ....models import Order, OrderLeg
 from ....tools.indicators import calculate_rsi, calculate_sma
 from ....types import TradeData
+from ...screener.strategies.bounce_bandit import BounceBanditConfiguration
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderOptions, OrderPayload
 
 logger = logging.getLogger(__name__)
 
 
-def calculate_required_sma_exit(close_series: pd.Series) -> float:
-    """Pure calculation: computes minimum close price required to exceed 8-period SMA on current candle."""
-    last_7_closes = close_series.iloc[-7:]
-    return float(last_7_closes.mean()) + 0.01
+def calculate_required_sma_exit(
+    close_series: pd.Series, exit_sma_length: int = 8
+) -> float:
+    """Pure calculation: computes minimum close price required to exceed exit SMA on current candle."""
+    last_closes = close_series.iloc[-(exit_sma_length - 1) :]
+    return float(last_closes.mean()) + 0.01
 
 
-def calculate_required_rsi_exit(close_series: pd.Series) -> float:
-    """Pure calculation: computes minimum close price required to exceed RSI(2) > 75 on current candle."""
+_MAX_RSI_TARGET: float = 100.0
+
+
+def calculate_required_rsi_exit(
+    close_series: pd.Series,
+    rsi_window: int = 2,
+    rsi_exit_target: float = 75.0,
+) -> float:
+    """Pure calculation: computes minimum close price required to exceed RSI exit target on current candle."""
     delta = close_series.diff()
     gain = (delta.where(delta > 0, 0)).fillna(0)
     loss = (-delta.where(delta < 0, 0)).fillna(0)
-    avg_gain_series = gain.ewm(alpha=0.5, adjust=False).mean()
-    avg_loss_series = loss.ewm(alpha=0.5, adjust=False).mean()
+    alpha = 1.0 / float(rsi_window)
+    avg_gain_series = gain.ewm(alpha=alpha, adjust=False).mean()
+    avg_loss_series = loss.ewm(alpha=alpha, adjust=False).mean()
 
     last_avg_gain = float(avg_gain_series.iloc[-1])
     last_avg_loss = float(avg_loss_series.iloc[-1])
     last_close = float(close_series.iloc[-1])
 
-    required_delta_rsi = max(0.0, (3.0 * last_avg_loss) - last_avg_gain)
+    target_rs = (
+        rsi_exit_target / (_MAX_RSI_TARGET - rsi_exit_target)
+        if rsi_exit_target < _MAX_RSI_TARGET
+        else 3.0
+    )
+    required_delta_rsi = max(0.0, (target_rs * last_avg_loss) - last_avg_gain)
     return last_close + required_delta_rsi + 0.01
 
 
 def calculate_bounce_bandit_targets(
-    close_series: pd.Series, exit_sma_length: int = 8
+    close_series: pd.Series,
+    exit_sma_length: int = 8,
+    rsi_window: int = 2,
+    rsi_exit_target: float = 75.0,
 ) -> dict[str, float]:
     """Pure calculation: computes dynamic daily indicators and exit target prices for Bounce Bandit."""
     sma_8_series = calculate_sma(close_series, exit_sma_length)
-    rsi_2_series = calculate_rsi(close_series, 2)
+    rsi_2_series = calculate_rsi(close_series, rsi_window)
 
     if sma_8_series.empty or rsi_2_series.empty:
         return {}
@@ -62,8 +81,12 @@ def calculate_bounce_bandit_targets(
     current_sma_8 = float(sma_8_series.iloc[-1])
     current_rsi_2 = float(rsi_2_series.iloc[-1])
 
-    required_sma_exit = calculate_required_sma_exit(close_series)
-    required_rsi_exit = calculate_required_rsi_exit(close_series)
+    required_sma_exit = calculate_required_sma_exit(close_series, exit_sma_length)
+    required_rsi_exit = calculate_required_rsi_exit(
+        close_series,
+        rsi_window=rsi_window,
+        rsi_exit_target=rsi_exit_target,
+    )
     target_price = min(required_sma_exit, required_rsi_exit)
 
     return {
@@ -91,6 +114,11 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
     EXIT_SMA_LEN = 8
     RSI_EXIT_THRESHOLD = 75.0
 
+    def __init__(self, configuration: BounceBanditConfiguration | None = None) -> None:
+        """Initializes the Bounce Bandit trade strategy with optional configuration."""
+        super().__init__()
+        self.configuration = configuration or BounceBanditConfiguration()
+
     @override
     def get_daily_updates(
         self,
@@ -98,11 +126,19 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
     ) -> dict[str, object]:
         """Calculates daily indicator values (SMA_8, RSI_2) and required exit target prices to persist in signal_context."""
-        if dataframe_history.empty or len(dataframe_history) < self.EXIT_SMA_LEN:
+        if (
+            dataframe_history.empty
+            or len(dataframe_history) < self.configuration.exit_sma_len
+        ):
             return {}
 
         close_series = dataframe_history["close"].astype(float)
-        targets = calculate_bounce_bandit_targets(close_series, self.EXIT_SMA_LEN)
+        targets = calculate_bounce_bandit_targets(
+            close_series,
+            exit_sma_length=self.configuration.exit_sma_len,
+            rsi_window=self.configuration.rsi_window,
+            rsi_exit_target=self.configuration.rsi_exit_target,
+        )
         return dict(targets)
 
     @override
@@ -144,10 +180,15 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         if (
             target_price is None
             and not dataframe_history.empty
-            and len(dataframe_history) >= self.EXIT_SMA_LEN
+            and len(dataframe_history) >= self.configuration.exit_sma_len
         ):
             close_series = dataframe_history["close"].astype(float)
-            targets = calculate_bounce_bandit_targets(close_series, self.EXIT_SMA_LEN)
+            targets = calculate_bounce_bandit_targets(
+                close_series,
+                exit_sma_length=self.configuration.exit_sma_len,
+                rsi_window=self.configuration.rsi_window,
+                rsi_exit_target=self.configuration.rsi_exit_target,
+            )
             target_price = targets.get("target_price")
 
         if target_price is not None:
@@ -191,12 +232,17 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         if (
             quantity <= 0
             or dataframe_history.empty
-            or len(dataframe_history) < self.EXIT_SMA_LEN
+            or len(dataframe_history) < self.configuration.exit_sma_len
         ):
             return None
 
         close_series = dataframe_history["close"].astype(float)
-        targets = calculate_bounce_bandit_targets(close_series, self.EXIT_SMA_LEN)
+        targets = calculate_bounce_bandit_targets(
+            close_series,
+            exit_sma_length=self.configuration.exit_sma_len,
+            rsi_window=self.configuration.rsi_window,
+            rsi_exit_target=self.configuration.rsi_exit_target,
+        )
         target_price = targets.get("target_price")
 
         if not target_price or target_price <= 0:
@@ -256,22 +302,25 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
         Evaluated at market close MOC.
         Exit if Close > SMA(8) OR RSI(2) > 75.
         """
-        if dataframe_history.empty or len(dataframe_history) < self.EXIT_SMA_LEN:
+        if (
+            dataframe_history.empty
+            or len(dataframe_history) < self.configuration.exit_sma_len
+        ):
             raise ValueError(
                 f"Insufficient price history for Bounce Bandit trade ID {trade.get('id')} ({trade.get('symbol')}): "
-                f"expected at least {self.EXIT_SMA_LEN} candles, got {len(dataframe_history)}"
+                f"expected at least {self.configuration.exit_sma_len} candles, got {len(dataframe_history)}"
             )
 
         close_series = dataframe_history["close"].astype(float)
-        sma_8_series = calculate_sma(close_series, self.EXIT_SMA_LEN)
-        rsi_2_series = calculate_rsi(close_series, 2)
+        sma_exit_series = calculate_sma(close_series, self.configuration.exit_sma_len)
+        rsi_series = calculate_rsi(close_series, self.configuration.rsi_window)
 
         current_close = float(current_candle["close"])
-        current_sma_8 = float(sma_8_series.iloc[-1])
-        current_rsi_2 = float(rsi_2_series.iloc[-1])
+        current_sma = float(sma_exit_series.iloc[-1])
+        current_rsi = float(rsi_series.iloc[-1])
 
-        sma_exit = current_close > current_sma_8
-        rsi_exit = current_rsi_2 > self.RSI_EXIT_THRESHOLD
+        sma_exit = current_close > current_sma
+        rsi_exit = current_rsi > self.configuration.rsi_exit_target
 
         if sma_exit or rsi_exit:
             if rsi_exit and sma_exit:
@@ -281,7 +330,11 @@ class BounceBanditTradeStrategy(BaseTradeStrategy):
             else:
                 exit_reason = "SMA"
 
-            reason_text = f"Bounce Bandit MOC Exit: {exit_reason} (SMA_8={current_sma_8:.2f}, RSI_2={current_rsi_2:.2f})"
+            reason_text = (
+                f"Bounce Bandit MOC Exit: {exit_reason} "
+                f"(SMA_{self.configuration.exit_sma_len}={current_sma:.2f}, "
+                f"RSI_{self.configuration.rsi_window}={current_rsi:.2f})"
+            )
             logger.info(
                 "Closing Bounce Bandit trade ID %s on %s: %s",
                 trade.get("id"),

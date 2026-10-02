@@ -32,13 +32,22 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class BounceBanditParameters:
-    """Configuration parameters for Bounce Bandit setup evaluation."""
+class BounceBanditConfiguration:
+    """Central configuration parameters for Bounce Bandit trading strategy."""
 
+    target_symbol: str = "QQQ"
     trend_sma_len: int = 200
     atr_len: int = 10
     max_atr_pct: float = 2.5
     rsi_entry_threshold: float = 20.0
+    exit_sma_len: int = 8
+    rsi_window: int = 2
+    rsi_exit_target: float = 75.0
+    lookback_period: int = 350
+    lookback_buffer_bars: int = 2
+
+
+BounceBanditParameters = BounceBanditConfiguration
 
 
 @dataclass(frozen=True)
@@ -82,18 +91,18 @@ def evaluate_bounce_bandit_setup(
     close_series: pd.Series,
     high_series: pd.Series,
     low_series: pd.Series,
-    params: BounceBanditParameters | None = None,
+    params: BounceBanditConfiguration | None = None,
 ) -> BounceBanditSetupResult | None:
     """Pure calculation: Evaluates Bounce Bandit setup and exit price targets without side effects."""
-    cfg = params or BounceBanditParameters()
-    if len(close_series) < cfg.trend_sma_len + 2:
+    cfg = params or BounceBanditConfiguration()
+    if len(close_series) < cfg.trend_sma_len + cfg.lookback_buffer_bars:
         return None
 
     sma_200_series = calculate_sma(close_series, cfg.trend_sma_len)
     atr_10_series = calculate_atr(high_series, low_series, close_series, cfg.atr_len)
     safe_close = close_series.replace(0.0, float("nan"))
     atr_pct_series = (atr_10_series / safe_close) * 100.0
-    rsi_2_series = calculate_rsi(close_series, 2)
+    rsi_2_series = calculate_rsi(close_series, cfg.rsi_window)
 
     current_close = float(close_series.iloc[-1])
     current_sma_200 = float(sma_200_series.iloc[-1])
@@ -110,14 +119,14 @@ def evaluate_bounce_bandit_setup(
 
     is_signal = bool(regime_ok and pullback_ok and rsi_ok)
 
-    sma_8_series = calculate_sma(close_series, 8)
+    sma_8_series = calculate_sma(close_series, cfg.exit_sma_len)
     current_sma_8 = float(sma_8_series.iloc[-1])
 
-    last_7_closes = close_series.iloc[-7:]
+    last_7_closes = close_series.iloc[-(cfg.exit_sma_len - 1) :]
     required_sma_exit = float(last_7_closes.mean()) + 0.01
 
     required_rsi_exit = calculate_rsi_exit_target(
-        close_series, window=2, rsi_target=75.0
+        close_series, window=cfg.rsi_window, rsi_target=cfg.rsi_exit_target
     )
     target_price = min(required_sma_exit, required_rsi_exit)
 
@@ -158,16 +167,22 @@ class BounceBanditStrategy(BaseStrategy[int]):
     ATR_LEN = 10
     MAX_ATR_PCT = 2.5
     RSI_ENTRY_THRESHOLD = 20.0
+    EXIT_SMA_LEN = 8
+    RSI_WINDOW = 2
+    RSI_EXIT_TARGET = 75.0
 
     def __init__(
         self,
         trade_repository: TradeRepository,
         data_provider: MarketDataProvider,
         telegram_bot: TelegramBot | None = None,
+        *,
+        configuration: BounceBanditConfiguration | None = None,
     ) -> None:
         """Initializes the Bounce Bandit screener strategy with required dependencies."""
         super().__init__(data_provider=data_provider, telegram_bot=telegram_bot)
         self.trade_repository = trade_repository
+        self.configuration = configuration or BounceBanditConfiguration()
 
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
@@ -176,18 +191,23 @@ class BounceBanditStrategy(BaseStrategy[int]):
         target_date_str = target_date.strftime("%Y-%m-%d")
 
         history_map = self.data_provider.get_batch_history(
-            symbols=[self.TARGET_SYMBOL],
-            days=self.DEFAULT_LOOKBACK_PERIOD,
+            symbols=[self.configuration.target_symbol],
+            days=self.configuration.lookback_period,
             end_date=target_date_str,
         )
-        price_history = history_map.get(self.TARGET_SYMBOL, pd.DataFrame())
+        price_history = history_map.get(
+            self.configuration.target_symbol, pd.DataFrame()
+        )
 
-        if price_history.empty or len(price_history) < self.TREND_SMA_LEN + 2:
+        min_required_bars = (
+            self.configuration.trend_sma_len + self.configuration.lookback_buffer_bars
+        )
+        if price_history.empty or len(price_history) < min_required_bars:
             logger.warning(
                 "Insufficient price history for %s on %s (required >= %d bars).",
-                self.TARGET_SYMBOL,
+                self.configuration.target_symbol,
                 target_date_str,
-                self.TREND_SMA_LEN + 2,
+                min_required_bars,
             )
             return 0
 
@@ -211,17 +231,11 @@ class BounceBanditStrategy(BaseStrategy[int]):
         high_series = price_history["high"].astype(float)
         low_series = price_history["low"].astype(float)
 
-        params = BounceBanditParameters(
-            trend_sma_len=self.TREND_SMA_LEN,
-            atr_len=self.ATR_LEN,
-            max_atr_pct=self.MAX_ATR_PCT,
-            rsi_entry_threshold=self.RSI_ENTRY_THRESHOLD,
-        )
         setup_result = evaluate_bounce_bandit_setup(
             close_series=close_series,
             high_series=high_series,
             low_series=low_series,
-            params=params,
+            params=self.configuration,
         )
 
         if setup_result is None or not setup_result.is_signal:
@@ -229,7 +243,7 @@ class BounceBanditStrategy(BaseStrategy[int]):
                 logger.debug(
                     "Bounce Bandit setup conditions not met for %s on %s: "
                     "close=%.2f, sma200=%.2f, atr_pct=%.2f%%, rsi2=%.2f, prev1=%.2f, prev2=%.2f.",
-                    self.TARGET_SYMBOL,
+                    self.configuration.target_symbol,
                     target_date_str,
                     setup_result.current_close,
                     setup_result.current_sma_200,
@@ -243,13 +257,13 @@ class BounceBanditStrategy(BaseStrategy[int]):
         # Strict single position check (MaxPositions = 1 / S.Positions == 0)
         if self._has_existing_trade_or_position(
             self.trade_repository,
-            self.TARGET_SYMBOL,
+            self.configuration.target_symbol,
             self.STRATEGY_IDENTIFIER,
             target_date_str,
         ):
             logger.info(
                 "Bounce Bandit trade or active position already exists for %s on %s.",
-                self.TARGET_SYMBOL,
+                self.configuration.target_symbol,
                 target_date_str,
             )
             return 0
@@ -272,7 +286,7 @@ class BounceBanditStrategy(BaseStrategy[int]):
         }
 
         trade_id = self.trade_repository.create_trade(
-            symbol=self.TARGET_SYMBOL,
+            symbol=self.configuration.target_symbol,
             strategy=self.STRATEGY_IDENTIFIER,
             size=0.0,
             entry=setup_result.current_close,
@@ -283,7 +297,7 @@ class BounceBanditStrategy(BaseStrategy[int]):
 
         logger.info(
             "Generated Bounce Bandit signal for %s on %s (Trade ID: %s).",
-            self.TARGET_SYMBOL,
+            self.configuration.target_symbol,
             target_date_str,
             trade_id,
         )
@@ -293,7 +307,7 @@ class BounceBanditStrategy(BaseStrategy[int]):
                 "Bounce Bandit",
                 [
                     SignalReportItem(
-                        symbol=self.TARGET_SYMBOL,
+                        symbol=self.configuration.target_symbol,
                         action="BUY MKT",
                         entry_price=setup_result.current_close,
                         target_profit=round(setup_result.target_price, 2),
@@ -307,3 +321,13 @@ class BounceBanditStrategy(BaseStrategy[int]):
             )
 
         return 1
+
+
+__all__ = [
+    "BounceBanditConfiguration",
+    "BounceBanditParameters",
+    "BounceBanditSetupResult",
+    "BounceBanditStrategy",
+    "BounceBanditStrategyContext",
+    "evaluate_bounce_bandit_setup",
+]
