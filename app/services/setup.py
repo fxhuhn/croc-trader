@@ -45,6 +45,7 @@ from .screener.strategies.ndx_momentum import NDXMomentumScreener
 from .screener.strategies.tgim import TGIMStrategy
 from .screener.strategies.turnover_timing import TurnoverTimingStrategy
 from .screener.strategies.two_percent_strategy import TwoPercentStrategy
+from .screener.strategies.wounded_bull_sprint import WoundedBullSprintStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,12 @@ def register_services(app: "Flask", config: "ConfigManager") -> None:
             trade_repository=trade_repository,
             data_provider=md_provider,
             telegram_bot=telegram,
+        ),
+        WoundedBullSprintStrategy(
+            trade_repository=trade_repository,
+            data_provider=md_provider,
+            telegram_bot=telegram,
+            holiday_checker=holiday_checker,
         ),
     ]
 

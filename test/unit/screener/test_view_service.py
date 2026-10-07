@@ -97,6 +97,36 @@ def test_get_dip_buyer_candidates_sorting_by_score(mock_signal_repository):
     assert results[2]["symbol"] == "SPY"  # Score 5 (lowest)
 
 
+def test_wounded_bull_sprint_candidates_sorting_by_setup_score(
+    mock_signal_repository: MagicMock,
+) -> None:
+    """Verifies that WBS candidates are sorted by setup_score descending."""
+    service = ScreenerViewService(mock_signal_repository)
+
+    mock_signal_repository.get_trade_candidates.return_value = [
+        {
+            "id": 1,
+            "symbol": "AAPL",
+            "strategy": str(Strategies.WoundedBullSprint),
+            "entry_price": 150.0,
+            "signal_context": '{"setup_close": 150.0, "setup_score": 3.2, "date": "2026-07-22"}',
+        },
+        {
+            "id": 2,
+            "symbol": "MSFT",
+            "strategy": str(Strategies.WoundedBullSprint),
+            "entry_price": 400.0,
+            "signal_context": '{"setup_close": 400.0, "setup_score": 8.5, "date": "2026-07-22"}',
+        },
+    ]
+
+    results = service.get_candidates(Strategies.WoundedBullSprint)
+
+    assert len(results) == 2
+    assert results[0]["symbol"] == "MSFT"  # Score 8.5
+    assert results[1]["symbol"] == "AAPL"  # Score 3.2
+
+
 def test_ndx_momentum_position_status_new_and_hold(mock_signal_repository):
     """Verifies that NDX Momentum sets position_status to NEW for CREATED and HOLD for ACTIVE trades."""
     # Arrange

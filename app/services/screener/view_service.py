@@ -95,7 +95,7 @@ def _sort_candidates_by_score(
             ),
             reverse=True,
         )
-    elif strategy_value == Strategies.DipBuyer:
+    elif strategy_value in (Strategies.DipBuyer, Strategies.WoundedBullSprint):
         candidates.sort(
             key=lambda x: extract_safe_float(
                 x["context"].get("setup_score")

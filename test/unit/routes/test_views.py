@@ -92,6 +92,7 @@ def test_view_screener_overview_returns_correct_response(
         ("/screener/turnover", b"Turnover Signale"),
         ("/screener/twopercent", b"Two Percent"),
         ("/screener/ndx-momentum", b"NDX Momentum"),
+        ("/screener/wounded-bull-sprint", b"Wounded Bull Sprint"),
     ],
 )
 def test_view_screener_strategy_specific_routes(

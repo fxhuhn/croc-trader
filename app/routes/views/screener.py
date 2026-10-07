@@ -58,6 +58,9 @@ def _get_strategy_overview(
     count_bounce_bandit = len(
         signals_repository.get_trade_candidates(Strategies.BounceBandit, limit=100)
     )
+    count_wbs = len(
+        signals_repository.get_trade_candidates(Strategies.WoundedBullSprint, limit=100)
+    )
 
     return [
         {
@@ -115,6 +118,14 @@ def _get_strategy_overview(
             "icon": "zap",
             "count": count_bounce_bandit,
             "is_active": count_bounce_bandit > 0,
+        },
+        {
+            "id": "wounded-bull-sprint",
+            "name": "Wounded Bull Sprint",
+            "desc": "Mean-Reversion Pullback auf S&P 100 Titel.",
+            "icon": "shield-alert",
+            "count": count_wbs,
+            "is_active": count_wbs > 0,
         },
     ]
 
@@ -234,3 +245,18 @@ def view_screener_bounce_bandit() -> str:
     service = _get_screener_view_service()
     results = service.get_candidates(Strategies.BounceBandit, limit=limit)
     return render_template("screener_bounce_bandit.html", results=results)
+
+
+@views_bp.route("/screener/wounded-bull-sprint", methods=["GET"])
+@views_bp.route("/screener/wounded_bull_sprint", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
+def view_screener_wounded_bull_sprint() -> str:
+    """Displays the Wounded Bull Sprint screener with current candidates.
+
+    Returns:
+        str: Rendered HTML template with Wounded Bull Sprint candidates list.
+    """
+    limit = request.args.get("limit", 50, type=int)
+    service = _get_screener_view_service()
+    results = service.get_candidates(Strategies.WoundedBullSprint, limit=limit)
+    return render_template("screener_wounded_bull_sprint.html", results=results)

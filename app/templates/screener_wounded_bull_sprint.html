@@ -1,0 +1,69 @@
+{% extends "screener_base.html" %}
+
+{% block page_title %}Wounded Bull Sprint Signale{% endblock %}
+{% block header_title %}Wounded Bull Sprint{% endblock %}
+{% block page_key %}wounded_bull_sprint{% endblock %}
+
+{% block screener_card %}
+{% call cards.screener_card(row.symbol, None, row.context.get('setup_close', 0), "Next Open") %}
+<div class="grid grid-cols-2 gap-x-6 text-xs mb-2">
+    <!-- Left Column -->
+    <div class="flex flex-col">
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Datum</span>
+            <span class="font-bold text-slate-800">{{ row.display_date }}</span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Close</span>
+            <span class="font-bold text-slate-600 font-sans tabular-nums">
+                {{ row.context.get('setup_close') | de_number(2) }}
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">ROC(5)</span>
+            <span class="font-bold text-rose-600 font-sans tabular-nums">
+                {% if row.context.get('roc_5') is not none %}
+                {{ row.context.get('roc_5') | de_number(2) }}&nbsp;%
+                {% else %}-{% endif %}
+            </span>
+        </div>
+    </div>
+    <!-- Right Column -->
+    <div class="flex flex-col">
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">FIP Rank</span>
+            <span class="font-bold text-slate-800 font-sans tabular-nums">
+                {% if row.context.get('up_days_pct') is not none %}
+                {{ row.context.get('up_days_pct') | de_number(1) }}&nbsp;%
+                {% else %}-{% endif %}
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">ATR(3) %</span>
+            <span class="font-bold text-slate-600 font-sans tabular-nums">
+                {% if row.context.get('atr_pct') is not none %}
+                {{ row.context.get('atr_pct') | de_number(2) }}&nbsp;%
+                {% else %}-{% endif %}
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">ROC(10)</span>
+            <span class="font-bold text-slate-600 font-sans tabular-nums">
+                {% if row.context.get('roc_10') is not none %}
+                {{ row.context.get('roc_10') | de_number(2) }}&nbsp;%
+                {% else %}-{% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Action Button (Chart) -->
+{{ cards.tradingview_btn(row.symbol) }}
+{% endcall %}
+{% endblock %}
+
+{% block footer_note %}
+<div class="mt-4 px-2 py-2 text-xs text-slate-600 font-medium tracking-wide text-center">
+    Check auf neue Signale erfolgt täglich nach US-Marktschluss (16:15 EST).
+</div>
+{% endblock %}
