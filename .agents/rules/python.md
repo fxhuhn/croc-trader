@@ -33,7 +33,7 @@ Every code decision must be evaluated against these four quality dimensions, in 
 
 ## 1. General Philosophy
 
-- **Modern Python:** Use Python 3.12+ syntax exclusively.
+- **Modern Python:** Use Python 3.13+ syntax exclusively.
 - **Synchronous Design:** The system runs as a synchronous EOD batch pipeline. Do NOT use `asyncio` or `async def`.
 - **Standard Library First:** Minimize 3rd party dependencies. Do NOT use `pydantic`.
 - **Functional Core, Imperative Shell:** See Section 8 for detailed rules.

@@ -1,11 +1,11 @@
 # 🐊 Croc-Trader
 
-[![Python Version](https://img.shields.io/badge/python-3.12%2B-blue.svg)](https://www.python.org/downloads/)
+[![Python Version](https://img.shields.io/badge/python-3.13%2B-blue.svg)](https://www.python.org/downloads/)
 [![Code Style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-An advanced End-of-Day (EOD) portfolio management, strategy screening, and trading analysis platform built with Python 3.12+ and Flask. 
+An advanced End-of-Day (EOD) portfolio management, strategy screening, and trading analysis platform built with Python 3.13+ and Flask. 
 
 Croc-Trader orchestrates background market data syncing, strategy evaluation, position sizing, and broker execution monitoring, backed by a robust SQLite data storage layer.
 
@@ -128,11 +128,11 @@ Static definitions containing market schedule specifications:
 
 ### 1. Local Development (Manual Setup)
 
-Create and configure a clean virtual environment using Python 3.12+:
+Create and configure a clean virtual environment using Python 3.13+:
 
 ```bash
 # Create and activate virtual environment
-python3.12 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate
 
 # Install dependencies (development and execution)

@@ -1,7 +1,7 @@
 """
 Trading Signal Analysis System - Optimized Version
 
-Modern Python 3.12 implementation with:
+Modern Python 3.13+ implementation with:
 - Full type annotations
 - Small, testable functions
 - Immutable operations

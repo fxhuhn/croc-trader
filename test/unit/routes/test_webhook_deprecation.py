@@ -18,13 +18,13 @@ from app.services.trade_manager.strategies.hold_target import HoldTargetStrategy
 
 
 @pytest.fixture
-def mock_repo_class() -> Generator[MagicMock, None, None]:
+def mock_repo_class() -> Generator[MagicMock]:
     with patch("app.routes.api.SignalRepository") as mock:
         yield mock
 
 
 @pytest.fixture
-def mock_db_session_class() -> Generator[MagicMock, None, None]:
+def mock_db_session_class() -> Generator[MagicMock]:
     with patch("app.routes.api.DatabaseSession") as mock:
         yield mock
 
@@ -32,7 +32,7 @@ def mock_db_session_class() -> Generator[MagicMock, None, None]:
 @pytest.fixture
 def app_instance(
     mock_repo_class: MagicMock, mock_db_session_class: MagicMock
-) -> Generator[Flask, None, None]:
+) -> Generator[Flask]:
     with patch("app.tools.symbol_lists.ExchangeSymbol._refresh_data"):
         app = create_app()
         app.config.update({"TESTING": True})

@@ -22,7 +22,7 @@ from app.types import TradeStatus
 
 
 @pytest.fixture
-def test_application() -> Generator[Flask, None, None]:
+def test_application() -> Generator[Flask]:
     """Provides a configured Flask application instance for testing views."""
     from app import create_app
 
@@ -45,7 +45,7 @@ def test_client(test_application: Flask) -> FlaskClient:
 @pytest.fixture
 def captured_templates(
     test_application: Flask,
-) -> Generator[list[tuple[Any, dict[str, Any]]], None, None]:
+) -> Generator[list[tuple[Any, dict[str, Any]]]]:
     """Captures all rendered Jinja2 templates and their passed contexts."""
     recorded: list[tuple[Any, dict[str, Any]]] = []
 

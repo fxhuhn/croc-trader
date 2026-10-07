@@ -21,9 +21,7 @@ from scripts.tools.sqlite_mcp_server import (
 
 
 @pytest.fixture
-def mock_db(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Generator[Path, None, None]:
+def mock_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[Path]:
     """Creates a temporary SQLite test database and patches the DATABASE_MAP."""
     db_file = tmp_path / "mock_test.db"
     conn = sqlite3.connect(db_file)

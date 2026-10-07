@@ -10,13 +10,13 @@ from app import create_app
 
 
 @pytest.fixture
-def mock_repo_class() -> Generator[MagicMock, None, None]:
+def mock_repo_class() -> Generator[MagicMock]:
     with patch("app.routes.api.SignalRepository") as mock:
         yield mock
 
 
 @pytest.fixture
-def mock_db_session_class() -> Generator[MagicMock, None, None]:
+def mock_db_session_class() -> Generator[MagicMock]:
     with patch("app.routes.api.DatabaseSession") as mock:
         yield mock
 

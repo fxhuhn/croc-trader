@@ -30,7 +30,7 @@ class DatabaseSession:
         self.read_only = read_only
 
     @contextmanager
-    def connect(self) -> Generator[sqlite3.Connection, None, None]:
+    def connect(self) -> Generator[sqlite3.Connection]:
         """Yields a configured SQLite connection with automatic commit/rollback."""
         if self.read_only:
             abs_path = Path(self.db_path).resolve().as_posix()

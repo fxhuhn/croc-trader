@@ -15,7 +15,7 @@ from app.routes.security import _is_ip_whitelisted
 
 
 @pytest.fixture
-def test_app() -> Generator[Flask, None, None]:
+def test_app() -> Generator[Flask]:
     """Creates a Flask test application context with registered audited blueprints."""
     template_dir = str(Path(__file__).parents[3] / "app" / "templates")
     app = Flask(__name__, template_folder=template_dir)

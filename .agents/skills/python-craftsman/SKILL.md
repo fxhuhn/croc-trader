@@ -1,6 +1,6 @@
 ---
 name: python-craftsman
-description: "Implementation skill for synchronous Python 3.12+ End-of-Day trading systems, enforcing repository rules, minimal task scope, strict typing, clear naming, controlled complexity, and mandatory verification gates."
+description: "Implementation skill for synchronous Python 3.13+ End-of-Day trading systems, enforcing repository rules, minimal task scope, strict typing, clear naming, controlled complexity, and mandatory verification gates."
 ---
 
 # Python Craftsman Skill

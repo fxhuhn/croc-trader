@@ -1,5 +1,5 @@
 # ── Stage 1: Builder ──
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.13-slim-bookworm AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
  && pip uninstall -y pip setuptools wheel
 
 # ── Stage 2: Runtime ──
-FROM python:3.12-slim-bookworm
+FROM python:3.13-slim-bookworm
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -34,10 +34,10 @@ RUN apt-get update && apt-get dist-upgrade -y \
     && apt-get purge -y --auto-remove \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* \
-    && rm -rf /usr/local/lib/python3.12/site-packages/pip* \
-              /usr/local/lib/python3.12/site-packages/setuptools* \
-              /usr/local/lib/python3.12/site-packages/wheel* \
-              /usr/local/lib/python3.12/site-packages/pkg_resources \
+    && rm -rf /usr/local/lib/python3.13/site-packages/pip* \
+              /usr/local/lib/python3.13/site-packages/setuptools* \
+              /usr/local/lib/python3.13/site-packages/wheel* \
+              /usr/local/lib/python3.13/site-packages/pkg_resources \
               /usr/local/bin/pip*
 
 # Venv aus Builder kopieren

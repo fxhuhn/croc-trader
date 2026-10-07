@@ -38,7 +38,7 @@ TARGET_SMOKE_ROUTES: tuple[str, ...] = (
 
 
 @pytest.fixture(name="smoke_app")
-def fixture_smoke_app() -> Generator[Flask, None, None]:
+def fixture_smoke_app() -> Generator[Flask]:
     """Provides an isolated Flask application instance configured for smoke testing."""
     application_instance = create_app()
     application_instance.config["TESTING"] = True

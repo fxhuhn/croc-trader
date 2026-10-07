@@ -74,7 +74,7 @@ graph TD
 
 ## 3. Global Invariants
 
-- **Execution Environment**: Strictly target **Python 3.12+**.
+- **Execution Environment**: Strictly target **Python 3.13+**.
 - **Synchronous End-of-Day Execution:** Application and batch processing are
   synchronous. Do not introduce `asyncio`, `async def`, asynchronous framework
   layers, or concurrent order-processing flows. External libraries may contain
