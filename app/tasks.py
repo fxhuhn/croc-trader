@@ -14,6 +14,7 @@ from .extensions import cache
 from .services.market.quality import MarketQualityService
 from .services.market.updater import MarketDataUpdater
 from .services.telegram import TelegramBot
+from .tools.symbol_lists import ExchangeSymbol, IndexDiff, SymbolRefreshResult
 
 logger = logging.getLogger(__name__)
 
@@ -377,6 +378,86 @@ def _clear_and_prewarm_cache(app: Flask) -> None:
         logger.info("🧹 Clearing cache for registered routes...")
         cache.clear()
         _prewarm_target_routes(app)
+
+
+def format_index_diff_message(diffs: dict[str, IndexDiff]) -> str:
+    """Formats detected symbol changes into a readable Telegram markdown message.
+
+    Args:
+        diffs: Mapping from index key to IndexDiff containing added and removed symbols.
+
+    Returns:
+        Formatted multi-line markdown message.
+    """
+    lines = ["📊 *Index-Zusammensetzung aktualisiert:*"]
+    for index_key, diff in sorted(diffs.items()):
+        added = diff.get("added", [])
+        removed = diff.get("removed", [])
+        if not added and not removed:
+            continue
+        parts: list[str] = []
+        if added:
+            parts.append(f"Neu: +{', '.join(added)}")
+        if removed:
+            parts.append(f"Entfernt: -{', '.join(removed)}")
+        lines.append(f"• *{index_key}*: {' | '.join(parts)}")
+    return "\n".join(lines)
+
+
+def run_symbol_universe_update(
+    app: Flask | None = None,
+    *,
+    force: bool = False,
+    telegram_bot: TelegramBot | None = None,
+) -> SymbolRefreshResult:
+    """Refreshes market index constituents and notifies via Telegram on changes.
+
+    Args:
+        app: Optional Flask application instance.
+        force: If True, bypasses Last-Modified check and forces full refresh.
+        telegram_bot: Optional TelegramBot instance for sending diff notifications.
+
+    Returns:
+        SymbolRefreshResult: Detailed outcome including added and removed symbols.
+    """
+    logger.info(
+        "⏰ Scheduler/Task: Starting index symbol universe check (force=%s)...", force
+    )
+    try:
+        resolved_bot = telegram_bot
+        if resolved_bot is None and app is not None:
+            resolved_bot = app.extensions.get("telegram")
+        if resolved_bot is None:
+            try:
+                if has_app_context():
+                    resolved_bot = current_app.extensions.get("telegram")
+            except Exception:
+                resolved_bot = None
+
+        exchange_symbols = ExchangeSymbol()
+        result = exchange_symbols.refresh_if_modified(force=force)
+
+        if result.get("changed") and result.get("diffs"):
+            message = format_index_diff_message(result["diffs"])
+            logger.info("Constituent changes detected:\n%s", message)
+            if resolved_bot and getattr(resolved_bot, "enabled", False):
+                try:
+                    resolved_bot.send_message(message)
+                except Exception as telegram_error:
+                    logger.warning(
+                        "Failed to dispatch Telegram index update: %s", telegram_error
+                    )
+
+        return result
+    except Exception as error:
+        logger.error("Symbol universe update failed: %s", error, exc_info=True)
+        return {
+            "status": "error",
+            "changed": False,
+            "diffs": {},
+            "timestamp": datetime.now().isoformat(),
+            "error": str(error),
+        }
 
 
 def _prewarm_target_routes(app: Flask) -> None:

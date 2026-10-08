@@ -213,3 +213,22 @@ def test_market_sync_and_reload(mock_thread_cls: MagicMock, api_app: Flask) -> N
     res_reload = client.post("/api/market/reload?ignore_today=true")
     assert res_reload.status_code == 200
     assert res_reload.get_json()["status"] == "queued"
+
+
+@patch("app.routes.api.require_ip_whitelist", lambda f: f)
+@patch("app.routes.api.run_symbol_universe_update")
+def test_symbols_reload_route(mock_update: MagicMock, api_app: Flask) -> None:
+    client = api_app.test_client()
+    mock_update.return_value = {
+        "status": "success",
+        "changed": True,
+        "diffs": {"sp_500": {"added": ["TWLO"], "removed": [], "total": 503}},
+    }
+
+    res = client.post("/api/symbols/reload?force=true")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "success"
+    assert data["changed"] is True
+    assert data["diffs"]["sp_500"]["added"] == ["TWLO"]
+    mock_update.assert_called_once_with(api_app, force=True)

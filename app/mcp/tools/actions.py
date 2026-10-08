@@ -9,7 +9,7 @@ from mcp.server import MCPServer
 from ...const import STRATEGY_ALIASES, Strategies
 from ...database.session import DatabaseSession
 from ...services.backfill_engine import run_strategy_backfill
-from ...tasks import run_daily_eod_pipeline
+from ...tasks import run_daily_eod_pipeline, run_symbol_universe_update
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +172,23 @@ def trigger_strategy_backfill(
         return {"status": "error", "message": str(error)}
 
 
+def trigger_symbol_universe_refresh(
+    force: bool = False,
+) -> dict[str, Any]:
+    """Refreshes market index constituents (S&P 500, NASDAQ-100, Dow Jones, etc.) from Wikipedia.
+
+    Args:
+        force: If True, bypasses Last-Modified check and forces full table re-parsing.
+    """
+    try:
+        app = cast(Any, current_app)._get_current_object()
+        result = run_symbol_universe_update(app, force=force)
+        return cast(dict[str, Any], result)
+    except Exception as error:
+        logger.exception("Error refreshing symbol universe via MCP: %s", error)
+        return {"status": "error", "message": str(error)}
+
+
 def register(server: MCPServer) -> None:
     """Registers execution and workflow trigger tools on the MCP server."""
     server.tool(
@@ -213,3 +230,11 @@ def register(server: MCPServer) -> None:
             "simulated trades to signals.db."
         ),
     )(trigger_strategy_backfill)
+
+    server.tool(
+        name="trigger_symbol_universe_refresh",
+        description=(
+            "Refreshes market index constituents (S&P 500, S&P 100, NASDAQ-100, Dow Jones 30, Russell 1000) "
+            "from Wikipedia. Detects constituent additions and removals, updates local cache, and alerts via Telegram."
+        ),
+    )(trigger_symbol_universe_refresh)

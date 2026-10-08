@@ -11,6 +11,7 @@ from app.tasks import (
     _enforce_backup_retention,
     _prewarm_target_routes,
     _warm_single_route,
+    format_index_diff_message,
     run_cache_prewarm,
     run_daily_eod_pipeline,
     run_daily_strategy_check,
@@ -18,6 +19,7 @@ from app.tasks import (
     run_db_maintenance,
     run_market_data_update,
     run_order_generation,
+    run_symbol_universe_update,
 )
 
 
@@ -319,3 +321,64 @@ def test_run_daily_eod_pipeline_handles_errors() -> None:
     assert "error: TM failed" in summary["trade_manager"]
     assert "error: Screener failed" in summary["screener"]
     assert "error: Order gen failed" in summary["orders"]
+
+
+def test_format_index_diff_message() -> None:
+    """Verifies that format_index_diff_message creates proper Telegram markdown."""
+    diffs = {
+        "sp_500": {"added": ["TWLO"], "removed": ["XYZ"], "total": 503},
+        "dow_30": {"added": [], "removed": [], "total": 30},
+    }
+    message = format_index_diff_message(diffs)
+    assert "Index-Zusammensetzung aktualisiert" in message
+    assert "• *sp_500*: Neu: +TWLO | Entfernt: -XYZ" in message
+    assert "dow_30" not in message
+
+
+def test_run_symbol_universe_update_changes_sent_to_telegram() -> None:
+    """Verifies that detected changes are sent to Telegram."""
+    app = Flask(__name__)
+    mock_bot = MagicMock()
+    mock_bot.enabled = True
+    app.extensions["telegram"] = mock_bot
+
+    mock_result = {
+        "status": "success",
+        "changed": True,
+        "diffs": {"sp_500": {"added": ["TWLO"], "removed": [], "total": 503}},
+        "timestamp": "2026-10-08T00:00:00Z",
+        "error": None,
+    }
+
+    with patch("app.tasks.ExchangeSymbol") as mock_es_class:
+        mock_es_class.return_value.refresh_if_modified.return_value = mock_result
+        res = run_symbol_universe_update(app, force=True)
+
+    assert res["status"] == "success"
+    assert res["changed"] is True
+    mock_bot.send_message.assert_called_once()
+    assert "+TWLO" in mock_bot.send_message.call_args[0][0]
+
+
+def test_run_symbol_universe_update_no_change_skips_telegram() -> None:
+    """Verifies that no Telegram message is sent when index is unchanged."""
+    app = Flask(__name__)
+    mock_bot = MagicMock()
+    mock_bot.enabled = True
+    app.extensions["telegram"] = mock_bot
+
+    mock_result = {
+        "status": "no_change",
+        "changed": False,
+        "diffs": {},
+        "timestamp": "2026-10-08T00:00:00Z",
+        "error": None,
+    }
+
+    with patch("app.tasks.ExchangeSymbol") as mock_es_class:
+        mock_es_class.return_value.refresh_if_modified.return_value = mock_result
+        res = run_symbol_universe_update(app, force=False)
+
+    assert res["status"] == "no_change"
+    assert res["changed"] is False
+    mock_bot.send_message.assert_not_called()

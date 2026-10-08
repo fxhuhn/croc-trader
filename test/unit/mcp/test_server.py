@@ -43,6 +43,7 @@ def test_mcp_server_tools_registered() -> None:
         "trigger_order_generation",
         "trigger_eod_pipeline",
         "trigger_strategy_backfill",
+        "trigger_symbol_universe_refresh",
     ]
 
     for expected in expected_tools:

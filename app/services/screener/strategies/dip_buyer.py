@@ -147,12 +147,11 @@ class DipBuyerStrategy(BaseStrategy[int]):
         self._initialize_symbol_sets()
 
     def _initialize_symbol_sets(self) -> None:
-        """Initializes index membership sets if not already loaded."""
-        if not self._dow_set:
-            exchange_symbols = ExchangeSymbol()
-            self._dow_set = frozenset(exchange_symbols.dow_30)
-            self._sp500_set = frozenset(exchange_symbols.sp_500)
-            self._ndx_set = frozenset(exchange_symbols.nasdaq_100)
+        """Initializes index membership sets from ExchangeSymbol singleton."""
+        exchange_symbols = ExchangeSymbol()
+        self._dow_set = frozenset(exchange_symbols.dow_30)
+        self._sp500_set = frozenset(exchange_symbols.sp_500)
+        self._ndx_set = frozenset(exchange_symbols.nasdaq_100)
 
     @override
     def run(

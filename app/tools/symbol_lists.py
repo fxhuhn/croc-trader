@@ -7,10 +7,12 @@ NASDAQ-100, Dow Jones 30, and Russell 1000 indices.
 import json
 import logging
 import threading
+import urllib.request
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Literal, TypedDict
 
 import pandas as pd
 
@@ -86,6 +88,77 @@ DEFAULT_SPECIAL_SYMBOLS: tuple[str, ...] = (
 
 
 # --- Functional Core (Pure Transformations) ---
+
+
+class IndexDiff(TypedDict):
+    """Constituent differences for an index between iterations."""
+
+    added: list[str]
+    removed: list[str]
+    total: int
+
+
+class SymbolRefreshResult(TypedDict):
+    """Structured result returned by symbol refresh operations."""
+
+    status: Literal["success", "no_change", "error"]
+    changed: bool
+    diffs: dict[str, IndexDiff]
+    timestamp: str
+    error: str | None
+
+
+def calculate_index_diff(
+    old_symbols: Sequence[str],
+    new_symbols: Sequence[str],
+) -> IndexDiff:
+    """Calculates added and removed symbols between two versions of an index list.
+
+    Args:
+        old_symbols: Previously known sequence of tickers.
+        new_symbols: Newly fetched sequence of tickers.
+
+    Returns:
+        IndexDiff: Added and removed symbols sorted, with total count.
+    """
+    old_set = set(old_symbols)
+    new_set = set(new_symbols)
+    return {
+        "added": sorted(new_set - old_set),
+        "removed": sorted(old_set - new_set),
+        "total": len(new_set),
+    }
+
+
+def fetch_url_metadata(url: str, timeout: float = 5.0) -> dict[str, str]:
+    """Fetches HTTP header metadata (Last-Modified, ETag) via a lightweight HEAD request.
+
+    Args:
+        url: Target HTTP/HTTPS URL.
+        timeout: Request timeout in seconds.
+
+    Returns:
+        dict[str, str]: Dictionary containing 'last_modified' and 'etag' if available.
+    """
+    if not url.startswith(("http://", "https://")):
+        logger.warning("Rejected non-HTTP URL: %s", url)
+        return {"last_modified": "", "etag": ""}
+
+    try:
+        request = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; CrocTrader/1.0)"},
+            method="HEAD",
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310
+            headers = response.headers
+            return {
+                "last_modified": headers.get("Last-Modified", ""),
+                "etag": headers.get("ETag", "").strip('"'),
+            }
+    except Exception as error:
+        logger.debug("HEAD request failed for %s: %s", url, error)
+        return {"last_modified": "", "etag": ""}
 
 
 def clean_symbol(raw_symbol: str) -> str | None:
@@ -178,6 +251,7 @@ class ExchangeSymbol:
             self._nasdaq_100: list[str] = []
             self._dow_30: list[str] = []
             self._russell_1000: list[str] = []
+            self._metadata: dict[str, dict[str, str]] = {}
             self._special_symbols: list[str] = list(DEFAULT_SPECIAL_SYMBOLS)
 
             # 1. Try to load from cache immediately
@@ -196,6 +270,11 @@ class ExchangeSymbol:
     def cache_file(self) -> Path:
         """Resolves active cache file path."""
         return self._cache_file or CACHE_FILE
+
+    @property
+    def metadata(self) -> dict[str, dict[str, str]]:
+        """Returns a copy of the index metadata mapping."""
+        return {key: dict(val) for key, val in self._metadata.items()}
 
     def _load_from_cache(self) -> None:
         """Loads symbol lists from local JSON cache if available."""
@@ -217,6 +296,16 @@ class ExchangeSymbol:
             self._nasdaq_100 = list(cached_data.get("nasdaq_100", []))
             self._dow_30 = list(cached_data.get("dow_30", []))
             self._russell_1000 = list(cached_data.get("russell_1000", []))
+            raw_metadata = cached_data.get("metadata", {})
+            self._metadata = (
+                {
+                    str(k): dict(v)
+                    for k, v in raw_metadata.items()
+                    if isinstance(v, dict)
+                }
+                if isinstance(raw_metadata, dict)
+                else {}
+            )
 
             logger.debug(
                 "✓ Loaded symbols from cache: SPX=%d, OEX=%d, NDX=%d, DOW=%d, RUI=%d",
@@ -242,6 +331,7 @@ class ExchangeSymbol:
                 "nasdaq_100": self._nasdaq_100,
                 "dow_30": self._dow_30,
                 "russell_1000": self._russell_1000,
+                "metadata": self._metadata,
             }
             temporary_file = target_cache_file.with_suffix(".tmp")
             with temporary_file.open("w", encoding="utf-8") as file_handle:
@@ -253,45 +343,106 @@ class ExchangeSymbol:
         except Exception as error:
             logger.error("Unexpected error saving symbol cache: %s", error)
 
-    def _refresh_data(self) -> None:
-        """Background task to fetch fresh data from Wikipedia."""
-        logger.debug("Starting background symbol refresh...")
+    def refresh_if_modified(self, *, force: bool = False) -> SymbolRefreshResult:
+        """Fetches and updates index symbol lists if Wikipedia pages were modified.
+
+        Performs a lightweight HEAD check on Wikipedia pages. If the Last-Modified header
+        is identical to the saved metadata, scraping is skipped unless force=True.
+
+        Args:
+            force: When True, bypasses Last-Modified check and forces table re-parsing.
+
+        Returns:
+            SymbolRefreshResult: Outcome status, boolean changed indicator, and symbol diffs.
+        """
+        logger.debug("Starting symbol refresh (force=%s)...", force)
+        timestamp = datetime.now(UTC).isoformat()
+        diffs: dict[str, IndexDiff] = {}
+        any_changed = False
 
         try:
-            fetched_results: dict[str, list[str]] = {}
-            for source in DEFAULT_INDEX_SOURCES:
-                symbols = self._fetch_from_wikipedia(
-                    url=list(source.urls),
-                    search_columns=list(source.search_columns),
-                    name=source.name,
-                )
-                if symbols:
-                    fetched_results[source.cache_key] = symbols
+            with ExchangeSymbol._lock:
+                for source in DEFAULT_INDEX_SOURCES:
+                    primary_url = source.urls[0]
+                    url_meta = (
+                        self._fetch_url_metadata(primary_url) if not force else {}
+                    )
+                    cached_meta = self._metadata.get(source.cache_key, {})
 
-            if "sp_500" in fetched_results:
-                self._sp_500 = fetched_results["sp_500"]
-            if "sp_100" in fetched_results:
-                self._sp_100 = fetched_results["sp_100"]
-            if "nasdaq_100" in fetched_results:
-                self._nasdaq_100 = fetched_results["nasdaq_100"]
-            if "dow_30" in fetched_results:
-                self._dow_30 = fetched_results["dow_30"]
-            if "russell_1000" in fetched_results:
-                self._russell_1000 = fetched_results["russell_1000"]
+                    # If not forced and Last-Modified matches cached value, skip parsing
+                    if (
+                        not force
+                        and url_meta.get("last_modified")
+                        and url_meta.get("last_modified")
+                        == cached_meta.get("last_modified")
+                    ):
+                        logger.debug(
+                            "Index %s is unchanged (Last-Modified match).", source.name
+                        )
+                        continue
 
-            logger.debug(
-                "✓ Symbol refresh complete: S&P 500=%d, S&P 100=%d, NASDAQ-100=%d, Dow 30=%d, Russell 1000=%d",
-                len(self._sp_500),
-                len(self._sp_100),
-                len(self._nasdaq_100),
-                len(self._dow_30),
-                len(self._russell_1000),
+                    symbols = self._fetch_from_wikipedia(
+                        url=list(source.urls),
+                        search_columns=list(source.search_columns),
+                        name=source.name,
+                    )
+
+                    if not symbols:
+                        logger.warning(
+                            "Skipping update for %s: No symbols parsed (preserving existing).",
+                            source.name,
+                        )
+                        continue
+
+                    current_symbols = getattr(self, f"_{source.cache_key}", [])
+                    diff = calculate_index_diff(current_symbols, symbols)
+
+                    if diff["added"] or diff["removed"]:
+                        any_changed = True
+                        diffs[source.cache_key] = diff
+                        setattr(self, f"_{source.cache_key}", symbols)
+                        logger.info(
+                            "Index %s updated: +%d added, -%d removed (Total: %d).",
+                            source.name,
+                            len(diff["added"]),
+                            len(diff["removed"]),
+                            diff["total"],
+                        )
+
+                    if url_meta.get("last_modified") or url_meta.get("etag"):
+                        self._metadata[source.cache_key] = url_meta
+
+                if any_changed or force:
+                    self._save_to_cache()
+
+            status: Literal["success", "no_change"] = (
+                "success" if any_changed else "no_change"
             )
-
-            self._save_to_cache()
+            return {
+                "status": status,
+                "changed": any_changed,
+                "diffs": diffs,
+                "timestamp": timestamp,
+                "error": None,
+            }
 
         except Exception as error:
-            logger.error("Background symbol refresh failed: %s", error)
+            logger.error("Symbol refresh failed: %s", error, exc_info=True)
+            return {
+                "status": "error",
+                "changed": False,
+                "diffs": {},
+                "timestamp": timestamp,
+                "error": str(error),
+            }
+
+    def _fetch_url_metadata(self, url: str, timeout: float = 5.0) -> dict[str, str]:
+        """Fetches HTTP header metadata via HEAD request."""
+        return fetch_url_metadata(url, timeout=timeout)
+
+    def _refresh_data(self, *, force: bool = True) -> SymbolRefreshResult:
+        """Legacy refresh method; defaults to force=True for backward compatibility with existing tests."""
+        return self.refresh_if_modified(force=force)
 
     def _fetch_from_wikipedia(
         self,

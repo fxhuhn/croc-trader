@@ -33,6 +33,7 @@ from ..tasks import (
     run_ignored_symbols_check,
     run_market_data_update,
     run_order_generation,
+    run_symbol_universe_update,
 )
 from ..tools.market_holidays import MarketHolidayChecker
 from ..tools.symbol_filter import SymbolFilter
@@ -193,6 +194,21 @@ def configure_scheduler(app: "Flask", config: "ConfigManager") -> None:
     """Configures the APScheduler background jobs."""
     scheduler = BackgroundScheduler()
     db_stocks = Path(config.get_db_path("stocks"))
+
+    # --- JOB 0: Daily Index Universe Check (04:30 Berlin) ---
+    # Runs BEFORE market data update (05:15 Berlin) to capture index rebalancings early
+    scheduler.add_job(
+        func=run_symbol_universe_update,
+        args=[app],
+        trigger=CronTrigger(
+            day_of_week="mon-sat",
+            hour=4,
+            minute=30,
+            timezone=pytz.timezone("Europe/Berlin"),
+        ),
+        id="symbol_universe_update",
+        replace_existing=True,
+    )
 
     # --- JOB 1: Market Data Update (Twice daily) ---
     # a) 17:00 NY Time (EOD US)

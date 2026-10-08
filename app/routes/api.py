@@ -14,7 +14,7 @@ from ..database.session import DatabaseSession
 from ..services.backfill_engine import run_strategy_backfill
 from ..services.market.quality import MarketQualityService
 from ..services.market.updater import MarketDataUpdater
-from ..tasks import run_daily_eod_pipeline
+from ..tasks import run_daily_eod_pipeline, run_symbol_universe_update
 from .security import require_ip_whitelist
 from .views.dependencies import cache
 
@@ -746,3 +746,23 @@ def reload_market_data() -> ApiResponse:
 
     Thread(target=_execute_reload_task, daemon=True).start()
     return jsonify({"status": "queued", "message": "Full reload triggered"}), 200
+
+
+@api_blueprint.route("/symbols/reload", methods=["POST"])
+@require_ip_whitelist
+def reload_symbol_universe() -> ApiResponse:
+    """Refreshes equity index constituents from Wikipedia on demand.
+
+    Query parameters:
+        force (bool): When true, bypasses Last-Modified check and forces table re-parsing.
+
+    Returns:
+        ApiResponse: JSON summary of refresh outcome and constituent diffs.
+    """
+    force_reload = _parse_boolean_parameter(
+        request.args.get("force"), default_value=False
+    )
+    app = cast(Any, current_app)._get_current_object()
+    result = run_symbol_universe_update(app, force=force_reload)
+    status_code = 200 if result.get("status") in ("success", "no_change") else 500
+    return jsonify(result), status_code

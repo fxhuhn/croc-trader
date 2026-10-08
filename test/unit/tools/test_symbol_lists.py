@@ -307,3 +307,94 @@ def test_save_to_cache_os_error(tmp_path: object) -> None:
     with patch("pathlib.Path.open", side_effect=OSError("Mock disk error")):
         with patch("app.tools.symbol_lists.CACHE_FILE", test_file):
             es._save_to_cache()
+
+
+def test_calculate_index_diff() -> None:
+    """Verifies pure calculation of additions and removals between symbol lists."""
+    from app.tools.symbol_lists import calculate_index_diff
+
+    old_symbols = ["AAPL", "MSFT", "GOOGL"]
+    new_symbols = ["AAPL", "NVDA", "TWLO"]
+
+    diff = calculate_index_diff(old_symbols, new_symbols)
+    assert diff["added"] == ["NVDA", "TWLO"]
+    assert diff["removed"] == ["GOOGL", "MSFT"]
+    assert diff["total"] == 3
+
+
+def test_fetch_url_metadata_success() -> None:
+    """Verifies parsing of HTTP HEAD headers in fetch_url_metadata."""
+    from unittest.mock import MagicMock
+
+    from app.tools.symbol_lists import fetch_url_metadata
+
+    mock_resp = MagicMock()
+    mock_resp.headers = {
+        "Last-Modified": "Wed, 07 Oct 2026 12:00:00 GMT",
+        "ETag": '"abc-123"',
+    }
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        meta = fetch_url_metadata("https://mock.example.com")
+        assert meta["last_modified"] == "Wed, 07 Oct 2026 12:00:00 GMT"
+        assert meta["etag"] == "abc-123"
+
+
+def test_fetch_url_metadata_network_error() -> None:
+    """Verifies graceful handling of network errors during fetch_url_metadata."""
+    from app.tools.symbol_lists import fetch_url_metadata
+
+    with patch("urllib.request.urlopen", side_effect=OSError("DNS lookup failed")):
+        meta = fetch_url_metadata("https://mock.example.com")
+        assert meta["last_modified"] == ""
+        assert meta["etag"] == ""
+
+
+def test_refresh_if_modified_skips_when_unchanged() -> None:
+    """Verifies that refresh_if_modified skips parsing when Last-Modified matches."""
+    es = ExchangeSymbol()
+    es._metadata = {
+        "sp_500": {"last_modified": "2026-10-07", "etag": ""},
+        "sp_100": {"last_modified": "2026-10-07", "etag": ""},
+        "nasdaq_100": {"last_modified": "2026-10-07", "etag": ""},
+        "dow_30": {"last_modified": "2026-10-07", "etag": ""},
+        "russell_1000": {"last_modified": "2026-10-07", "etag": ""},
+    }
+
+    mock_meta = {"last_modified": "2026-10-07", "etag": ""}
+    with (
+        patch.object(es, "_fetch_url_metadata", return_value=mock_meta),
+        patch.object(es, "_fetch_from_wikipedia") as mock_fetch,
+    ):
+        result = es.refresh_if_modified(force=False)
+        assert result["status"] == "no_change"
+        assert result["changed"] is False
+        assert mock_fetch.call_count == 0
+
+
+def test_refresh_if_modified_detects_additions_and_saves() -> None:
+    """Verifies that changes trigger updates, diff computation, and cache save."""
+    es = ExchangeSymbol()
+    es._sp_500 = ["AAPL", "MSFT"]
+    es._metadata = {"sp_500": {"last_modified": "old_stamp", "etag": ""}}
+
+    def mock_fetch(url: object, search_columns: object, name: str) -> list[str]:
+        if name == "S&P 500":
+            return ["AAPL", "MSFT", "TWLO"]
+        return ["DUMMY"]
+
+    mock_new_meta = {"last_modified": "new_stamp", "etag": "new_etag"}
+
+    with (
+        patch.object(es, "_fetch_url_metadata", return_value=mock_new_meta),
+        patch.object(es, "_fetch_from_wikipedia", side_effect=mock_fetch),
+        patch.object(es, "_save_to_cache") as mock_save,
+    ):
+        result = es.refresh_if_modified(force=False)
+        assert result["status"] == "success"
+        assert result["changed"] is True
+        assert "sp_500" in result["diffs"]
+        assert result["diffs"]["sp_500"]["added"] == ["TWLO"]
+        assert "TWLO" in es.sp_500
+        mock_save.assert_called_once()

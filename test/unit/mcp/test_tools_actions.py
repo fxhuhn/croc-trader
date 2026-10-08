@@ -11,6 +11,7 @@ from app.mcp.tools.actions import (
     trigger_screener,
     trigger_single_symbol_debug,
     trigger_strategy_backfill,
+    trigger_symbol_universe_refresh,
 )
 
 
@@ -97,3 +98,22 @@ def test_trigger_strategy_backfill(
         )
         assert res["status"] == "success"
         assert res["result"]["win_rate"] == 0.65
+
+
+@patch("app.mcp.tools.actions.run_symbol_universe_update")
+def test_trigger_symbol_universe_refresh(
+    mock_update: MagicMock, actions_app: Flask
+) -> None:
+    """Verifies trigger_symbol_universe_refresh invokes run_symbol_universe_update."""
+    mock_update.return_value = {
+        "status": "success",
+        "changed": True,
+        "diffs": {"sp_500": {"added": ["TWLO"], "removed": [], "total": 503}},
+    }
+
+    with actions_app.app_context():
+        res = trigger_symbol_universe_refresh(force=True)
+        assert res["status"] == "success"
+        assert res["changed"] is True
+        assert res["diffs"]["sp_500"]["added"] == ["TWLO"]
+        mock_update.assert_called_once_with(actions_app, force=True)
