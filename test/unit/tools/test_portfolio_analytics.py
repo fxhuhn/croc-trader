@@ -6,6 +6,8 @@ import pytest
 from app.const import Strategies
 from app.tools.portfolio_analytics import (
     AllocationRecommendationContext,
+    _calculate_concurrency_percentiles,
+    _collect_trade_events,
     apply_depot_and_ev_allocations,
     calculate_active_months,
     calculate_allocation_recommendation,
@@ -182,14 +184,17 @@ def test_calculate_mean_variance_dashboard_data(
 
 
 def test_calculate_concurrent_exposure(sample_trade_dataframe: pd.DataFrame) -> None:
-    max_c, p95 = calculate_concurrent_exposure(pd.DataFrame(), [])
+    max_c, p95, p90 = calculate_concurrent_exposure(pd.DataFrame(), [])
     assert max_c == 0
     assert p95 == 0
+    assert p90 == 0
 
     active = [{"entry_date": "2026-01-12"}]
-    max_c, p95 = calculate_concurrent_exposure(sample_trade_dataframe, active)
+    max_c, p95, p90 = calculate_concurrent_exposure(sample_trade_dataframe, active)
     assert max_c >= 1
     assert p95 >= 0
+    assert p90 >= 0
+    assert p90 <= p95 <= max_c
 
 
 def test_calculate_monthly_matrix_data(
@@ -240,7 +245,9 @@ def test_calculate_allocation_recommendation_standard(
     assert payload["reference_capital"] == 100_000.0
     assert len(payload["rows"]) == len(strategy_groups)
     assert payload["total_slots"] == sum(r["slots"] for r in payload["rows"])
+    assert payload["total_slots_p90"] == sum(r["slots_p90"] for r in payload["rows"])
     assert payload["satellite_silo_slots"] >= 1
+    assert payload["satellite_silo_slots_p90"] >= 1
     assert payload["satellite_global_slots"] >= 1
     assert payload["satellite_budget_per_trade"] > 0.0
     assert payload["global_slots"] == payload["satellite_global_slots"]
@@ -249,6 +256,7 @@ def test_calculate_allocation_recommendation_standard(
     for row in payload["rows"]:
         assert row["name"] in strategy_groups
         assert row["slots"] >= 1
+        assert row["slots_p90"] >= 1
         assert 0.0 <= row["share_pct"] <= 100.0
         assert row["budget_per_trade_dollar"] >= 0.0
 
@@ -706,3 +714,99 @@ def test_calculate_rolling_3m_metrics_empty_and_valid() -> None:
     )
     assert res_strat["return_pct"] == pytest.approx(4.5)
     assert res_strat["trades_count"] == 2
+
+
+def test_concurrency_percentiles_uses_ceil() -> None:
+    """Verifies that _calculate_concurrency_percentiles applies conservative ceil."""
+    # 20 business days: 19 days with 5 open trades, 1 day with 6 open trades
+    # np.percentile([5]*19 + [6], 95) = 5.05
+    # round(5.05) would be 5, but ceil(5.05) is 6!
+    events: list[tuple[pd.Timestamp, int]] = []
+    business_days = pd.bdate_range("2026-01-05", periods=20)
+    for i, day in enumerate(business_days):
+        # 5 entries in the morning
+        events.append((day, 5))
+        if i == 19:
+            # 1 extra trade on the 20th business day
+            events.append((day, 1))
+            events.append((day + pd.Timedelta(hours=1), -6))
+        else:
+            events.append((day + pd.Timedelta(hours=1), -5))
+
+    p95, p90 = _calculate_concurrency_percentiles(events)
+    assert p95 == 6
+    assert p90 == 5
+
+
+def test_collect_trade_events_ignores_null_entry_date() -> None:
+    """Verifies that trades without entry_date never produce orphaned exit events."""
+    df = pd.DataFrame(
+        [
+            {
+                "symbol": "TSLA",
+                "entry_date": None,
+                "exit_date": "2026-01-05",
+                "exit_reason": "EXPIRED",
+            },
+            {
+                "symbol": "NVDA",
+                "entry_date": "2026-01-05",
+                "exit_date": "2026-01-10",
+                "exit_reason": "TIME_STOP",
+            },
+        ]
+    )
+    events = _collect_trade_events(df, [])
+    # Only NVDA should produce events: 1 entry (+1) and 1 exit (-1)
+    assert len(events) == 2
+    assert events[0][1] == 1
+    assert events[1][1] == -1
+
+
+def test_calculate_allocation_recommendation_total_global_pool() -> None:
+    """Verifies that calculate_allocation_recommendation includes total global pool metrics."""
+    trade_df = pd.DataFrame(
+        [
+            {
+                "strategy": "ndx_momentum",
+                "entry_date": "2026-01-01",
+                "exit_date": "2026-01-15",
+                "realized_pnl": 500.0,
+                "entry_price": 100.0,
+                "initial_size": 10,
+            },
+            {
+                "strategy": "dip_buyer",
+                "entry_date": "2026-01-16",
+                "exit_date": "2026-01-30",
+                "realized_pnl": 200.0,
+                "entry_price": 50.0,
+                "initial_size": 10,
+            },
+        ]
+    )
+    groups = {
+        "NDX Momentum": ["ndx_momentum"],
+        "Dip Buyer": ["dip_buyer"],
+    }
+    context = AllocationRecommendationContext(
+        model_key="standard",
+        model_name="Standard",
+        ytd_return_pct=15.0,
+        weights={"NDX Momentum": 0.5, "Dip Buyer": 0.5},
+        reference_capital=100_000.0,
+    )
+    payload = calculate_allocation_recommendation(
+        context=context,
+        dataframe=trade_df,
+        active_trades=[],
+        strategy_groups=groups,
+    )
+    assert "total_global_slots" in payload
+    assert "total_global_slots_p90" in payload
+    assert "total_global_max_concurrent" in payload
+    assert "total_efficiency_gain_pct" in payload
+    assert "satellite_global_slots_p90" in payload
+    assert payload["total_global_slots"] >= 1
+    assert payload["total_global_slots_p90"] >= 1
+    assert payload["total_efficiency_gain_pct"] >= 0.0

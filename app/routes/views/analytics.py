@@ -362,7 +362,7 @@ def _compute_strategy_item(
 
     trades_per_month = len(strategy_dataframe) / active_months
     expected_value_per_month = trades_per_month * average_roi
-    max_concurrent, percentile_95 = calculate_concurrent_exposure(
+    max_concurrent, percentile_95, percentile_90 = calculate_concurrent_exposure(
         strategy_dataframe, strategy_active_trades
     )
 
@@ -413,6 +413,7 @@ def _compute_strategy_item(
             "ror": f"{rate_of_return:.2f}%",
             "max_concurrent": max_concurrent,
             "percentile_95": percentile_95,
+            "percentile_90": percentile_90,
             "avg_roi": f"{average_roi * 100.0:.2f}%",
             "sharpe": metrics.calculate_sharpe_ratio(
                 strategy_dataframe["realized_pnl"], initial_capital

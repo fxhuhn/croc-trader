@@ -288,6 +288,9 @@
                         <th class="py-2.5 px-3 text-right w-36">
                             Silo Slots (P95)
                         </th>
+                        <th class="py-2.5 px-3 text-right w-36">
+                            Silo Slots (P90)
+                        </th>
                         <th class="py-2.5 px-4 text-right w-44">
                             Silo Budget / Trade
                         </th>
@@ -316,6 +319,11 @@
                         <td class="py-2 px-3 text-right">
                             <span class="font-sans font-bold text-slate-700 tabular-nums">
                                 {{ row.slots }}
+                            </span>
+                        </td>
+                        <td class="py-2 px-3 text-right">
+                            <span class="font-sans font-bold text-slate-700 tabular-nums">
+                                {{ row.slots_p90 }}
                             </span>
                         </td>
                         <td class="py-2 px-4 text-right">
@@ -348,6 +356,11 @@
                                 {{ allocation_recommendation.core_slots }}
                             </span>
                         </td>
+                        <td class="py-2 px-3 text-right">
+                            <span class="font-sans font-bold text-slate-700 tabular-nums">
+                                {{ allocation_recommendation.core_slots_p90 }}
+                            </span>
+                        </td>
                         <td class="py-2 px-4 text-right font-sans font-bold text-slate-700 tabular-nums">
                             {{ allocation_recommendation.core_budget_per_trade | de_number(0) }}&nbsp;$
                         </td>
@@ -359,15 +372,23 @@
                     <!-- Summary Row 2: Satellite -->
                     <tr class="bg-slate-50/80 border-t border-slate-200/60 hover:bg-slate-100/60 transition-colors">
                         <td class="py-2 px-4 font-bold text-slate-900 text-left">
-                            <span>Σ Satellite-Strategien</span>
+                            <div class="flex items-center gap-2">
+                                <span>Σ Satellite-Strategien</span>
+                                <span class="px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                                    Pool: {{ allocation_recommendation.satellite_global_slots }} Slots (Silo-Summe: {{ allocation_recommendation.satellite_silo_slots }})
+                                </span>
+                            </div>
                         </td>
                         <td class="py-2 px-3 text-right font-sans font-bold text-slate-900 tabular-nums">
                             {{ allocation_recommendation.satellite_share_pct | de_number(2) }}&nbsp;%
                         </td>
                         <td class="py-2 px-3 text-right">
-                            <span class="font-sans font-bold text-slate-700 tabular-nums">
-                                {{ allocation_recommendation.satellite_silo_slots }}
-                            </span>
+                            <div class="font-sans font-bold text-slate-700 tabular-nums">{{ allocation_recommendation.satellite_silo_slots }}</div>
+                            <div class="text-xs font-medium text-indigo-600 tabular-nums">Pool: {{ allocation_recommendation.satellite_global_slots }}</div>
+                        </td>
+                        <td class="py-2 px-3 text-right">
+                            <div class="font-sans font-bold text-slate-700 tabular-nums">{{ allocation_recommendation.satellite_silo_slots_p90 }}</div>
+                            <div class="text-xs font-normal text-slate-500 tabular-nums">Pool: {{ allocation_recommendation.satellite_global_slots_p90 }}</div>
                         </td>
                         <td class="py-2 px-4 text-right font-medium text-slate-400 tabular-nums">
                             —
@@ -380,15 +401,23 @@
                     <!-- Summary Row 3: Total Portfolio -->
                     <tr class="border-t-2 border-slate-300 bg-slate-100/70 hover:bg-slate-200/50 transition-colors">
                         <td class="py-2 px-4 font-bold text-slate-900 text-left">
-                            <span>Σ Gesamt-Portfolio</span>
+                            <div class="flex items-center gap-2">
+                                <span>Σ Gesamt-Portfolio</span>
+                                <span class="px-1.5 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                                    Pool: {{ allocation_recommendation.total_global_slots }} Slots (Silo-Summe: {{ allocation_recommendation.total_slots }})
+                                </span>
+                            </div>
                         </td>
                         <td class="py-2 px-3 text-right font-sans font-bold text-slate-900 tabular-nums">
                             {{ (allocation_recommendation.core_share_pct + allocation_recommendation.satellite_share_pct) | de_number(2) }}&nbsp;%
                         </td>
                         <td class="py-2 px-3 text-right">
-                            <span class="font-sans font-bold text-slate-800 tabular-nums">
-                                {{ allocation_recommendation.total_slots }}
-                            </span>
+                            <div class="font-sans font-bold text-slate-800 tabular-nums">{{ allocation_recommendation.total_slots }}</div>
+                            <div class="text-xs font-medium text-indigo-600 tabular-nums">Pool: {{ allocation_recommendation.total_global_slots }}</div>
+                        </td>
+                        <td class="py-2 px-3 text-right">
+                            <div class="font-sans font-bold text-slate-800 tabular-nums">{{ allocation_recommendation.total_slots_p90 }}</div>
+                            <div class="text-xs font-normal text-slate-500 tabular-nums">Pool: {{ allocation_recommendation.total_global_slots_p90 }}</div>
                         </td>
                         <td class="py-2 px-4 text-right font-medium text-slate-400 tabular-nums">
                             —

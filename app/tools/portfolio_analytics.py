@@ -3,6 +3,7 @@
 Follows the Functional Core pattern: deterministic calculations without side effects or I/O.
 """
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, TypedDict
@@ -43,6 +44,7 @@ class StrategyAllocationRow(TypedDict):
     share_pct: float
     budget_per_trade_dollar: float
     slots: int
+    slots_p90: int
     is_core: bool
 
 
@@ -53,20 +55,28 @@ class AllocationRecommendationPayload(TypedDict):
     model_key: str
     ytd_return_pct: float
     total_slots: int
+    total_slots_p90: int
     reference_capital: float
     rows: list[StrategyAllocationRow]
     core_strategy_name: str
     core_slots: int
+    core_slots_p90: int
     core_capital: float
     core_budget_per_trade: float
     core_share_pct: float
     satellite_capital: float
     satellite_share_pct: float
     satellite_silo_slots: int
+    satellite_silo_slots_p90: int
     satellite_global_slots: int
+    satellite_global_slots_p90: int
     satellite_global_max_concurrent: int
     satellite_budget_per_trade: float
     satellite_efficiency_gain_pct: float
+    total_global_slots: int
+    total_global_slots_p90: int
+    total_global_max_concurrent: int
+    total_efficiency_gain_pct: float
     global_slots: int
     global_max_concurrent: int
     global_budget_per_trade: float
@@ -76,6 +86,7 @@ class AllocationRecommendationPayload(TypedDict):
 MIN_SERIES_LEN: int = 2
 LOW_DATA_THRESHOLD: int = 5
 CALC_EPSILON: float = 1e-6
+SATURDAY_DAY_OF_WEEK: int = 5
 GERMAN_MONTH_NAMES: dict[int, str] = {
     1: "Januar",
     2: "Februar",
@@ -444,11 +455,11 @@ def _compute_mv_strategy_statistics(
 def calculate_concurrent_exposure(
     strat_df: pd.DataFrame,
     strat_active: Sequence[dict[str, Any]],
-) -> tuple[int, int]:
-    """Calculates max concurrent open positions and the 95th percentile utilization."""
+) -> tuple[int, int, int]:
+    """Calculates max concurrent open positions and 95th / 90th percentile utilization."""
     events = _collect_trade_events(strat_df, strat_active)
     if not events:
-        return 0, 0
+        return 0, 0, 0
 
     events.sort(key=lambda x: (x[0], x[1]))
     max_concurrent, current_open = 0, 0
@@ -456,8 +467,8 @@ def calculate_concurrent_exposure(
         current_open += change
         max_concurrent = max(max_concurrent, current_open)
 
-    percentile_95 = _calculate_95th_percentile(events)
-    return max_concurrent, percentile_95
+    percentile_95, percentile_90 = _calculate_concurrency_percentiles(events)
+    return max_concurrent, percentile_95, percentile_90
 
 
 def _collect_trade_events(
@@ -470,8 +481,9 @@ def _collect_trade_events(
         and "entry_date" in strat_df.columns
         and "exit_date" in strat_df.columns
     ):
-        entries = pd.to_datetime(strat_df["entry_date"], errors="coerce").dropna()
-        exits = pd.to_datetime(strat_df["exit_date"], errors="coerce").dropna()
+        valid_trades = strat_df[strat_df["entry_date"].notna()]
+        entries = pd.to_datetime(valid_trades["entry_date"], errors="coerce").dropna()
+        exits = pd.to_datetime(valid_trades["exit_date"], errors="coerce").dropna()
         for date in entries:
             events.append((date, 1))
         for date in exits:
@@ -488,8 +500,10 @@ def _collect_trade_events(
     return events
 
 
-def _calculate_95th_percentile(events: list[tuple[pd.Timestamp, int]]) -> int:
-    """Calculates 95th percentile daily maximum concurrent trades."""
+def _build_daily_concurrency(
+    events: list[tuple[pd.Timestamp, int]],
+) -> list[int]:
+    """Computes peak open positions for each business day in range."""
 
     def normalize_ts(ts: pd.Timestamp) -> pd.Timestamp:
         return (
@@ -503,24 +517,42 @@ def _calculate_95th_percentile(events: list[tuple[pd.Timestamp, int]]) -> int:
 
     sorted_days = sorted(events_by_day.keys())
     if not sorted_days:
-        return 0
+        return []
 
     daily_range = pd.date_range(start=sorted_days[0], end=sorted_days[-1], freq="D")
-    daily_max: dict[pd.Timestamp, int] = {}
+    daily_values: list[int] = []
     current_open = 0
     for day in daily_range:
-        day_events = events_by_day.get(day, [])
+        day_events = events_by_day.get(day)
         if day_events:
             day_events.sort(key=lambda x: (x[0], x[1]))
             max_on_day = current_open
             for _, change in day_events:
                 current_open += change
                 max_on_day = max(max_on_day, current_open)
-            daily_max[day] = max_on_day
-        else:
-            daily_max[day] = current_open
+            if day.dayofweek < SATURDAY_DAY_OF_WEEK:
+                daily_values.append(max_on_day)
+        elif day.dayofweek < SATURDAY_DAY_OF_WEEK:
+            daily_values.append(current_open)
 
-    return int(round(np.percentile(list(daily_max.values()), 95)))
+    return daily_values
+
+
+def _calculate_concurrency_percentiles(
+    events: list[tuple[pd.Timestamp, int]],
+) -> tuple[int, int]:
+    """Calculates 95th and 90th percentile daily maximum concurrent trades."""
+    daily_values = _build_daily_concurrency(events)
+    if not daily_values:
+        return 0, 0
+
+    max_concurrent = max(daily_values)
+    if max_concurrent <= 0:
+        return 0, 0
+
+    percentile_95 = int(math.ceil(float(np.percentile(daily_values, 95))))
+    percentile_90 = int(math.ceil(float(np.percentile(daily_values, 90))))
+    return max(1, percentile_95), max(1, percentile_90)
 
 
 def calculate_monthly_matrix_data(
@@ -710,10 +742,10 @@ def _calculate_satellite_concurrency(
     active_trades: Sequence[dict[str, Any]],
     resolved_strategies: pd.Series,
     satellite_filters: list[Any],
-) -> tuple[float, float]:
-    """Calculates peak and 95th percentile concurrent exposure for satellite strategies."""
+) -> tuple[float, float, float]:
+    """Calculates peak, 95th and 90th percentile concurrent exposure for satellite strategies."""
     if dataframe.empty and not active_trades:
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
     satellite_df = (
         dataframe[resolved_strategies.isin(satellite_filters)].copy()
@@ -729,7 +761,10 @@ def _calculate_satellite_concurrency(
         in satellite_filters
         or trade.get("strategy") in satellite_filters
     ]
-    return calculate_concurrent_exposure(satellite_df, satellite_active)
+    max_concurrent, percentile_95, percentile_90 = calculate_concurrent_exposure(
+        satellite_df, satellite_active
+    )
+    return float(max_concurrent), float(percentile_95), float(percentile_90)
 
 
 def calculate_allocation_recommendation(
@@ -759,18 +794,22 @@ def calculate_allocation_recommendation(
     if core_row is not None:
         core_strategy_name = CORE_STRATEGY_NAME
         core_slots = core_row["slots"]
+        core_slots_p90 = core_row["slots_p90"]
         core_share_pct = core_row["share_pct"]
         core_capital = round(context.reference_capital * (core_share_pct / 100.0), 0)
         core_budget_per_trade = core_row["budget_per_trade_dollar"]
     else:
         core_strategy_name = ""
         core_slots = 0
+        core_slots_p90 = 0
         core_share_pct = 0.0
         core_capital = 0.0
         core_budget_per_trade = 0.0
 
     satellite_rows = [r for r in rows if not r["is_core"]]
     satellite_silo_slots = sum(r["slots"] for r in satellite_rows)
+    satellite_silo_slots_p90 = sum(r["slots_p90"] for r in satellite_rows)
+    total_slots_p90 = sum(r["slots_p90"] for r in rows)
     satellite_share_pct = round(sum(r["share_pct"] for r in satellite_rows), 1)
     satellite_capital = round(
         context.reference_capital * (satellite_share_pct / 100.0), 0
@@ -786,10 +825,13 @@ def calculate_allocation_recommendation(
         if strat_name != CORE_STRATEGY_NAME:
             satellite_filters.extend(filters)
 
-    sat_max, sat_p95 = _calculate_satellite_concurrency(
+    sat_max, sat_p95, sat_p90 = _calculate_satellite_concurrency(
         dataframe, active_trades, resolved_strategies, satellite_filters
     )
     satellite_global_slots = max(int(sat_p95), 1) if satellite_silo_slots > 0 else 0
+    satellite_global_slots_p90 = (
+        max(int(sat_p90), 1) if satellite_silo_slots_p90 > 0 else 0
+    )
     satellite_budget_per_trade = (
         round(satellite_capital / satellite_global_slots, 0)
         if satellite_global_slots > 0
@@ -801,25 +843,43 @@ def calculate_allocation_recommendation(
         else 0.0
     )
 
+    tot_max, tot_p95, tot_p90 = calculate_concurrent_exposure(dataframe, active_trades)
+    total_global_slots = max(int(tot_p95), 1) if total_slots > 0 else 0
+    total_global_slots_p90 = max(int(tot_p90), 1) if total_slots_p90 > 0 else 0
+    total_global_max_concurrent = int(tot_max)
+    total_efficiency_gain_pct = (
+        round((1.0 - (total_global_slots / total_slots)) * 100.0, 1)
+        if total_slots > 0 and total_global_slots > 0
+        else 0.0
+    )
+
     return {
         "model_name": context.model_name,
         "model_key": context.model_key,
         "ytd_return_pct": context.ytd_return_pct,
         "total_slots": total_slots,
+        "total_slots_p90": total_slots_p90,
         "reference_capital": context.reference_capital,
         "rows": rows,
         "core_strategy_name": core_strategy_name,
         "core_slots": core_slots,
+        "core_slots_p90": core_slots_p90,
         "core_capital": core_capital,
         "core_budget_per_trade": core_budget_per_trade,
         "core_share_pct": core_share_pct,
         "satellite_capital": satellite_capital,
         "satellite_share_pct": satellite_share_pct,
         "satellite_silo_slots": satellite_silo_slots,
+        "satellite_silo_slots_p90": satellite_silo_slots_p90,
         "satellite_global_slots": satellite_global_slots,
+        "satellite_global_slots_p90": satellite_global_slots_p90,
         "satellite_global_max_concurrent": int(sat_max),
         "satellite_budget_per_trade": satellite_budget_per_trade,
         "satellite_efficiency_gain_pct": satellite_efficiency_gain_pct,
+        "total_global_slots": total_global_slots,
+        "total_global_slots_p90": total_global_slots_p90,
+        "total_global_max_concurrent": total_global_max_concurrent,
+        "total_efficiency_gain_pct": total_efficiency_gain_pct,
         "global_slots": satellite_global_slots,
         "global_max_concurrent": int(sat_max),
         "global_budget_per_trade": satellite_budget_per_trade,
@@ -866,8 +926,11 @@ def _build_strategy_allocation_rows(
             or trade.get("strategy") in filters
         ]
 
-        _, percentile_95 = calculate_concurrent_exposure(strat_df, strat_active)
+        _, percentile_95, percentile_90 = calculate_concurrent_exposure(
+            strat_df, strat_active
+        )
         slots = max(int(percentile_95), 1)
+        slots_p90 = max(int(percentile_90), 1)
         total_slots += slots
 
         is_core = name == CORE_STRATEGY_NAME
@@ -893,6 +956,7 @@ def _build_strategy_allocation_rows(
                 "share_pct": share_pct,
                 "budget_per_trade_dollar": budget_per_trade,
                 "slots": slots,
+                "slots_p90": slots_p90,
                 "is_core": is_core,
             }
         )

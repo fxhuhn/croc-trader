@@ -1061,11 +1061,11 @@ def test_view_analytics_dashboard_calculates_correct_95_percentile_utilization(
 
         # Assert
         assert response.status_code == 200
-        # Check that the merged "Open (100% / 95%)" layout exists in the rendered HTML
-        assert b"Open (100% / 95%)" in response.data
-        # With 2 concurrent trades active, the peak is 2, and the 95th percentile should also round to 2.
-        # Format should be '2 / 2'
-        assert b"2 / 2" in response.data
+        # Check that the merged "Open (100% / 95% / 90%)" layout exists in the rendered HTML
+        assert b"Open (100% / 95% / 90%)" in response.data
+        # With 2 concurrent trades active, the peak is 2, and the 95th and 90th percentiles should also round to 2.
+        # Format should be '2 / 2 / 2'
+        assert b"2 / 2 / 2" in response.data
 
 
 def test_view_analytics_dashboard_handles_corrupted_data_gracefully(
@@ -1329,6 +1329,8 @@ def test_view_analytics_monthly_matrix_returns_correct_response(
         assert b"Frequenz-Modell (EV/M)" in response.data
         assert b"SPY (S&amp;P 500)" in response.data
         assert b"QQQ (Nasdaq 100)" in response.data
+        assert b"Silo Slots (P95)" in response.data
+        assert b"Silo Slots (P90)" in response.data
         assert b'title="Croc Setup"' not in response.data
         assert b"<span>Croc Setup</span>" not in response.data
 
