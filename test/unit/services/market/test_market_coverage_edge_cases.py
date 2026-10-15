@@ -238,3 +238,24 @@ def test_updater_fallback_to_tradingview_empty_list() -> None:
     session = MagicMock()
     updater = MarketDataUpdater(session)
     assert updater._fallback_to_tradingview([], full_reload=False) == 0
+
+
+def test_updater_get_symbols_to_process_includes_continuous_futures(
+    mock_market_repo: MagicMock,
+    mock_trade_repo: MagicMock,
+) -> None:
+    """Tests that _get_symbols_to_process includes continuous futures symbols (MNQ=F, MES=F)."""
+    session = MagicMock()
+    with patch(
+        "app.services.market.updater.MarketRepository", return_value=mock_market_repo
+    ):
+        mock_market_repo.get_ignored_symbols.return_value = set()
+        mock_market_repo.get_all_known_symbols.return_value = ["AAPL"]
+        mock_trade_repo.get_all_traded_symbols.return_value = ["MSFT"]
+
+        updater = MarketDataUpdater(session, signals_session=None)
+        updater.trade_repository = mock_trade_repo
+
+        symbols = updater._get_symbols_to_process(specific=None)
+        assert "MNQ=F" in symbols
+        assert "MES=F" in symbols

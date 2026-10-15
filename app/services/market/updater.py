@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
+from app.const import CONTINUOUS_FUTURES_SYMBOLS
 from app.database.repositories.market import MarketRepository
 from app.database.repositories.trade import TradeRepository
 from app.database.session import DatabaseSession
@@ -133,11 +134,12 @@ class MarketDataUpdater:
         if specific:
             candidates = set(specific)
         else:
-            # Combine known DB symbols + Exchange Lists + Traded Symbols
+            # Combine known DB symbols + Exchange Lists + Traded Symbols + Continuous Futures
             candidates = (
                 set(ExchangeSymbol().all)
                 .union(set(self.repo.get_all_known_symbols()))
                 .union(set(self.trade_repository.get_all_traded_symbols()))
+                .union(set(CONTINUOUS_FUTURES_SYMBOLS))
             )
 
         # Filter Ignored

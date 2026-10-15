@@ -1,9 +1,12 @@
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.services.trade_manager.view_service import (
     TradeViewService,
     calculate_capital_allocation,
+    resolve_continuous_future_symbol,
 )
 
 
@@ -420,3 +423,63 @@ def test_calculate_capital_allocation_empty_positions_with_free_cash() -> None:
     assert summary.strategies[0].strategy_key == "FreeCash"
     assert summary.strategies[0].allocation_percentage == 100.0
     assert summary.strategies[0].is_cash is True
+
+
+def test_resolve_continuous_future_symbol() -> None:
+    """Verifies that quarterly futures and strategy proxies resolve to continuous symbols."""
+    # Direct contract symbol resolution
+    assert resolve_continuous_future_symbol("MNQZ6") == "MNQ=F"
+    assert resolve_continuous_future_symbol("MNQU6") == "MNQ=F"
+    assert resolve_continuous_future_symbol("MNQH7") == "MNQ=F"
+    assert resolve_continuous_future_symbol("MESZ6") == "MES=F"
+    assert resolve_continuous_future_symbol("MESH7") == "MES=F"
+    assert resolve_continuous_future_symbol("NQZ6") == "NQ=F"
+    assert resolve_continuous_future_symbol("ESZ6") == "ES=F"
+
+    # Strategy proxy fallback resolution
+    assert resolve_continuous_future_symbol("QQQ", "BounceBandit") == "MNQ=F"
+    assert resolve_continuous_future_symbol("QQQ", "bounce_bandit") == "MNQ=F"
+    assert resolve_continuous_future_symbol("QQQ", "BridgeScout") == "MNQ=F"
+    assert resolve_continuous_future_symbol("SPY", "TGIM") == "MES=F"
+
+    # Non-futures equity symbols
+    assert resolve_continuous_future_symbol("AAPL", "DipBuyer") is None
+    assert resolve_continuous_future_symbol("TSLA", "TurnoverTiming") is None
+
+
+def test_get_broker_active_trades_futures_continuous_mapping() -> None:
+    """Verifies that MNQZ6 position queries MNQ=F from market repository and applies multiplier."""
+    broker_repo_mock = MagicMock()
+    broker_repo_mock.get_active_positions.return_value = [
+        {
+            "id": 1633,
+            "symbol": "MNQZ6",
+            "strategy": "BounceBandit",
+            "entry_date": "2026-10-14",
+            "current_size": 1.0,
+            "entry_price": 30000.0,
+            "current_price": 30000.0,
+            "tws_status": "PreSubmitted",
+            "tws_orders": [],
+        }
+    ]
+    market_repo_mock = MagicMock()
+    market_repo_mock.get_latest_price.return_value = 30500.0
+
+    service = TradeViewService(
+        trade_repository=MagicMock(),
+        market_repository=market_repo_mock,
+        broker_repository=broker_repo_mock,
+    )
+
+    active_trades = service.get_broker_active_trades()
+
+    market_repo_mock.get_latest_price.assert_called_once_with("MNQ=F")
+    assert len(active_trades) == 1
+    trade = active_trades[0]
+    assert trade["symbol"] == "MNQZ6"
+    assert trade["current_price"] == 30500.0
+    # Multiplier for MNQ is 2.0 -> (30500.0 - 30000.0) * 1.0 * 2.0 = 1000.0
+    assert trade["unrealized_pnl"] == 1000.0
+    # Margin for MNQ is 3800.0 -> (1000.0 / 3800.0) * 100 = 26.3157%
+    assert trade["pnl_percentage"] == pytest.approx(26.3158, rel=1e-3)

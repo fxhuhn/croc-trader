@@ -185,3 +185,15 @@ class IndexAliases(StrEnum):
     DOW = "DOW"
     RUS = "RUS"
     NO_INDEX = "No Index"
+
+
+# --- Futures Continuous Mapping ---
+
+FUTURES_CONTINUOUS_MAPPING: dict[str, str] = {
+    "MNQ": "MNQ=F",
+    "MES": "MES=F",
+    "NQ": "NQ=F",
+    "ES": "ES=F",
+}
+
+CONTINUOUS_FUTURES_SYMBOLS: tuple[str, ...] = ("MNQ=F", "MES=F")

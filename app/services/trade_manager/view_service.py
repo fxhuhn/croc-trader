@@ -10,6 +10,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from ...const import (
+    FUTURES_CONTINUOUS_MAPPING,
     STRATEGY_ALIASES,
     ExitReason,
     IndexAliases,
@@ -337,6 +338,23 @@ def resolve_futures_spec(
             if fut_key in FUTURES_INSTRUMENT_SPECS:
                 return fut_key, FUTURES_INSTRUMENT_SPECS[fut_key]
 
+    return None
+
+
+def resolve_continuous_future_symbol(symbol: str, strategy: str = "") -> str | None:
+    """Resolves a futures contract ticker or strategy proxy to its continuous Yahoo symbol.
+
+    Args:
+        symbol: Ticker symbol (e.g. 'MNQZ6', 'MNQ', 'MESZ6', 'QQQ').
+        strategy: Optional strategy identifier (e.g. 'BounceBandit', 'TGIM').
+
+    Returns:
+        str | None: Continuous future symbol (e.g. 'MNQ=F', 'MES=F'), or None if not a future.
+    """
+    fut_match = resolve_futures_spec(symbol, strategy)
+    if fut_match is not None:
+        fut_key = fut_match[0]
+        return FUTURES_CONTINUOUS_MAPPING.get(fut_key, f"{fut_key}=F")
     return None
 
 
@@ -1973,17 +1991,20 @@ class TradeViewService:
 
         for pos in positions:
             symbol = pos["symbol"]
+            strategy = str(pos.get("strategy") or "")
             current_price = pos["current_price"]
 
+            query_symbol = resolve_continuous_future_symbol(symbol, strategy) or symbol
+
             if self.market_repository is not None:
-                latest_price = self.market_repository.get_latest_price(symbol)
+                latest_price = self.market_repository.get_latest_price(query_symbol)
                 if latest_price:
                     current_price = latest_price
                     pos["current_price"] = current_price
 
             entry_price = pos["entry_price"]
             size = pos["current_size"]
-            fut_match = resolve_futures_spec(symbol, pos.get("strategy") or "")
+            fut_match = resolve_futures_spec(symbol, strategy)
             multiplier = float(fut_match[1].multiplier) if fut_match else 1.0
             unrealized_pnl = (current_price - entry_price) * size * multiplier
 
