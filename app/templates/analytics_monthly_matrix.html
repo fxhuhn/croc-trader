@@ -332,13 +332,13 @@
                             </span>
                         </td>
                         <td class="py-2 px-4 text-right">
+                            {% if row.is_core %}
                             <span class="font-sans font-bold text-indigo-600 tabular-nums">
-                                {% if row.is_core %}
                                 {{ row.budget_per_trade_dollar | de_number(0) }}&nbsp;$
-                                {% else %}
-                                {{ allocation_recommendation.satellite_budget_per_trade | de_number(0) }}&nbsp;$
-                                {% endif %}
                             </span>
+                            {% else %}
+                            <span class="font-medium text-slate-400 tabular-nums">—</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
