@@ -65,6 +65,8 @@ For container, log, and metric inspection in the production environment:
 
 ## Domain & Environment Tool Execution Invariant (Mandatory MCP Usage)
 * **STRICT MCP DISPATCHER MANDATE:** Whenever inspecting, verifying, or interacting with application services, portfolios, trades, screener candidates, system health, logs, database queries, or workflow triggers (both in DEV and PROD), you **MUST ALWAYS** use the native MCP tools via `call_mcp_tool` (or available eager MCP tools).
+* **MANDATORY PRO DATABASE QUERIES VIA CROC MCP:** Any database inspection, query, or state verification for the **PROD** environment (`signals.db`, `stocks.db`, `trading.db`, positions, trades, orders, prices, candles, screener candidates, webhook signals, system health) **MUST ALWAYS** be executed via the domain MCP server `croc-trader-prod` using `call_mcp_tool` (or official plugin CLI `.venv/bin/python .agents/plugins/croc-mcp/scripts/croc_cli.py [health|summary|positions|orders]`).
+* **DEV VS. PRO DATABASE ISOLATION:** The `croc-sqlite-readonly` server connects strictly to local development SQLite files (`data/*.db`) on the local filesystem. It has zero connectivity to PROD. Never use `croc-sqlite-readonly` to inspect or reason about PROD database state.
 * **STRICT BAN ON RAW HTTP / URLLIB / CURL FOR MCP OPERATIONS:** Never execute raw `urllib`, `requests`, `httpx`, `curl`, or custom HTTP scripts via command-line to bypass, simulate, or test MCP endpoints and domain operations when native MCP tools (`croc-trader-dev`, `croc-trader-prod`, `croc-sqlite-readonly`, `dozzle`) are available.
 
 
