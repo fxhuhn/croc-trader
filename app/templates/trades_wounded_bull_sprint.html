@@ -1,0 +1,111 @@
+{% extends "trades_base.html" %}
+
+{% block page_title %}Wounded Bull Sprint{% endblock %}
+{% block page_key %}wounded_bull_sprint{% endblock %}
+{% block show_history_signal %}false{% endblock %}
+
+{% block active_trades %}
+{% if active_trades %}
+<section class="mb-12">
+    {{ render_section_header("Positions", icon="zap") }}
+
+    <!-- Mobile View (Accordion Cards) -->
+    <div class="md:hidden flex flex-col gap-4">
+        {% for trade in active_trades %}
+        {% call cards.trade_accordion_card(
+            symbol=trade.symbol,
+            pnl_value=trade.unrealized_pnl,
+            pnl_percentage=trade.pnl_percentage
+        ) %}
+            <div class="grid grid-cols-2 gap-8 items-start">
+                <!-- Left Column: Date & Quantity -->
+                <div class="flex flex-col">
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium text-xs">Date</span>
+                        <span class="text-slate-700 font-bold text-xs">{{ trade.entry_date }} ({{ trade.days_held }}d)</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium text-xs">Quantity</span>
+                        <span class="text-slate-700 font-bold text-xs">{{ trade.current_size|int }}</span>
+                    </div>
+                </div>
+
+                <!-- Right Column: Entry & Exit Trigger -->
+                <div class="flex flex-col">
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium text-xs">Entry</span>
+                        <span class="tabular-nums text-slate-700 font-bold text-xs">{{ trade.entry_price | de_number(2) }}</span>
+                    </div>
+                    <div class="flex justify-between items-center py-1.5 border-b border-slate-100">
+                        <span class="text-slate-500 font-medium text-xs text-emerald-600">Exit Trigger</span>
+                        <span class="tabular-nums text-emerald-600 font-bold text-xs">C &gt; H[1] / TE (6d)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Full Width TradingView Button -->
+            {{ tradingview_link(trade.symbol, text="View on TradingView", is_button=true) }}
+        {% endcall %}
+        {% endfor %}
+    </div>
+
+    <!-- Desktop Grid View -->
+    <div class="hidden md:block bg-white md:rounded-3xl md:shadow-sm border border-slate-200 overflow-hidden">
+        <!-- Desktop Header -->
+        <div class="grid grid-cols-7 gap-4 p-4 border-b border-slate-200 bg-slate-50 text-slate-600 font-medium text-sm">
+            <div>Date</div>
+            <div>Symbol</div>
+            <div class="text-right">Quantity</div>
+            <div class="text-right">Entry</div>
+            <div class="text-right">Last Price</div>
+            <div class="text-right">Exit Trigger</div>
+            <div class="text-right">Open PnL</div>
+        </div>
+
+        <!-- Active Trades List (Desktop) -->
+        <div class="divide-y divide-slate-100">
+            {% for trade in active_trades %}
+            <div class="hover:bg-slate-50/50 transition-colors">
+                <div class="grid grid-cols-7 gap-4 px-4 py-3.5 items-center text-sm">
+                    <!-- 1. Date -->
+                    <div class="text-slate-500 tabular-nums whitespace-nowrap">
+                        {{ trade.entry_date }} ({{ trade.days_held }}d)
+                    </div>
+
+                    <!-- 2. Symbol -->
+                    <div class="font-bold text-slate-700 whitespace-nowrap">
+                        {{ tradingview_link(trade.symbol, is_button=false) }}
+                    </div>
+
+                    <!-- 3. Quantity -->
+                    <div class="text-right tabular-nums text-slate-600 font-medium whitespace-nowrap">
+                        {{ trade.current_size|int }}
+                    </div>
+
+                    <!-- 4. Entry -->
+                    <div class="text-right tabular-nums text-slate-600 font-medium whitespace-nowrap">
+                        {{ trade.entry_price | de_number(2) }}
+                    </div>
+
+                    <!-- 5. Last Price -->
+                    <div class="text-right tabular-nums text-slate-900 font-bold whitespace-nowrap">
+                        {{ trade.current_price | de_number(2) }}
+                    </div>
+
+                    <!-- 6. Exit Trigger -->
+                    <div class="text-right text-xs text-emerald-600 font-medium whitespace-nowrap">
+                        C &gt; H[1] / TE (6d)
+                    </div>
+
+                    <!-- 7. Open PnL -->
+                    <div class="flex flex-col items-end text-right whitespace-nowrap">
+                        {{ render_pnl_cell(trade.unrealized_pnl, trade.pnl_percentage) }}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

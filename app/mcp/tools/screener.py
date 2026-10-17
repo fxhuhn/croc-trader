@@ -42,6 +42,7 @@ def get_screener_candidates(
                 Strategies.BounceBandit,
                 Strategies.HoldTarget,
                 Strategies.SplitTarget,
+                Strategies.WoundedBullSprint,
             ]
             candidates = []
             for strat in strategies_to_scan:

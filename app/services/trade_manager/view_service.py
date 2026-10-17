@@ -254,6 +254,9 @@ STRATEGY_FILTER_TOKEN_MAP: tuple[tuple[str, str], ...] = (
     ("scout", "BridgeScout"),
     ("bounce", "BounceBandit"),
     ("bandit", "BounceBandit"),
+    ("wounded", "WoundedBullSprint"),
+    ("bull", "WoundedBullSprint"),
+    ("wbs", "WoundedBullSprint"),
 )
 
 
@@ -436,6 +439,8 @@ STRATEGY_COLOR_MAP: dict[str, str] = {
     "Bridge Scout": "bg-teal-500",
     "BounceBandit": "bg-violet-500",
     "Bounce Bandit": "bg-violet-500",
+    "WoundedBullSprint": "bg-emerald-600",
+    "Wounded Bull Sprint": "bg-emerald-600",
     "FreeCash": "bg-emerald-500",
     "Free Cash": "bg-emerald-500",
 }
@@ -449,6 +454,7 @@ STRATEGY_DISPLAY_LABEL_MAP: dict[str, str] = {
     "TGIM": "TGIM",
     "BridgeScout": "Bridge Scout",
     "BounceBandit": "Bounce Bandit",
+    "WoundedBullSprint": "Wounded Bull Sprint",
     "FreeCash": "Free Cash",
 }
 

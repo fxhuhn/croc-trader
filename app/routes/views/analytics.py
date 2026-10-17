@@ -62,6 +62,7 @@ STRATEGY_GROUPS: dict[str, list[Strategies | str]] = {
     "TGIM": [Strategies.TGIM],
     "Bridge Scout": [Strategies.BridgeScout],
     "Bounce Bandit": [Strategies.BounceBandit],
+    "Wounded Bull Sprint": [Strategies.WoundedBullSprint],
 }
 
 STRATEGY_COLORS: dict[str, str] = {
@@ -72,6 +73,7 @@ STRATEGY_COLORS: dict[str, str] = {
     "TGIM": "#0284c7",
     "Bridge Scout": "#0ea5e9",
     "Bounce Bandit": "#8b5cf6",
+    "Wounded Bull Sprint": "#10b981",
 }
 
 CROC_STRATEGIES: set[Strategies | str] = {

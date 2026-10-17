@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from ...const import TradeStatus
 from .base import BaseRepository
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,46 @@ class TradeRepository(BaseRepository):
             "SELECT * FROM trades WHERE status IN ('CREATED', 'ACTIVE')"
         )
         return [dict(row) for row in rows]
+
+    def get_effective_active_trades(
+        self, strategy: str | Enum | None = None
+    ) -> list[dict[str, object]]:
+        """Fetches active and created trades, excluding those with a pending exit signal for NextOpen.
+
+        A trade with `signal_context['pending_exit']` will exit at the next market open
+        and therefore does not consume effective forward portfolio capacity.
+        """
+        all_active = self.get_by_status([TradeStatus.ACTIVE, TradeStatus.CREATED])
+        results: list[dict[str, object]] = []
+        strategy_filter = (
+            (strategy.value if isinstance(strategy, Enum) else strategy).lower()
+            if strategy is not None
+            else None
+        )
+
+        for trade in all_active:
+            if (
+                strategy_filter is not None
+                and str(trade.get("strategy", "")).lower() != strategy_filter
+            ):
+                continue
+
+            raw_context = trade.get("signal_context")
+            context: dict[str, Any] = {}
+            if isinstance(raw_context, dict):
+                context = raw_context
+            elif isinstance(raw_context, str) and raw_context.strip():
+                try:
+                    context = json.loads(raw_context)
+                except (json.JSONDecodeError, TypeError):
+                    context = {}
+
+            if context.get("pending_exit"):
+                continue
+
+            results.append(trade)
+
+        return results
 
     def get_by_status(
         self, status: str | Enum | list[str | Enum]

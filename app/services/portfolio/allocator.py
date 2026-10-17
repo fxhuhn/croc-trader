@@ -60,6 +60,7 @@ class PortfolioAllocator:
             Strategies.TGIM: "TGIM",
             Strategies.BridgeScout: "BridgeScout",
             Strategies.BounceBandit: "BounceBandit",
+            Strategies.WoundedBullSprint: "WoundedBullSprint",
         }
 
         label = strategy_labels.get(strategy_enum)

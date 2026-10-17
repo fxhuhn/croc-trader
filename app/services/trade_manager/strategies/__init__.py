@@ -7,6 +7,7 @@ from .ndx_momentum import NDXMomentumTradeStrategy
 from .tgim import TGIMTradeStrategy
 from .turnover_timing import TurnoverTimingStrategy
 from .two_percent_strategy import TwoPercentStrategy
+from .wounded_bull_sprint import WoundedBullSprintTradeStrategy
 
 # Uniform naming aliases for consistency
 DipBuyerTradeStrategy = DipBuyerStrategy
@@ -28,4 +29,5 @@ __all__ = [
     "TurnoverTimingTradeStrategy",
     "TwoPercentStrategy",
     "TwoPercentTradeStrategy",
+    "WoundedBullSprintTradeStrategy",
 ]

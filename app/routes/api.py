@@ -366,6 +366,17 @@ def analyze_turnover() -> ApiResponse:
     return _debug_single_symbol(Strategies.TurnOverTiming)
 
 
+@api_blueprint.route("/screener/wounded-bull-sprint", methods=["POST"])
+@require_ip_whitelist
+def analyze_wounded_bull_sprint() -> ApiResponse:
+    """Detailed debugging for WoundedBullSprint strategy on a single symbol.
+
+    Returns:
+        ApiResponse: JSON analysis result or error.
+    """
+    return _debug_single_symbol(Strategies.WoundedBullSprint)
+
+
 @api_blueprint.route("/screener/ndx-momentum", methods=["POST"])
 @require_ip_whitelist
 def analyze_ndx_momentum() -> ApiResponse:

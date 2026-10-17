@@ -20,16 +20,32 @@
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
-            <span class="text-slate-500 font-medium">ROC(5)</span>
+            <span class="text-slate-500 font-medium">ROC(10)</span>
             <span class="font-bold text-rose-600 font-sans tabular-nums">
-                {% if row.context.get('roc_5') is not none %}
-                {{ row.context.get('roc_5') | de_number(2) }}&nbsp;%
+                {% if row.context.get('roc_10') is not none %}
+                {{ row.context.get('roc_10') | de_number(2) }}&nbsp;%
+                {% else %}-{% endif %}
+            </span>
+        </div>
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">UpDays (225)</span>
+            <span class="font-bold text-slate-700 font-sans tabular-nums">
+                {% if row.context.get('up_days') is not none %}
+                {{ row.context.get('up_days') }}
                 {% else %}-{% endif %}
             </span>
         </div>
     </div>
     <!-- Right Column -->
     <div class="flex flex-col">
+        <div class="flex justify-between py-1.5 border-b border-slate-100">
+            <span class="text-slate-500 font-medium">Score (Vola)</span>
+            <span class="font-bold text-indigo-600 font-sans tabular-nums">
+                {% if row.context.get('atr_pct') is not none %}
+                {{ row.context.get('atr_pct') | de_number(2) }}&nbsp;%
+                {% else %}-{% endif %}
+            </span>
+        </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
             <span class="text-slate-500 font-medium">FIP Rank</span>
             <span class="font-bold text-slate-800 font-sans tabular-nums">
@@ -39,18 +55,18 @@
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
-            <span class="text-slate-500 font-medium">ATR(3) %</span>
+            <span class="text-slate-500 font-medium">ROC(5)</span>
             <span class="font-bold text-slate-600 font-sans tabular-nums">
-                {% if row.context.get('atr_pct') is not none %}
-                {{ row.context.get('atr_pct') | de_number(2) }}&nbsp;%
+                {% if row.context.get('roc_5') is not none %}
+                {{ row.context.get('roc_5') | de_number(2) }}&nbsp;%
                 {% else %}-{% endif %}
             </span>
         </div>
         <div class="flex justify-between py-1.5 border-b border-slate-100">
-            <span class="text-slate-500 font-medium">ROC(10)</span>
-            <span class="font-bold text-slate-600 font-sans tabular-nums">
-                {% if row.context.get('roc_10') is not none %}
-                {{ row.context.get('roc_10') | de_number(2) }}&nbsp;%
+            <span class="text-slate-500 font-medium">TDoM / Rest</span>
+            <span class="font-bold text-slate-700 font-sans tabular-nums">
+                {% if row.context.get('TradingDayOfMonth') is not none %}
+                {{ row.context.get('TradingDayOfMonth') }} / {{ row.context.get('bars_left') }}
                 {% else %}-{% endif %}
             </span>
         </div>

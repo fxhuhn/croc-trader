@@ -22,6 +22,8 @@ def test_strategy_map_contains_expected_strategies() -> None:
     assert "tgim" in STRATEGY_MAP
     assert "bridge_scout" in STRATEGY_MAP
     assert "bounce_bandit" in STRATEGY_MAP
+    assert "wounded_bull_sprint" in STRATEGY_MAP
+    assert "wbs" in STRATEGY_MAP
 
 
 def test_run_strategy_backfill_invalid_strategy_raises_value_error() -> None:

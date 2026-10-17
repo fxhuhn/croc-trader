@@ -8,6 +8,7 @@ import pandas as pd
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
+from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
 from ....tools.trading_calendar import resolve_effective_trading_date
 from ....types import TradeStatus
@@ -62,18 +63,24 @@ class BaseStrategy[T](ABC):
         strategy_identifier: str,
         target_date_string: str,
     ) -> bool:
-        """Checks if an active position, open created trade, or same-date trade exists."""
+        """Checks if an active position, open created trade, or same-date trade exists for the company."""
         active_or_created = trade_repository.get_by_status(
             [TradeStatus.CREATED, TradeStatus.ACTIVE]
         )
         strategy_lower = strategy_identifier.lower()
+        company_symbols = SymbolFilter().get_related_symbols(symbol)
+
         has_open_position = any(
-            t.get("symbol") == symbol
+            str(t.get("symbol")) in company_symbols
             and strategy_lower in str(t.get("strategy", "")).lower()
             for t in active_or_created
         )
-        return has_open_position or trade_repository.exists(
-            symbol, strategy_identifier, target_date_string
+        if has_open_position:
+            return True
+
+        return any(
+            trade_repository.exists(s, strategy_identifier, target_date_string)
+            for s in company_symbols
         )
 
     def _get_indices_for_symbol(self, symbol: str) -> list[str]:

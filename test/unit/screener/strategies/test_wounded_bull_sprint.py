@@ -66,7 +66,7 @@ def test_evaluate_symbol_technicals_happy_path() -> None:
     assert result["setup_close"] > 5.0
     assert result["roc_10"] < 0.0
     assert result["atr_pct"] > 2.5
-    assert result["setup_score"] == pytest.approx(-1.0 * float(result["roc_5"]))
+    assert result["setup_score"] == pytest.approx(float(result["atr_pct"]), abs=0.01)
     assert isinstance(result["up_days"], int)
 
 
@@ -340,12 +340,12 @@ def test_wounded_bull_sprint_screener_macro_regime_guard() -> None:
 
 
 def test_wounded_bull_sprint_screener_capacity_guard() -> None:
-    """Tests WBS screener aborts if 10 active/created positions already exist."""
+    """Tests WBS screener aborts if 5 active/created positions already exist."""
     trade_repo = MagicMock()
-    # 10 active WBS positions
+    # 5 active WBS positions
     trade_repo.get_by_status.return_value = [
         {"symbol": f"SYM{i}", "strategy": Strategies.WoundedBullSprint.value}
-        for i in range(10)
+        for i in range(5)
     ]
     data_provider = MagicMock()
     holiday_checker = MagicMock(spec=MarketHolidayChecker)
@@ -376,3 +376,71 @@ def test_wounded_bull_sprint_screener_capacity_guard() -> None:
     hits = strategy.run(analysis_date="2026-07-22")
     assert hits == 0
     trade_repo.create_trade.assert_not_called()
+
+
+def test_wounded_bull_sprint_analyze_single_symbol() -> None:
+    """Tests analyze_single_symbol returns comprehensive dictionary for MCP / API."""
+    trade_repo = MagicMock()
+    data_provider = MagicMock()
+    df = _build_synthetic_history(num_bars=250, base_price=100.0, price_slope=0.5)
+    data_provider.get_symbol_history.return_value = df
+    data_provider.get_batch_history.return_value = {
+        "SPY": pd.DataFrame(
+            {
+                "date": [datetime.date(2026, 6, 30), datetime.date(2026, 7, 22)],
+                "close": [500.0, 490.0],
+            }
+        ),
+        "TLT": pd.DataFrame(
+            {
+                "date": [datetime.date(2026, 6, 30), datetime.date(2026, 7, 22)],
+                "close": [90.0, 92.0],
+            }
+        ),
+    }
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+
+    strategy = WoundedBullSprintStrategy(
+        trade_repository=trade_repo,
+        data_provider=data_provider,
+        holiday_checker=holiday_checker,
+    )
+
+    analysis = strategy.analyze_single_symbol("AAPL")
+    assert analysis["symbol"] == "AAPL"
+    assert "technical_filters" in analysis
+    assert "macro_regime" in analysis
+    assert "calendar" in analysis
+    assert "scoring" in analysis
+    tech_filters = analysis["technical_filters"]
+    assert isinstance(tech_filters, dict)
+    assert tech_filters["uptrend_ok"] is True
+    assert tech_filters["volatility_ok"] is True
+    assert analysis["all_technical_filters_pass"] is True
+
+
+def test_wounded_bull_sprint_available_slots_factors_pending_exit() -> None:
+    """Verifies that _get_available_portfolio_slots uses get_effective_active_trades to allow rotation."""
+    trade_repo = MagicMock()
+    data_provider = MagicMock()
+
+    # 4 continuing trades, 1 trade with pending_exit (e.g. COP) was excluded by get_effective_active_trades
+    trade_repo.get_effective_active_trades.return_value = [
+        {"symbol": "UPS", "strategy": "wounded_bull_sprint"},
+        {"symbol": "PM", "strategy": "wounded_bull_sprint"},
+        {"symbol": "GOOG", "strategy": "wounded_bull_sprint"},
+        {"symbol": "GOOGL", "strategy": "wounded_bull_sprint"},
+    ]
+
+    strategy = WoundedBullSprintStrategy(
+        trade_repository=trade_repo,
+        data_provider=data_provider,
+    )
+
+    available_slots = strategy._get_available_portfolio_slots()
+    # max_positions (5) - 4 effective active = 1 free slot!
+    assert available_slots == 1
+    trade_repo.get_effective_active_trades.assert_called_once_with(
+        strategy.STRATEGY_IDENTIFIER
+    )

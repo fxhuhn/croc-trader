@@ -32,12 +32,12 @@ from ....tools.indicators import (
     calculate_up_days_count,
 )
 from ....tools.market_holidays import MarketHolidayChecker
+from ....tools.symbol_filter import SymbolFilter
 from ....tools.trading_calendar import (
     get_remaining_trading_days_in_month,
     get_trading_day_of_month,
     is_trading_day,
 )
-from ....types import TradeStatus
 from ...telegram import TelegramBot
 from ..models import SignalReportItem
 from .base import BaseStrategy
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SIGNAL_DAY_THRESHOLD: int = 14
 DEFAULT_TREND_SMA_WINDOW: int = 200
-DEFAULT_MAX_POSITIONS: int = 10
+DEFAULT_MAX_POSITIONS: int = 5
 DEFAULT_TIME_EXIT_BARS: int = 6
 DEFAULT_MIN_DAYS_LEFT_IN_MONTH: int = 3
 DEFAULT_MULTIPLIER: float = 1.0
@@ -158,7 +158,9 @@ def evaluate_symbol_technicals(
 
     atr_series = calculate_atr(high_series, low_series, close_series, params.atr_window)
     atr_ratio = (
-        float(atr_series.iloc[-1]) / latest_close if not atr_series.empty else 0.0
+        float(atr_series.iloc[-1]) / latest_close
+        if not atr_series.empty and latest_close > 0.0
+        else 0.0
     )
     if atr_ratio <= params.vola_p:
         return None
@@ -173,12 +175,13 @@ def evaluate_symbol_technicals(
         return None
 
     latest_roc_5 = float(roc_5_series.iloc[-1])
+    vola_pct = atr_ratio * 100.0
     return {
         "setup_close": latest_close,
-        "setup_score": -1.0 * latest_roc_5,
+        "setup_score": round(vola_pct, 4),
         "roc_5": latest_roc_5,
         "roc_10": float(roc_10_series.iloc[-1]),
-        "atr_pct": atr_ratio * 100.0,
+        "atr_pct": round(vola_pct, 2),
         "up_days": up_days,
     }
 
@@ -241,6 +244,7 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
         self.trade_repository = trade_repository
         self.holiday_checker = holiday_checker or MarketHolidayChecker()
         self.configuration = configuration or WoundedBullSprintParameters()
+        self.latest_qualifying_setups: set[str] = set()
 
     def _is_calendar_window_active(
         self, target_date: datetime.date
@@ -253,7 +257,9 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
         if tdom <= self.configuration.daysp:
             return False, tdom, 0
 
-        td_left = get_remaining_trading_days_in_month(target_date, self.holiday_checker)
+        td_left = (
+            get_remaining_trading_days_in_month(target_date, self.holiday_checker) - 1
+        )
         if td_left < self.configuration.bars_left:
             return False, tdom, td_left
 
@@ -284,16 +290,11 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
         return (spy_mtd < tlt_mtd), spy_mtd, tlt_mtd
 
     def _get_available_portfolio_slots(self) -> int:
-        """Computes remaining capacity for WBS trade positions."""
-        active_trades = self.trade_repository.get_by_status(
-            [TradeStatus.ACTIVE, TradeStatus.CREATED]
+        """Computes remaining forward capacity for WBS trade positions, factoring in pending exits."""
+        effective_trades = self.trade_repository.get_effective_active_trades(
+            self.STRATEGY_IDENTIFIER
         )
-        active_wbs_count = sum(
-            1
-            for t in active_trades
-            if str(t.get("strategy", "")).lower() == self.STRATEGY_IDENTIFIER.lower()
-        )
-        return max(0, self.configuration.max_positions - active_wbs_count)
+        return max(0, self.configuration.max_positions - len(effective_trades))
 
     def _evaluate_universe(
         self,
@@ -315,11 +316,6 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
                 )
                 if symbol_up_days is not None:
                     all_universe_up_days[symbol] = symbol_up_days
-
-            if self._has_existing_trade_or_position(
-                self.trade_repository, symbol, self.STRATEGY_IDENTIFIER, target_date_str
-            ):
-                continue
 
             eval_result = evaluate_symbol_technicals(price_history, self.configuration)
             if eval_result is not None:
@@ -409,9 +405,39 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
 
         ranked_candidates = self._evaluate_universe(history_map, target_date_str)
         if not ranked_candidates:
+            self.latest_qualifying_setups = set()
             return 0
 
-        selected_candidates = ranked_candidates[:available_slots]
+        # Filter out secondary share classes (e.g. keep GOOGL, drop GOOG)
+        candidate_symbols = [c.symbol for c in ranked_candidates]
+        preferred_symbols = set(SymbolFilter().filter_symbols(candidate_symbols))
+        if len(preferred_symbols) < len(candidate_symbols):
+            removed = set(candidate_symbols) - preferred_symbols
+            logger.info(
+                "[%s] Filtered out duplicate company symbols: %s",
+                self.name,
+                removed,
+            )
+            ranked_candidates = [
+                c for c in ranked_candidates if c.symbol in preferred_symbols
+            ]
+
+        self.latest_qualifying_setups = {c.symbol for c in ranked_candidates}
+
+        new_candidates = [
+            c
+            for c in ranked_candidates
+            if not self._has_existing_trade_or_position(
+                self.trade_repository,
+                c.symbol,
+                self.STRATEGY_IDENTIFIER,
+                target_date_str,
+            )
+        ]
+        if not new_candidates:
+            return 0
+
+        selected_candidates = new_candidates[:available_slots]
         exec_context = WBSExecutionContext(
             target_date_str=target_date_str,
             tdom=tdom,
@@ -421,6 +447,130 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
         )
         self._persist_and_report_signals(selected_candidates, exec_context)
         return len(selected_candidates)
+
+    def analyze_single_symbol(self, symbol: str) -> dict[str, object]:
+        """Calculates indicators and filter states for a single symbol for debug and MCP inspection."""
+        clean_symbol = symbol.upper().strip()
+        history = self.data_provider.get_symbol_history(
+            clean_symbol, days=self.configuration.history_fetch_days
+        )
+        if history.empty:
+            return {
+                "symbol": clean_symbol,
+                "status": "ERROR",
+                "message": f"No market data found for {clean_symbol}",
+            }
+
+        target_date = datetime.date.today()
+        target_date_str = target_date.strftime("%Y-%m-%d")
+
+        is_cal_active, tdom, td_left = self._is_calendar_window_active(target_date)
+        is_defensive, spy_mtd, tlt_mtd = self._is_macro_regime_defensive(
+            target_date, target_date_str
+        )
+
+        min_required_bars = max(
+            self.configuration.up_days_lookback + 1, self.configuration.ma_p
+        )
+        has_enough_bars = len(history) >= min_required_bars
+
+        close_series = history["close"].astype(float)
+        volume_series = history["volume"].astype(float)
+        high_series = history["high"].astype(float)
+        low_series = history["low"].astype(float)
+        latest_close = float(close_series.iloc[-1])
+
+        volume_sma_series = calculate_sma(
+            volume_series, self.configuration.volume_ma_window
+        )
+        latest_vol_sma = (
+            float(volume_sma_series.iloc[-1]) if not volume_sma_series.empty else 0.0
+        )
+
+        trend_sma_series = calculate_sma(close_series, self.configuration.ma_p)
+        latest_trend_sma = (
+            float(trend_sma_series.iloc[-1]) if not trend_sma_series.empty else 0.0
+        )
+
+        atr_series = calculate_atr(
+            high_series, low_series, close_series, self.configuration.atr_window
+        )
+        atr_ratio = (
+            float(atr_series.iloc[-1]) / latest_close if not atr_series.empty else 0.0
+        )
+
+        roc_10_series = calculate_roc(
+            close_series, self.configuration.roc_pullback_window
+        )
+        latest_roc_10 = (
+            float(roc_10_series.iloc[-1]) if not roc_10_series.empty else 0.0
+        )
+
+        roc_5_series = calculate_roc(close_series, self.configuration.roc_score_window)
+        latest_roc_5 = float(roc_5_series.iloc[-1]) if not roc_5_series.empty else 0.0
+
+        up_days = calculate_up_days_count(
+            close_series, self.configuration.up_days_lookback
+        )
+
+        min_price_ok = latest_close > self.configuration.min_price
+        volume_ok = latest_vol_sma > self.configuration.min_volume_ma
+        uptrend_ok = latest_close > latest_trend_sma if latest_trend_sma > 0 else False
+        volatility_ok = atr_ratio > self.configuration.vola_p
+        pullback_ok = latest_roc_10 < 0.0
+
+        technicals_ok = (
+            has_enough_bars
+            and min_price_ok
+            and volume_ok
+            and uptrend_ok
+            and volatility_ok
+            and pullback_ok
+            and (up_days is not None)
+        )
+
+        setup_score = round(atr_ratio * 100.0, 4)
+
+        return {
+            "symbol": clean_symbol,
+            "status": "QUALIFIED"
+            if (is_cal_active and is_defensive and technicals_ok)
+            else "REJECTED",
+            "macro_regime": {
+                "spy_mtd": round(spy_mtd * 100.0, 2),
+                "tlt_mtd": round(tlt_mtd * 100.0, 2),
+                "is_defensive": is_defensive,
+            },
+            "calendar": {
+                "trading_day_of_month": tdom,
+                "bars_left": td_left,
+                "is_window_active": is_cal_active,
+            },
+            "technical_filters": {
+                "close": round(latest_close, 2),
+                "min_price_ok": min_price_ok,
+                "volume_sma_20": round(latest_vol_sma, 0),
+                "volume_ok": volume_ok,
+                "sma_200": round(latest_trend_sma, 2),
+                "uptrend_ok": uptrend_ok,
+                "atr_3": round(float(atr_series.iloc[-1]), 2)
+                if not atr_series.empty
+                else 0.0,
+                "atr_pct": round(atr_ratio * 100.0, 2),
+                "volatility_ok": volatility_ok,
+                "roc_10": round(latest_roc_10, 2),
+                "pullback_ok": pullback_ok,
+                "roc_5": round(latest_roc_5, 2),
+                "up_days_225": up_days,
+                "history_bars": len(history),
+                "history_ok": has_enough_bars,
+            },
+            "scoring": {
+                "setup_score": setup_score,
+                "ranking_basis": "ATR(3) / Close",
+            },
+            "all_technical_filters_pass": technicals_ok,
+        }
 
 
 __all__ = [

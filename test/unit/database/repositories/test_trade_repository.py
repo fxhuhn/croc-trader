@@ -187,3 +187,36 @@ def test_clear_trades(trade_session: DatabaseSession) -> None:
 
     assert len(repo.get_active_trades()) == 0
     assert repo.get_latest_updated_at() is None
+
+
+def test_get_effective_active_trades(trade_session: DatabaseSession) -> None:
+    repo = TradeRepository(trade_session)
+    # 1. Normal active trade (occupies slot)
+    id1 = repo.create_trade("AAPL", "wounded_bull_sprint", 10, 100.0, 90.0, 110.0, {})
+    repo.update_trade(id1, {"status": TradeStatus.ACTIVE})
+
+    # 2. Active trade with pending_exit (vacating slot for tomorrow open)
+    id2 = repo.create_trade(
+        "COP",
+        "wounded_bull_sprint",
+        10,
+        100.0,
+        90.0,
+        110.0,
+        {"pending_exit": "clexit"},
+    )
+    repo.update_trade(id2, {"status": TradeStatus.ACTIVE})
+
+    # 3. Active trade in another strategy
+    id3 = repo.create_trade("QQQ", "bridge_scout", 10, 300.0, 280.0, 320.0, {})
+    repo.update_trade(id3, {"status": TradeStatus.ACTIVE})
+
+    # Total active for WBS is 2, but effective active is 1 (COP is exiting)
+    effective_wbs = repo.get_effective_active_trades("wounded_bull_sprint")
+    assert len(effective_wbs) == 1
+    assert effective_wbs[0]["symbol"] == "AAPL"
+
+    # All effective active across strategies
+    all_effective = repo.get_effective_active_trades()
+    assert len(all_effective) == 2
+    assert {t["symbol"] for t in all_effective} == {"AAPL", "QQQ"}

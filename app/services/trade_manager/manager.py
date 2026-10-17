@@ -30,6 +30,7 @@ from .strategies.ndx_momentum import NDXMomentumTradeStrategy
 from .strategies.tgim import TGIMTradeStrategy
 from .strategies.turnover_timing import TurnoverTimingStrategy
 from .strategies.two_percent_strategy import TwoPercentStrategy
+from .strategies.wounded_bull_sprint import WoundedBullSprintTradeStrategy
 from .types import TradeTransition
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ _SINGLE_POSITION_STRATEGIES: frozenset[Strategies] = frozenset(
         Strategies.TGIM,
         Strategies.BridgeScout,
         Strategies.BounceBandit,
+        Strategies.WoundedBullSprint,
     }
 )
 
@@ -113,6 +115,7 @@ class TradeManager:
             Strategies.TGIM: TGIMTradeStrategy(),
             Strategies.BridgeScout: BridgeScoutTradeStrategy(),
             Strategies.BounceBandit: BounceBanditTradeStrategy(),
+            Strategies.WoundedBullSprint: WoundedBullSprintTradeStrategy(),
         }
 
         logger.info(
@@ -137,7 +140,15 @@ class TradeManager:
         lookback_days: int = 60,
     ) -> pd.DataFrame:
         """Loads price history for a trade with pre-entry lookback buffer."""
-        start_date = _resolve_history_start_date(trade, lookback_days=lookback_days)
+        strategy_name = str(trade.get("strategy", "")).lower()
+        actual_lookback = lookback_days
+        if (
+            Strategies.WoundedBullSprint.lower() in strategy_name
+            or Strategies.BounceBandit.lower() in strategy_name
+        ):
+            actual_lookback = max(lookback_days, 350)
+
+        start_date = _resolve_history_start_date(trade, lookback_days=actual_lookback)
         return self.market_repository.get_symbol_history_raw(
             symbol, start_date=start_date
         )

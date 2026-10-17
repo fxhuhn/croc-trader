@@ -14,9 +14,11 @@ from ..types import TradeStatus
 from .screener.strategies.bounce_bandit import BounceBanditStrategy
 from .screener.strategies.bridge_scout import BridgeScoutStrategy
 from .screener.strategies.tgim import TGIMStrategy
+from .screener.strategies.wounded_bull_sprint import WoundedBullSprintStrategy
 from .trade_manager.strategies.bounce_bandit import BounceBanditTradeStrategy
 from .trade_manager.strategies.bridge_scout import BridgeScoutTradeStrategy
 from .trade_manager.strategies.tgim import TGIMTradeStrategy
+from .trade_manager.strategies.wounded_bull_sprint import WoundedBullSprintTradeStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,17 @@ STRATEGY_MAP: dict[str, tuple[type[Any], type[Any], int]] = {
     "bouncebandit": (BounceBanditStrategy, BounceBanditTradeStrategy, 350),
     "bounce bandit": (BounceBanditStrategy, BounceBanditTradeStrategy, 350),
     "qqq_meanrev": (BounceBanditStrategy, BounceBanditTradeStrategy, 350),
+    "wounded_bull_sprint": (
+        WoundedBullSprintStrategy,
+        WoundedBullSprintTradeStrategy,
+        500,
+    ),
+    "woundedbullsprint": (
+        WoundedBullSprintStrategy,
+        WoundedBullSprintTradeStrategy,
+        500,
+    ),
+    "wbs": (WoundedBullSprintStrategy, WoundedBullSprintTradeStrategy, 500),
 }
 
 
@@ -91,8 +104,9 @@ def _process_trade_candle(
 
     candle = df_sim.iloc[-1]
     trade_id = int(str(trade["id"]))
+    status = trade.get("status")
 
-    if trade.get("status") == TradeStatus.CREATED.value:
+    if status == TradeStatus.CREATED.value:
         trade["budget"] = budget
         transition = strategy_engine.check_entry(trade, candle, df_sim)
         if transition and transition.updates:
@@ -102,8 +116,10 @@ def _process_trade_candle(
                 reason=transition.reason,
             )
             stats["filled"] += 1
+            status = transition.updates.get("status", TradeStatus.ACTIVE.value)
+            trade.update(transition.updates)
 
-    elif trade.get("status") == TradeStatus.ACTIVE.value:
+    if status == TradeStatus.ACTIVE.value:
         transition = strategy_engine.manage_active_trade(trade, df_sim)
         if transition and transition.updates:
             trade_repository.update_trade(
@@ -112,6 +128,20 @@ def _process_trade_candle(
                 reason=transition.reason,
             )
             stats["closed"] += 1
+        elif hasattr(strategy_engine, "get_daily_updates"):
+            daily_updates = strategy_engine.get_daily_updates(trade, df_sim)
+            if daily_updates:
+                raw_context = trade.get("signal_context") or "{}"
+                ctx = (
+                    json.loads(str(raw_context))
+                    if isinstance(raw_context, str)
+                    else dict(raw_context)
+                )
+                ctx.update(daily_updates)
+                trade_repository.update_trade(
+                    trade_id,
+                    {"signal_context": json.dumps(ctx, ensure_ascii=False)},
+                )
 
 
 def _aggregate_closed_trades(
@@ -190,9 +220,6 @@ def run_generic_backfill(
         current_date_str = current_ts.strftime("%Y-%m-%d")
         sim_date = current_ts.date()
 
-        hits = screener.run(days=0, analysis_date=current_date_str)
-        stats["signals"] += hits
-
         active_trades = [
             t
             for t in trade_repository.get_by_status(
@@ -201,31 +228,32 @@ def run_generic_backfill(
             if canonical_strategy in str(t.get("strategy")).lower()
         ]
 
-        if not active_trades:
-            continue
-
-        syms = [str(t["symbol"]) for t in active_trades if "symbol" in t]
-        market_data = data_provider.get_batch_history(
-            syms, days=lookback_days, end_date=current_date_str
-        )
-
-        for trade in active_trades:
-            sym = str(trade.get("symbol"))
-            if sym not in market_data:
-                continue
-
-            df_hist = market_data[sym]
-            df_sim = df_hist[df_hist["date"].dt.date <= sim_date].copy()
-
-            _process_trade_candle(
-                trade=trade,
-                sim_date=sim_date,
-                df_sim=df_sim,
-                strategy_engine=strategy_engine,
-                trade_repository=trade_repository,
-                budget=budget,
-                stats=stats,
+        if active_trades:
+            syms = [str(t["symbol"]) for t in active_trades if "symbol" in t]
+            market_data = data_provider.get_batch_history(
+                syms, days=lookback_days, end_date=current_date_str
             )
+
+            for trade in active_trades:
+                sym = str(trade.get("symbol"))
+                if sym not in market_data:
+                    continue
+
+                df_hist = market_data[sym]
+                df_sim = df_hist[df_hist["date"].dt.date <= sim_date].copy()
+
+                _process_trade_candle(
+                    trade=trade,
+                    sim_date=sim_date,
+                    df_sim=df_sim,
+                    strategy_engine=strategy_engine,
+                    trade_repository=trade_repository,
+                    budget=budget,
+                    stats=stats,
+                )
+
+        hits = screener.run(days=0, analysis_date=current_date_str)
+        stats["signals"] += hits
 
     return _aggregate_closed_trades(
         trade_repository=trade_repository,

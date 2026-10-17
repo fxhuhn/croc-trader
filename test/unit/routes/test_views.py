@@ -234,6 +234,7 @@ def test_view_trades_overview_croc_setup_excluded(
         ("/trades/tgim", b"TGIM"),
         ("/trades/bridge-scout", b"Bridge Scout"),
         ("/trades/bounce-bandit", b"Bounce Bandit"),
+        ("/trades/wounded-bull-sprint", b"Wounded Bull Sprint"),
     ],
 )
 def test_view_trades_strategy_specific_routes(
@@ -351,6 +352,7 @@ def test_view_trades_strategy_specific_routes(
         ("/trades/tgim", b"TGIM"),
         ("/trades/bridge-scout", b"Bridge Scout"),
         ("/trades/bounce-bandit", b"Bounce Bandit"),
+        ("/trades/wounded-bull-sprint", b"Wounded Bull Sprint"),
         ("/trades", b"Strategies"),
     ],
 )
@@ -644,6 +646,18 @@ def test_view_trades_dip_buyer_weekday_stats_populated_and_rendered(
             },
         ),
         (
+            "/trades/wounded-bull-sprint",
+            {
+                "active_trades",
+                "active_groups",
+                "closed_trades",
+                "history_groups",
+                "summary",
+                "closed_summary",
+                "index_stats",
+            },
+        ),
+        (
             "/trades",
             {
                 "active_trades",
@@ -771,6 +785,10 @@ def test_view_trades_template_context_contract_enforced(
         (
             "/trades/bounce-bandit",
             [b"Bounce Bandit", b"Positions", b"AAPL"],
+        ),
+        (
+            "/trades/wounded-bull-sprint",
+            [b"Wounded Bull Sprint", b"Positions", b"AAPL"],
         ),
     ],
 )
@@ -1456,8 +1474,8 @@ def test_view_analytics_monthly_matrix_excludes_croc_trades(
         assert b"Dip Buyer" in response.data
         assert b"+10,0%" in response.data
 
-        # Portfolio Month 1 average is 10.0% / 7 = 1.4%, not skewed by Croc trades (+50.0%)
-        assert b"+1,4%" in response.data
+        # Portfolio Month 1 average is 10.0% / 8 = 1.2%, not skewed by Croc trades (+50.0%)
+        assert b"+1,2%" in response.data
 
 
 def test_view_analytics_monthly_matrix_compounded_return(
@@ -1506,8 +1524,8 @@ def test_view_analytics_monthly_matrix_compounded_return(
         assert b"+20,0%" in response.data
         # Dip Buyer Compounded Gesamt shows +8,0%
         assert b"+8,0%" in response.data
-        # Portfolio Month 1 average across 7 strategies (+20.0% / 7) shows +2,9%
-        assert b"+2,9%" in response.data
+        # Portfolio Month 1 average across 8 strategies (+20.0% / 8) shows +2,5%
+        assert b"+2,5%" in response.data
 
 
 def test_view_analytics_monthly_matrix_badge_styles(

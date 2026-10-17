@@ -25,6 +25,7 @@ STRATEGY_DISPLAY_MAP: dict[Strategies | str, str] = {
     Strategies.TGIM: "TGIM",
     Strategies.BridgeScout: "Bridge Scout",
     Strategies.BounceBandit: "Bounce Bandit",
+    Strategies.WoundedBullSprint: "Wounded Bull Sprint",
 }
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,7 @@ def _build_strategy_overview_stats(
         "TGIM": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "Bridge Scout": {"count": 0, "pnl": 0.0, "invested": 0.0},
         "Bounce Bandit": {"count": 0, "pnl": 0.0, "invested": 0.0},
+        "Wounded Bull Sprint": {"count": 0, "pnl": 0.0, "invested": 0.0},
     }
 
     for trade in active_trades:
@@ -428,6 +430,18 @@ def view_trades_bounce_bandit() -> str:
     return _render_standard_strategy_trades(
         "trades_bounce_bandit.html",
         Strategies.BounceBandit,
+        include_index_stats=True,
+    )
+
+
+@views_bp.route("/trades/wounded-bull-sprint", methods=["GET"])
+@views_bp.route("/trades/wounded_bull_sprint", methods=["GET"])
+@cache.cached(timeout=86400, query_string=True)
+def view_trades_wounded_bull_sprint() -> str:
+    """Displays the Wounded Bull Sprint trade history and active positions."""
+    return _render_standard_strategy_trades(
+        "trades_wounded_bull_sprint.html",
+        Strategies.WoundedBullSprint,
         include_index_stats=True,
     )
 

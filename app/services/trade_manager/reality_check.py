@@ -297,6 +297,11 @@ STRATEGY_DISPLAY_MAP: tuple[tuple[tuple[str, ...], str, str], ...] = (
         "Bounce Bandit",
         "bg-violet-50 text-violet-700 border-violet-200/60",
     ),
+    (
+        ("wounded", "bull", "wbs"),
+        "Wounded Bull Sprint",
+        "bg-emerald-50 text-emerald-700 border-emerald-200/60",
+    ),
 )
 
 

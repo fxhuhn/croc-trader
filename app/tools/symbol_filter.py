@@ -247,3 +247,19 @@ class SymbolFilter:
                     to_remove.add(loser_ticker)
 
         return [candidate for candidate in candidates if candidate not in to_remove]
+
+    def get_related_symbols(self, symbol: str) -> set[str]:
+        """Returns all ticker symbols representing the same company (including symbol itself).
+
+        Args:
+            symbol: Ticker symbol to look up.
+
+        Returns:
+            A set of related ticker symbols belonging to the same company.
+        """
+        clean_symbol = symbol.upper().strip()
+        for winner_ticker, loser_tickers in self._mapping.items():
+            company_group = {winner_ticker, *loser_tickers}
+            if clean_symbol in company_group:
+                return company_group
+        return {clean_symbol}

@@ -40,6 +40,17 @@ def test_symbol_filter_filter_symbols() -> None:
     assert "GOOGL" in filtered_loser_only
 
 
+def test_symbol_filter_get_related_symbols() -> None:
+    sf = SymbolFilter()
+    sf._mapping = {"GOOGL": ["GOOG"], "FOXA": ["FOX"]}
+
+    assert sf.get_related_symbols("GOOG") == {"GOOGL", "GOOG"}
+    assert sf.get_related_symbols("GOOGL") == {"GOOGL", "GOOG"}
+    assert sf.get_related_symbols("goog") == {"GOOGL", "GOOG"}
+    assert sf.get_related_symbols("FOX") == {"FOXA", "FOX"}
+    assert sf.get_related_symbols("AAPL") == {"AAPL"}
+
+
 def test_symbol_filter_load_and_save_cache(tmp_path: Path) -> None:
     sf = SymbolFilter()
     cache_file = tmp_path / "test_cache.json"
