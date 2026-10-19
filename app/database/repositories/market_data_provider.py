@@ -8,6 +8,8 @@ import logging
 
 import pandas as pd
 
+from app.const import CONTINUOUS_FUTURES_SYMBOLS
+
 from ..session import DatabaseSession
 from .market import PROVIDER_RANK_ORDER
 
@@ -351,11 +353,27 @@ class MarketDataProvider:
     def get_latest_date(self) -> str | None:
         """Returns the latest available date string on the daily timeframe.
 
+        Excludes continuous futures contracts (e.g. MNQ=F, MES=F) to prevent
+        Sunday market sessions from distorting equity EOD analysis dates.
+        Falls back to all symbols if no non-futures records exist.
+
         Returns:
             Date string (YYYY-MM-DD), or None if no records exist.
         """
         try:
             with self.session.connect() as connection:
+                if CONTINUOUS_FUTURES_SYMBOLS:
+                    placeholders = ", ".join("?" for _ in CONTINUOUS_FUTURES_SYMBOLS)
+                    query = (  # nosec B608
+                        "SELECT MAX(date) FROM market_prices "
+                        f"WHERE timeframe = '1D' AND symbol NOT IN ({placeholders})"  # nosec B608
+                    )
+                    row = connection.execute(
+                        query, list(CONTINUOUS_FUTURES_SYMBOLS)
+                    ).fetchone()
+                    if row and row[0]:
+                        return str(row[0]).split(" ")[0]
+
                 query = "SELECT MAX(date) FROM market_prices WHERE timeframe='1D'"
                 row = connection.execute(query).fetchone()
                 if row and row[0]:

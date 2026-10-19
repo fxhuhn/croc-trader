@@ -148,3 +148,57 @@ def test_get_available_dates_and_latest_date(
 
     latest = provider.get_latest_date()
     assert latest == "2026-08-02"
+
+
+def test_get_latest_date_excludes_continuous_futures(
+    market_data_session: DatabaseSession,
+) -> None:
+    # Insert Sunday candle for continuous futures symbol MNQ=F
+    with market_data_session.connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO market_prices (symbol, date, open, high, low, close, volume, timeframe, provider)
+            VALUES ('MNQ=F', '2026-08-03', 18000.0, 18100.0, 17950.0, 18050.0, 5000, '1D', 'yahoo')
+            """
+        )
+
+    provider = MarketDataProvider(market_data_session)
+    latest = provider.get_latest_date()
+    # Must exclude MNQ=F and return the latest equity date 2026-08-02
+    assert latest == "2026-08-02"
+
+
+def test_get_latest_date_falls_back_when_only_continuous_futures_exist(
+    tmp_path: Path,
+) -> None:
+    db_file = tmp_path / "test_futures_only.db"
+    session = DatabaseSession(str(db_file))
+
+    with session.connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE market_prices (
+                symbol TEXT NOT NULL,
+                date TEXT NOT NULL,
+                open REAL,
+                high REAL,
+                low REAL,
+                close REAL,
+                volume INTEGER,
+                timeframe TEXT DEFAULT '1D',
+                provider TEXT DEFAULT 'yahoo',
+                PRIMARY KEY (symbol, date, timeframe, provider)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO market_prices (symbol, date, open, high, low, close, volume, timeframe, provider)
+            VALUES ('MNQ=F', '2026-08-03', 18000.0, 18100.0, 17950.0, 18050.0, 5000, '1D', 'yahoo')
+            """
+        )
+
+    provider = MarketDataProvider(session)
+    latest = provider.get_latest_date()
+    # Fallback returns the futures date when no equities exist
+    assert latest == "2026-08-03"

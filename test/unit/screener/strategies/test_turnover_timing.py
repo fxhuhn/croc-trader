@@ -385,3 +385,81 @@ def test_telegram_reporting_factor_labels(strategy: TurnoverTimingStrategy) -> N
     actions = reported_df["Action"].tolist()
     assert "BUY LMT (0.5 ATR)" in actions
     assert "BUY LMT (1.0 ATR)" in actions
+
+
+@pytest.mark.parametrize(
+    "test_date, is_friday_holiday, expected_plausible",
+    [
+        ("2026-02-09", False, False),  # Monday
+        ("2026-02-10", False, False),  # Tuesday
+        ("2026-02-11", False, False),  # Wednesday
+        ("2026-02-12", False, False),  # Thursday (Normal)
+        ("2026-02-12", True, True),  # Thursday (Friday is Holiday)
+        ("2026-02-13", False, True),  # Friday (Normal)
+        ("2026-02-14", False, True),  # Saturday
+        ("2026-02-15", False, True),  # Sunday
+    ],
+)
+def test_is_plausible_run_day(
+    strategy: TurnoverTimingStrategy,
+    test_date: str,
+    is_friday_holiday: bool,
+    expected_plausible: bool,
+) -> None:
+    """Verifies that _is_plausible_run_day allows Friday, holiday-Thursday, and weekends."""
+    with patch(
+        "app.tools.market_holidays.MarketHolidayChecker.is_holiday"
+    ) as mock_is_holiday:
+
+        def side_effect(date_obj: object) -> bool:
+            if is_friday_holiday and str(date_obj) == "2026-02-13":
+                return True
+            return False
+
+        mock_is_holiday.side_effect = side_effect
+        timestamp = pd.Timestamp(test_date)
+        assert strategy._is_plausible_run_day(timestamp) == expected_plausible
+
+
+@patch("app.services.screener.strategies.turnover_timing.ExchangeSymbol")
+def test_weekend_execution_resolves_friday_setup(
+    mock_exchange_symbol: MagicMock,
+    strategy: TurnoverTimingStrategy,
+    mock_market_data_provider: MagicMock,
+    mock_trade_repository: MagicMock,
+    sample_market_data: dict[str, pd.DataFrame],
+) -> None:
+    """Verifies that running on Sunday correctly resolves and executes Friday's setup."""
+    # 2024-05-17 is Friday, 2024-05-19 is Sunday
+    sunday_date = "2024-05-19"
+    symbols = ["AAPL", "MSFT", "GOOG", "AMZN", "META"]
+
+    mock_loader = MagicMock()
+    mock_loader.nasdaq_100 = symbols[:2]
+    mock_loader.sp_500 = symbols[2:4]
+    mock_loader.russell_1000 = [symbols[4]]
+    mock_exchange_symbol.return_value = mock_loader
+
+    # Truncate market data so the last available date is Friday 2024-05-17
+    truncated_data = {}
+    friday_timestamp = pd.Timestamp("2024-05-17")
+    for key, df in sample_market_data.items():
+        truncated_data[key] = df.loc[df.index <= friday_timestamp]
+
+    mock_market_data_provider.get_universe_daily_data.return_value = truncated_data
+
+    mock_sma_df = pd.DataFrame(
+        50.0, index=truncated_data["close"].index, columns=symbols
+    )
+    mock_atr_df = pd.DataFrame(
+        5.0, index=truncated_data["close"].index, columns=symbols
+    )
+
+    with patch("app.tools.indicators.calculate_sma", return_value=mock_sma_df):
+        with patch("app.tools.indicators.calculate_atr", return_value=mock_atr_df):
+            # Act: Run on Sunday
+            signal_count = strategy.run(analysis_date=sunday_date)
+
+            # Assert: Resolved to Friday and produced signals
+            assert signal_count > 0
+            assert mock_trade_repository.create_trade.called

@@ -129,7 +129,7 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         """
         analysis_timestamp = self._get_analysis_timestamp(days, analysis_date)
 
-        if not self._is_setup_day(analysis_timestamp):
+        if not self._is_plausible_run_day(analysis_timestamp):
             return 0
 
         # Compile Universe
@@ -199,6 +199,17 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         return is_last_trading_day_of_week(
             analysis_timestamp, holiday_checker=self.holiday_checker
         )
+
+    def _is_plausible_run_day(self, analysis_timestamp: pd.Timestamp) -> bool:
+        """Verifies if analysis_timestamp is a plausible execution day for weekly turnover.
+
+        Permitted:
+        - Setup day itself (Friday or holiday-adjusted Thursday)
+        - Weekend (Saturday, Sunday) evaluating the preceding Friday's close
+        """
+        if self._is_setup_day(analysis_timestamp):
+            return True
+        return analysis_timestamp.weekday() in (5, 6)
 
     def _compile_target_universe(
         self,
