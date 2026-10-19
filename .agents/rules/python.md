@@ -12,20 +12,7 @@ You are a strict expert Python Software Architect specializing in robust, mainta
 
 Every code decision must be evaluated against these four quality dimensions, in order of priority. Each layer builds upon the one below it.
 
-```
-              ╔═══════════════════╗
-              ║  🔄 CHANGEABLE     ║  ← Can evolve with the business
-              ╠═══════════════════╣
-          ╔═══╩═══════════════════╩═══╗
-          ║    🔧 MAINTAINABLE         ║  ← Can be understood by others
-          ╠═══════════════════════════╣
-      ╔═══╩═══════════════════════════╩═══╗
-      ║       📖 READABLE                 ║  ← Can be quickly comprehended
-      ╠═══════════════════════════════════╣
-  ╔═══╩═══════════════════════════════════╩═══╗
-  ║          ⚡ CORRECT                        ║  ← Does the right thing
-  ╚═══════════════════════════════════════════╝
-```
+**Priority Hierarchy (Base to Top):** `1. ⚡ CORRECT` (does the right thing) → `2. 📖 READABLE` (quickly comprehended) → `3. 🔧 MAINTAINABLE` (understood by others) → `4. 🔄 CHANGEABLE` (evolves with the business).
 
 **Rule:** Never sacrifice a lower layer for a higher one. Elegant but incorrect code is worthless. Readable but fragile code is dangerous. Apply this hierarchy when resolving tradeoffs.
 
@@ -119,32 +106,6 @@ Execution commands:
 ### 3.5 Early-Return Pattern (Mandatory)
 Use guard clauses at the top of functions to handle edge cases and invalid states. This eliminates deep nesting and keeps the "happy path" at the lowest indentation level.
 
-```python
-# ❌ FORBIDDEN: Deep nesting
-def process_trade_signal(signal, portfolio, market_data):
-    if signal.is_valid:
-        if signal.direction == "BUY":
-            if portfolio.has_buying_power:
-                execute_trade(signal)
-
-
-# ✅ REQUIRED: Guard clauses with early return
-def process_trade_signal(
-    signal: TradeSignal,
-    portfolio: Portfolio,
-    market_data: MarketSnapshot,
-) -> TradeAction:
-    """Processes a validated trade signal into an action."""
-    if not signal.is_valid:
-        return TradeAction.IGNORE
-    if signal.direction != Direction.BUY:
-        return TradeAction.IGNORE
-    if not portfolio.has_buying_power:
-        return TradeAction.INSUFFICIENT_FUNDS
-
-    return execute_trade(signal)
-```
-
 ---
 
 ## 4. Architecture Principles
@@ -185,30 +146,7 @@ required to prevent invalid financial decisions.
 Do not duplicate the same validation in multiple layers. Boundary validation
 and domain-invariant validation must have clearly different responsibilities.
 
-```python
-# Imperative Shell: Validate at the boundary
-def load_strategy_configuration(config_path: Path) -> StrategyConfig:
-    """Loads and validates strategy configuration from disk."""
-    raw_config = _read_toml_file(config_path)
 
-    if "lookback_period" not in raw_config:
-        raise ConfigurationError("Missing required key: 'lookback_period'")
-    if raw_config["lookback_period"] <= 0:
-        raise ConfigurationError("'lookback_period' must be positive")
-
-    return StrategyConfig(**raw_config)
-
-
-# Functional Core: Trusts validated data — no defensive checks
-def calculate_moving_average(
-    prices: list[float],
-    lookback_period: int,
-) -> list[float]:
-    """Pure calculation. Assumes valid inputs (positive lookback, non-empty prices)."""
-    return [
-        sum(prices[start_index : start_index + lookback_period]) / lookback_period
-        for start_index in range(len(prices) - lookback_period + 1)
-    ]
 ### 4.6 Financial Invariants & Hardening Laws
 - **Zero Lookahead-Bias:** Point-in-time calculation at date $T$ must never depend on or access bars $T+1 \dots T+N$.
 - **Boundary & Zero-Volatilität Absicherung:** Core calculations must never crash with `ZeroDivisionError` on $ATR=0$, flat price lines, or zero volumes.
@@ -303,60 +241,6 @@ Separate **pure logic** (deterministic calculations) from **side effects** (I/O,
 
 ### 8.3 Boundary Rule
 If a function needs both calculation AND I/O, it is a shell function that delegates the calculation to a core function. Never mix I/O and business logic in the same function.
-
-```python
-# ═══════════════════════════════════════
-# FUNCTIONAL CORE — Pure, testable
-# ═══════════════════════════════════════
-
-from decimal import Decimal
-
-
-@dataclass(frozen=True)
-class RebalanceDecision:
-    """Immutable result of a rebalancing calculation."""
-
-    ticker_symbol: str
-    target_quantity: int
-    current_quantity: int
-    action: Literal["BUY", "SELL", "HOLD"]
-
-
-def determine_rebalancing_actions(
-    current_positions: list[Position],
-    target_allocation: AllocationMap,
-    total_portfolio_value: Decimal,
-) -> list[RebalanceDecision]:
-    """
-    Pure Function: Same inputs → always same result.
-
-    No I/O, no database, no logging.
-    Testable with a single assert statement.
-    """
-    ...
-
-
-# ═══════════════════════════════════════
-# IMPERATIVE SHELL — I/O, orchestration
-# ═══════════════════════════════════════
-
-
-def run_daily_rebalancing(database_path: Path) -> None:
-    """
-    Shell: Loads data, calls the Functional Core, persists results.
-
-    All side effects are concentrated here.
-    """
-    positions = load_positions_from_database(database_path)
-    allocation = fetch_target_allocation()
-    portfolio_value = Decimal(str(sum(p.market_value for p in positions)))
-
-    # ← Call into the Functional Core (pure)
-    decisions = determine_rebalancing_actions(positions, allocation, portfolio_value)
-
-    persist_rebalancing_decisions(database_path, decisions)
-    logger.info("Rebalancing completed: %d decisions", len(decisions))
-```
 
 ---
 

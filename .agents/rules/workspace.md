@@ -12,17 +12,7 @@ only.
 Use POSIX-compatible paths, shell commands, scripts, and virtual-environment
 layouts.
 
-The repository-local virtual environment uses:
-
-- `.venv/bin/python`
-- `.venv/bin/pytest`
-- `.venv/bin/ruff`
-- `.venv/bin/mypy`
-- `.venv/bin/pip`
-- other installed tools under `.venv/bin/`
-
-* **Strict Virtual Environment Execution:** All commands, test runners, linters, formatters, type checkers, scripts, and package managers MUST strictly be invoked using their repository-relative path `.venv/bin/<tool>` (e.g. `.venv/bin/python`, `.venv/bin/pytest`, `.venv/bin/ruff`, `.venv/bin/mypy`, `.venv/bin/pip`). Never run un-prefixed bare commands like `python` or `pytest`.
-* **Zero Global Installation & Usage:** Never install or use global binaries, packages, or system-wide tools (e.g., `pip install` without `.venv/bin/`, `brew install`, `pipx`, `npm install -g`, `sudo`, etc.). All dependencies MUST be installed exclusively into `.venv` via `.venv/bin/pip install` and documented in `pyproject.toml` / `requirements.txt`.
+* **Strict Virtual Environment Execution & Zero Global Binaries:** Enforce Non-Overrideable Governance #2 from `.agents/AGENTS.md`. All tools (`.venv/bin/python`, `pytest`, `ruff`, `mypy`, `pip`, etc.) must use the repo-local virtual environment; global/system-wide binaries (`sudo`, global `pip`, `brew`) are strictly prohibited. Document dependencies in `pyproject.toml`.
 * You are strictly locked into the current working directory from which you were invoked.
 * **ZERO EXTERNAL REPOSITORY ACCESS:** Never inspect, read, write, or execute binaries/scripts from external or neighboring repositories (e.g., `github/TradeManager`, `croc-trader_2`, or any path outside the current workspace root).
 * **STRICT COMMAND SCOPING:** Commands executed through the available shell or command-execution capability MUST NOT search or execute outside the workspace. Never run global search commands such as `find /` or `find ~`. All commands must target relative paths within `./` or `.venv/`.
@@ -42,8 +32,7 @@ The repository-local virtual environment uses:
   requires it.
 - Use temporary directories for generated validation artifacts and remove them
   after use when safe.
-- **NO SCRATCH FILES IN ROOT:** Never create diagnostic, scratch, or test scripts (e.g., `test.py`, `debug.py`) in the repository root directory.
-- **Dedicated Scratch Folders:** All temporary scripts MUST be created either in the system-provided scratch directory (`<appDataDir>/.../scratch/`) or within `scripts/one_off/` if they are to be persisted in the project.
+- **Scratch Scripts:** Enforce Non-Overrideable Governance #1 from `.agents/AGENTS.md` (no scratch files in root; use `<appDataDir>/.../scratch/` or `scripts/one_off/` if persisted).
 
 ## Strategy & Constant References
 * **Use Strategies Enum**: When checking or filtering trading strategies in the codebase, always use the system-wide canonical `Strategies` enum members from `app/const.py`. Do **NOT** hardcode raw strings (e.g., `"hold_target"`, `"split_target"`, `"DipBuyer"`, or `"TwoPercent"`) in strategy comparisons. Leverage the fact that `Strategies` is a `StrEnum` which compares equal to its raw string representation.
@@ -56,18 +45,16 @@ The repository-local virtual environment uses:
 * Do **NOT** rely on fallback default values defined inside Python dataclasses (e.g. `app/config.py`) when runtime configuration files (`settings.yaml`, `.env`) are present in the workspace.
 
 ## Production Inspection & Container Log Invariant
-For container, log, and metric inspection in the production environment:
-- **Strict Prohibition:** Never use `browser_subagent` or temporary scratch scripts in `/tmp` or the root directory.
-- **Priority 1 (Standard & 100% Reliable):** Execute the official zero-dependency plugin CLI:
-  `.venv/bin/python .agents/plugins/dozzle-mcp/scripts/dozzle_cli.py [status|list|logs|search|stats]`
-  (or `python3 .agents/plugins/dozzle-mcp/scripts/dozzle_cli.py ...`)
-- **Priority 2 (Native MCP Dispatcher):** Use `call_mcp_tool` providing all 5 mandatory parameters (`ServerName: "dozzle"`, `ToolName`, `Arguments` as a JSON object, `toolSummary`, `toolAction`). Note that the IDE masks schema/argument errors as `unknown tool name: call_mcp_tool`.
+For inspecting production containers, logs, and metrics (Non-Overrideable Governance #11 in `.agents/AGENTS.md`):
+- Never use `browser_subagent` or temporary scratch scripts in `/tmp` or the root directory.
+- **Priority 1 (Official Plugin CLI):** `.venv/bin/python .agents/plugins/dozzle-mcp/scripts/dozzle_cli.py [status|list|logs|search|stats]` (or `python3 ...`).
+- **Priority 2 (Native MCP Dispatcher):** `call_mcp_tool` with all 5 mandatory parameters (`ServerName: "dozzle"`, `ToolName`, `Arguments`, `toolSummary`, `toolAction`).
 
 ## Domain & Environment Tool Execution Invariant (Mandatory MCP Usage)
-* **STRICT MCP DISPATCHER MANDATE:** Whenever inspecting, verifying, or interacting with application services, portfolios, trades, screener candidates, system health, logs, database queries, or workflow triggers (both in DEV and PROD), you **MUST ALWAYS** use the native MCP tools via `call_mcp_tool` (or available eager MCP tools).
-* **MANDATORY PRO DATABASE QUERIES VIA CROC MCP:** Any database inspection, query, or state verification for the **PROD** environment (`signals.db`, `stocks.db`, `trading.db`, positions, trades, orders, prices, candles, screener candidates, webhook signals, system health) **MUST ALWAYS** be executed via the domain MCP server `croc-trader-prod` using `call_mcp_tool` (or official plugin CLI `.venv/bin/python .agents/plugins/croc-mcp/scripts/croc_cli.py [health|summary|positions|orders]`).
-* **DEV VS. PRO DATABASE ISOLATION:** The `croc-sqlite-readonly` server connects strictly to local development SQLite files (`data/*.db`) on the local filesystem. It has zero connectivity to PROD. Never use `croc-sqlite-readonly` to inspect or reason about PROD database state.
-* **STRICT BAN ON RAW HTTP / URLLIB / CURL FOR MCP OPERATIONS:** Never execute raw `urllib`, `requests`, `httpx`, `curl`, or custom HTTP scripts via command-line to bypass, simulate, or test MCP endpoints and domain operations when native MCP tools (`croc-trader-dev`, `croc-trader-prod`, `croc-sqlite-readonly`, `dozzle`) are available.
+For inspecting or interacting with domain services and databases (Non-Overrideable Governance #12 in `.agents/AGENTS.md`):
+- **Mandatory Native MCP Dispatcher:** Always use native MCP tools via `call_mcp_tool` (or plugin CLIs). Never craft ad-hoc raw HTTP/curl/urllib scripts.
+- **PROD Database Queries via Croc MCP:** All PROD database queries (`signals.db`, `stocks.db`, `trading.db`) must use `croc-trader-prod` (`call_mcp_tool` or `.venv/bin/python .agents/plugins/croc-mcp/scripts/croc_cli.py [health|summary|positions|orders]`).
+- **DEV vs. PROD Database Isolation:** `croc-sqlite-readonly` connects strictly to local development SQLite files (`data/*.db`). It has zero connectivity to PROD. Never use it to inspect or reason about PROD state.
 
 
 Task scope, change discipline, evidence requirements, and completion reporting

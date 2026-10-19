@@ -1,5 +1,8 @@
 ---
-trigger: always_on
+trigger: path_based
+paths:
+  - "app/templates/**"
+  - "app/routes/views/**"
 ---
 
 # HTML, Jinja2 & Tailwind — Agent Rules

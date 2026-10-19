@@ -77,57 +77,19 @@ conversation, you must re-read these documents at the start of each new task.
 You **MUST** inspect and read the relevant `.agents/skills/<skill>/SKILL.md` file
 whenever a task involves:
 
-| Domain                              | Skill / Rule                    |
-|-------------------------------------|---------------------------------|
-| Architecture specification          | `architecture-specification`    |
-| Python implementation               | `python-craftsman`              |
-| Python behavior verification        | `python-tester`                 |
-| Python architecture and quality     | `python-auditor`                |
-| Python security and data integrity  | `python-security`               |
-| Architecture documentation sync     | `architecture-sync`             |
-| Data ingestion and market data      | `data-ingestion`                |
-| Strategy contracts and screening    | `strategy-screener`             |
-| Flask, Jinja, HTML and UI            | `flask-ui` / `rules/html.md`     |
+| Domain & Applicability | Skill / Rule |
+|---|---|
+| New components, architecture changes, contracts, state/data flows, or architecture review | `architecture-specification` |
+| Implementation or modification of Python code | `python-craftsman` |
+| Behavior changes, bug fixes, new logic, regression testing, or explicit test requests | `python-tester` |
+| Non-trivial Python changes or explicit quality/architecture review | `python-auditor` |
+| Trust boundaries, external input, persistence, files, subprocesses, network, secrets, monetary values, orders, dependencies, or security review | `python-security` |
+| Architecture documentation sync (only for triggers defined in its skill) | `architecture-sync` |
+| Historical EOD market-data providers, fallback, provenance, sync, and data-quality contracts | `data-ingestion` |
+| Strategy descriptions, playbooks, signal contracts, implementation comparisons, or strategy audits | `strategy-screener` |
+| Flask views, Jinja templates, HTML, CSS, UI behavior, accessibility, and explicit ASCII wireframes | `flask-ui` / `rules/html.md` |
 
-### Skill Applicability
-
-Activate only the smallest set of skills required by the task.
-
-- `architecture-specification`:
-  Use for new components, architecture-significant changes, public-contract
-  design, state models, data-flow design, or an explicit architecture review.
-
-- `python-craftsman`:
-  Use for implementation or modification of Python code.
-
-- `python-tester`:
-  Use for behavior changes, bug fixes, new logic, regression testing, or an
-  explicit test request.
-
-- `python-auditor`:
-  Use for non-trivial Python changes or an explicit quality review.
-
-- `python-security`:
-  Use for trust boundaries, external input, persistence, files, subprocesses,
-  networking, secrets, monetary values, orders, dependencies, or an explicit
-  security review.
-
-- `architecture-sync`:
-  Use only for the triggers defined in its own skill.
-
-- `data-ingestion`:
-  Use for historical EOD market-data providers, fallback behavior, provider
-  provenance, synchronization, and data-quality contracts.
-
-- `strategy-screener`:
-  Use for strategy descriptions, strategy playbooks, signal contracts,
-  strategy implementation comparisons, or strategy audits.
-
-- `flask-ui`:
-  Use for Flask views, Jinja templates, HTML, CSS, UI behavior, accessibility,
-  and optional ASCII wireframes explicitly requested by the user.
-
-Do not activate all skills mechanically.
+Activate only the smallest set of skills required by the task. Do not activate all skills mechanically.
 
 Documentation-only, comment-only, format-only, and read-only explanation tasks
 must use only the skills that materially contribute to the requested result.
@@ -341,18 +303,7 @@ for the blocked part.
 
 ## Mandatory Response Protocol
 
-This protocol applies to every final response.
-
-- Start directly with the result.
-- Omit greetings, pleasantries, generic introductions, and generic
-  conclusions.
-- Use compact headings and scannable bullet points.
-- Do not repeat the task, repository rules, or unchanged code.
-- Show only relevant code snippets or unified diffs unless a complete file
-  was explicitly requested.
-- Do not omit failed checks, unavailable checks, assumptions, risks, or scope
-  exceptions for brevity.
-- Do not provide unsolicited recommendations outside the task scope.
+Follow `.agents/rules/concise.md` for all responses.
 
 For modification tasks, use this compact completion report:
 

@@ -43,17 +43,7 @@ Do not label theoretical or unreachable code as Critical.
 
 ## Numeric Precision Policy
 
-Classify numeric data by purpose:
-
-- Ledger balances, cash amounts, fees, realized monetary values, and settlement
-  values require `decimal.Decimal` or an approved integer minor-unit model.
-- Market prices, returns, technical indicators, statistical models, Pandas
-  series, and NumPy-compatible analytics may use floating-point values when
-  the architecture permits it.
-- Conversion from analytical values to monetary or order values must apply an
-  explicit precision and rounding policy.
-- A floating-point value is a security or integrity finding only when its use
-  can cause an incorrect monetary, ledger, settlement, or order result.
+Enforce the Financial and Analytical Precision invariants in `architecture.md §3` and `references/architecture.md §1`. A floating-point value is a security or integrity finding only when its use can cause an incorrect monetary, ledger, settlement, or order result.
 
 ---
 

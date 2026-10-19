@@ -26,7 +26,7 @@ Zur Identifikation potenzieller Kandidaten werden die repo-eigenen Werkzeuge üb
 
 1. **Vulture-Scan (Dead Code & ungenutzte Symbole):**
    ```bash
-   .venv/bin/vulture app/ scripts/ vulture_whitelist.py
+   .venv/bin/vulture
    ```
    - *Konfiguration:* Beachtet die Schwellenwerte aus `pyproject.toml` (`min_confidence = 80`).
    - *Hinweis:* Ergebnisse von Vulture sind Kandidaten und keine finalen Beweise für Dead Code (Gefahr von False Positives bei dynamischen Aufrufen).

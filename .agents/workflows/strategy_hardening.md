@@ -54,7 +54,7 @@ Dieser Workflow dient der systematischen Härtung einer Screener- oder Trade-Man
    .venv/bin/mutmut results
    ```
 2. Analysiere überlebende Mutanten und ergänze fehlende Assertions (Ziel: Mutation Score $\ge 85\,\%$).
-3. Entferne das Strategiemodul aus `[[tool.mypy.overrides]]` in `pyproject.toml`, um strikte Typ-Prüfung zu aktivieren:
+3. Verifiziere strikte Typ-Prüfung ohne `ignore_errors`-Overrides in `pyproject.toml`:
    ```bash
    .venv/bin/mypy app/services/screener/strategies/<strategy>.py
    ```

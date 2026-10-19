@@ -107,10 +107,4 @@ Dieses Dokument definiert den Standardablauf für die sichere, schrittweise und 
    - Aktualisierung oder Neuerstellung aller Docstrings im Google-Style für öffentliche Klassen und Funktionen.
    - Falls architekturrelevante Komponenten verändert wurden: Synchronisation von `architecture.md` und ggf. `references/architecture.md` gemäß Skill `architecture-sync`.
 3. **Zusammenfassung (Completion Report):**
-   - Erstellung des standardisierten Abschlussberichts gemäß `.agents/AGENTS.md`:
-     - `Changed`: Umgesetztes Ergebnis.
-     - `Files`: Modifizierte Dateien.
-     - `Validation`: Ausgeführte Befehle & Ergebnisse.
-     - `Not validated`: Nicht ausführbare Prüfungen.
-     - `Assumptions`: Verbleibende Annahmen.
-     - `Out of scope`: Relevante Befunde außerhalb des Tasks.
+   - Erstellung des standardisierten Abschlussberichts (Completion Report) gemäß `.agents/AGENTS.md`.

@@ -23,6 +23,7 @@ Der Agent wechselt zum Skill `python-craftsman`, um:
 ## 3. Verifikation & Review
 Der Agent führt die Verification Gates aus `python-craftsman` durch:
 - Gate 3: Pytest (`python-tester`)
-- Gate 4: Quality Audit (`python-auditor`), bei Bedarf
-- Gate 5: Security Audit (`python-security`), bei Bedarf
-- Gate 6: Architecture Sync (`architecture-sync`), bei Bedarf
+- Gate 4: Pre-Commit Pipeline (`.venv/bin/pre-commit run --all-files`)
+- Gate 5: Quality Audit (`python-auditor`), bei Bedarf
+- Gate 6: Security Audit (`python-security`), bei Bedarf
+- Gate 7: Architecture Sync (`architecture-sync`), bei Bedarf
