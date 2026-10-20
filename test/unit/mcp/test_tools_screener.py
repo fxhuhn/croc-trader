@@ -9,6 +9,7 @@ from flask import Flask
 
 from app.mcp.tools.screener import (
     get_screener_candidates,
+    get_strategy_regime,
     get_turnover_candidates,
     get_webhook_signals,
 )
@@ -112,3 +113,34 @@ def test_get_webhook_signals(screener_app: Flask) -> None:
         assert tsla["signal"] == "BUY"
         assert isinstance(tsla["data"], dict)
         assert tsla["data"]["rsi"] == 28.5
+
+
+def test_get_strategy_regime(screener_app: Flask) -> None:
+    """Verifies get_strategy_regime returns strategy regime data."""
+    with screener_app.app_context():
+        # Test unknown strategy error handling
+        result = get_strategy_regime("unknown_strategy")
+        assert result["status"] == "error"
+
+        # Test with mock screener engine
+        mock_engine = MagicMock()
+        mock_strategy = MagicMock()
+        mock_strategy._is_calendar_window_active.return_value = (True, 16, 4)
+        mock_strategy._is_macro_regime_defensive.return_value = (True, 0.01, 0.02)
+        mock_strategy._get_available_portfolio_slots.return_value = 3
+        mock_strategy.configuration = MagicMock(max_positions=5, daysp=14)
+        mock_strategy.latest_qualifying_setups = {"NVDA"}
+        mock_strategy.analyze_single_symbol.return_value = {
+            "symbol": "NVDA",
+            "all_technical_filters_pass": True,
+        }
+        mock_engine.get_strategy.return_value = mock_strategy
+        screener_app.extensions["screener_engine"] = mock_engine
+
+        regime = get_strategy_regime("wounded_bull_sprint", include_candidates=True)
+        assert regime["status"] == "success"
+        assert regime["calendar"]["trading_day_of_month"] == 16
+        assert regime["calendar"]["is_window_active"] is True
+        assert regime["macro_regime"]["is_defensive"] is True
+        assert regime["summary"]["overall_signal_ready"] is True
+        assert len(regime["pre_qualified_candidates"]) == 1

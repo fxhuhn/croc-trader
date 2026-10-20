@@ -90,8 +90,13 @@ def trigger_single_symbol_debug(
                 "message": f"Strategy '{strategy_name}' does not implement single-symbol analysis",
             }
 
-        result = strategy.analyze_single_symbol(symbol.upper().strip())
-        return {"status": "success", "analysis": result}
+        if "," in symbol:
+            symbol_list = [s.strip().upper() for s in symbol.split(",") if s.strip()]
+            analysis_result = [strategy.analyze_single_symbol(s) for s in symbol_list]
+        else:
+            analysis_result = strategy.analyze_single_symbol(symbol.upper().strip())
+
+        return {"status": "success", "analysis": analysis_result}
     except Exception as error:
         logger.exception("Error debugging symbol %s: %s", symbol, error)
         return {"status": "error", "message": str(error)}

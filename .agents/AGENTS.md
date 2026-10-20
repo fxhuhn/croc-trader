@@ -123,6 +123,22 @@ A task is considered to "touch the codebase" if it involves ANY of:
 - Analyzing log files that reference application components
 - Debugging runtime behavior
 
+### Operational Fast-Track for Read-Only Inspection & Status Queries
+
+Tasks that exclusively execute **Read-Only Operational Inquiries** via:
+- Official Plugin CLIs (`croc_cli.py`, `dozzle_cli.py`), or
+- Native MCP tools (`call_mcp_tool`) for system health, database metrics, screener status, or container logs,
+WITHOUT opening, searching, or modifying repository source files, are **EXEMPT** from the mandatory Step 1 (Architecture Inspection) and Step 2 (Skill Activation).
+
+#### Mandatory Transition Guardrail (Hard Boundary):
+The Fast-Track ends immediately when:
+1. The user asks to modify or refactor code, configuration, or database schemas.
+2. The agent needs to inspect source files (`.py`, `.yaml`, `.sql`, etc.) to debug or explain application logic.
+3. An incidental defect is detected that requires code investigation.
+
+In all such cases, the agent **MUST immediately halt operational execution and execute Step 1 (Architecture Inspection) and Step 2 (Skill Activation)** before touching any repository file.
+
+
 ## Task Scope and Change Discipline — MANDATORY
 
 The explicit user request defines the complete task boundary.

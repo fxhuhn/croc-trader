@@ -27,6 +27,7 @@ def test_mcp_server_tools_registered() -> None:
         "get_trade_history",
         "get_trade_detail",
         "get_screener_candidates",
+        "get_strategy_regime",
         "get_turnover_candidates",
         "get_webhook_signals",
         "get_price_history",
