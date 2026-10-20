@@ -341,3 +341,24 @@ def test_oauth_metadata_discovery_unauthorized_ip_blocked(mcp_app: Flask) -> Non
     assert response.status_code == 403
     data = response.get_json()
     assert data == {"status": "error", "message": "Unauthorized Access"}
+
+
+@patch("app.routes.mcp.require_ip_whitelist", lambda f: f)
+def test_mcp_unknown_tool_returns_client_error(mcp_app: Flask) -> None:
+    """Verifies that calling an unknown tool returns a clean 400 rejection without 500."""
+    client = mcp_app.test_client()
+    response = client.post(
+        "/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 99,
+            "method": "tools/call",
+            "params": {"name": "non_existent_tool", "arguments": {}},
+        },
+    )
+    assert response.status_code == 400
+    data = response.get_json()
+    assert data["jsonrpc"] == "2.0"
+    assert data["id"] == 99
+    assert data["error"]["code"] == -32601
+    assert "unknown tool" in data["error"]["message"].lower()

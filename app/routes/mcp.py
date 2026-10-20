@@ -6,6 +6,12 @@ from collections.abc import Callable
 from typing import Any, cast
 
 from flask import Blueprint, Response, current_app, jsonify, request
+from mcp.server.mcpserver.exceptions import (
+    ResourceNotFoundError,
+    ToolError,
+    UnexpectedResourceError,
+    UnexpectedToolError,
+)
 
 from .security import require_ip_whitelist
 
@@ -158,6 +164,21 @@ def _dispatch_method(
     except ValueError as val_err:
         logger.warning("Invalid parameters for MCP method '%s': %s", method, val_err)
         return _jsonrpc_error(request_id, -32602, str(val_err)), 400
+    except (UnexpectedToolError, UnexpectedResourceError) as unexpected_err:
+        logger.exception(
+            "Unexpected error executing MCP method '%s': %s", method, unexpected_err
+        )
+        return (
+            _jsonrpc_error(request_id, -32603, f"Internal error: {unexpected_err}"),
+            500,
+        )
+    except (ToolError, ResourceNotFoundError) as client_err:
+        logger.warning(
+            "MCP client request rejected for method '%s': %s", method, client_err
+        )
+        error_code = -32601 if "unknown tool" in str(client_err).lower() else -32602
+        status_code = 404 if isinstance(client_err, ResourceNotFoundError) else 400
+        return _jsonrpc_error(request_id, error_code, str(client_err)), status_code
     except Exception as error:
         logger.exception("Internal error processing MCP method '%s': %s", method, error)
         return _jsonrpc_error(request_id, -32603, f"Internal error: {error}"), 500
