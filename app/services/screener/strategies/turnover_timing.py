@@ -1,6 +1,7 @@
+import datetime
 import logging
 from dataclasses import dataclass, field
-from typing import TypedDict, override
+from typing import Any, TypedDict, override
 
 import pandas as pd
 
@@ -8,13 +9,16 @@ from ....const import Strategies
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....tools import indicators
-from ....tools.indicators import extract_safe_float
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
 from ....tools.trading_calendar import is_last_trading_day_of_week
 from ...telegram import TelegramBot
-from ..models import SignalReportItem
+from ..models import (
+    SignalReportItem,
+    SingleSymbolAnalysisResult,
+    SingleSymbolStatus,
+)
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -77,6 +81,7 @@ class TurnoverConfiguration:
 
 
 class TurnoverTimingStrategy(BaseStrategy[int]):
+    STRATEGY_IDENTIFIER: Strategies = Strategies.TurnOverTiming
     name: str = str(Strategies.TurnOverTiming)
     FACTOR_STRATEGY_MAP: dict[float, Strategies] = {
         0.5: Strategies.TurnOverTiming_05,
@@ -507,37 +512,137 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
             "Turnover Signals", report_items, str(setup_date.date())
         )
 
-    def analyze_single_symbol(self, symbol: str) -> dict[str, object]:
-        """
-        Calculates indicators for a single symbol for debugging purposes.
-        This represents the Imperative Shell: it fetches data and delegates to the Functional Core.
-        """
-        days_lookback = 400
-        dataframe = self.data_provider.get_symbol_history(symbol, days=days_lookback)
-        if dataframe.empty:
-            return {"symbol": symbol, "error": "No data found"}
+    def get_precheck_candidates(self, limit: int = 20) -> list[dict[str, Any]]:
+        """Calculates candidate setups across indices on current EOD data."""
+        latest_date_str = self.data_provider.get_latest_date()
+        target_date_str = (
+            latest_date_str
+            if isinstance(latest_date_str, str) and latest_date_str
+            else datetime.date.today().strftime("%Y-%m-%d")
+        )
+        setup_date = pd.Timestamp(target_date_str)
 
-        return self._compute_single_symbol_analysis(symbol, dataframe)
+        symbol_loader = ExchangeSymbol()
+        indices_map = {
+            "NDX": symbol_loader.nasdaq_100,
+            "SPX": symbol_loader.sp_500,
+            "RUS": symbol_loader.russell_1000,
+        }
+        target_universe = self._compile_target_universe(indices_map, None)
+        if not target_universe:
+            return []
+
+        lookback = self._calculate_required_lookback(setup_date)
+        data_frames = self.data_provider.get_universe_daily_data(
+            target_universe, days=lookback
+        )
+        if not data_frames or "close" not in data_frames or data_frames["close"].empty:
+            return []
+
+        candidates = self._identify_strategy_candidates(
+            data_frames, setup_date, indices_map
+        )
+        return [
+            {
+                "symbol": str(c["symbol"]),
+                "close": round(float(c["close"]), 2),
+                "sma150": round(float(c["sma_price"]), 2),
+                "turnover_sma20": int(float(c["sma_turnover"])),
+                "atr": round(float(c["atr"]), 2),
+                "indices": str(c["indices"]),
+                "status": "QUALIFIED",
+            }
+            for c in candidates[:limit]
+        ]
+
+    def analyze_single_symbol(self, symbol: str) -> SingleSymbolAnalysisResult:
+        """Calculates indicators for a single symbol for debugging purposes."""
+        clean_symbol = symbol.upper().strip()
+        days_lookback = 400
+        dataframe = self.data_provider.get_symbol_history(
+            clean_symbol, days=days_lookback
+        )
+        if dataframe.empty:
+            return SingleSymbolAnalysisResult(
+                symbol=clean_symbol,
+                strategy=self.STRATEGY_IDENTIFIER.value,
+                as_of_market_date="",
+                upcoming_eod_date="",
+                status=SingleSymbolStatus.INSUFFICIENT_DATA,
+                overall_passed=False,
+                requires_universe_ranking=True,
+                calendar_active_today=None,
+                macro_regime_passed=None,
+                intrinsic_filters={},
+                metric_values={},
+                relative_ranking=None,
+                rejection_reasons=[f"No data found for {clean_symbol}"],
+                checks={},
+                values={},
+                technical_filters={},
+                all_technical_filters_pass=False,
+                data_valid=False,
+                error=f"No data found for {clean_symbol}",
+            )
+
+        return self._compute_single_symbol_analysis(clean_symbol, dataframe)
 
     def _compute_single_symbol_analysis(
         self, symbol: str, dataframe: pd.DataFrame
-    ) -> dict[str, object]:
-        """
-        Functional Core: Computes the indicators for the analysis output without side effects.
-        """
+    ) -> SingleSymbolAnalysisResult:
+        """Functional Core: Computes indicators for analysis output."""
         try:
             closes = pd.Series(dataframe["close"].values, index=dataframe["date"])
             highs = pd.Series(dataframe["high"].values, index=dataframe["date"])
             lows = pd.Series(dataframe["low"].values, index=dataframe["date"])
             volumes = pd.Series(dataframe["volume"].values, index=dataframe["date"])
         except (KeyError, ValueError, TypeError) as error:
-            return {"symbol": symbol, "error": f"Data Frame Error: {str(error)}"}
+            return SingleSymbolAnalysisResult(
+                symbol=symbol,
+                strategy=self.STRATEGY_IDENTIFIER.value,
+                as_of_market_date="",
+                upcoming_eod_date="",
+                status=SingleSymbolStatus.INSUFFICIENT_DATA,
+                overall_passed=False,
+                requires_universe_ranking=True,
+                calendar_active_today=None,
+                macro_regime_passed=None,
+                intrinsic_filters={},
+                metric_values={},
+                relative_ranking=None,
+                rejection_reasons=[f"DataFrame Error: {error}"],
+                checks={},
+                values={},
+                technical_filters={},
+                all_technical_filters_pass=False,
+                data_valid=False,
+                error=f"DataFrame Error: {error}",
+            )
 
         if len(closes) < self.configuration.min_sma_lookback_bars:
-            return {
-                "symbol": symbol,
-                "error": f"Not enough data (Found {len(closes)}, Need {self.configuration.min_sma_lookback_bars}+)",
-            }
+            return SingleSymbolAnalysisResult(
+                symbol=symbol,
+                strategy=self.STRATEGY_IDENTIFIER.value,
+                as_of_market_date="",
+                upcoming_eod_date="",
+                status=SingleSymbolStatus.INSUFFICIENT_DATA,
+                overall_passed=False,
+                requires_universe_ranking=True,
+                calendar_active_today=None,
+                macro_regime_passed=None,
+                intrinsic_filters={},
+                metric_values={},
+                relative_ranking=None,
+                rejection_reasons=[
+                    f"Not enough data (Found {len(closes)}, Need {self.configuration.min_sma_lookback_bars}+)"
+                ],
+                checks={},
+                values={},
+                technical_filters={},
+                all_technical_filters_pass=False,
+                data_valid=False,
+                error=f"Not enough data (Found {len(closes)}, Need {self.configuration.min_sma_lookback_bars}+)",
+            )
 
         turnover = closes * volumes
         sma_turnover = indicators.calculate_sma(
@@ -546,31 +651,85 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
         sma_price = indicators.calculate_sma(
             closes, self.configuration.trend_sma_window
         )
-
-        # ATR Calculation
         atr_series = indicators.calculate_atr(
             highs, lows, closes, self.configuration.atr_window
         )
 
-        # Extract Last Values
-        current_close = closes.iloc[-1]
-        current_sma150 = sma_price.iloc[-1]
-        current_turnover_sma = sma_turnover.iloc[-1]
-        current_atr = atr_series.iloc[-1]
+        current_close = float(closes.iloc[-1])
+        current_sma150 = float(sma_price.iloc[-1])
+        current_turnover_sma = float(sma_turnover.iloc[-1])
+        current_atr = float(atr_series.iloc[-1])
 
-        # Trend Logic Check
         uptrend = bool(current_close > current_sma150)
+        status = (
+            SingleSymbolStatus.INTRINSIC_PASSED_RELATIVE_UNVERIFIED
+            if uptrend
+            else SingleSymbolStatus.REJECTED
+        )
+        rejection_reasons: list[str] = []
+        if not uptrend:
+            rejection_reasons.append(
+                f"Close {current_close:.2f} <= SMA150 {current_sma150:.2f}"
+            )
+        else:
+            rejection_reasons.append(
+                "Turnover ranking (Top 20 of index) requires full market scan (unverified in single mode)"
+            )
 
-        return {
-            "symbol": symbol,
-            "last_date": str(dataframe["date"].iloc[-1].date()),
-            "data_valid": True,
-            "checks": {"uptrend_sma150": uptrend, "data_sufficient": True},
-            "values": {
-                "close": round(extract_safe_float(current_close), 2),
-                "sma150": round(extract_safe_float(current_sma150), 2),
-                "turnover_sma20": int(extract_safe_float(current_turnover_sma, 0)),
-                "atr": round(extract_safe_float(current_atr), 2),
+        latest_date_str = str(dataframe["date"].iloc[-1].date())
+        return SingleSymbolAnalysisResult(
+            symbol=symbol,
+            strategy=self.STRATEGY_IDENTIFIER.value,
+            as_of_market_date=latest_date_str,
+            upcoming_eod_date=latest_date_str,
+            status=status,
+            overall_passed=False,
+            requires_universe_ranking=True,
+            calendar_active_today=None,
+            macro_regime_passed=None,
+            intrinsic_filters={
+                "uptrend_sma150": uptrend,
+                "data_sufficient": True,
             },
-            "note": "Rank logic (Top 20) requires full market scan.",
-        }
+            metric_values={
+                "close": round(current_close, 2),
+                "sma150": round(current_sma150, 2),
+                "turnover_sma20": int(current_turnover_sma),
+                "atr": round(current_atr, 2),
+            },
+            relative_ranking={
+                "note": "Rank logic (Top 20) requires full market scan.",
+                "turnover_sma20": int(current_turnover_sma),
+            },
+            rejection_reasons=rejection_reasons,
+            checks={"uptrend_sma150": uptrend, "data_sufficient": True},
+            values={
+                "close": round(current_close, 2),
+                "sma150": round(current_sma150, 2),
+                "turnover_sma20": int(current_turnover_sma),
+                "atr": round(current_atr, 2),
+            },
+            technical_filters={
+                "close": round(current_close, 2),
+                "min_price_ok": True,
+                "volume_sma_20": 0.0,
+                "volume_ok": True,
+                "sma_200": round(current_sma150, 2),
+                "uptrend_ok": uptrend,
+                "atr_3": 0.0,
+                "atr_pct": round(
+                    (current_atr / current_close * 100.0) if current_close > 0 else 0.0,
+                    2,
+                ),
+                "volatility_ok": True,
+                "roc_10": 0.0,
+                "pullback_ok": True,
+                "roc_5": 0.0,
+                "up_days_225": 0,
+                "history_bars": len(closes),
+                "history_ok": True,
+            },
+            all_technical_filters_pass=uptrend,
+            data_valid=True,
+            error=None,
+        )

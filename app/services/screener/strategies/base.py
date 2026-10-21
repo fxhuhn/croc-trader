@@ -1,7 +1,7 @@
 import datetime
 import logging
 from abc import ABC, abstractmethod
-from typing import TypeVar, final
+from typing import Any, TypeVar, final
 
 import pandas as pd
 
@@ -12,7 +12,11 @@ from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
 from ....tools.trading_calendar import resolve_effective_trading_date
 from ....types import TradeStatus
-from ..models import SignalReportItem
+from ..models import (
+    SignalReportItem,
+    SingleSymbolAnalysisResult,
+    SingleSymbolStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -275,3 +279,36 @@ class BaseStrategy[T](ABC):
         header = f"{name} ({qty} {signal_word})"
 
         self.telegram_bot.send_dataframe(formatted_df, title=header)
+
+    def analyze_single_symbol(self, symbol: str) -> SingleSymbolAnalysisResult:
+        """Default diagnostic inspection for single symbols. Subclasses may override."""
+        clean_symbol = symbol.upper().strip()
+        strategy_ident = getattr(self, "STRATEGY_IDENTIFIER", self.name)
+        strategy_name = (
+            strategy_ident.value
+            if hasattr(strategy_ident, "value")
+            else str(strategy_ident)
+        )
+        return SingleSymbolAnalysisResult(
+            symbol=clean_symbol,
+            strategy=strategy_name,
+            as_of_market_date="",
+            upcoming_eod_date="",
+            status=SingleSymbolStatus.NOT_SUPPORTED,
+            overall_passed=False,
+            requires_universe_ranking=False,
+            calendar_active_today=None,
+            macro_regime_passed=None,
+            intrinsic_filters={},
+            metric_values={},
+            relative_ranking=None,
+            rejection_reasons=[
+                f"Strategy '{self.name}' does not implement single-symbol debug analysis."
+            ],
+            data_valid=False,
+            error=f"Single symbol debug not supported for {self.name}",
+        )
+
+    def get_precheck_candidates(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Returns top precheck candidate setups for strategy inspection. Subclasses may override."""
+        return []

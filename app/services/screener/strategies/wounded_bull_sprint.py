@@ -34,12 +34,17 @@ from ....tools.indicators import (
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.trading_calendar import (
+    get_next_trading_day,
     get_remaining_trading_days_in_month,
     get_trading_day_of_month,
     is_trading_day,
 )
 from ...telegram import TelegramBot
-from ..models import SignalReportItem
+from ..models import (
+    SignalReportItem,
+    SingleSymbolAnalysisResult,
+    SingleSymbolStatus,
+)
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -82,6 +87,135 @@ class WoundedBullSprintParameters:
     up_days_lookback: int = DEFAULT_UP_DAYS_LOOKBACK
     atr_window: int = DEFAULT_ATR_WINDOW
     history_fetch_days: int = DEFAULT_HISTORY_FETCH_DAYS
+
+
+def _evaluate_single_wbs_technicals(
+    history: pd.DataFrame,
+    config: WoundedBullSprintParameters,
+) -> tuple[dict[str, bool], dict[str, Any], list[str], bool, float]:
+    """Pure Function: Evaluates technical indicators for a single stock."""
+    min_required_bars = max(config.up_days_lookback + 1, config.ma_p)
+    has_enough_bars = len(history) >= min_required_bars
+
+    close_series = history["close"].astype(float)
+    volume_series = history["volume"].astype(float)
+    high_series = history["high"].astype(float)
+    low_series = history["low"].astype(float)
+    latest_close = float(close_series.iloc[-1])
+
+    volume_sma_series = calculate_sma(volume_series, config.volume_ma_window)
+    latest_vol_sma = (
+        float(volume_sma_series.iloc[-1]) if not volume_sma_series.empty else 0.0
+    )
+
+    trend_sma_series = calculate_sma(close_series, config.ma_p)
+    latest_trend_sma = (
+        float(trend_sma_series.iloc[-1]) if not trend_sma_series.empty else 0.0
+    )
+
+    atr_series = calculate_atr(high_series, low_series, close_series, config.atr_window)
+    atr_ratio = (
+        float(atr_series.iloc[-1]) / latest_close
+        if not atr_series.empty and latest_close > 0.0
+        else 0.0
+    )
+
+    roc_10_series = calculate_roc(close_series, config.roc_pullback_window)
+    latest_roc_10 = float(roc_10_series.iloc[-1]) if not roc_10_series.empty else 0.0
+
+    roc_5_series = calculate_roc(close_series, config.roc_score_window)
+    latest_roc_5 = float(roc_5_series.iloc[-1]) if not roc_5_series.empty else 0.0
+
+    up_days = calculate_up_days_count(close_series, config.up_days_lookback)
+
+    min_price_ok = latest_close > config.min_price
+    volume_ok = latest_vol_sma > config.min_volume_ma
+    uptrend_ok = latest_close > latest_trend_sma if latest_trend_sma > 0.0 else False
+    volatility_ok = atr_ratio > config.vola_p
+    pullback_ok = latest_roc_10 < 0.0
+
+    technicals_ok = (
+        has_enough_bars
+        and min_price_ok
+        and volume_ok
+        and uptrend_ok
+        and volatility_ok
+        and pullback_ok
+        and (up_days is not None)
+    )
+
+    rejection_reasons: list[str] = []
+    if not min_price_ok:
+        rejection_reasons.append(f"Close {latest_close:.2f} <= {config.min_price:.2f}")
+    if not volume_ok:
+        rejection_reasons.append(
+            f"Volume SMA {latest_vol_sma:.0f} <= {config.min_volume_ma:.0f}"
+        )
+    if not uptrend_ok:
+        rejection_reasons.append(
+            f"Close {latest_close:.2f} <= SMA200 {latest_trend_sma:.2f}"
+        )
+    if not volatility_ok:
+        rejection_reasons.append(
+            f"ATR% {atr_ratio * 100:.2f}% <= {config.vola_p * 100:.1f}%"
+        )
+    if not pullback_ok:
+        rejection_reasons.append(f"ROC10 {latest_roc_10:.2f}% >= 0.0%")
+
+    intrinsic_filters = {
+        "min_price": min_price_ok,
+        "volume": volume_ok,
+        "uptrend": uptrend_ok,
+        "volatility": volatility_ok,
+        "pullback": pullback_ok,
+        "data_sufficient": has_enough_bars,
+    }
+    metric_values = {
+        "close": round(latest_close, 2),
+        "sma_200": round(latest_trend_sma, 2),
+        "atr_pct": round(atr_ratio * 100.0, 2),
+        "roc_10": round(latest_roc_10, 2),
+        "roc_5": round(latest_roc_5, 2),
+        "up_days_225": up_days,
+    }
+    setup_score = round(atr_ratio * 100.0, 4)
+    return (
+        intrinsic_filters,
+        metric_values,
+        rejection_reasons,
+        technicals_ok,
+        setup_score,
+    )
+
+
+def _resolve_wbs_status(
+    technicals_ok: bool,
+    is_defensive: bool,
+    fip_rank: float | None,
+    min_required_fip: float,
+    rejection_reasons: list[str],
+) -> str:
+    """Pure Function: Resolves execution status for WBS single symbol inspection."""
+    if not is_defensive:
+        rejection_reasons.append("Macro regime not defensive (TLT <= SPY)")
+
+    if fip_rank is not None:
+        if fip_rank < min_required_fip:
+            rejection_reasons.append(
+                f"FIP Rank {fip_rank:.1f}% < {min_required_fip:.1f}%"
+            )
+            return SingleSymbolStatus.REJECTED
+        if technicals_ok and is_defensive:
+            return SingleSymbolStatus.QUALIFIED
+        return SingleSymbolStatus.REJECTED
+
+    if technicals_ok:
+        rejection_reasons.append(
+            "FIP rank requires full universe calculation (unverified in single mode)"
+        )
+        return SingleSymbolStatus.INTRINSIC_PASSED_RELATIVE_UNVERIFIED
+
+    return SingleSymbolStatus.REJECTED
 
 
 @dataclass(frozen=True)
@@ -245,6 +379,7 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
         self.holiday_checker = holiday_checker or MarketHolidayChecker()
         self.configuration = configuration or WoundedBullSprintParameters()
         self.latest_qualifying_setups: set[str] = set()
+        self._daily_universe_fip_cache: dict[str, float] = {}
 
     def _is_calendar_window_active(
         self, target_date: datetime.date
@@ -321,9 +456,13 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
             if eval_result is not None:
                 qualifying_technicals.append({"symbol": symbol, **eval_result})
 
-        return rank_and_filter_fip(
+        ranked_candidates = rank_and_filter_fip(
             qualifying_technicals, all_universe_up_days, self.configuration
         )
+        self._daily_universe_fip_cache = {
+            c.symbol: c.up_days_pct for c in ranked_candidates
+        }
+        return ranked_candidates
 
     def _persist_and_report_signals(
         self,
@@ -448,129 +587,192 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
         self._persist_and_report_signals(selected_candidates, exec_context)
         return len(selected_candidates)
 
-    def analyze_single_symbol(self, symbol: str) -> dict[str, object]:
+    def get_precheck_candidates(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Calculates candidate setups across S&P 100 universe on current EOD data."""
+        latest_date_str = self.data_provider.get_latest_date()
+        target_date_str = (
+            latest_date_str
+            if isinstance(latest_date_str, str) and latest_date_str
+            else datetime.date.today().strftime("%Y-%m-%d")
+        )
+
+        history_map = self.data_provider.get_batch_history(
+            symbols=self.exchange_symbols.sp_100,
+            days=self.configuration.history_fetch_days,
+            end_date=target_date_str,
+        )
+        ranked_candidates = self._evaluate_universe(history_map, target_date_str)
+        if not ranked_candidates:
+            return []
+
+        # Filter out secondary share classes (e.g. keep GOOGL, drop GOOG)
+        candidate_symbols = [c.symbol for c in ranked_candidates]
+        preferred_symbols = set(SymbolFilter().filter_symbols(candidate_symbols))
+        filtered = [c for c in ranked_candidates if c.symbol in preferred_symbols]
+
+        self.latest_qualifying_setups = {c.symbol for c in filtered}
+
+        return [
+            {
+                "symbol": c.symbol,
+                "setup_close": round(c.setup_close, 2),
+                "setup_score": round(c.setup_score, 2),
+                "atr_pct": round(c.atr_pct, 2),
+                "roc_10": round(c.roc_10, 2),
+                "roc_5": round(c.roc_5, 2),
+                "fip_rank": round(c.up_days_pct, 1),
+                "status": "QUALIFIED",
+            }
+            for c in filtered[:limit]
+        ]
+
+    def analyze_single_symbol(self, symbol: str) -> SingleSymbolAnalysisResult:
         """Calculates indicators and filter states for a single symbol for debug and MCP inspection."""
         clean_symbol = symbol.upper().strip()
         history = self.data_provider.get_symbol_history(
             clean_symbol, days=self.configuration.history_fetch_days
         )
         if history.empty:
-            return {
-                "symbol": clean_symbol,
-                "status": "ERROR",
-                "message": f"No market data found for {clean_symbol}",
-            }
+            return SingleSymbolAnalysisResult(
+                symbol=clean_symbol,
+                strategy=self.STRATEGY_IDENTIFIER.value,
+                as_of_market_date="",
+                upcoming_eod_date="",
+                status=SingleSymbolStatus.INSUFFICIENT_DATA,
+                overall_passed=False,
+                requires_universe_ranking=True,
+                calendar_active_today=None,
+                macro_regime_passed=None,
+                intrinsic_filters={},
+                metric_values={},
+                relative_ranking=None,
+                rejection_reasons=[f"No market data found for {clean_symbol}"],
+                checks={},
+                values={},
+                technical_filters={},
+                all_technical_filters_pass=False,
+                data_valid=False,
+                error=f"No market data found for {clean_symbol}",
+            )
 
-        target_date = datetime.date.today()
-        target_date_str = target_date.strftime("%Y-%m-%d")
+        latest_date_raw = self.data_provider.get_latest_date()
+        if isinstance(latest_date_raw, str) and latest_date_raw:
+            as_of_market_date = latest_date_raw
+        elif not history.empty and "date" in history.columns:
+            last_val = history["date"].iloc[-1]
+            if isinstance(last_val, datetime.date):
+                as_of_market_date = last_val.strftime("%Y-%m-%d")
+            else:
+                as_of_market_date = str(last_val)[:10]
+        else:
+            as_of_market_date = datetime.date.today().strftime("%Y-%m-%d")
+
+        try:
+            target_date = datetime.date.fromisoformat(as_of_market_date)
+        except (ValueError, TypeError):
+            target_date = datetime.date.today()
+            as_of_market_date = target_date.strftime("%Y-%m-%d")
+
+        next_trading_day = get_next_trading_day(target_date, self.holiday_checker)
+        upcoming_eod_date_str = (
+            next_trading_day.strftime("%Y-%m-%d")
+            if isinstance(next_trading_day, datetime.date)
+            else as_of_market_date
+        )
 
         is_cal_active, tdom, td_left = self._is_calendar_window_active(target_date)
+        is_cal_active_upcoming, tdom_upcoming, td_left_upcoming = (
+            self._is_calendar_window_active(
+                next_trading_day
+                if isinstance(next_trading_day, datetime.date)
+                else target_date
+            )
+        )
         is_defensive, spy_mtd, tlt_mtd = self._is_macro_regime_defensive(
-            target_date, target_date_str
+            target_date, as_of_market_date
         )
 
-        min_required_bars = max(
-            self.configuration.up_days_lookback + 1, self.configuration.ma_p
-        )
-        has_enough_bars = len(history) >= min_required_bars
+        (
+            intrinsic_filters,
+            metric_values,
+            rejection_reasons,
+            technicals_ok,
+            setup_score,
+        ) = _evaluate_single_wbs_technicals(history, self.configuration)
 
-        close_series = history["close"].astype(float)
-        volume_series = history["volume"].astype(float)
-        high_series = history["high"].astype(float)
-        low_series = history["low"].astype(float)
-        latest_close = float(close_series.iloc[-1])
-
-        volume_sma_series = calculate_sma(
-            volume_series, self.configuration.volume_ma_window
-        )
-        latest_vol_sma = (
-            float(volume_sma_series.iloc[-1]) if not volume_sma_series.empty else 0.0
-        )
-
-        trend_sma_series = calculate_sma(close_series, self.configuration.ma_p)
-        latest_trend_sma = (
-            float(trend_sma_series.iloc[-1]) if not trend_sma_series.empty else 0.0
+        fip_rank: float | None = self._daily_universe_fip_cache.get(clean_symbol)
+        status = _resolve_wbs_status(
+            technicals_ok=technicals_ok,
+            is_defensive=is_defensive,
+            fip_rank=fip_rank,
+            min_required_fip=self.configuration.days_pct,
+            rejection_reasons=rejection_reasons,
         )
 
-        atr_series = calculate_atr(
-            high_series, low_series, close_series, self.configuration.atr_window
-        )
-        atr_ratio = (
-            float(atr_series.iloc[-1]) / latest_close if not atr_series.empty else 0.0
-        )
-
-        roc_10_series = calculate_roc(
-            close_series, self.configuration.roc_pullback_window
-        )
-        latest_roc_10 = (
-            float(roc_10_series.iloc[-1]) if not roc_10_series.empty else 0.0
-        )
-
-        roc_5_series = calculate_roc(close_series, self.configuration.roc_score_window)
-        latest_roc_5 = float(roc_5_series.iloc[-1]) if not roc_5_series.empty else 0.0
-
-        up_days = calculate_up_days_count(
-            close_series, self.configuration.up_days_lookback
-        )
-
-        min_price_ok = latest_close > self.configuration.min_price
-        volume_ok = latest_vol_sma > self.configuration.min_volume_ma
-        uptrend_ok = latest_close > latest_trend_sma if latest_trend_sma > 0 else False
-        volatility_ok = atr_ratio > self.configuration.vola_p
-        pullback_ok = latest_roc_10 < 0.0
-
-        technicals_ok = (
-            has_enough_bars
-            and min_price_ok
-            and volume_ok
-            and uptrend_ok
-            and volatility_ok
-            and pullback_ok
-            and (up_days is not None)
-        )
-
-        setup_score = round(atr_ratio * 100.0, 4)
-
-        return {
-            "symbol": clean_symbol,
-            "status": "QUALIFIED"
-            if (is_cal_active and is_defensive and technicals_ok)
-            else "REJECTED",
-            "macro_regime": {
+        return SingleSymbolAnalysisResult(
+            symbol=clean_symbol,
+            strategy=self.STRATEGY_IDENTIFIER.value,
+            as_of_market_date=as_of_market_date,
+            upcoming_eod_date=upcoming_eod_date_str,
+            status=status,
+            overall_passed=bool(status == SingleSymbolStatus.QUALIFIED),
+            requires_universe_ranking=True,
+            calendar_active_today=is_cal_active_upcoming,
+            macro_regime_passed=is_defensive,
+            intrinsic_filters=intrinsic_filters,
+            metric_values=metric_values,
+            relative_ranking={
+                "fip_rank": round(fip_rank, 1) if fip_rank is not None else None,
+                "min_required_fip": self.configuration.days_pct,
+                "setup_score": setup_score,
+            },
+            rejection_reasons=rejection_reasons,
+            # Backwards-compatibility
+            checks={
+                k: v for k, v in intrinsic_filters.items() if k != "data_sufficient"
+            },
+            values={
+                "close": metric_values["close"],
+                "sma_200": metric_values["sma_200"],
+                "atr_pct": metric_values["atr_pct"],
+                "roc_10": metric_values["roc_10"],
+            },
+            technical_filters={
+                "close": metric_values["close"],
+                "min_price_ok": intrinsic_filters["min_price"],
+                "volume_sma_20": 0.0,
+                "volume_ok": intrinsic_filters["volume"],
+                "sma_200": metric_values["sma_200"],
+                "uptrend_ok": intrinsic_filters["uptrend"],
+                "atr_3": 0.0,
+                "atr_pct": metric_values["atr_pct"],
+                "volatility_ok": intrinsic_filters["volatility"],
+                "roc_10": metric_values["roc_10"],
+                "pullback_ok": intrinsic_filters["pullback"],
+                "roc_5": metric_values["roc_5"],
+                "up_days_225": metric_values["up_days_225"],
+                "history_bars": len(history),
+                "history_ok": intrinsic_filters["data_sufficient"],
+            },
+            all_technical_filters_pass=technicals_ok,
+            calendar={
+                "trading_day_of_month": tdom,
+                "bars_left": td_left,
+                "is_window_active": is_cal_active,
+                "next_active_day": self.configuration.daysp + 1,
+            },
+            macro_regime={
                 "spy_mtd": round(spy_mtd * 100.0, 2),
                 "tlt_mtd": round(tlt_mtd * 100.0, 2),
                 "is_defensive": is_defensive,
             },
-            "calendar": {
-                "trading_day_of_month": tdom,
-                "bars_left": td_left,
-                "is_window_active": is_cal_active,
-            },
-            "technical_filters": {
-                "close": round(latest_close, 2),
-                "min_price_ok": min_price_ok,
-                "volume_sma_20": round(latest_vol_sma, 0),
-                "volume_ok": volume_ok,
-                "sma_200": round(latest_trend_sma, 2),
-                "uptrend_ok": uptrend_ok,
-                "atr_3": round(float(atr_series.iloc[-1]), 2)
-                if not atr_series.empty
-                else 0.0,
-                "atr_pct": round(atr_ratio * 100.0, 2),
-                "volatility_ok": volatility_ok,
-                "roc_10": round(latest_roc_10, 2),
-                "pullback_ok": pullback_ok,
-                "roc_5": round(latest_roc_5, 2),
-                "up_days_225": up_days,
-                "history_bars": len(history),
-                "history_ok": has_enough_bars,
-            },
-            "scoring": {
+            scoring={
                 "setup_score": setup_score,
-                "ranking_basis": "ATR(3) / Close",
+                "fip_rank": fip_rank,
             },
-            "all_technical_filters_pass": technicals_ok,
-        }
+            data_valid=True,
+            error=None,
+        )
 
 
 __all__ = [

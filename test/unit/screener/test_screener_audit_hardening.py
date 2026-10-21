@@ -9,6 +9,7 @@ specific violation ID from the audit report.
 
 import sqlite3
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, mock_open, patch
 
 import pandas as pd
@@ -17,6 +18,8 @@ import pytest
 from app.database.repositories.market_data_provider import MarketDataProvider
 from app.database.repositories.signal import SignalRepository
 from app.database.repositories.trade import TradeRepository
+from app.services.screener.models import SingleSymbolStatus
+from app.services.screener.strategies.base import BaseStrategy
 from app.services.screener.strategies.croc_setup import (
     CrocSetupStrategy,
     PriceData,
@@ -30,6 +33,9 @@ from app.services.screener.strategies.ndx_momentum import (
 from app.services.screener.strategies.turnover_timing import (
     TurnoverConfiguration,
     TurnoverTimingStrategy,
+)
+from app.services.screener.strategies.wounded_bull_sprint import (
+    WoundedBullSprintStrategy,
 )
 from app.services.screener.view_service import ScreenerViewService
 
@@ -418,7 +424,7 @@ class TestEnrichSmaReturnsPureResult:
     ) -> None:
         """Verifies that enrich_sma_distances returns enriched copy, not mutated original."""
         # Arrange
-        original_row: dict = {"symbol": "AAPL", "close": 100.0}
+        original_row: dict[str, Any] = {"symbol": "AAPL", "close": 100.0}
         original_id = id(original_row)
         prices = PriceData(high=110.0, low=90.0, close=100.0, sma_20=95.0, sma_200=80.0)
 
@@ -452,7 +458,7 @@ class TestEnrichSmaReturnsPureResult:
     ) -> None:
         """Verifies that SMA distance keys are only added when SMA value is positive."""
         # Arrange
-        row: dict = {}
+        row: dict[str, Any] = {}
         prices = PriceData(
             high=close + 5, low=close - 5, close=close, sma_20=sma_20, sma_200=sma_200
         )
@@ -533,7 +539,7 @@ class TestBaseStrategySignatureCompliance:
     def test_run_accepts_analysis_date_parameter(
         self,
         strategy_class: type,
-        extra_kwargs: dict,
+        extra_kwargs: dict[str, Any],
         mock_trade_repository: MagicMock,
         mock_data_provider: MagicMock,
     ) -> None:
@@ -588,3 +594,93 @@ class TestScreenerViewServiceConstructor:
 
         # Assert
         assert service.signal_repository is mock_signal_repository
+
+
+# ---------------------------------------------------------------------------
+# Precheck & Single Symbol Hardening
+# ---------------------------------------------------------------------------
+
+
+class TestScreenerSingleSymbolAndPrecheckHardening:
+    """Validates unified SingleSymbolAnalysisResult, FIP gating and precheck candidate generation."""
+
+    def test_base_strategy_default_returns_not_supported(
+        self, mock_data_provider: MagicMock
+    ) -> None:
+        """Verifies default analyze_single_symbol on BaseStrategy returns NOT_SUPPORTED status."""
+
+        class DummyStrategy(BaseStrategy[int]):
+            name = "dummy"
+
+            def run(self, days: int = 0, analysis_date: str | None = None) -> int:
+                return 0
+
+        dummy = DummyStrategy(data_provider=mock_data_provider)
+        result = dummy.analyze_single_symbol("AAPL")
+        assert result["status"] == SingleSymbolStatus.NOT_SUPPORTED
+        assert result["overall_passed"] is False
+        assert dummy.get_precheck_candidates() == []
+
+    def test_wbs_single_symbol_unverified_fip_reports_status(
+        self, mock_data_provider: MagicMock
+    ) -> None:
+        """Verifies WBS single symbol returns INTRINSIC_PASSED_RELATIVE_UNVERIFIED when FIP unverified."""
+        trade_repo = MagicMock()
+        strategy = WoundedBullSprintStrategy(
+            trade_repository=trade_repo,
+            data_provider=mock_data_provider,
+        )
+        dates = pd.date_range("2026-01-01", periods=250, freq="B")
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "open": [100.0] * 250,
+                "high": [105.0] * 250,
+                "low": [95.0] * 250,
+                "close": [100.0] * 250,
+                "volume": [2_000_000] * 250,
+            }
+        )
+        df.loc[df.index[-1], "close"] = 110.0
+        mock_data_provider.get_symbol_history.return_value = df
+        mock_data_provider.get_latest_date.return_value = "2026-10-20"
+        mock_data_provider.get_batch_history.return_value = {
+            "SPY": pd.DataFrame({"date": dates, "close": [400.0] * 250}),
+            "TLT": pd.DataFrame({"date": dates, "close": [100.0] * 250}),
+        }
+
+        result = strategy.analyze_single_symbol("NVDA")
+        assert result["symbol"] == "NVDA"
+        assert result["status"] in (
+            SingleSymbolStatus.INTRINSIC_PASSED_RELATIVE_UNVERIFIED,
+            SingleSymbolStatus.REJECTED,
+        )
+        assert result["status"] != SingleSymbolStatus.QUALIFIED
+        assert result["requires_universe_ranking"] is True
+
+    def test_turnover_single_symbol_reports_requires_universe_ranking(
+        self, mock_data_provider: MagicMock
+    ) -> None:
+        """Verifies TurnoverTiming single symbol returns requires_universe_ranking=True."""
+        trade_repo = MagicMock()
+        strategy = TurnoverTimingStrategy(
+            trade_repository=trade_repo,
+            data_provider=mock_data_provider,
+        )
+        dates = pd.date_range("2026-01-01", periods=250, freq="B")
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "open": [100.0] * 250,
+                "high": [105.0] * 250,
+                "low": [95.0] * 250,
+                "close": [100.0] * 250,
+                "volume": [2_000_000] * 250,
+            }
+        )
+        mock_data_provider.get_symbol_history.return_value = df
+        mock_data_provider.get_latest_date.return_value = "2026-10-20"
+
+        result = strategy.analyze_single_symbol("AAPL")
+        assert result["symbol"] == "AAPL"
+        assert result["requires_universe_ranking"] is True

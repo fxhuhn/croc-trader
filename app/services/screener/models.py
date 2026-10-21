@@ -1,6 +1,44 @@
-"""Typed data models for screener signal reporting and notification dispatch."""
-
 from dataclasses import dataclass, field
+from enum import StrEnum
+from typing import Any, TypedDict
+
+
+class SingleSymbolStatus(StrEnum):
+    """Execution status for single symbol technical analysis."""
+
+    QUALIFIED = "QUALIFIED"
+    INTRINSIC_PASSED_RELATIVE_UNVERIFIED = "INTRINSIC_PASSED_RELATIVE_UNVERIFIED"
+    REJECTED = "REJECTED"
+    INSUFFICIENT_DATA = "INSUFFICIENT_DATA"
+    NOT_SUPPORTED = "NOT_SUPPORTED"
+
+
+class SingleSymbolAnalysisResult(TypedDict, total=False):
+    """Standardized result structure for single symbol diagnosis and prechecks."""
+
+    symbol: str
+    strategy: str
+    as_of_market_date: str
+    upcoming_eod_date: str
+    status: str
+    overall_passed: bool
+    requires_universe_ranking: bool
+    calendar_active_today: bool | None
+    macro_regime_passed: bool | None
+    intrinsic_filters: dict[str, bool]
+    metric_values: dict[str, float | int | str | None]
+    relative_ranking: dict[str, Any] | None
+    rejection_reasons: list[str]
+    # Backwards-compatibility fields for legacy callers
+    checks: dict[str, bool]
+    values: dict[str, Any]
+    technical_filters: dict[str, Any]
+    all_technical_filters_pass: bool
+    calendar: dict[str, Any]
+    macro_regime: dict[str, Any]
+    scoring: dict[str, Any]
+    data_valid: bool
+    error: str | None
 
 
 @dataclass(frozen=True)

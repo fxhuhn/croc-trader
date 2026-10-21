@@ -54,7 +54,8 @@ For inspecting production containers, logs, and metrics (Non-Overrideable Govern
 For inspecting or interacting with domain services and databases (Non-Overrideable Governance #12 in `.agents/AGENTS.md`):
 - **Mandatory Native MCP Dispatcher:** Always use native MCP tools via `call_mcp_tool` (or plugin CLIs). Never craft ad-hoc raw HTTP/curl/urllib scripts.
 - **PROD Database Queries via Croc MCP:** All PROD database queries (`signals.db`, `stocks.db`, `trading.db`) must use `croc-trader-prod` (`call_mcp_tool` or `.venv/bin/python .agents/plugins/croc-mcp/scripts/croc_cli.py [health|summary|positions|orders]`).
-- **DEV vs. PROD Database Isolation:** `croc-sqlite-readonly` connects strictly to local development SQLite files (`data/*.db`). It has zero connectivity to PROD. Never use it to inspect or reason about PROD state.
+## Anti-Sampling & Full-Universe Invariant
+Bei Handelsstrategien mit relativen Universums-Ranglisten (WBS, NDX Momentum, Turnover Timing) ist es dem Agenten strengstens untersagt, willkürliche Einzeltitel-Subsets als repräsentative Screener-Kandidaten auszugeben. Ein PreCheck darf nur auf Basis des vollständigen Universums deklariert werden. Einzel- oder Teillisten-Checks müssen explizit und unmissverständlich als `ISOLIERTE DEBUG-STICHPROBE OHNE RANKING` gekennzeichnet werden.
 
 
 Task scope, change discipline, evidence requirements, and completion reporting

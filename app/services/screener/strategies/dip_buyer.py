@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, TypedDict, cast, override
+from typing import Any, cast, override
 
 import pandas as pd
 
@@ -12,7 +12,11 @@ from ....tools import indicators
 from ....tools.indicators import extract_safe_float
 from ....tools.symbol_filter import SymbolFilter
 from ....tools.symbol_lists import ExchangeSymbol
-from ..models import SignalReportItem
+from ..models import (
+    SignalReportItem,
+    SingleSymbolAnalysisResult,
+    SingleSymbolStatus,
+)
 from .base import BaseStrategy
 
 logger = logging.getLogger(__name__)
@@ -99,7 +103,7 @@ class DipBuyerConfig(DipBuyerConfiguration):
         super().__init__(**cast(dict[str, Any], normalized_kwargs))
 
 
-class SymbolAnalysisResult(TypedDict):
+class SymbolAnalysisResult(SingleSymbolAnalysisResult, total=False):
     """Return type for single symbol analysis debugging."""
 
     symbol: str
@@ -549,51 +553,124 @@ class DipBuyerStrategy(BaseStrategy[int]):
         )
         return True
 
+    def get_precheck_candidates(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Calculates candidate setups across indices on current EOD data."""
+        self._initialize_symbol_sets()
+        valid_universe = list(self._dow_set | self._sp500_set | self._ndx_set)
+        if not valid_universe:
+            return []
+
+        market_data = self.data_provider.get_universe_daily_data(
+            valid_universe, days=self.configuration.lookback_days
+        )
+        if not market_data or "close" not in market_data or market_data["close"].empty:
+            return []
+
+        target_date = self._resolve_target_date(
+            market_data["close"], analysis_date=None, days=0
+        )
+        if target_date is None:
+            return []
+
+        signals_dataframe = self._calculate_signals(market_data, target_date)
+        if signals_dataframe.empty:
+            return []
+
+        candidates = signals_dataframe.index.tolist()
+        filtered_candidates = SymbolFilter().filter_symbols(candidates)
+        if not filtered_candidates:
+            return []
+        signals_dataframe = signals_dataframe.loc[filtered_candidates]
+
+        results: list[dict[str, Any]] = []
+        for symbol, row in signals_dataframe.head(limit).iterrows():
+            results.append(
+                {
+                    "symbol": str(symbol),
+                    "setup_close": round(float(row["close"]), 2),
+                    "setup_score": round(float(row["setup_score"]), 2),
+                    "atr": round(float(row["atr"]), 2),
+                    "atr_ratio_3day": round(float(row["atr_ratio_3day"]), 2),
+                    "ibs": round(float(row["ibs"]), 2),
+                    "status": "QUALIFIED",
+                }
+            )
+        return results
+
+    @override
     def analyze_single_symbol(self, symbol: str) -> SymbolAnalysisResult:
         """Debug method to analyze a single symbol step-by-step.
 
         Returns detailed check results.
         """
+        clean_symbol = symbol.upper().strip()
         historical_lookback_days = self.configuration.lookback_days
 
         # 1. Fetch Data
         df = self.data_provider.get_symbol_history(
-            symbol, days=historical_lookback_days
+            clean_symbol, days=historical_lookback_days
         )
         if df.empty:
-            return {
-                "symbol": symbol,
-                "indices": [],
-                "last_date": "",
-                "data_valid": False,
-                "checks": {},
-                "values": {},
-                "result": "FAIL",
-                "error": "No data found",
-            }
+            return SymbolAnalysisResult(
+                symbol=clean_symbol,
+                strategy=self.name,
+                as_of_market_date="",
+                upcoming_eod_date="",
+                status=SingleSymbolStatus.INSUFFICIENT_DATA,
+                overall_passed=False,
+                requires_universe_ranking=False,
+                calendar_active_today=None,
+                macro_regime_passed=None,
+                intrinsic_filters={},
+                metric_values={},
+                relative_ranking=None,
+                rejection_reasons=["No price data found for symbol"],
+                indices=[],
+                last_date="",
+                data_valid=False,
+                checks={},
+                values={},
+                result="FAIL",
+                error="No data found",
+            )
 
         # 2. Pivot to match _compute_indicators expectation
-        closes = pd.DataFrame({symbol: df["close"].values}, index=df["date"])
-        highs = pd.DataFrame({symbol: df["high"].values}, index=df["date"])
-        lows = pd.DataFrame({symbol: df["low"].values}, index=df["date"])
-        volumes = pd.DataFrame({symbol: df["volume"].values}, index=df["date"])
+        closes = pd.DataFrame({clean_symbol: df["close"].values}, index=df["date"])
+        highs = pd.DataFrame({clean_symbol: df["high"].values}, index=df["date"])
+        lows = pd.DataFrame({clean_symbol: df["low"].values}, index=df["date"])
+        volumes = pd.DataFrame({clean_symbol: df["volume"].values}, index=df["date"])
 
         # 3. Indicators
         indicators_dict = self._compute_indicators(closes, highs, lows, volumes)
 
         if len(closes) < self.configuration.min_history_bars:
-            return {
-                "symbol": symbol,
-                "indices": [],
-                "last_date": "",
-                "data_valid": False,
-                "checks": {},
-                "values": {},
-                "result": "FAIL",
-                "error": "Not enough data",
-            }
+            last_date_str = str(df["date"].iloc[-1].date()) if not df.empty else ""
+            return SymbolAnalysisResult(
+                symbol=clean_symbol,
+                strategy=self.name,
+                as_of_market_date=last_date_str,
+                upcoming_eod_date="",
+                status=SingleSymbolStatus.INSUFFICIENT_DATA,
+                overall_passed=False,
+                requires_universe_ranking=False,
+                calendar_active_today=None,
+                macro_regime_passed=None,
+                intrinsic_filters={},
+                metric_values={},
+                relative_ranking=None,
+                rejection_reasons=["Not enough price history bars"],
+                indices=[],
+                last_date=last_date_str,
+                data_valid=False,
+                checks={},
+                values={},
+                result="FAIL",
+                error="Not enough data",
+            )
 
-        return self._build_symbol_analysis_result(symbol, df, closes, indicators_dict)
+        return self._build_symbol_analysis_result(
+            clean_symbol, df, closes, indicators_dict
+        )
 
     def _build_symbol_analysis_result(
         self,
@@ -632,22 +709,46 @@ class DipBuyerStrategy(BaseStrategy[int]):
         error_message = None
         if not has_preferred_index:
             if indices:
-                error_message = f"Symbol is in index {indices} but not in preferred indices (DOW, SPX, NDX) for DipBuyer"
+                error_message = (
+                    f"Symbol is in index {indices} but not in preferred indices "
+                    "(DOW, SPX, NDX) for DipBuyer"
+                )
             else:
                 error_message = (
                     "Symbol is not in any index (DOW, SPX, NDX) for DipBuyer"
                 )
 
-        return {
-            "symbol": symbol,
-            "indices": indices,
-            "last_date": str(df["date"].iloc[index].date()),
-            "data_valid": True,
-            "checks": checks,
-            "values": values_dict,
-            "result": "PASS" if passed else "FAIL",
-            "error": error_message,
-        }
+        last_date_str = str(df["date"].iloc[index].date())
+        rejection_reasons: list[str] = [
+            f"Failed check: {k}" for k, v in checks.items() if not v
+        ]
+        if error_message:
+            rejection_reasons.append(error_message)
+
+        status = SingleSymbolStatus.QUALIFIED if passed else SingleSymbolStatus.REJECTED
+
+        return SymbolAnalysisResult(
+            symbol=symbol,
+            strategy=self.name,
+            as_of_market_date=last_date_str,
+            upcoming_eod_date="",
+            status=status,
+            overall_passed=passed,
+            requires_universe_ranking=False,
+            calendar_active_today=True,
+            macro_regime_passed=True,
+            intrinsic_filters=checks,
+            metric_values=cast(dict[str, float | int | str | None], values_dict),
+            relative_ranking=None,
+            rejection_reasons=rejection_reasons,
+            indices=indices,
+            last_date=last_date_str,
+            data_valid=True,
+            checks=checks,
+            values=values_dict,
+            result="PASS" if passed else "FAIL",
+            error=error_message,
+        )
 
     def _run_analysis_checks(
         self,
