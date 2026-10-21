@@ -9,6 +9,8 @@ on:
 jobs:
   docker:
     runs-on: ubuntu-latest
+    env:
+      TRIVY_CACHE_DIR: /tmp/trivy-cache
     permissions:
       contents: read
       packages: write
@@ -63,6 +65,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+          cache-dir: '/tmp/trivy-cache'
 
       - name: Run Trivy vulnerability scanner on Docker image
         uses: aquasecurity/trivy-action@v0.36.0
@@ -75,6 +78,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+          cache-dir: '/tmp/trivy-cache'
 
       - name: Ensure Trivy SARIF validity
         if: always()
