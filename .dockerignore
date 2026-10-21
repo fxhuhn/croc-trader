@@ -5,6 +5,9 @@ __pycache__/
 .Python
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
+.hypothesis/
+.cache/
 .coverage
 htmlcov/
 
@@ -19,6 +22,8 @@ venv/
 .gitignore
 .pre-commit-config.yaml
 .bandit
+bandit-report.json
+*.sarif
 
 # Lokale Konfigurationen & Secrets (mit .gitignore abgeglichen)
 .env
