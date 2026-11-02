@@ -2,7 +2,7 @@ import json
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, TypedDict, cast
 
@@ -752,6 +752,42 @@ class TradeViewData(TradeData, total=False):
 
     # Context (overrides str | None from TradeData for parsed dict)
     context: dict[str, object]
+
+
+class TradeCandleRecord(TypedDict):
+    """Normalized daily candlestick record for Lightweight Charts."""
+
+    time: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
+
+
+class TradeChartPayload(TypedDict):
+    """Payload serialized to JSON for client-side Lightweight Charts."""
+
+    candles: list[TradeCandleRecord]
+    entry_date: str | None
+    exit_date: str | None
+    entry_price: float | None
+    exit_price: float | None
+    target_price: float | None
+    exit_reason: str
+    is_profitable: bool
+
+
+class TradeChartContext(TypedDict):
+    """Structured context dictionary passed to the trade_chart_window template."""
+
+    trade: TradeViewData
+    chart_payload: TradeChartPayload
+    candles_json: str
+    entry_date: str | None
+    exit_date: str | None
+    target_price: float | None
+    is_empty: bool
 
 
 def _calculate_trade_risk(trade: TradeViewData) -> float:
@@ -2162,6 +2198,181 @@ class TradeViewService:
     ) -> list[EquityPoint]:
         """Computes points for the cumulative dual-equity curve."""
         return compute_dual_equity_curve(history)
+
+    def get_trade_chart_context(self, trade_id: int | str) -> TradeChartContext | None:
+        """Prepares market candles and trade execution context for chart visualization.
+
+        Args:
+            trade_id: Unique trade identifier in signals.db.
+
+        Returns:
+            TradeChartContext populated with candles and markers, or None if trade not found.
+        """
+        raw_trade = self.trade_repository.get_trade(trade_id)
+        if not raw_trade:
+            return None
+
+        trade_view = self.prepare_trade_view(raw_trade)
+        symbol = str(raw_trade.get("symbol") or "")
+        if not symbol:
+            return None
+
+        entry_raw = raw_trade.get("entry_date")
+        entry_str = str(entry_raw)[:10] if entry_raw else None
+        exit_raw = raw_trade.get("exit_date")
+        exit_str = str(exit_raw)[:10] if exit_raw else None
+
+        start_date, end_date = _calculate_chart_date_range(entry_str, exit_str)
+
+        dataframe = self.market_repository.get_symbol_history_raw(
+            symbol=symbol, start_date=start_date
+        )
+
+        raw_target = raw_trade.get("current_target")
+        target_price = (
+            float(raw_target) if raw_target and float(raw_target) > 0 else None
+        )
+
+        empty_payload = TradeChartPayload(
+            candles=[],
+            entry_date=None,
+            exit_date=None,
+            entry_price=None,
+            exit_price=None,
+            target_price=target_price,
+            exit_reason="",
+            is_profitable=True,
+        )
+
+        if dataframe.empty:
+            return TradeChartContext(
+                trade=trade_view,
+                chart_payload=empty_payload,
+                candles_json="[]",
+                entry_date=None,
+                exit_date=None,
+                target_price=target_price,
+                is_empty=True,
+            )
+
+        dataframe = dataframe[
+            (dataframe["date"] >= start_date) & (dataframe["date"] <= end_date)
+        ]
+        if dataframe.empty:
+            return TradeChartContext(
+                trade=trade_view,
+                chart_payload=empty_payload,
+                candles_json="[]",
+                entry_date=None,
+                exit_date=None,
+                target_price=target_price,
+                is_empty=True,
+            )
+
+        available_dates: list[str] = [
+            row_date.strftime("%Y-%m-%d")
+            if hasattr(row_date, "strftime")
+            else str(row_date)[:10]
+            for row_date in dataframe["date"]
+        ]
+
+        snapped_entry = (
+            _snap_to_trading_day(entry_str, available_dates) if entry_str else None
+        )
+        snapped_exit = (
+            _snap_to_trading_day(exit_str, available_dates) if exit_str else None
+        )
+        candles = _build_chart_candles(dataframe)
+
+        raw_entry = trade_view.get("entry_price")
+        entry_price_val = float(raw_entry) if raw_entry is not None else None
+        raw_exit = trade_view.get("exit_price")
+        exit_price_val = float(raw_exit) if raw_exit is not None else None
+        realized_pnl_val = float(trade_view.get("realized_pnl") or 0.0)
+        chart_payload = TradeChartPayload(
+            candles=candles,
+            entry_date=snapped_entry,
+            exit_date=snapped_exit,
+            entry_price=entry_price_val,
+            exit_price=exit_price_val,
+            target_price=target_price,
+            exit_reason=str(trade_view.get("exit_reason") or ""),
+            is_profitable=realized_pnl_val >= 0.0,
+        )
+
+        return TradeChartContext(
+            trade=trade_view,
+            chart_payload=chart_payload,
+            candles_json=json.dumps(candles),
+            entry_date=snapped_entry,
+            exit_date=snapped_exit,
+            target_price=target_price,
+            is_empty=False,
+        )
+
+
+def _snap_to_trading_day(
+    target_date: str, available_dates: Sequence[str]
+) -> str | None:
+    """Snaps an ISO date string to the nearest trading day in the candle series."""
+    if not available_dates:
+        return None
+    clean_target = target_date[:10]
+    if clean_target in available_dates:
+        return clean_target
+    future_dates = [
+        date_str for date_str in available_dates if date_str >= clean_target
+    ]
+    if future_dates:
+        return future_dates[0]
+    return available_dates[-1]
+
+
+def _calculate_chart_date_range(
+    entry_str: str | None, exit_str: str | None
+) -> tuple[str, str]:
+    """Calculates lookback start and lookahead end dates for historical chart retrieval."""
+    if entry_str:
+        try:
+            entry_datetime = datetime.strptime(entry_str, "%Y-%m-%d")
+            start_date = (entry_datetime - timedelta(days=35)).strftime("%Y-%m-%d")
+        except ValueError:
+            start_date = "2020-01-01"
+    else:
+        start_date = "2020-01-01"
+
+    if exit_str:
+        try:
+            exit_datetime = datetime.strptime(exit_str, "%Y-%m-%d")
+            end_date = (exit_datetime + timedelta(days=15)).strftime("%Y-%m-%d")
+        except ValueError:
+            end_date = "2099-12-31"
+    else:
+        end_date = (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d")
+
+    return start_date, end_date
+
+
+def _build_chart_candles(dataframe: pd.DataFrame) -> list[TradeCandleRecord]:
+    """Builds clean typed candle dictionaries from price dataframe."""
+    candles: list[TradeCandleRecord] = []
+    for row in dataframe.itertuples():
+        time_val = (
+            row.date.strftime("%Y-%m-%d")
+            if hasattr(row.date, "strftime")
+            else str(row.date)[:10]
+        )
+        candles.append(
+            TradeCandleRecord(
+                time=time_val,
+                open=round(float(row.open), 2),
+                high=round(float(row.high), 2),
+                low=round(float(row.low), 2),
+                close=round(float(row.close), 2),
+                volume=int(getattr(row, "volume", 0) or 0),
+            )
+        )
+    return candles
 
 
 def _map_order_strategy_filter(strategy_name: str) -> str:

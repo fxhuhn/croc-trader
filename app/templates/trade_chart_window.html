@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}Croc-Trader — {{ trade.symbol }} (Trade #{{ trade.id }}){% endblock %}
+
+{% block head %}
+<!-- TradingView Lightweight Charts (v4.2.1) -->
+<script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
+{% endblock %}
+
+{% block body_class %}bg-slate-50 h-screen text-slate-800 antialiased flex flex-col overflow-hidden select-none{% endblock %}
+
+{% block content %}
+<h1 class="sr-only">{{ trade.symbol }} Chart Analyse Trade #{{ trade.id }}</h1>
+
+<!-- Top Navigation & Execution Banner (Light Theme) -->
+<header class="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shrink-0 shadow-sm">
+    <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+            <span class="text-xl font-bold tracking-tight text-slate-900">{{ trade.symbol }}</span>
+            <span class="text-xs font-mono text-slate-400">#{{ trade.id }}</span>
+            <span class="bg-indigo-50 text-indigo-700 border border-indigo-200/80 text-xs font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                {{ trade.strategy or "Trade" }}
+            </span>
+        </div>
+        <div class="h-5 w-px bg-slate-200"></div>
+        <div class="flex items-center gap-4 text-xs font-sans tabular-nums text-slate-600">
+            <div>Entry: <strong class="font-bold text-slate-900">{{ trade.entry_price | de_number(2) }}&nbsp;$</strong></div>
+            <div>Exit: <strong class="font-bold text-slate-900">{{ (trade.exit_price | de_number(2)) if trade.exit_price else '-' }}&nbsp;$</strong></div>
+            <div>Haltedauer: <span class="font-normal text-slate-700">{{ trade.days_held }}d</span></div>
+            {% if trade.exit_reason %}
+            <div>Grund: <span class="font-bold text-slate-800 uppercase">{{ trade.exit_reason | replace('_', ' ') }}</span></div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="flex items-center gap-4">
+        <div class="text-right">
+            <div class="text-sm font-bold tabular-nums {{ 'text-emerald-600' if (trade.realized_pnl or 0) > 0 else ('text-rose-600' if (trade.realized_pnl or 0) < 0 else 'text-slate-500') }}">
+                {{ trade.realized_pnl | de_number(2, prefix_plus=True) }}&nbsp;$
+            </div>
+            <div class="text-xs font-normal tabular-nums {{ 'text-emerald-600' if (trade.pnl_percentage or 0) > 0 else ('text-rose-600' if (trade.pnl_percentage or 0) < 0 else 'text-slate-500') }}">
+                {{ trade.pnl_percentage | de_number(2, prefix_plus=True) }}&nbsp;%
+            </div>
+        </div>
+        <div class="h-6 w-px bg-slate-200"></div>
+        <a href="https://www.tradingview.com/chart/?symbol={{ trade.symbol }}" target="_blank" rel="noopener noreferrer"
+           class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5">
+            <span>TradingView.com</span>
+            <span>↗</span>
+        </a>
+        <button type="button" onclick="window.close()" 
+                class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 hover:text-slate-900 text-xs font-medium transition-colors">
+            Schließen ✕
+        </button>
+    </div>
+</header>
+
+<!-- Chart Main Container -->
+<main id="popout-chart-container" class="flex-1 w-full bg-white relative min-h-0">
+    {% if is_empty %}
+    <div class="flex flex-col items-center justify-center h-full text-center p-8 text-slate-500 space-y-3">
+        <p class="text-sm font-medium">Keine historischen Marktdaten für {{ trade.symbol }} in stocks.db vorhanden.</p>
+        <a href="https://www.tradingview.com/chart/?symbol={{ trade.symbol }}" target="_blank" rel="noopener noreferrer"
+           class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors">
+            Auf TradingView.com ansehen ↗
+        </a>
+    </div>
+    {% else %}
+    <div id="chart-legend" class="absolute top-3 left-4 z-10 bg-white/95 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 tabular-nums shadow-sm flex items-center gap-2">
+        <span class="font-bold text-slate-900">{{ trade.symbol }} (1D)</span>
+        <span id="legend-ohlc" class="font-normal text-slate-500">Fahre mit der Maus über die Kerzen für Details</span>
+    </div>
+    {% endif %}
+</main>
+
+<!-- Bottom Status Bar -->
+<footer class="bg-slate-50 border-t border-slate-200 px-5 py-2 text-xs text-slate-500 flex items-center justify-between shrink-0">
+    <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+        <span class="font-normal">Lokale SQLite-Marktdaten (stocks.db)</span>
+    </div>
+    <div class="font-normal text-slate-400">
+        Desktop Popout-Fenster
+    </div>
+</footer>
+
+<!-- Structured Chart Payload -->
+<script id="chart-payload" type="application/json">
+{{ chart_payload | tojson }}
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const payloadEl = document.getElementById('chart-payload');
+    if (!payloadEl) return;
+
+    let payload;
+    try {
+        payload = JSON.parse(payloadEl.textContent || '{}');
+    } catch (e) {
+        return;
+    }
+
+    if (!payload || !payload.candles || payload.candles.length === 0) return;
+
+    const container = document.getElementById('popout-chart-container');
+    if (!container || typeof LightweightCharts === 'undefined') return;
+
+    function formatDe(val) {
+        if (val === null || val === undefined || isNaN(val)) return '-';
+        return Number(val).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function getContainerDimensions() {
+        const width = container.clientWidth || window.innerWidth || 1080;
+        const height = container.clientHeight || (window.innerHeight - 95) || 560;
+        return { width, height };
+    }
+
+    const initialDims = getContainerDimensions();
+    const chart = LightweightCharts.createChart(container, {
+        width: initialDims.width,
+        height: initialDims.height,
+        layout: {
+            background: { color: '#ffffff' },
+            textColor: '#64748b',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 12,
+        },
+        grid: {
+            vertLines: { color: '#f1f5f9' },
+            horzLines: { color: '#f1f5f9' },
+        },
+        crosshair: {
+            mode: LightweightCharts.CrosshairMode.Normal,
+        },
+        rightPriceScale: {
+            borderColor: '#e2e8f0',
+        },
+        timeScale: {
+            borderColor: '#e2e8f0',
+            fixLeftEdge: true,
+            fixRightEdge: true,
+        },
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+        upColor: '#10b981',
+        downColor: '#f43f5e',
+        borderVisible: false,
+        wickUpColor: '#10b981',
+        wickDownColor: '#f43f5e',
+    });
+    candleSeries.setData(payload.candles);
+
+    // Entry Reference Line
+    if (payload.entry_price && payload.entry_price > 0) {
+        candleSeries.createPriceLine({
+            price: payload.entry_price,
+            color: '#4f46e5',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dotted,
+            axisLabelVisible: true,
+            title: 'ENTRY (' + formatDe(payload.entry_price) + ' $)',
+        });
+    }
+
+    // Target Reference Line (if active/positive)
+    if (payload.target_price && payload.target_price > 0) {
+        candleSeries.createPriceLine({
+            price: payload.target_price,
+            color: '#10b981',
+            lineWidth: 2,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true,
+            title: 'TARGET (' + formatDe(payload.target_price) + ' $)',
+        });
+    }
+
+    // Trade Markers for Entry & Exit
+    const markers = [];
+    if (payload.entry_date) {
+        markers.push({
+            time: payload.entry_date,
+            position: 'belowBar',
+            color: '#10b981',
+            shape: 'arrowUp',
+            text: 'ENTRY @ ' + formatDe(payload.entry_price) + ' $',
+        });
+    }
+
+    if (payload.exit_date) {
+        const exitPriceLabel = payload.exit_price ? ('EXIT @ ' + formatDe(payload.exit_price) + ' $') : 'EXIT';
+        const reasonSuffix = payload.exit_reason ? (' (' + payload.exit_reason.replace(/_/g, ' ') + ')') : '';
+        markers.push({
+            time: payload.exit_date,
+            position: 'aboveBar',
+            color: payload.is_profitable ? '#10b981' : '#f43f5e',
+            shape: 'arrowDown',
+            text: exitPriceLabel + reasonSuffix,
+        });
+    }
+
+    if (markers.length > 0) {
+        candleSeries.setMarkers(markers);
+    }
+
+    chart.timeScale().fitContent();
+
+    function resizeChart() {
+        if (!chart || !container) return;
+        const dims = getContainerDimensions();
+        chart.resize(dims.width, dims.height);
+    }
+
+    window.addEventListener('resize', function () {
+        window.requestAnimationFrame(resizeChart);
+    });
+    setTimeout(resizeChart, 100);
+
+    // Crosshair Legend Synchronization
+    const legendEl = document.getElementById('legend-ohlc');
+    if (legendEl) {
+        chart.subscribeCrosshairMove(function (param) {
+            if (!param || !param.time || !param.seriesData.get(candleSeries)) {
+                legendEl.innerText = 'Fahre mit der Maus über die Kerzen für Details';
+                return;
+            }
+            const bar = param.seriesData.get(candleSeries);
+            legendEl.innerHTML = 'O: <span class="text-slate-900 font-bold">' + formatDe(bar.open) + '</span> H: <span class="text-slate-900 font-bold">' + formatDe(bar.high) + '</span> L: <span class="text-slate-900 font-bold">' + formatDe(bar.low) + '</span> C: <span class="text-slate-900 font-bold">' + formatDe(bar.close) + '</span>';
+        });
+    }
+});
+</script>
+{% endblock %}
+
+{% block footer %}
+<!-- Override base footer for dedicated popout window -->
+{% endblock %}

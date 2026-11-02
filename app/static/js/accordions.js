@@ -69,3 +69,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// Popout Window for Trade Chart (Desktop)
+function openTradePopout(tradeId) {
+    if (!tradeId) return;
+    const url = '/trades/' + encodeURIComponent(tradeId) + '/chart';
+    const win = window.open(url, 'croc_trade_chart', 'width=1120,height=720,resizable=yes');
+    if (!win || win.closed || typeof win.closed === 'undefined') {
+        window.open(url, '_blank');
+    } else {
+        win.focus();
+    }
+}
+

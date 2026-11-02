@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any
 
-from flask import render_template, request
+from flask import abort, render_template, request
 
 from ...const import ExitReason, Strategies
 from ...services.trade_manager.view_service import TradeViewData
@@ -102,6 +102,24 @@ def view_trades_overview() -> str:
         strategy_stats=strategy_stats,
         donut_html=allocation_chart_html,
     )
+
+
+@views_bp.route("/trades/<int:trade_id>/chart", methods=["GET"])
+def view_trade_chart(trade_id: int) -> str:
+    """Displays a dedicated popout chart for a single trade with Lightweight Charts.
+
+    Args:
+        trade_id: Unique trade identifier in signals.db.
+
+    Returns:
+        Rendered HTML chart popout template.
+    """
+    service = _get_trade_view_service()
+    context = service.get_trade_chart_context(trade_id)
+    if context is None:
+        abort(404)
+
+    return render_template("trade_chart_window.html", **context)
 
 
 def _build_strategy_overview_stats(

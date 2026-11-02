@@ -710,8 +710,16 @@ progress_current=none, progress_max=none) %}
                     </div>
 
                     <!-- 2. Symbol -->
-                    <div class="font-bold text-slate-900 text-xs whitespace-nowrap text-left">
+                    <div class="font-bold text-slate-900 text-xs whitespace-nowrap text-left inline-flex items-center gap-1.5">
                         {{ tradingview_link(trade.symbol, is_button=false) }}
+                        {% if trade.id %}
+                        <button type="button"
+                            title="Chart im Popout-Fenster anzeigen"
+                            onclick="event.stopPropagation(); openTradePopout('{{ trade.id }}');"
+                            class="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-indigo-600 transition-colors">
+                            <i data-lucide="external-link" aria-hidden="true" class="w-3.5 h-3.5"></i>
+                        </button>
+                        {% endif %}
                     </div>
 
                     <!-- 3. Signal (Optional) -->
