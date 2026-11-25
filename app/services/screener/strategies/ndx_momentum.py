@@ -42,6 +42,7 @@ QQQ_TREND_SMA_WINDOW: int = 200
 BREADTH_SMA_WINDOW: int = 100
 BREADTH_FAST_SMA_WINDOW: int = 10
 BREADTH_SLOW_SMA_WINDOW: int = 50
+MIN_REPRESENTATIVE_BREADTH_CONSTITUENTS: int = 80
 HISTORY_FETCH_DAYS: int = 450
 
 
@@ -466,7 +467,29 @@ class NDXMomentumScreener(BaseStrategy[int]):
         sma100_matrix = calculate_sma(
             nasdaq_closes, self.configuration.breadth_sma_window
         )
-        percentage_above_sma100 = (nasdaq_closes > sma100_matrix).mean(axis=1) * 100
+        valid_sma_mask = sma100_matrix.notna()
+        valid_constituent_count = valid_sma_mask.sum(axis=1)
+
+        stocks_above_sma = ((nasdaq_closes > sma100_matrix) & valid_sma_mask).sum(
+            axis=1
+        )
+
+        safe_valid_count = valid_constituent_count.replace(0, float("nan"))
+        percentage_above_sma100 = (stocks_above_sma / safe_valid_count) * 100
+
+        if (
+            not valid_constituent_count.empty
+            and effective_date in valid_constituent_count.index
+            and valid_constituent_count.at[effective_date]
+            < MIN_REPRESENTATIVE_BREADTH_CONSTITUENTS
+        ):
+            logger.warning(
+                "[%s] Market breadth calculation on %s has only %d valid constituents.",
+                self.name,
+                effective_date.strftime("%Y-%m-%d"),
+                int(valid_constituent_count.at[effective_date]),
+            )
+
         breadth_fast_average = float(
             calculate_sma(
                 percentage_above_sma100,

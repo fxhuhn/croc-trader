@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -419,3 +420,55 @@ def test_build_trade_context_bear_regime():
     assert trade_ctx["regime"] == "BEAR"
     assert trade_ctx["momentum_score"] == -5.5
     assert trade_ctx["roc_1"] == -2.0
+
+
+def test_calculate_market_regime_excludes_nan_sma_from_denominator(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verifies that stocks with NaN in SMA100 are excluded from the denominator.
+
+    If 2 stocks exist, 1 has valid SMA and is above SMA, while the other has
+    fewer bars than lookback and has NaN SMA, the breadth percentage must be 100.0%,
+    NOT 50.0%.
+    """
+    from app.services.screener.strategies.ndx_momentum import (
+        NDXMomentumConfiguration,
+        NDXMomentumScreener,
+    )
+
+    config = NDXMomentumConfiguration(
+        breadth_sma_window=3,
+        breadth_fast_sma_window=2,
+        breadth_slow_sma_window=3,
+    )
+    screener = NDXMomentumScreener(
+        trade_repository=MagicMock(),
+        market_data_provider=MagicMock(),
+        configuration=config,
+    )
+
+    dates = pd.date_range("2026-01-01", periods=5, freq="D")
+    nasdaq_closes = pd.DataFrame(
+        {
+            "AAPL": [100.0, 105.0, 110.0, 115.0, 120.0],
+            "NEWCO": [float("nan"), float("nan"), float("nan"), float("nan"), 50.0],
+        },
+        index=dates,
+    )
+    qqq_closes = pd.Series([200.0, 205.0, 210.0, 215.0, 220.0], index=dates)
+    effective_date = dates[-1]
+
+    with caplog.at_level(logging.WARNING):
+        is_bull, regime_dict = screener._calculate_market_regime(
+            qqq_close_series=qqq_closes,
+            nasdaq_closes=nasdaq_closes,
+            effective_date=effective_date,
+            current_qqq_price=220.0,
+            index_moving_average=210.0,
+        )
+
+    # AAPL is above SMA3 on days 2, 3, 4 (100.0%). NEWCO has NaN SMA3 on day 4.
+    # The breadth percentage on day 4 must be 1/1 = 100%, not 1/2 = 50%.
+    assert regime_dict["breadth_fast"] == pytest.approx(100.0)
+    assert regime_dict["breadth_slow"] == pytest.approx(100.0)
+    assert "Market breadth calculation on" in caplog.text
