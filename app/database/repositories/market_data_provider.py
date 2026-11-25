@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 type MarketDataDict = dict[str, pd.DataFrame]
 
 
+class MarketDataLoadError(RuntimeError):
+    """Raised when historical market data cannot be loaded due to DB or memory errors."""
+
+
 class MarketDataProvider:
     """Central service for accessing market data with in-memory caching and pivoting capabilities."""
 
@@ -115,7 +119,9 @@ class MarketDataProvider:
                 dataframe = pd.read_sql_query(query, connection, params=(start_date,))
         except Exception as error:
             logger.error("[MarketData] DB Error: %s", error)
-            return None
+            raise MarketDataLoadError(
+                f"Failed to load daily market data: {error}"
+            ) from error
 
         if dataframe.empty:
             logger.warning("[MarketData] No data found.")
@@ -204,6 +210,9 @@ class MarketDataProvider:
                         all_dataframes.append(chunk_dataframe)
         except Exception as error:
             logger.error("[MarketData] Universe Fetch Error: %s", error)
+            raise MarketDataLoadError(
+                f"Failed to load universe market data: {error}"
+            ) from error
 
         return all_dataframes
 

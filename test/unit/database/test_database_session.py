@@ -57,3 +57,39 @@ def test_database_session_rollback_on_exception(tmp_path):
         cursor = conn.execute("SELECT COUNT(*) FROM test_table")
         count = cursor.fetchone()[0]
         assert count == 0
+
+
+def test_database_session_raises_and_closes_when_wal_pragma_fails(
+    tmp_path, monkeypatch
+) -> None:
+    """Regression: Writable session fails fast and closes connection on WAL disk I/O error."""
+    db_file = tmp_path / "wal_fail.db"
+    closed_flag = False
+
+    class FailingWalConnection:
+        row_factory = None
+
+        def execute(self, statement: str) -> None:
+            if "journal_mode" in statement:
+                raise sqlite3.OperationalError("disk I/O error")
+
+        def commit(self) -> None:
+            pass
+
+        def rollback(self) -> None:
+            pass
+
+        def close(self) -> None:
+            nonlocal closed_flag
+            closed_flag = True
+
+    monkeypatch.setattr(
+        sqlite3, "connect", lambda *args, **kwargs: FailingWalConnection()
+    )
+    session = DatabaseSession(str(db_file), read_only=False)
+
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+        with session.connect():
+            pass
+
+    assert closed_flag is True

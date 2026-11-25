@@ -382,3 +382,65 @@ def test_run_symbol_universe_update_no_change_skips_telegram() -> None:
     assert res["status"] == "no_change"
     assert res["changed"] is False
     mock_bot.send_message.assert_not_called()
+
+
+def test_run_daily_strategy_check_rejects_stale_cutoff_and_alerts() -> None:
+    """Regression: Stale market data blocks daily screener and sends Telegram alert."""
+    app = Flask(__name__)
+    mock_engine = MagicMock()
+    mock_provider = MagicMock()
+    mock_provider.get_latest_date.return_value = "2026-11-20"
+    mock_holiday = MagicMock()
+    mock_holiday.is_holiday.return_value = False
+    mock_bot = MagicMock()
+    mock_bot.enabled = True
+
+    app.extensions["screener_engine"] = mock_engine
+    app.extensions["market_data_provider"] = mock_provider
+    app.extensions["holiday_checker"] = mock_holiday
+    app.extensions["telegram"] = mock_bot
+
+    with patch("app.tasks.get_last_completed_trading_day") as mock_last_trading_day:
+        mock_last_trading_day.return_value.strftime.return_value = "2026-11-23"
+        run_daily_strategy_check(app)
+
+    mock_engine.run_all.assert_not_called()
+    mock_bot.send_message.assert_called_once()
+    assert "Stale or missing market data" in mock_bot.send_message.call_args[0][0]
+
+
+def test_run_market_data_update_sends_telegram_on_updater_failure(
+    tmp_path: Path,
+) -> None:
+    """Regression: Critical updater failure sends Telegram alert before logging."""
+    dummy_db = tmp_path / "stocks.db"
+    mock_bot = MagicMock()
+    mock_bot.enabled = True
+
+    with (
+        patch("app.tasks.DatabaseSession", spec=DatabaseSession),
+        patch("app.tasks.MarketDataUpdater") as mock_updater_class,
+    ):
+        mock_updater_class.return_value.run_update.side_effect = RuntimeError(
+            "disk I/O error"
+        )
+        run_market_data_update(db_path=dummy_db, telegram_bot=mock_bot)
+
+    mock_bot.send_message.assert_called_once()
+    assert "disk I/O error" in mock_bot.send_message.call_args[0][0]
+
+
+def test_run_daily_strategy_check_handles_telegram_dispatch_error() -> None:
+    """Telegram notification transport error must not crash the scheduler task."""
+    app = Flask(__name__)
+    mock_engine = MagicMock()
+    mock_engine.run_all.side_effect = RuntimeError("DB failure")
+    mock_bot = MagicMock()
+    mock_bot.enabled = True
+    mock_bot.send_message.side_effect = RuntimeError("Telegram HTTP 500")
+    app.extensions["screener_engine"] = mock_engine
+    app.extensions["telegram"] = mock_bot
+
+    run_daily_strategy_check(app)
+
+    mock_bot.send_message.assert_called_once()

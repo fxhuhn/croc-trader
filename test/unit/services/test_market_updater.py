@@ -1,11 +1,13 @@
+import sqlite3
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from app.database.repositories.market import MarketRepository
 from app.database.session import DatabaseSession
-from app.services.market.provider import YahooDataProvider
+from app.services.market.provider import ProviderInfrastructureError, YahooDataProvider
 from app.services.market.tv_provider import TradingViewDataProvider
 from app.services.market.updater import MarketDataUpdater
 
@@ -194,3 +196,140 @@ def test_market_updater_ignore_today_skips_today_bars() -> None:
     )
 
     assert count == 0
+
+
+def test_market_updater_aborts_without_tv_fallback_on_infrastructure_error() -> None:
+    """Regression: Thread/OS exhaustion aborts update without triggering TV storm."""
+    session = MagicMock(spec=DatabaseSession)
+    updater = MarketDataUpdater(session)
+    updater.repo = MagicMock(spec=MarketRepository)
+    updater.repo.get_ignored_symbols.return_value = set()
+    updater.provider = MagicMock(spec=YahooDataProvider)
+    updater.provider.fetch_batch_raw.side_effect = ProviderInfrastructureError(
+        "can't start new thread"
+    )
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+
+    with (
+        patch("app.services.market.updater.BATCH_SIZE", 1),
+        pytest.raises(ProviderInfrastructureError, match="can't start new thread"),
+    ):
+        updater.run_update(specific_symbols=["AAPL", "MSFT"])
+
+    updater.tv_provider.fetch_symbol_history.assert_not_called()
+    assert updater.provider.fetch_batch_raw.call_count == 1
+
+
+def test_fallback_to_tradingview_batches_persistence_and_isolates_symbol_error() -> (
+    None
+):
+    """Regression: TV fallback isolates single-symbol errors and writes in one batch."""
+    session = MagicMock(spec=DatabaseSession)
+    updater = MarketDataUpdater(session)
+    updater.repo = MagicMock(spec=MarketRepository)
+    updater.repo.delete_superseded_prices.return_value = 2
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+
+    def fake_tv_history(
+        symbol: str, number_of_bars: int = 15
+    ) -> list[dict[str, object]]:
+        if symbol == "BROKEN":
+            raise RuntimeError("Malformed websocket frame")
+        if symbol == "NODATA":
+            return []
+        return [
+            {
+                "date": "2026-08-01",
+                "open": 100.0,
+                "high": 105.0,
+                "low": 99.0,
+                "close": 102.0,
+                "volume": 1000,
+            }
+        ]
+
+    updater.tv_provider.fetch_symbol_history.side_effect = fake_tv_history
+
+    saved = updater._fallback_to_tradingview(
+        ["AAPL", "BROKEN", "MSFT", "NODATA"],
+        full_reload=True,
+        ignore_today=False,
+    )
+
+    assert saved == 2
+    updater.repo.save_bulk_prices.assert_called_once()
+    persisted_records = updater.repo.save_bulk_prices.call_args[0][0]
+    assert [item.symbol for item in persisted_records] == ["AAPL", "MSFT"]
+    updater.repo.delete_superseded_prices.assert_called_once_with(
+        [("AAPL", "2026-08-01"), ("MSFT", "2026-08-01")],
+        provider="yahoo",
+    )
+    updater.repo.ignore_symbol.assert_called_once_with(
+        "NODATA", "No Data (Yahoo & TradingView)"
+    )
+
+
+def test_fallback_to_tradingview_propagates_sqlite_operational_error() -> None:
+    """Regression: SQLite disk I/O error during batch persistence propagates immediately."""
+    session = MagicMock(spec=DatabaseSession)
+    updater = MarketDataUpdater(session)
+    updater.repo = MagicMock(spec=MarketRepository)
+    updater.repo.save_bulk_prices.side_effect = sqlite3.OperationalError(
+        "disk I/O error"
+    )
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+    updater.tv_provider.fetch_symbol_history.return_value = [
+        {
+            "date": "2026-08-01",
+            "open": 100.0,
+            "high": 105.0,
+            "low": 99.0,
+            "close": 102.0,
+            "volume": 1000,
+        }
+    ]
+
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+        updater._fallback_to_tradingview(["AAPL"], full_reload=False)
+
+
+def test_fallback_to_tradingview_filters_today_invalid_rows_and_propagates_memory_error() -> (
+    None
+):
+    """Covers ignore_today filtering, malformed row skipping, and MemoryError propagation."""
+    session = MagicMock(spec=DatabaseSession)
+    updater = MarketDataUpdater(session)
+    updater.repo = MagicMock(spec=MarketRepository)
+    updater.tv_provider = MagicMock(spec=TradingViewDataProvider)
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    updater.tv_provider.fetch_symbol_history.return_value = [
+        {
+            "date": today_str,
+            "open": 100.0,
+            "high": 105.0,
+            "low": 99.0,
+            "close": 102.0,
+            "volume": 1000,
+        },
+        {
+            "date": "2026-08-01",
+            "open": -5.0,
+            "high": 105.0,
+            "low": 99.0,
+            "close": 102.0,
+            "volume": 1000,
+        },
+    ]
+
+    saved = updater._fallback_to_tradingview(
+        ["AAPL"], full_reload=True, ignore_today=True
+    )
+    assert saved == 0
+    updater.repo.ignore_symbol.assert_called_once_with(
+        "AAPL", "No Data (Yahoo & TradingView)"
+    )
+
+    updater.tv_provider.fetch_symbol_history.side_effect = MemoryError("OOM")
+    with pytest.raises(MemoryError, match="OOM"):
+        updater._fallback_to_tradingview(["AAPL"], full_reload=False)

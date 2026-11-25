@@ -29,6 +29,22 @@ class DatabaseSession:
         self.db_path = db_path
         self.read_only = read_only
 
+    def _configure_connection(self, connection: sqlite3.Connection) -> None:
+        """Applies busy timeout and mandatory WAL pragmas on writable connections."""
+        connection.execute(_PRAGMA_BUSY_TIMEOUT)
+        if self.read_only:
+            return
+        try:
+            connection.execute(_PRAGMA_JOURNAL_MODE)
+            connection.execute(_PRAGMA_SYNCHRONOUS)
+        except sqlite3.OperationalError as operational_error:
+            logger.error(
+                "Could not configure WAL mode for %s: %s",
+                self.db_path,
+                operational_error,
+            )
+            raise
+
     @contextmanager
     def connect(self) -> Generator[sqlite3.Connection]:
         """Yields a configured SQLite connection with automatic commit/rollback."""
@@ -38,27 +54,16 @@ class DatabaseSession:
         else:
             connection = sqlite3.connect(self.db_path)
 
-        # WAL Mode & Timeout & Performance optimizations
-        connection.execute(_PRAGMA_BUSY_TIMEOUT)
-        if not self.read_only:
-            try:
-                connection.execute(_PRAGMA_JOURNAL_MODE)
-                connection.execute(_PRAGMA_SYNCHRONOUS)
-            except sqlite3.OperationalError as e:
-                logger.warning(
-                    "Could not configure WAL mode for %s (possibly read-only): %s",
-                    self.db_path,
-                    e,
-                )
-
-        connection.row_factory = sqlite3.Row
         try:
-            yield connection
-            if not self.read_only:
-                connection.commit()
-        except Exception:
-            if not self.read_only:
-                connection.rollback()
-            raise
+            self._configure_connection(connection)
+            connection.row_factory = sqlite3.Row
+            try:
+                yield connection
+                if not self.read_only:
+                    connection.commit()
+            except Exception:
+                if not self.read_only:
+                    connection.rollback()
+                raise
         finally:
             connection.close()

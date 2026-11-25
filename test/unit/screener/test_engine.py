@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.database.repositories.market_data_provider import MarketDataLoadError
 from app.services.screener.engine import ScreenerConfiguration, ScreenerEngine
 from app.services.screener.protocols import StrategyProtocol
 
@@ -125,3 +126,66 @@ def test_screener_engine_init_with_configuration(mock_dependencies) -> None:
 
     # Assert
     assert engine.configuration == config
+
+
+def test_screener_engine_propagates_market_data_load_error(
+    mock_dependencies, mock_strategy
+) -> None:
+    """Regression: MarketDataLoadError aborts run_all instead of returning 0 hits."""
+    trade_repo, signal_repo, data_provider = mock_dependencies
+    data_provider.get_latest_date.return_value = "2026-11-23"
+    failing_strategy = MagicMock(spec=StrategyProtocol)
+    failing_strategy.name = "dip_buyer"
+    failing_strategy.run.side_effect = MarketDataLoadError(
+        "Unable to allocate 3.13 MiB"
+    )
+
+    engine = ScreenerEngine(
+        trade_repository=trade_repo,
+        signal_repository=signal_repo,
+        data_provider=data_provider,
+        strategies=[failing_strategy, mock_strategy],
+    )
+
+    with pytest.raises(MarketDataLoadError, match="Unable to allocate"):
+        engine.run_all(days=0)
+
+    mock_strategy.run.assert_not_called()
+
+
+def test_screener_engine_rejects_stale_market_data_cutoff(
+    mock_dependencies, mock_strategy
+) -> None:
+    """Regression: Stale market data raises MarketDataLoadError when expected_min_date set."""
+    trade_repo, signal_repo, data_provider = mock_dependencies
+    data_provider.get_latest_date.return_value = "2026-11-20"
+    engine = ScreenerEngine(
+        trade_repository=trade_repo,
+        signal_repository=signal_repo,
+        data_provider=data_provider,
+        strategies=[mock_strategy],
+    )
+
+    with pytest.raises(MarketDataLoadError, match="Market data cutoff not met"):
+        engine.run_all(days=0, expected_min_date="2026-11-23")
+
+    mock_strategy.run.assert_not_called()
+
+
+def test_screener_engine_accepts_fresh_market_data_cutoff(
+    mock_dependencies, mock_strategy
+) -> None:
+    """Fresh market data meeting expected_min_date executes registered strategies."""
+    trade_repo, signal_repo, data_provider = mock_dependencies
+    data_provider.get_latest_date.return_value = "2026-11-23"
+    engine = ScreenerEngine(
+        trade_repository=trade_repo,
+        signal_repository=signal_repo,
+        data_provider=data_provider,
+        strategies=[mock_strategy],
+    )
+
+    results = engine.run_all(days=0, expected_min_date="2026-11-23")
+
+    assert results == {"mock_strategy": 5}
+    mock_strategy.run.assert_called_once_with(days=0, analysis_date="2026-11-23")

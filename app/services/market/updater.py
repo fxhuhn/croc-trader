@@ -1,4 +1,6 @@
+import gc
 import logging
+import sqlite3
 import time
 from datetime import datetime, timedelta
 
@@ -9,7 +11,11 @@ from app.database.repositories.market import MarketRepository
 from app.database.repositories.trade import TradeRepository
 from app.database.session import DatabaseSession
 from app.models import CandleIntegrityError, MarketPrice
-from app.services.market.provider import YahooDataProvider, require_lock
+from app.services.market.provider import (
+    ProviderInfrastructureError,
+    YahooDataProvider,
+    require_lock,
+)
 from app.services.market.tv_provider import TradingViewDataProvider
 from app.tools.market_holidays import MarketHolidayChecker
 from app.tools.symbol_lists import ExchangeSymbol
@@ -107,23 +113,38 @@ class MarketDataUpdater:
         total_records = 0
 
         # 3. Batch Processing
-        for i in range(0, len(symbols), BATCH_SIZE):
-            batch_symbols = symbols[i : i + BATCH_SIZE]
-            try:
-                processed_count = self._process_batch(
-                    batch_symbols,
-                    start_date,
-                    full_reload,
-                    provider_mode=provider_mode,
-                    ignore_today=ignore_today,
-                )
-                total_records += processed_count
+        try:
+            for i in range(0, len(symbols), BATCH_SIZE):
+                batch_symbols = symbols[i : i + BATCH_SIZE]
+                try:
+                    processed_count = self._process_batch(
+                        batch_symbols,
+                        start_date,
+                        full_reload,
+                        provider_mode=provider_mode,
+                        ignore_today=ignore_today,
+                    )
+                    total_records += processed_count
 
-                # Rate Limiting / Politeness
-                time.sleep(0.5)
+                    # Rate Limiting / Politeness
+                    time.sleep(0.5)
 
-            except Exception as e:
-                logger.error("Critical Error in Batch %d: %s", i, e, exc_info=True)
+                except (
+                    ProviderInfrastructureError,
+                    sqlite3.OperationalError,
+                    MemoryError,
+                ) as critical_error:
+                    logger.error(
+                        "Aborting market data update at batch %d due to infrastructure error: %s",
+                        i,
+                        critical_error,
+                        exc_info=True,
+                    )
+                    raise
+                except Exception as e:
+                    logger.error("Critical Error in Batch %d: %s", i, e, exc_info=True)
+        finally:
+            gc.collect()
 
         duration = datetime.now() - start_time
         logger.info("Update finished: %d records in %s.", total_records, duration)
@@ -317,29 +338,25 @@ class MarketDataUpdater:
         )
         return len(bulk_data) + fallback_count
 
-    def _process_single_tradingview_symbol(
+    def _collect_tradingview_symbol_prices(
         self,
         symbol: str,
-        n_bars: int,
+        number_of_bars: int,
         *,
-        full_reload: bool,
         ignore_today: bool,
         today_str: str,
-    ) -> int:
-        """Fetches and saves historical data for a single symbol via TradingView."""
-        records = self.tv_provider.fetch_symbol_history(symbol, number_of_bars=n_bars)
+    ) -> list[MarketPrice]:
+        """Fetches and parses historical daily bars for a single symbol via TradingView."""
+        records = self.tv_provider.fetch_symbol_history(
+            symbol, number_of_bars=number_of_bars
+        )
         if not records:
             logger.warning(
                 "TradingView fallback yielded no records for symbol %s", symbol
             )
-            if full_reload:
-                self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")
-                logger.warning(
-                    "Ignoring symbol %s (No Data from Yahoo or TradingView)", symbol
-                )
-            return 0
+            return []
 
-        tv_prices: list[MarketPrice] = []
+        parsed_prices: list[MarketPrice] = []
         for row in records:
             try:
                 price_model = MarketPrice.from_tradingview(symbol, row)
@@ -349,33 +366,42 @@ class MarketDataUpdater:
                         symbol,
                     )
                     continue
-                tv_prices.append(price_model)
+                parsed_prices.append(price_model)
             except ValueError as err:
                 logger.debug("Skipping TradingView row for %s: %s", symbol, err)
                 continue
 
-        if tv_prices:
-            self.repo.save_bulk_prices(tv_prices)
-            saved_dates = [price.date for price in tv_prices]
-            deleted_count = self.repo.delete_prices(
-                symbol, saved_dates, provider="yahoo"
-            )
-            if isinstance(deleted_count, int | float) and deleted_count > 0:
-                logger.debug(
-                    "Purged %d superseded Yahoo records for %s upon TradingView fallback.",
-                    deleted_count,
-                    symbol,
-                )
-            logger.debug(
-                "TradingView saved %d records for %s",
-                len(tv_prices),
-                symbol,
-            )
-            return len(tv_prices)
+        return parsed_prices
 
+    def _persist_tradingview_batch(
+        self,
+        collected_prices: list[MarketPrice],
+        symbols_without_data: list[str],
+        *,
+        full_reload: bool,
+    ) -> int:
+        """Persists collected TradingView fallback prices and blacklist updates in batch."""
         if full_reload:
-            self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")
-        return 0
+            for symbol in symbols_without_data:
+                self.repo.ignore_symbol(symbol, "No Data (Yahoo & TradingView)")
+                logger.warning(
+                    "Ignoring symbol %s (No Data from Yahoo or TradingView)", symbol
+                )
+
+        if not collected_prices:
+            return 0
+
+        self.repo.save_bulk_prices(collected_prices)
+        superseded_pairs = [(price.symbol, price.date) for price in collected_prices]
+        deleted_count = self.repo.delete_superseded_prices(
+            superseded_pairs, provider="yahoo"
+        )
+        if isinstance(deleted_count, int | float) and deleted_count > 0:
+            logger.debug(
+                "Purged %d superseded Yahoo records upon TradingView fallback.",
+                deleted_count,
+            )
+        return len(collected_prices)
 
     def _fallback_to_tradingview(
         self,
@@ -383,7 +409,7 @@ class MarketDataUpdater:
         full_reload: bool,
         ignore_today: bool = False,
     ) -> int:
-        """Fallback method to fetch failed symbols from TradingView."""
+        """Fetches failed symbols via TradingView with per-symbol isolation and batch persistence."""
         if not failed_symbols:
             return 0
 
@@ -392,23 +418,42 @@ class MarketDataUpdater:
             "Triggering TradingView fetch/fallback for %d symbols...",
             len(failed_symbols),
         )
-        saved_count = 0
-        n_bars = 1200 if full_reload else 15
+        number_of_bars = 1200 if full_reload else 15
         total_symbols = len(failed_symbols)
+        collected_prices: list[MarketPrice] = []
+        symbols_without_data: list[str] = []
 
-        for idx, symbol in enumerate(failed_symbols, start=1):
-            if idx % 25 == 1 or idx == total_symbols:
+        for index, symbol in enumerate(failed_symbols, start=1):
+            if index % 25 == 1 or index == total_symbols:
                 logger.info(
                     "TradingView progress: %d/%d symbols processed...",
-                    idx,
+                    index,
                     total_symbols,
                 )
-            saved_count += self._process_single_tradingview_symbol(
-                symbol,
-                n_bars,
-                full_reload=full_reload,
-                ignore_today=ignore_today,
-                today_str=today_str,
-            )
+            try:
+                symbol_prices = self._collect_tradingview_symbol_prices(
+                    symbol,
+                    number_of_bars,
+                    ignore_today=ignore_today,
+                    today_str=today_str,
+                )
+            except (MemoryError, sqlite3.OperationalError):
+                raise
+            except Exception as symbol_error:
+                logger.warning(
+                    "TradingView fallback failed for symbol %s: %s",
+                    symbol,
+                    symbol_error,
+                )
+                continue
 
-        return saved_count
+            if symbol_prices:
+                collected_prices.extend(symbol_prices)
+            else:
+                symbols_without_data.append(symbol)
+
+        return self._persist_tradingview_batch(
+            collected_prices,
+            symbols_without_data,
+            full_reload=full_reload,
+        )

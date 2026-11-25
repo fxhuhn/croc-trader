@@ -8,13 +8,16 @@ from typing import Any
 from flask import Flask, current_app, has_app_context
 
 from .config import ConfigManager
+from .database.repositories.market_data_provider import MarketDataLoadError
 from .database.repositories.trade import TradeRepository
 from .database.session import DatabaseSession
 from .extensions import cache
 from .services.market.quality import MarketQualityService
 from .services.market.updater import MarketDataUpdater
 from .services.telegram import TelegramBot
+from .tools.market_holidays import MarketHolidayChecker
 from .tools.symbol_lists import ExchangeSymbol, IndexDiff, SymbolRefreshResult
+from .tools.trading_calendar import get_last_completed_trading_day
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +93,34 @@ def run_daily_eod_pipeline(app: Flask) -> dict[str, Any]:
         return summary
 
 
+def _notify_telegram_failure(telegram_bot: TelegramBot | None, message: str) -> None:
+    """Dispatches a critical job failure alert via Telegram when configured."""
+    if not telegram_bot or not getattr(telegram_bot, "enabled", False):
+        return
+    try:
+        telegram_bot.send_message(message)
+    except Exception as telegram_error:
+        logger.error("Failed to dispatch Telegram alert: %s", telegram_error)
+
+
+def _verify_screener_market_cutoff(app: Flask) -> None:
+    """Verifies that stocks.db has quotes up to the last completed trading day."""
+    market_data_provider = app.extensions.get("market_data_provider")
+    if market_data_provider is None:
+        return
+
+    holiday_checker = app.extensions.get("holiday_checker") or MarketHolidayChecker()
+    expected_date = get_last_completed_trading_day(
+        datetime.now().date(), holiday_checker
+    ).strftime("%Y-%m-%d")
+    latest_date = market_data_provider.get_latest_date()
+    if not latest_date or str(latest_date) < expected_date:
+        raise MarketDataLoadError(
+            f"Stale or missing market data for screener: "
+            f"latest={latest_date}, expected>={expected_date}"
+        )
+
+
 def run_daily_strategy_check(app: Flask) -> None:
     """Daily strategy check (screener). Triggered by the scheduler.
 
@@ -106,9 +137,14 @@ def run_daily_strategy_check(app: Flask) -> None:
             return
 
         try:
+            _verify_screener_market_cutoff(app)
             screener_engine.run_all(days=0)
         except Exception as error:
             logger.error("Screener job error: %s", error)
+            _notify_telegram_failure(
+                app.extensions.get("telegram"),
+                f"🚨 **[Croc-Trader] Screener-Lauf fehlgeschlagen:**\n`{error}`",
+            )
 
 
 def run_cache_prewarm(app: Flask) -> None:
@@ -162,12 +198,19 @@ def run_market_data_update(
         signals_session = DatabaseSession(str(signals_path))
 
         updater = MarketDataUpdater(session_factory, signals_session)
-        updater.run_update(full_reload=False)
+        try:
+            updater.run_update(full_reload=False)
 
-        quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
-        quality_service.perform_gap_check()
-        quality_service.check_and_repair_corrupt_candles()
-        quality_service.check_last_trading_day_completeness()
+            quality_service = MarketQualityService(updater, telegram_bot=telegram_bot)
+            quality_service.perform_gap_check()
+            quality_service.check_and_repair_corrupt_candles()
+            quality_service.check_last_trading_day_completeness()
+        except Exception as update_error:
+            _notify_telegram_failure(
+                telegram_bot,
+                f"🚨 **[Croc-Trader] Kursdaten-Update fehlgeschlagen:**\n`{update_error}`",
+            )
+            raise
 
     except Exception as error:
         logger.error("Market data update error: %s", error, exc_info=True)

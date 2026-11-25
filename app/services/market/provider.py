@@ -1,4 +1,6 @@
+import errno
 import logging
+import sqlite3
 import threading
 from collections.abc import Callable
 from functools import wraps
@@ -12,9 +14,39 @@ logger = logging.getLogger(__name__)
 # Constants
 REQUEST_TIMEOUT = 30
 _provider_lock = threading.Lock()
+_INFRASTRUCTURE_ERRNOS: frozenset[int] = frozenset(
+    {
+        errno.ENOMEM,
+        errno.EAGAIN,
+        errno.EMFILE,
+        errno.ENFILE,
+        errno.ENOSPC,
+        errno.EIO,
+    }
+)
 
 P = ParamSpec("P")
 R = TypeVar("R")
+
+
+class ProviderInfrastructureError(RuntimeError):
+    """Raised when market data download fails due to systemic OS or runtime exhaustion."""
+
+
+def _is_infrastructure_error(error: BaseException) -> bool:
+    """Determines whether an exception indicates systemic OS or resource exhaustion."""
+    if isinstance(error, MemoryError | sqlite3.Error):
+        return True
+    if (
+        isinstance(error, RuntimeError)
+        and "can't start new thread" in str(error).lower()
+    ):
+        return True
+    if isinstance(error, OSError) and not isinstance(
+        error, TimeoutError | ConnectionError
+    ):
+        return getattr(error, "errno", None) in _INFRASTRUCTURE_ERRNOS
+    return False
 
 
 def require_lock[**P, R](func: Callable[P, R]) -> Callable[P, R | None]:
@@ -55,7 +87,8 @@ class YahooDataProvider:
 
         failed = []
         try:
-            # force simple index doesn't always work with yfinance groups, so we handle it below
+            # Disable yfinance multitasking threads to prevent unjoined Python 3.13
+            # ThreadHandle / VMA leaks in long-running workers.
             df = yf.download(
                 tickers=" ".join(symbols),
                 start=start_date,
@@ -63,12 +96,17 @@ class YahooDataProvider:
                 auto_adjust=True,
                 repair=True,
                 progress=False,
-                threads=True,
+                threads=False,
                 timeout=REQUEST_TIMEOUT,
                 ignore_tz=True,
             )
-        except Exception as e:
-            logger.error("YFinance Download Error: %s", e)
+        except Exception as error:
+            if _is_infrastructure_error(error):
+                logger.error("Critical Yahoo infrastructure error: %s", error)
+                raise ProviderInfrastructureError(
+                    f"Systemic Yahoo download failure: {error}"
+                ) from error
+            logger.error("YFinance Download Error: %s", error)
             return pd.DataFrame(), symbols
 
         if df.empty:

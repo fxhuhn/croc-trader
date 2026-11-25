@@ -253,3 +253,36 @@ def test_save_bulk_prices_edge_cases(
     assert repository.get_all_known_symbols() == ["TSLA"]
     latest_price = repository.get_latest_price("TSLA")
     assert latest_price == 258.0
+
+
+def test_delete_superseded_prices_batches_deletion(
+    repository_session: tuple[DatabaseSession, MarketRepository],
+) -> None:
+    """Verifies delete_superseded_prices purges targeted Yahoo pairs and preserves TradingView."""
+    _, repository = repository_session
+
+    assert repository.delete_superseded_prices([]) == 0
+    assert repository.delete_superseded_prices([("", "2026-07-20")]) == 0
+
+    records = [
+        MarketPrice("AAPL", "2026-07-20", 150.0, 155.0, 149.0, 154.0, 1000, "yahoo"),
+        MarketPrice(
+            "AAPL", "2026-07-20", 150.5, 155.0, 149.0, 154.2, 1000, "tradingview"
+        ),
+        MarketPrice("MSFT", "2026-07-20", 300.0, 305.0, 298.0, 304.0, 2000, "yahoo"),
+        MarketPrice("MSFT", "2026-07-21", 304.0, 308.0, 303.0, 307.0, 2200, "yahoo"),
+    ]
+    repository.save_bulk_prices(records)
+
+    deleted = repository.delete_superseded_prices(
+        [("AAPL", "2026-07-20"), ("MSFT", "2026-07-20")],
+        provider="yahoo",
+    )
+    assert deleted == 2
+
+    # TradingView record for AAPL on 2026-07-20 and Yahoo record for MSFT on 2026-07-21 remain
+    aapl_row = repository.get_ohlcv("AAPL", "2026-07-20")
+    assert aapl_row is not None
+    assert aapl_row["provider"] == "tradingview"
+    assert repository.get_ohlcv("MSFT", "2026-07-21") is not None
+    assert repository.get_ohlcv("MSFT", "2026-07-20") is None

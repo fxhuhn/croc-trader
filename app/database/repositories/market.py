@@ -4,6 +4,7 @@ Provides database access operations for market_prices and ignored_symbols tables
 """
 
 import logging
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
@@ -446,6 +447,39 @@ class MarketRepository(BaseRepository):
         with self.session.connect() as connection:
             cursor = connection.execute(sql_query, params)
             return cursor.rowcount or 0
+
+    def delete_superseded_prices(
+        self,
+        symbol_dates: Sequence[tuple[str, str]],
+        provider: str = "yahoo",
+    ) -> int:
+        """Deletes superseded provider records for multiple (symbol, date) pairs in one transaction.
+
+        Args:
+            symbol_dates: Sequence of (symbol, date) pairs to purge.
+            provider: Provider identifier to purge (default 'yahoo').
+
+        Returns:
+            Count of deleted rows.
+        """
+        if not symbol_dates:
+            return 0
+
+        parameters = [
+            (symbol.upper().strip(), str(quote_date).split(" ")[0], provider)
+            for symbol, quote_date in symbol_dates
+            if symbol and quote_date
+        ]
+        if not parameters:
+            return 0
+
+        sql_query = (
+            "DELETE FROM market_prices "
+            "WHERE symbol = ? AND date = ? AND provider = ? AND timeframe = '1D'"
+        )
+        with self.session.connect() as connection:
+            cursor = connection.executemany(sql_query, parameters)
+            return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
 
     def delete_corrupt_candles(
         self,

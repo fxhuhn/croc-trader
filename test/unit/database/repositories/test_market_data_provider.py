@@ -1,9 +1,14 @@
+import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd  # type: ignore[import-untyped]
 import pytest
 
-from app.database.repositories.market_data_provider import MarketDataProvider
+from app.database.repositories.market_data_provider import (
+    MarketDataLoadError,
+    MarketDataProvider,
+)
 from app.database.session import DatabaseSession
 
 
@@ -202,3 +207,30 @@ def test_get_latest_date_falls_back_when_only_continuous_futures_exist(
     latest = provider.get_latest_date()
     # Fallback returns the futures date when no equities exist
     assert latest == "2026-08-03"
+
+
+@pytest.mark.parametrize(
+    "injected_error",
+    [
+        MemoryError("Unable to allocate 3.13 MiB"),
+        sqlite3.OperationalError("disk I/O error"),
+    ],
+)
+def test_market_data_provider_propagates_load_errors(
+    market_data_session: DatabaseSession,
+    injected_error: Exception,
+) -> None:
+    """Regression: MemoryError and SQLite errors raise MarketDataLoadError instead of None."""
+    provider = MarketDataProvider(market_data_session)
+
+    with (
+        patch("pandas.read_sql_query", side_effect=injected_error),
+        pytest.raises(MarketDataLoadError),
+    ):
+        provider.get_universe_daily_data(["AAPL", "MSFT"], days=365)
+
+    with (
+        patch("pandas.read_sql_query", side_effect=injected_error),
+        pytest.raises(MarketDataLoadError),
+    ):
+        provider.get_all_daily_data(days=365)
