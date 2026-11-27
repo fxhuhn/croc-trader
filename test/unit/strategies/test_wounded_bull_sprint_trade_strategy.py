@@ -326,55 +326,262 @@ def test_wbs_manage_active_trade_exit_suppressed_when_setup_active() -> None:
     assert transition_exit.updates["exit_reason"] == ExitReason.TAKE_PROFIT
 
 
-def test_is_wbs_setup_active_validation() -> None:
-    """Verifies is_wbs_setup_active contracts across technical and calendar filters."""
-    from app.services.trade_manager.strategies.wounded_bull_sprint import (
-        is_wbs_setup_active,
+def test_evaluate_wbs_exit_blocks_zero_bars_held() -> None:
+    """Verifies bars_held < 1 never triggers clexit or TE."""
+    should_exit, reason = evaluate_wbs_exit(
+        bars_held=0, current_close=150.0, previous_high=100.0, is_setup_today=False
     )
+    assert should_exit is False
+    assert reason is None
 
-    # Short history (< 200 bars) -> False
-    dates_short = pd.date_range("2026-07-01", periods=100, freq="B")
-    df_short = pd.DataFrame(
-        {
-            "date": dates_short,
-            "open": [100.0] * 100,
-            "high": [105.0] * 100,
-            "low": [98.0] * 100,
-            "close": [102.0] * 100,
-            "volume": [2_000_000.0] * 100,
+
+def test_wbs_check_entry_guards_capacity_duplicate_share_class_and_expiry() -> None:
+    """Verifies check_entry enforces 1-bar expiry, share-class deduplication, and 5-slot cap."""
+    from app.tools.symbol_filter import SymbolFilter
+
+    strategy = WoundedBullSprintTradeStrategy()
+    symbol_filter = SymbolFilter()
+    original_mapping = dict(symbol_filter._mapping)
+    symbol_filter._mapping = {"GOOGL": ["GOOG"]}
+    try:
+        setup_bar = {
+            "date": "2026-07-20",
+            "open": 100.0,
+            "high": 102.0,
+            "low": 99.0,
+            "close": 101.0,
         }
-    )
-    assert is_wbs_setup_active(df_short) is False
-
-    # 226 bars in second half of month (2026-07-24 is TDOM 18, td_left >= 3)
-    dates_long = pd.date_range("2025-08-01", "2026-07-24", freq="B")
-    n_bars = len(dates_long)
-    assert n_bars >= 200
-
-    # Base price path in structural uptrend with ROC(10) < 0 and ATR(3)/Close > 2.5%
-    closes = [100.0 + i * 0.5 for i in range(n_bars)]
-    # Dip last 10 bars so ROC(10) < 0
-    closes[-1] = closes[-11] - 5.0
-    highs = [c + 4.0 for c in closes]
-    lows = [c - 2.0 for c in closes]
-    volumes = [2_000_000.0] * n_bars
-
-    df_valid = pd.DataFrame(
-        {
-            "date": dates_long,
-            "open": closes,
-            "high": highs,
-            "low": lows,
-            "close": closes,
-            "volume": volumes,
+        next_bar = {
+            "date": "2026-07-21",
+            "open": 102.0,
+            "high": 104.0,
+            "low": 101.0,
+            "close": 103.0,
         }
+        day2_bar = {
+            "date": "2026-07-22",
+            "open": 104.0,
+            "high": 106.0,
+            "low": 103.0,
+            "close": 105.0,
+        }
+        history_next = pd.DataFrame([setup_bar, next_bar])
+        history_late = pd.DataFrame([setup_bar, next_bar, day2_bar])
+
+        # 1. Share-class duplicate: GOOGL active blocks GOOG
+        goog_trade: TradeData = {
+            "id": "WBS_SC",
+            "symbol": "GOOG",
+            "strategy": Strategies.WoundedBullSprint.value,
+            "entry_price": 101.0,
+            "signal_context": '{"date": "2026-07-20"}',
+        }
+        res_dup = strategy.check_entry(
+            goog_trade,
+            pd.Series(next_bar),
+            history_next,
+            active_symbols={"GOOGL"},
+        )
+        assert res_dup is not None
+        assert res_dup.updates["status"] == TradeStatus.INVALID
+        assert res_dup.updates["exit_reason"] == ExitReason.INVALIDATED
+
+        # 2. GOOGL counts as 1 position (not 2): 4 active trades still allow 5th slot
+        fifth_trade: TradeData = {
+            "id": "WBS_5TH",
+            "symbol": "UNP",
+            "strategy": Strategies.WoundedBullSprint.value,
+            "entry_price": 101.0,
+            "signal_context": '{"date": "2026-07-20"}',
+        }
+        res_fifth = strategy.check_entry(
+            fifth_trade,
+            pd.Series(next_bar),
+            history_next,
+            active_symbols={"GOOGL", "AAPL", "MSFT", "UPS"},
+        )
+        assert res_fifth is not None
+        assert res_fifth.updates["status"] == TradeStatus.ACTIVE
+
+        # 3. 5 active trades block 6th candidate
+        res_full = strategy.check_entry(
+            fifth_trade,
+            pd.Series(next_bar),
+            history_next,
+            active_symbols={"GOOGL", "AAPL", "MSFT", "UPS", "AMT"},
+        )
+        assert res_full is not None
+        assert res_full.updates["status"] == TradeStatus.INVALID
+
+        # 4. Missed NextOpen window (> 1 trading day post signal) expires
+        res_expired = strategy.check_entry(
+            fifth_trade,
+            pd.Series(day2_bar),
+            history_late,
+            active_symbols=set(),
+        )
+        assert res_expired is not None
+        assert res_expired.updates["status"] == TradeStatus.INVALID
+        assert res_expired.updates["exit_reason"] == ExitReason.INVALIDATED
+    finally:
+        symbol_filter._mapping = original_mapping
+
+
+def test_wbs_holiday_and_weekend_rerun_do_not_prematurely_close() -> None:
+    """Regression: Thanksgiving / Monday 06:30 re-run on same candle must not close pending_exit."""
+    strategy = WoundedBullSprintTradeStrategy()
+
+    # Case A: Day 1 entry (entry_date == candle_date) with pending_exit already written
+    day1_trade: TradeData = {
+        "id": "1867",
+        "symbol": "UPS",
+        "strategy": Strategies.WoundedBullSprint.value,
+        "status": TradeStatus.ACTIVE.value,
+        "entry_date": "2026-11-25",
+        "entry_price": 96.0,
+        "current_size": 52,
+        "signal_context": (
+            '{"date": "2026-11-24", "bars_held": 1, '
+            '"last_processed_date": "2026-11-25", "pending_exit": "clexit"}'
+        ),
+    }
+    wed_history = pd.DataFrame(
+        [
+            {
+                "date": "2026-11-24",
+                "open": 95.0,
+                "high": 97.0,
+                "low": 94.0,
+                "close": 96.0,
+            },
+            {
+                "date": "2026-11-25",
+                "open": 96.0,
+                "high": 98.0,
+                "low": 95.5,
+                "close": 97.5,
+            },
+        ]
+    )
+    assert strategy.manage_active_trade(day1_trade, wed_history) is None
+
+    # Case B: Multi-day trade re-run on same last_processed_date (Saturday -> Monday 06:30)
+    mon_rerun_trade: TradeData = {
+        "id": "1870",
+        "symbol": "AMT",
+        "strategy": Strategies.WoundedBullSprint.value,
+        "status": TradeStatus.ACTIVE.value,
+        "entry_date": "2026-11-23",
+        "entry_price": 175.0,
+        "current_size": 28,
+        "signal_context": (
+            '{"date": "2026-11-20", "bars_held": 3, '
+            '"last_processed_date": "2026-11-25", "pending_exit": "clexit"}'
+        ),
+    }
+    # Prior bar (2026-11-24) did NOT trigger clexit; 2026-11-25 triggered pending_exit
+    multi_history = pd.DataFrame(
+        [
+            {
+                "date": "2026-11-23",
+                "open": 175.0,
+                "high": 180.0,
+                "low": 174.0,
+                "close": 176.0,
+            },
+            {
+                "date": "2026-11-24",
+                "open": 176.0,
+                "high": 179.0,
+                "low": 175.0,
+                "close": 177.0,
+            },
+            {
+                "date": "2026-11-25",
+                "open": 177.0,
+                "high": 182.0,
+                "low": 176.5,
+                "close": 181.0,
+            },
+        ]
+    )
+    assert strategy.manage_active_trade(mon_rerun_trade, multi_history) is None
+
+    # Case C: Next real trading day arrives (2026-11-27) -> closes at Friday Open
+    fri_history = pd.concat(
+        [
+            multi_history,
+            pd.DataFrame(
+                [
+                    {
+                        "date": "2026-11-27",
+                        "open": 183.5,
+                        "high": 185.0,
+                        "low": 182.0,
+                        "close": 184.0,
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    transition = strategy.manage_active_trade(mon_rerun_trade, fri_history)
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.CLOSED
+    assert transition.updates["exit_price"] == 183.5
+    assert transition.updates["exit_reason"] == ExitReason.TAKE_PROFIT
+
+
+def test_wbs_get_daily_updates_and_exit_order_setup_parity() -> None:
+    """Verifies get_daily_updates and _generate_exit_order suppress clexit when in qualifying_setups."""
+    strategy = WoundedBullSprintTradeStrategy()
+    trade: TradeData = {
+        "id": "WBS_PARITY",
+        "symbol": "NVDA",
+        "strategy": Strategies.WoundedBullSprint.value,
+        "status": TradeStatus.ACTIVE.value,
+        "current_size": 40,
+        "entry_date": "2026-07-21",
+        "signal_context": '{"date": "2026-07-20"}',
+    }
+    history = pd.DataFrame(
+        [
+            {
+                "date": "2026-07-21",
+                "open": 100.0,
+                "high": 105.0,
+                "low": 99.0,
+                "close": 102.0,
+            },
+            {
+                "date": "2026-07-22",
+                "open": 102.0,
+                "high": 108.0,
+                "low": 101.0,
+                "close": 107.0,
+            },
+        ]
     )
 
-    assert is_wbs_setup_active(df_valid) is True
-
-    # If ROC(10) >= 0 (no pullback) -> False
-    df_no_pullback = df_valid.copy()
-    df_no_pullback.loc[df_no_pullback.index[-1], "close"] = (
-        df_no_pullback.loc[df_no_pullback.index[-11], "close"] + 5.0
+    # Active setup suppresses both pending_exit and exit order
+    updates_suppressed = strategy.get_daily_updates(
+        trade, history, qualifying_setups={"NVDA"}
     )
-    assert is_wbs_setup_active(df_no_pullback) is False
+    assert updates_suppressed["bars_held"] == 2
+    assert updates_suppressed["last_processed_date"] == "2026-07-22"
+    assert updates_suppressed["pending_exit"] is None
+    assert (
+        strategy.generate_orders(
+            trade, history, budget=10000.0, created_symbols={"NVDA"}
+        )
+        is None
+    )
+
+    # Not in qualifying setups triggers both pending_exit and SELL MKT/OPG order
+    updates_exit = strategy.get_daily_updates(trade, history, qualifying_setups=set())
+    assert updates_exit["pending_exit"] == "clexit"
+    exit_order = strategy.generate_orders(
+        trade, history, budget=10000.0, created_symbols=set()
+    )
+    assert exit_order is not None
+    assert exit_order.exits[0].action == "SELL"

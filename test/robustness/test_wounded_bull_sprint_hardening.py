@@ -562,3 +562,29 @@ def test_wbs_screener_idempotence() -> None:
     assert hits_2 == 0
     # Total create_trade calls remain 1
     assert mock_trade_repo.create_trade.call_count == 1
+
+
+@given(
+    current_close=st.floats(
+        min_value=0.01, max_value=100_000.0, allow_nan=False, allow_infinity=False
+    ),
+    previous_high=st.floats(
+        min_value=0.01, max_value=100_000.0, allow_nan=False, allow_infinity=False
+    ),
+    is_setup_today=st.booleans(),
+)
+@settings(max_examples=50, deadline=None)
+def test_hypothesis_evaluate_wbs_exit_never_exits_at_zero_bars_held(
+    current_close: float,
+    previous_high: float,
+    is_setup_today: bool,
+) -> None:
+    """Property invariant: bars_held == 0 never triggers an exit under any price combination."""
+    should_exit, reason = evaluate_wbs_exit(
+        bars_held=0,
+        current_close=current_close,
+        previous_high=previous_high,
+        is_setup_today=is_setup_today,
+    )
+    assert should_exit is False
+    assert reason is None

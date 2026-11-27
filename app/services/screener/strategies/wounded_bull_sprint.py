@@ -9,13 +9,15 @@ during defensive macroeconomic environments (TLT > SPY MTD) in the second half o
 - Volatility: ATR(3) / Close > 2.5%
 - Short-Term Pullback: ROC(10) < 0
 - Trend Quality: Cross-sectional Frog-in-the-Pan (UpDays over 225 bars) percentile rank >= 51%
-- Candidate Ranking: Descending SetupScore = -1.0 * ROC(5)
-- Capacity: Maximum 10 positions
+- Candidate Ranking: Descending SetupScore = (ATR(3) / Close) * 100.0
+- Capacity: Maximum 5 positions
 - Entry: Next trading session open (NextOpen)
 """
 
 import datetime
+import json
 import logging
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, override
 
@@ -54,7 +56,6 @@ DEFAULT_TREND_SMA_WINDOW: int = 200
 DEFAULT_MAX_POSITIONS: int = 5
 DEFAULT_TIME_EXIT_BARS: int = 6
 DEFAULT_MIN_DAYS_LEFT_IN_MONTH: int = 3
-DEFAULT_MULTIPLIER: float = 1.0
 DEFAULT_MIN_VOLATILITY: float = 0.025
 DEFAULT_FIP_PERCENTILE: float = 51.0
 DEFAULT_MIN_PRICE: float = 5.0
@@ -76,7 +77,6 @@ class WoundedBullSprintParameters:
     max_positions: int = DEFAULT_MAX_POSITIONS
     bars_p: int = DEFAULT_TIME_EXIT_BARS
     bars_left: int = DEFAULT_MIN_DAYS_LEFT_IN_MONTH
-    multi: float = DEFAULT_MULTIPLIER
     vola_p: float = DEFAULT_MIN_VOLATILITY
     days_pct: float = DEFAULT_FIP_PERCENTILE
     min_price: float = DEFAULT_MIN_PRICE
@@ -87,6 +87,100 @@ class WoundedBullSprintParameters:
     up_days_lookback: int = DEFAULT_UP_DAYS_LOOKBACK
     atr_window: int = DEFAULT_ATR_WINDOW
     history_fetch_days: int = DEFAULT_HISTORY_FETCH_DAYS
+
+
+@dataclass(frozen=True)
+class WBSUniverseInput:
+    """Immutable point-in-time market snapshot for full-universe WBS evaluation."""
+
+    history_map: dict[str, pd.DataFrame]
+    spy_history: pd.DataFrame
+    tlt_history: pd.DataFrame
+    target_date: datetime.date
+    holiday_checker: MarketHolidayChecker
+
+
+def normalize_trading_date(value: object) -> datetime.date | None:
+    """Normalizes supported date representations into a pure datetime.date."""
+    result: datetime.date | None = None
+    if value is None or value is pd.NaT:
+        result = None
+    elif isinstance(value, pd.Timestamp):
+        result = None if pd.isna(value) else value.date()
+    elif isinstance(value, datetime.datetime):
+        result = value.date()
+    elif isinstance(value, datetime.date):
+        result = value
+    elif isinstance(value, str) and value.strip():
+        try:
+            parsed = pd.Timestamp(value.strip())
+            result = None if pd.isna(parsed) else parsed.date()
+        except (ValueError, TypeError):
+            result = None
+    return result
+
+
+def _slice_history_up_to_date(
+    price_history: pd.DataFrame,
+    target_date: datetime.date,
+) -> pd.DataFrame:
+    """Returns bars strictly up to target_date to enforce zero lookahead-bias."""
+    if price_history.empty or "date" not in price_history.columns:
+        return pd.DataFrame()
+    history_dates = pd.to_datetime(price_history["date"]).dt.date
+    return price_history[history_dates <= target_date]
+
+
+def _has_latest_candle_on_date(
+    price_history: pd.DataFrame,
+    target_date: datetime.date,
+) -> bool:
+    """Verifies that the latest candle matches target_date (market-data cutoff)."""
+    if price_history.empty or "date" not in price_history.columns:
+        return False
+    return normalize_trading_date(price_history.iloc[-1]["date"]) == target_date
+
+
+def is_wbs_calendar_window_active(
+    target_date: datetime.date,
+    params: WoundedBullSprintParameters,
+    holiday_checker: MarketHolidayChecker,
+) -> tuple[bool, int, int]:
+    """Pure Function: Evaluates WBS trading-day and month-end calendar window."""
+    if not is_trading_day(target_date, holiday_checker):
+        return False, 0, 0
+
+    tdom = get_trading_day_of_month(target_date, holiday_checker)
+    if tdom <= params.daysp:
+        return False, tdom, 0
+
+    td_left = get_remaining_trading_days_in_month(target_date, holiday_checker) - 1
+    if td_left < params.bars_left:
+        return False, tdom, td_left
+
+    return True, tdom, td_left
+
+
+def evaluate_wbs_macro_regime(
+    spy_history: pd.DataFrame,
+    tlt_history: pd.DataFrame,
+    target_date: datetime.date,
+) -> tuple[bool, float, float]:
+    """Pure Function: Evaluates defensive macro regime (SPY MTD < TLT MTD) at target_date."""
+    spy_sliced = _slice_history_up_to_date(spy_history, target_date)
+    tlt_sliced = _slice_history_up_to_date(tlt_history, target_date)
+    if not _has_latest_candle_on_date(
+        spy_sliced, target_date
+    ) or not _has_latest_candle_on_date(tlt_sliced, target_date):
+        return False, 0.0, 0.0
+
+    spy_mtd = calculate_mtd_return(
+        spy_sliced["close"].astype(float), spy_sliced["date"], target_date
+    )
+    tlt_mtd = calculate_mtd_return(
+        tlt_sliced["close"].astype(float), tlt_sliced["date"], target_date
+    )
+    return (spy_mtd < tlt_mtd), spy_mtd, tlt_mtd
 
 
 def _evaluate_single_wbs_technicals(
@@ -114,11 +208,8 @@ def _evaluate_single_wbs_technicals(
     )
 
     atr_series = calculate_atr(high_series, low_series, close_series, config.atr_window)
-    atr_ratio = (
-        float(atr_series.iloc[-1]) / latest_close
-        if not atr_series.empty and latest_close > 0.0
-        else 0.0
-    )
+    latest_atr = float(atr_series.iloc[-1]) if not atr_series.empty else 0.0
+    atr_ratio = latest_atr / latest_close if latest_close > 0.0 else 0.0
 
     roc_10_series = calculate_roc(close_series, config.roc_pullback_window)
     latest_roc_10 = float(roc_10_series.iloc[-1]) if not roc_10_series.empty else 0.0
@@ -172,7 +263,9 @@ def _evaluate_single_wbs_technicals(
     }
     metric_values = {
         "close": round(latest_close, 2),
+        "volume_sma_20": round(latest_vol_sma, 2),
         "sma_200": round(latest_trend_sma, 2),
+        "atr_3": round(latest_atr, 4),
         "atr_pct": round(atr_ratio * 100.0, 2),
         "roc_10": round(latest_roc_10, 2),
         "roc_5": round(latest_roc_5, 2),
@@ -358,6 +451,147 @@ def rank_and_filter_fip(
     return scored_candidates
 
 
+def _evaluate_universe_technicals(
+    history_map: dict[str, pd.DataFrame],
+    target_date: datetime.date,
+    params: WoundedBullSprintParameters,
+) -> tuple[list[WBSCandidateScore], dict[str, float]]:
+    """Pure Function: Computes FIP ranks and ranked technical setups for target_date."""
+    qualifying_technicals: list[dict[str, Any]] = []
+    all_universe_up_days: dict[str, int] = {}
+
+    for symbol, price_history in history_map.items():
+        sliced_history = _slice_history_up_to_date(price_history, target_date)
+        if not _has_latest_candle_on_date(sliced_history, target_date):
+            continue
+
+        if len(sliced_history) >= params.up_days_lookback + 1:
+            symbol_up_days = calculate_up_days_count(
+                sliced_history["close"].astype(float),
+                params.up_days_lookback,
+            )
+            if symbol_up_days is not None:
+                all_universe_up_days[symbol] = symbol_up_days
+
+        eval_result = evaluate_symbol_technicals(sliced_history, params)
+        if eval_result is not None:
+            qualifying_technicals.append({"symbol": symbol, **eval_result})
+
+    if not all_universe_up_days:
+        return [], {}
+
+    up_days_series = pd.Series(all_universe_up_days, dtype=float)
+    percentile_ranks = up_days_series.rank(pct=True, method="average") * 100.0
+    all_fip_ranks = {str(sym): float(rank) for sym, rank in percentile_ranks.items()}
+    ranked_candidates = rank_and_filter_fip(
+        qualifying_technicals, all_universe_up_days, params
+    )
+    return ranked_candidates, all_fip_ranks
+
+
+def evaluate_wbs_universe_setups(
+    universe_input: WBSUniverseInput,
+    params: WoundedBullSprintParameters,
+) -> tuple[list[WBSCandidateScore], dict[str, float]]:
+    """Pure Function: Full-universe WBS setup evaluation (Calendar + Macro + Technicals + FIP).
+
+    Does not apply share-class SymbolFilter so active secondary share classes remain
+    eligible as qualifying setups during Trade Manager clexit suppression checks.
+    """
+    is_cal_active, _, _ = is_wbs_calendar_window_active(
+        universe_input.target_date, params, universe_input.holiday_checker
+    )
+    if not is_cal_active:
+        return [], {}
+
+    is_defensive, _, _ = evaluate_wbs_macro_regime(
+        universe_input.spy_history,
+        universe_input.tlt_history,
+        universe_input.target_date,
+    )
+    if not is_defensive:
+        return [], {}
+
+    return _evaluate_universe_technicals(
+        universe_input.history_map,
+        universe_input.target_date,
+        params,
+    )
+
+
+def wbs_created_trade_sort_key(trade: Mapping[str, object]) -> tuple[float, int, str]:
+    """Deterministic sort key for WBS CREATED trades (setup_score desc, id asc, symbol asc)."""
+    setup_score = 0.0
+    raw_context = trade.get("signal_context")
+    if raw_context:
+        try:
+            parsed_context = (
+                json.loads(str(raw_context))
+                if isinstance(raw_context, str)
+                else raw_context
+            )
+            if (
+                isinstance(parsed_context, dict)
+                and parsed_context.get("setup_score") is not None
+            ):
+                setup_score = float(str(parsed_context["setup_score"]))
+        except (json.JSONDecodeError, ValueError, TypeError):
+            setup_score = 0.0
+    try:
+        trade_id = int(str(trade.get("id") or 0))
+    except ValueError:
+        trade_id = 0
+    return (-setup_score, trade_id, str(trade.get("symbol", "")))
+
+
+def load_wbs_qualifying_setups(
+    eval_date: datetime.date,
+    data_provider: MarketDataProvider,
+    universe_symbols: Sequence[str],
+    holiday_checker: MarketHolidayChecker,
+    run_cache: dict[datetime.date, set[str]],
+) -> set[str]:
+    """Loads and caches full-universe WBS qualifying setups with calendar pre-check.
+
+    Short-circuits before querying stocks.db when eval_date is outside the WBS
+    trading calendar window (TDOM <= 14 or td_left < 3).
+    """
+    if eval_date in run_cache:
+        return run_cache[eval_date]
+
+    params = WoundedBullSprintParameters()
+    is_cal_active, _, _ = is_wbs_calendar_window_active(
+        eval_date, params, holiday_checker
+    )
+    if not is_cal_active or not universe_symbols:
+        run_cache[eval_date] = set()
+        return set()
+
+    end_date_str = eval_date.strftime("%Y-%m-%d")
+    fetch_symbols = list(dict.fromkeys([*universe_symbols, "SPY", "TLT"]))
+    batch_map = data_provider.get_batch_history(
+        symbols=fetch_symbols,
+        days=params.history_fetch_days,
+        end_date=end_date_str,
+    )
+    universe_history = {
+        sym: batch_map[sym] for sym in universe_symbols if sym in batch_map
+    }
+    candidates, _ = evaluate_wbs_universe_setups(
+        WBSUniverseInput(
+            history_map=universe_history,
+            spy_history=batch_map.get("SPY", pd.DataFrame()),
+            tlt_history=batch_map.get("TLT", pd.DataFrame()),
+            target_date=eval_date,
+            holiday_checker=holiday_checker,
+        ),
+        params,
+    )
+    qualifying = {candidate.symbol for candidate in candidates}
+    run_cache[eval_date] = qualifying
+    return qualifying
+
+
 class WoundedBullSprintStrategy(BaseStrategy[int]):
     """Screener strategy implementation for Wounded Bull Sprint."""
 
@@ -385,20 +619,9 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
         self, target_date: datetime.date
     ) -> tuple[bool, int, int]:
         """Evaluates trading day and calendar window preconditions."""
-        if not is_trading_day(target_date, self.holiday_checker):
-            return False, 0, 0
-
-        tdom = get_trading_day_of_month(target_date, self.holiday_checker)
-        if tdom <= self.configuration.daysp:
-            return False, tdom, 0
-
-        td_left = (
-            get_remaining_trading_days_in_month(target_date, self.holiday_checker) - 1
+        return is_wbs_calendar_window_active(
+            target_date, self.configuration, self.holiday_checker
         )
-        if td_left < self.configuration.bars_left:
-            return False, tdom, td_left
-
-        return True, tdom, td_left
 
     def _is_macro_regime_defensive(
         self, target_date: datetime.date, target_date_str: str
@@ -416,13 +639,7 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
             logger.warning("Missing SPY or TLT market data on %s.", target_date_str)
             return False, 0.0, 0.0
 
-        spy_mtd = calculate_mtd_return(
-            spy_df["close"].astype(float), spy_df["date"], target_date
-        )
-        tlt_mtd = calculate_mtd_return(
-            tlt_df["close"].astype(float), tlt_df["date"], target_date
-        )
-        return (spy_mtd < tlt_mtd), spy_mtd, tlt_mtd
+        return evaluate_wbs_macro_regime(spy_df, tlt_df, target_date)
 
     def _get_available_portfolio_slots(self) -> int:
         """Computes remaining forward capacity for WBS trade positions, factoring in pending exits."""
@@ -437,31 +654,15 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
         target_date_str: str,
     ) -> list[WBSCandidateScore]:
         """Evaluates all universe symbols and returns sorted, qualifying candidates."""
-        qualifying_technicals: list[dict[str, Any]] = []
-        all_universe_up_days: dict[str, int] = {}
+        target_date = normalize_trading_date(target_date_str)
+        if target_date is None:
+            self._daily_universe_fip_cache = {}
+            return []
 
-        for symbol, price_history in history_map.items():
-            if price_history.empty:
-                continue
-
-            if len(price_history) >= self.configuration.up_days_lookback + 1:
-                symbol_up_days = calculate_up_days_count(
-                    price_history["close"].astype(float),
-                    self.configuration.up_days_lookback,
-                )
-                if symbol_up_days is not None:
-                    all_universe_up_days[symbol] = symbol_up_days
-
-            eval_result = evaluate_symbol_technicals(price_history, self.configuration)
-            if eval_result is not None:
-                qualifying_technicals.append({"symbol": symbol, **eval_result})
-
-        ranked_candidates = rank_and_filter_fip(
-            qualifying_technicals, all_universe_up_days, self.configuration
+        ranked_candidates, all_fip_ranks = _evaluate_universe_technicals(
+            history_map, target_date, self.configuration
         )
-        self._daily_universe_fip_cache = {
-            c.symbol: c.up_days_pct for c in ranked_candidates
-        }
+        self._daily_universe_fip_cache = all_fip_ranks
         return ranked_candidates
 
     def _persist_and_report_signals(
@@ -519,6 +720,8 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """Executes Wounded Bull Sprint screening logic for the specified date."""
+        self.latest_qualifying_setups = set()
+        self._daily_universe_fip_cache = {}
         target_date = self._resolve_analysis_date(days, analysis_date)
         target_date_str = target_date.strftime("%Y-%m-%d")
 
@@ -544,10 +747,11 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
 
         ranked_candidates = self._evaluate_universe(history_map, target_date_str)
         if not ranked_candidates:
-            self.latest_qualifying_setups = set()
             return 0
 
-        # Filter out secondary share classes (e.g. keep GOOGL, drop GOOG)
+        self.latest_qualifying_setups = {c.symbol for c in ranked_candidates}
+
+        # Filter out secondary share classes only when selecting new entry candidates
         candidate_symbols = [c.symbol for c in ranked_candidates]
         preferred_symbols = set(SymbolFilter().filter_symbols(candidate_symbols))
         if len(preferred_symbols) < len(candidate_symbols):
@@ -560,8 +764,6 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
             ranked_candidates = [
                 c for c in ranked_candidates if c.symbol in preferred_symbols
             ]
-
-        self.latest_qualifying_setups = {c.symbol for c in ranked_candidates}
 
         new_candidates = [
             c
@@ -740,11 +942,11 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
             technical_filters={
                 "close": metric_values["close"],
                 "min_price_ok": intrinsic_filters["min_price"],
-                "volume_sma_20": 0.0,
+                "volume_sma_20": metric_values["volume_sma_20"],
                 "volume_ok": intrinsic_filters["volume"],
                 "sma_200": metric_values["sma_200"],
                 "uptrend_ok": intrinsic_filters["uptrend"],
-                "atr_3": 0.0,
+                "atr_3": metric_values["atr_3"],
                 "atr_pct": metric_values["atr_pct"],
                 "volatility_ok": intrinsic_filters["volatility"],
                 "roc_10": metric_values["roc_10"],
@@ -776,9 +978,18 @@ class WoundedBullSprintStrategy(BaseStrategy[int]):
 
 
 __all__ = [
+    "DEFAULT_HISTORY_FETCH_DAYS",
+    "DEFAULT_MAX_POSITIONS",
     "WBSCandidateScore",
+    "WBSUniverseInput",
     "WoundedBullSprintParameters",
     "WoundedBullSprintStrategy",
     "evaluate_symbol_technicals",
+    "evaluate_wbs_macro_regime",
+    "evaluate_wbs_universe_setups",
+    "is_wbs_calendar_window_active",
+    "load_wbs_qualifying_setups",
+    "normalize_trading_date",
     "rank_and_filter_fip",
+    "wbs_created_trade_sort_key",
 ]

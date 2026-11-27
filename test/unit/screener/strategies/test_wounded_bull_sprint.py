@@ -8,9 +8,13 @@ import pytest
 
 from app.const import Strategies
 from app.services.screener.strategies.wounded_bull_sprint import (
+    WBSUniverseInput,
     WoundedBullSprintParameters,
     WoundedBullSprintStrategy,
     evaluate_symbol_technicals,
+    evaluate_wbs_universe_setups,
+    load_wbs_qualifying_setups,
+    normalize_trading_date,
     rank_and_filter_fip,
 )
 from app.tools.market_holidays import MarketHolidayChecker
@@ -23,9 +27,10 @@ def _build_synthetic_history(
     volume: float = 2_000_000.0,
     daily_range: float = 8.0,
     end_pullback_bars: int = 10,
+    end_date: str = "2026-07-22",
 ) -> pd.DataFrame:
     """Builds synthetic daily OHLCV bars satisfying default WBS uptrend and volume criteria."""
-    dates = pd.date_range(end="2026-07-20", periods=num_bars, freq="B")
+    dates = pd.date_range(end=end_date, periods=num_bars, freq="B")
     records: list[dict[str, object]] = []
 
     price = base_price
@@ -340,10 +345,9 @@ def test_wounded_bull_sprint_screener_macro_regime_guard() -> None:
 
 
 def test_wounded_bull_sprint_screener_capacity_guard() -> None:
-    """Tests WBS screener aborts if 5 active/created positions already exist."""
+    """Tests WBS screener aborts if 5 active/created positions already exist and clears stale cache."""
     trade_repo = MagicMock()
-    # 5 active WBS positions
-    trade_repo.get_by_status.return_value = [
+    trade_repo.get_effective_active_trades.return_value = [
         {"symbol": f"SYM{i}", "strategy": Strategies.WoundedBullSprint.value}
         for i in range(5)
     ]
@@ -371,10 +375,12 @@ def test_wounded_bull_sprint_screener_capacity_guard() -> None:
         data_provider=data_provider,
         holiday_checker=holiday_checker,
     )
+    strategy.latest_qualifying_setups = {"STALE"}
     strategy.exchange_symbols._sp_100 = ["AAPL"]
 
     hits = strategy.run(analysis_date="2026-07-22")
     assert hits == 0
+    assert strategy.latest_qualifying_setups == set()
     trade_repo.create_trade.assert_not_called()
 
 
@@ -417,6 +423,8 @@ def test_wounded_bull_sprint_analyze_single_symbol() -> None:
     assert isinstance(tech_filters, dict)
     assert tech_filters["uptrend_ok"] is True
     assert tech_filters["volatility_ok"] is True
+    assert tech_filters["volume_sma_20"] > 0.0
+    assert tech_filters["atr_3"] > 0.0
     assert analysis["all_technical_filters_pass"] is True
 
 
@@ -444,3 +452,243 @@ def test_wounded_bull_sprint_available_slots_factors_pending_exit() -> None:
     trade_repo.get_effective_active_trades.assert_called_once_with(
         strategy.STRATEGY_IDENTIFIER
     )
+
+
+def test_normalize_trading_date_variants() -> None:
+    """Verifies safe normalization across date, datetime, Timestamp, str, and invalid values."""
+    expected = datetime.date(2026, 7, 22)
+    assert normalize_trading_date(expected) == expected
+    assert normalize_trading_date(datetime.datetime(2026, 7, 22, 15, 30)) == expected
+    assert normalize_trading_date(pd.Timestamp("2026-07-22")) == expected
+    assert normalize_trading_date("2026-07-22") == expected
+    assert normalize_trading_date("2026-07-22 00:00:00") == expected
+    assert normalize_trading_date(None) is None
+    assert normalize_trading_date("") is None
+    assert normalize_trading_date("not-a-date") is None
+    assert normalize_trading_date(pd.NaT) is None
+
+
+def test_evaluate_wbs_universe_setups_four_pillars_and_zero_lookahead() -> None:
+    """Verifies full 4-pillar parity, stale-bar rejection, and zero lookahead-bias."""
+    target = datetime.date(2026, 7, 22)
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+    params = WoundedBullSprintParameters()
+
+    spy_defensive = pd.DataFrame(
+        {"date": [datetime.date(2026, 6, 30), target], "close": [500.0, 495.0]}
+    )
+    tlt_defensive = pd.DataFrame(
+        {"date": [datetime.date(2026, 6, 30), target], "close": [90.0, 92.0]}
+    )
+    qualifying_df = _build_synthetic_history(
+        num_bars=250, base_price=150.0, price_slope=0.5, end_date="2026-07-22"
+    )
+    stale_df = _build_synthetic_history(
+        num_bars=250, base_price=150.0, price_slope=0.5, end_date="2026-07-20"
+    )
+
+    candidates, fip_ranks = evaluate_wbs_universe_setups(
+        WBSUniverseInput(
+            history_map={"AAPL": qualifying_df, "STALE": stale_df},
+            spy_history=spy_defensive,
+            tlt_history=tlt_defensive,
+            target_date=target,
+            holiday_checker=holiday_checker,
+        ),
+        params,
+    )
+    assert [c.symbol for c in candidates] == ["AAPL"]
+    assert "AAPL" in fip_ranks
+    assert "STALE" not in fip_ranks
+
+    # Zero lookahead-bias: appending future bars T+1..T+3 must yield identical result at T
+    future_rows = pd.DataFrame(
+        [
+            {
+                "date": datetime.date(2026, 7, 23),
+                "open": 50.0,
+                "high": 51.0,
+                "low": 49.0,
+                "close": 50.0,
+                "volume": 5_000_000.0,
+            }
+        ]
+    )
+    extended_df = pd.concat([qualifying_df, future_rows], ignore_index=True)
+    candidates_ext, _ = evaluate_wbs_universe_setups(
+        WBSUniverseInput(
+            history_map={"AAPL": extended_df},
+            spy_history=spy_defensive,
+            tlt_history=tlt_defensive,
+            target_date=target,
+            holiday_checker=holiday_checker,
+        ),
+        params,
+    )
+    assert candidates_ext == candidates
+
+    # Risk-on macro (SPY_MTD >= TLT_MTD) rejects all setups
+    spy_risk_on = pd.DataFrame(
+        {"date": [datetime.date(2026, 6, 30), target], "close": [500.0, 520.0]}
+    )
+    candidates_risk_on, _ = evaluate_wbs_universe_setups(
+        WBSUniverseInput(
+            history_map={"AAPL": qualifying_df},
+            spy_history=spy_risk_on,
+            tlt_history=tlt_defensive,
+            target_date=target,
+            holiday_checker=holiday_checker,
+        ),
+        params,
+    )
+    assert candidates_risk_on == []
+
+
+def test_wounded_bull_sprint_precheck_candidates_and_full_fip_cache() -> None:
+    """Verifies get_precheck_candidates returns ranked items and caches FIP for all universe symbols."""
+    trade_repo = MagicMock()
+    data_provider = MagicMock()
+    data_provider.get_latest_date.return_value = "2026-07-22"
+
+    qualifying_df = _build_synthetic_history(
+        num_bars=250, base_price=150.0, price_slope=0.5, end_date="2026-07-22"
+    )
+    non_qualifying_df = _build_synthetic_history(
+        num_bars=250,
+        base_price=150.0,
+        price_slope=-0.1,
+        end_pullback_bars=0,
+        end_date="2026-07-22",
+    )
+    data_provider.get_batch_history.return_value = {
+        "AAPL": qualifying_df,
+        "WEAK": non_qualifying_df,
+    }
+
+    strategy = WoundedBullSprintStrategy(
+        trade_repository=trade_repo,
+        data_provider=data_provider,
+    )
+    strategy.exchange_symbols._sp_100 = ["AAPL", "WEAK"]
+
+    precheck = strategy.get_precheck_candidates(limit=5)
+    assert len(precheck) == 1
+    assert precheck[0]["symbol"] == "AAPL"
+    assert "AAPL" in strategy._daily_universe_fip_cache
+    assert "WEAK" in strategy._daily_universe_fip_cache
+
+
+def test_load_wbs_qualifying_setups_calendar_precheck_and_cache() -> None:
+    """Verifies calendar-inactive dates skip DB queries and valid dates are cached."""
+    data_provider = MagicMock()
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+    cache: dict[datetime.date, set[str]] = {}
+
+    # TDOM = 2 (<= 14) -> must short-circuit BEFORE calling get_batch_history
+    early_month = datetime.date(2026, 7, 2)
+    assert (
+        load_wbs_qualifying_setups(
+            early_month, data_provider, ["AAPL"], holiday_checker, cache
+        )
+        == set()
+    )
+    data_provider.get_batch_history.assert_not_called()
+
+    # Active calendar date -> queries once, second call served from cache
+    active_date = datetime.date(2026, 7, 22)
+    aapl_df = _build_synthetic_history(
+        num_bars=250, base_price=150.0, price_slope=0.5, end_date="2026-07-22"
+    )
+    data_provider.get_batch_history.return_value = {
+        "AAPL": aapl_df,
+        "SPY": pd.DataFrame(
+            {
+                "date": [datetime.date(2026, 6, 30), active_date],
+                "close": [500.0, 495.0],
+            }
+        ),
+        "TLT": pd.DataFrame(
+            {
+                "date": [datetime.date(2026, 6, 30), active_date],
+                "close": [90.0, 92.0],
+            }
+        ),
+    }
+    first = load_wbs_qualifying_setups(
+        active_date, data_provider, ["AAPL"], holiday_checker, cache
+    )
+    second = load_wbs_qualifying_setups(
+        active_date, data_provider, ["AAPL"], holiday_checker, cache
+    )
+    assert first == {"AAPL"}
+    assert second == {"AAPL"}
+    data_provider.get_batch_history.assert_called_once()
+
+
+def test_wbs_analyze_single_symbol_status_branches() -> None:
+    """Covers empty history, qualified FIP, rejected low FIP, and non-defensive macro branches."""
+    trade_repo = MagicMock()
+    data_provider = MagicMock()
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    holiday_checker.is_holiday.return_value = False
+    strategy = WoundedBullSprintStrategy(
+        trade_repository=trade_repo,
+        data_provider=data_provider,
+        holiday_checker=holiday_checker,
+    )
+
+    # 1. Empty history -> INSUFFICIENT_DATA
+    data_provider.get_symbol_history.return_value = pd.DataFrame()
+    empty_result = strategy.analyze_single_symbol("EMPTY")
+    assert empty_result["status"] == "INSUFFICIENT_DATA"
+
+    # 2. Qualified with cached FIP >= 51% and defensive macro
+    valid_df = _build_synthetic_history(
+        num_bars=250, base_price=150.0, price_slope=0.5, end_date="2026-07-22"
+    )
+    data_provider.get_symbol_history.return_value = valid_df
+    data_provider.get_latest_date.return_value = "2026-07-22"
+    data_provider.get_batch_history.return_value = {
+        "SPY": pd.DataFrame(
+            {
+                "date": [datetime.date(2026, 6, 30), datetime.date(2026, 7, 22)],
+                "close": [500.0, 490.0],
+            }
+        ),
+        "TLT": pd.DataFrame(
+            {
+                "date": [datetime.date(2026, 6, 30), datetime.date(2026, 7, 22)],
+                "close": [90.0, 92.0],
+            }
+        ),
+    }
+    strategy._daily_universe_fip_cache = {"AAPL": 75.0}
+    qualified = strategy.analyze_single_symbol("AAPL")
+    assert qualified["status"] == "QUALIFIED"
+    assert qualified["overall_passed"] is True
+
+    # 3. Low FIP rank -> REJECTED
+    strategy._daily_universe_fip_cache = {"AAPL": 30.0}
+    low_fip = strategy.analyze_single_symbol("AAPL")
+    assert low_fip["status"] == "REJECTED"
+
+    # 4. Non-defensive macro with high FIP -> REJECTED
+    strategy._daily_universe_fip_cache = {"AAPL": 80.0}
+    data_provider.get_batch_history.return_value = {
+        "SPY": pd.DataFrame(
+            {
+                "date": [datetime.date(2026, 6, 30), datetime.date(2026, 7, 22)],
+                "close": [500.0, 520.0],
+            }
+        ),
+        "TLT": pd.DataFrame(
+            {
+                "date": [datetime.date(2026, 6, 30), datetime.date(2026, 7, 22)],
+                "close": [90.0, 91.0],
+            }
+        ),
+    }
+    non_def = strategy.analyze_single_symbol("AAPL")
+    assert non_def["status"] == "REJECTED"

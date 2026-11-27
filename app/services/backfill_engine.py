@@ -2,19 +2,28 @@
 
 import json
 import logging
+from dataclasses import dataclass
 from datetime import date
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
 from ..database.repositories.market_data_provider import MarketDataProvider
 from ..database.repositories.trade import TradeRepository
 from ..database.session import DatabaseSession
-from ..types import TradeStatus
+from ..tools.market_holidays import MarketHolidayChecker
+from ..tools.symbol_lists import ExchangeSymbol
+from ..types import TradeData, TradeStatus
 from .screener.strategies.bounce_bandit import BounceBanditStrategy
 from .screener.strategies.bridge_scout import BridgeScoutStrategy
 from .screener.strategies.tgim import TGIMStrategy
-from .screener.strategies.wounded_bull_sprint import WoundedBullSprintStrategy
+from .screener.strategies.wounded_bull_sprint import (
+    WoundedBullSprintStrategy,
+    load_wbs_qualifying_setups,
+    normalize_trading_date,
+    wbs_created_trade_sort_key,
+)
+from .trade_manager.strategies.abstract import BaseTradeStrategy
 from .trade_manager.strategies.bounce_bandit import BounceBanditTradeStrategy
 from .trade_manager.strategies.bridge_scout import BridgeScoutTradeStrategy
 from .trade_manager.strategies.tgim import TGIMTradeStrategy
@@ -88,15 +97,92 @@ def _is_trade_simulatable_on_date(
     return True
 
 
+@dataclass(frozen=True)
+class _BackfillRunContext:
+    """Shared execution dependencies for single-day backfill candle processing."""
+
+    strategy_engine: Any
+    trade_repository: TradeRepository
+    data_provider: MarketDataProvider
+    holiday_checker: MarketHolidayChecker
+    exchange_symbols: ExchangeSymbol
+    budget: float
+    stats: dict[str, int]
+    wbs_setups_cache: dict[date, set[str]]
+
+
+def _get_wbs_qualifying_setups(
+    eval_date: date,
+    run_context: _BackfillRunContext,
+) -> set[str]:
+    """Computes and caches full-universe WBS qualifying setups for eval_date."""
+    return load_wbs_qualifying_setups(
+        eval_date,
+        run_context.data_provider,
+        run_context.exchange_symbols.sp_100,
+        run_context.holiday_checker,
+        run_context.wbs_setups_cache,
+    )
+
+
+def _resolve_prior_candle_date(df_sim: pd.DataFrame, sim_date: date) -> date | None:
+    """Returns the date of the latest candle strictly prior to sim_date."""
+    if df_sim.empty or "date" not in df_sim.columns:
+        return None
+    dates = pd.to_datetime(df_sim["date"]).dt.date
+    prior = df_sim[dates < sim_date]
+    if prior.empty:
+        return None
+    return normalize_trading_date(prior.iloc[-1]["date"])
+
+
+def _extract_transition_status(updates: dict[str, object]) -> str:
+    """Extracts string status value from transition updates."""
+    status_val = updates.get("status", "")
+    return status_val.value if hasattr(status_val, "value") else str(status_val)
+
+
+def _persist_daily_updates(
+    trade: dict[str, Any],
+    trade_id: int,
+    sim_date: date,
+    df_sim: pd.DataFrame,
+    run_context: _BackfillRunContext,
+) -> None:
+    """Computes and persists strategy daily context updates for an active trade."""
+    strategy_engine = run_context.strategy_engine
+    if not hasattr(strategy_engine, "get_daily_updates"):
+        return
+
+    if isinstance(strategy_engine, WoundedBullSprintTradeStrategy):
+        wbs_setups = _get_wbs_qualifying_setups(sim_date, run_context)
+        daily_updates = strategy_engine.get_daily_updates(
+            cast(TradeData, trade), df_sim, qualifying_setups=wbs_setups
+        )
+    else:
+        daily_updates = strategy_engine.get_daily_updates(trade, df_sim)
+
+    if not daily_updates:
+        return
+
+    raw_context = trade.get("signal_context") or "{}"
+    ctx = (
+        json.loads(str(raw_context))
+        if isinstance(raw_context, str)
+        else dict(raw_context)
+    )
+    ctx.update(daily_updates)
+    serialized = json.dumps(ctx, ensure_ascii=False)
+    trade["signal_context"] = serialized
+    run_context.trade_repository.update_trade(trade_id, {"signal_context": serialized})
+
+
 def _process_trade_candle(
     trade: dict[str, Any],
     sim_date: date,
     df_sim: pd.DataFrame,
-    *,
-    strategy_engine: Any,
-    trade_repository: TradeRepository,
-    budget: float,
-    stats: dict[str, int],
+    run_context: _BackfillRunContext,
+    active_symbols: set[str],
 ) -> None:
     """Evaluates entry or management transition for a single trade."""
     if not _is_trade_simulatable_on_date(trade, sim_date, df_sim):
@@ -104,44 +190,60 @@ def _process_trade_candle(
 
     candle = df_sim.iloc[-1]
     trade_id = int(str(trade["id"]))
+    symbol = str(trade.get("symbol", ""))
     status = trade.get("status")
+    strategy_engine = run_context.strategy_engine
 
     if status == TradeStatus.CREATED.value:
-        trade["budget"] = budget
-        transition = strategy_engine.check_entry(trade, candle, df_sim)
+        trade["budget"] = run_context.budget
+        transition = (
+            strategy_engine.check_entry(
+                cast(TradeData, trade), candle, df_sim, active_symbols=active_symbols
+            )
+            if isinstance(strategy_engine, BaseTradeStrategy)
+            else strategy_engine.check_entry(trade, candle, df_sim)
+        )
         if transition and transition.updates:
-            trade_repository.update_trade(
+            run_context.trade_repository.update_trade(
                 trade_id,
                 transition.updates,
                 reason=transition.reason,
             )
-            stats["filled"] += 1
-            status = transition.updates.get("status", TradeStatus.ACTIVE.value)
+            new_status = _extract_transition_status(transition.updates)
             trade.update(transition.updates)
+            trade["status"] = new_status
+            status = new_status
+            if new_status == TradeStatus.ACTIVE.value:
+                run_context.stats["filled"] += 1
+                active_symbols.add(symbol)
 
     if status == TradeStatus.ACTIVE.value:
-        transition = strategy_engine.manage_active_trade(trade, df_sim)
+        if isinstance(strategy_engine, WoundedBullSprintTradeStrategy):
+            prior_date = _resolve_prior_candle_date(df_sim, sim_date)
+            latest_leaders = (
+                _get_wbs_qualifying_setups(prior_date, run_context)
+                if prior_date is not None
+                else set()
+            )
+            transition = strategy_engine.manage_active_trade(
+                cast(TradeData, trade), df_sim, latest_leaders=latest_leaders
+            )
+        else:
+            transition = strategy_engine.manage_active_trade(trade, df_sim)
         if transition and transition.updates:
-            trade_repository.update_trade(
+            run_context.trade_repository.update_trade(
                 trade_id,
                 transition.updates,
                 reason=transition.reason,
             )
-            stats["closed"] += 1
-        elif hasattr(strategy_engine, "get_daily_updates"):
-            daily_updates = strategy_engine.get_daily_updates(trade, df_sim)
-            if daily_updates:
-                raw_context = trade.get("signal_context") or "{}"
-                ctx = (
-                    json.loads(str(raw_context))
-                    if isinstance(raw_context, str)
-                    else dict(raw_context)
-                )
-                ctx.update(daily_updates)
-                trade_repository.update_trade(
-                    trade_id,
-                    {"signal_context": json.dumps(ctx, ensure_ascii=False)},
-                )
+            if (
+                _extract_transition_status(transition.updates)
+                == TradeStatus.CLOSED.value
+            ):
+                run_context.stats["closed"] += 1
+                active_symbols.discard(symbol)
+        else:
+            _persist_daily_updates(trade, trade_id, sim_date, df_sim, run_context)
 
 
 def _aggregate_closed_trades(
@@ -215,12 +317,22 @@ def run_generic_backfill(
     date_range = pd.date_range(start=start_ts, end=end_ts, freq="B")
 
     stats = {"signals": 0, "filled": 0, "closed": 0}
+    run_context = _BackfillRunContext(
+        strategy_engine=strategy_engine,
+        trade_repository=trade_repository,
+        data_provider=data_provider,
+        holiday_checker=MarketHolidayChecker(),
+        exchange_symbols=ExchangeSymbol(),
+        budget=budget,
+        stats=stats,
+        wbs_setups_cache={},
+    )
 
     for current_ts in date_range:
         current_date_str = current_ts.strftime("%Y-%m-%d")
         sim_date = current_ts.date()
 
-        active_trades = [
+        open_trades = [
             t
             for t in trade_repository.get_by_status(
                 [TradeStatus.CREATED, TradeStatus.ACTIVE]
@@ -228,13 +340,24 @@ def run_generic_backfill(
             if canonical_strategy in str(t.get("strategy")).lower()
         ]
 
-        if active_trades:
-            syms = [str(t["symbol"]) for t in active_trades if "symbol" in t]
+        if open_trades:
+            active_only = [
+                t for t in open_trades if t.get("status") == TradeStatus.ACTIVE.value
+            ]
+            created_only = [
+                t for t in open_trades if t.get("status") == TradeStatus.CREATED.value
+            ]
+            if isinstance(strategy_engine, WoundedBullSprintTradeStrategy):
+                created_only.sort(key=wbs_created_trade_sort_key)
+
+            ordered_trades = active_only + created_only
+            active_symbols = {str(t["symbol"]) for t in active_only if "symbol" in t}
+            syms = [str(t["symbol"]) for t in ordered_trades if "symbol" in t]
             market_data = data_provider.get_batch_history(
                 syms, days=lookback_days, end_date=current_date_str
             )
 
-            for trade in active_trades:
+            for trade in ordered_trades:
                 sym = str(trade.get("symbol"))
                 if sym not in market_data:
                     continue
@@ -246,10 +369,8 @@ def run_generic_backfill(
                     trade=trade,
                     sim_date=sim_date,
                     df_sim=df_sim,
-                    strategy_engine=strategy_engine,
-                    trade_repository=trade_repository,
-                    budget=budget,
-                    stats=stats,
+                    run_context=run_context,
+                    active_symbols=active_symbols,
                 )
 
         hits = screener.run(days=0, analysis_date=current_date_str)

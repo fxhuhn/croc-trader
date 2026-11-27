@@ -21,23 +21,20 @@ import pandas as pd
 
 from ....const import ExitReason, Strategies
 from ....models import Order
-from ....tools.indicators import calculate_atr, calculate_roc, calculate_sma
 from ....tools.market_holidays import MarketHolidayChecker
-from ....tools.trading_calendar import (
-    get_remaining_trading_days_in_month,
-    get_trading_day_of_month,
-)
+from ....tools.symbol_filter import SymbolFilter
 from ....types import TradeData
+from ...screener.strategies.wounded_bull_sprint import (
+    DEFAULT_MAX_POSITIONS,
+    normalize_trading_date,
+)
 from ..types import TradeTransition
 from .abstract import BaseTradeStrategy, OrderOptions
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_HOLDING_BARS: int = 6
-DEFAULT_SIGNAL_DAY_THRESHOLD: int = 14
-DEFAULT_MIN_DAYS_LEFT_IN_MONTH: int = 3
 MIN_HISTORY_FOR_PREV_HIGH: int = 2
-MIN_HISTORY_FOR_SMA200: int = 200
 
 
 def calculate_wbs_bars_held(
@@ -57,67 +54,6 @@ def calculate_wbs_bars_held(
     return len(bars_from_entry)
 
 
-def is_wbs_setup_active(
-    dataframe_history: pd.DataFrame,
-    holiday_checker: MarketHolidayChecker | None = None,
-    min_price: float = 5.0,
-    min_volume_ma: float = 1_000_000.0,
-    min_volatility: float = 0.025,
-) -> bool:
-    """Pure calculation: Evaluates whether the symbol meets WBS technical and calendar setup criteria.
-
-    Criteria:
-    1. Close > 5.0
-    2. 20-day Volume SMA > 1,000,000
-    3. Close > 200-day Close SMA (structural uptrend)
-    4. ATR(3) / Close > 2.5% (volatility)
-    5. ROC(10) < 0 (short-term pullback)
-    6. Calendar window: TradingDayOfMonth > 14 and remaining trading days in month >= 3
-    """
-    if dataframe_history.empty or len(dataframe_history) < MIN_HISTORY_FOR_SMA200:
-        return False
-
-    close_series = dataframe_history["close"].astype(float)
-    volume_series = dataframe_history["volume"].astype(float)
-    high_series = dataframe_history["high"].astype(float)
-    low_series = dataframe_history["low"].astype(float)
-
-    current_close = float(close_series.iloc[-1])
-    volume_sma_series = calculate_sma(volume_series, 20)
-    trend_sma_series = calculate_sma(close_series, 200)
-    atr_series = calculate_atr(high_series, low_series, close_series, 3)
-    roc_10_series = calculate_roc(close_series, 10)
-
-    is_technical_valid = (
-        current_close > min_price
-        and not volume_sma_series.empty
-        and float(volume_sma_series.iloc[-1]) > min_volume_ma
-        and not trend_sma_series.empty
-        and current_close > float(trend_sma_series.iloc[-1])
-        and not atr_series.empty
-        and (float(atr_series.iloc[-1]) / current_close) > min_volatility
-        and not roc_10_series.empty
-        and float(roc_10_series.iloc[-1]) < 0.0
-    )
-    if not is_technical_valid:
-        return False
-
-    last_date_val = dataframe_history.iloc[-1]["date"]
-    candle_date = (
-        pd.Timestamp(last_date_val).date()
-        if isinstance(last_date_val, str)
-        else last_date_val.date()
-    )
-    checker = holiday_checker or MarketHolidayChecker()
-    tdom = get_trading_day_of_month(candle_date, checker)
-    td_left = get_remaining_trading_days_in_month(candle_date, checker) - 1
-
-    return (
-        tdom > DEFAULT_SIGNAL_DAY_THRESHOLD
-        and td_left >= DEFAULT_MIN_DAYS_LEFT_IN_MONTH
-    )
-
-
 def evaluate_wbs_exit(
     bars_held: int,
     current_close: float,
@@ -134,6 +70,9 @@ def evaluate_wbs_exit(
     Returns:
         tuple[bool, str | None]: (should_exit, reason_code)
     """
+    if bars_held < 1:
+        return False, None
+
     if current_close > previous_high and not is_setup_today:
         return True, "clexit"
 
@@ -164,32 +103,39 @@ class WoundedBullSprintTradeStrategy(BaseTradeStrategy):
     STRATEGY_IDENTIFIER = Strategies.WoundedBullSprint
     name = Strategies.WoundedBullSprint
     max_holding_bars = DEFAULT_MAX_HOLDING_BARS
+    max_positions = DEFAULT_MAX_POSITIONS
 
     def __init__(
         self,
         max_holding_bars: int = DEFAULT_MAX_HOLDING_BARS,
         holiday_checker: MarketHolidayChecker | None = None,
+        max_positions: int = DEFAULT_MAX_POSITIONS,
     ) -> None:
         """Initializes Wounded Bull Sprint trade manager strategy."""
         super().__init__()
         self.max_holding_bars = max_holding_bars
         self.holiday_checker = holiday_checker or MarketHolidayChecker()
+        self.max_positions = max_positions
 
     def _get_entry_date(self, trade: TradeData) -> datetime.date | None:
         """Resolves entry date as a datetime.date object."""
-        entry_date_raw = trade.get("entry_date")
-        if not entry_date_raw:
-            return None
-        try:
-            return datetime.date.fromisoformat(str(entry_date_raw)[:10])
-        except (ValueError, TypeError):
-            return None
+        return normalize_trading_date(trade.get("entry_date"))
+
+    @staticmethod
+    def _is_symbol_in_setups(symbol: str, qualifying_setups: set[str] | None) -> bool:
+        """Checks case-insensitively whether symbol belongs to qualifying WBS setups."""
+        if not qualifying_setups:
+            return False
+        normalized_symbol = symbol.upper().strip()
+        return normalized_symbol in {s.upper().strip() for s in qualifying_setups}
 
     @override
     def get_daily_updates(
         self,
         trade: TradeData,
         dataframe_history: pd.DataFrame,
+        *,
+        qualifying_setups: set[str] | None = None,
     ) -> dict[str, object]:
         """Provides daily updates to the trade context, tracking bars_held statelessly."""
         if dataframe_history.empty:
@@ -198,7 +144,12 @@ class WoundedBullSprintTradeStrategy(BaseTradeStrategy):
         entry_date = self._get_entry_date(trade)
         dates_series = dataframe_history["date"]
         bars_held = calculate_wbs_bars_held(entry_date, dates_series)
-        latest_date_str = str(dataframe_history.iloc[-1]["date"])
+        latest_date = normalize_trading_date(dataframe_history.iloc[-1]["date"])
+        latest_date_str = (
+            latest_date.strftime("%Y-%m-%d")
+            if latest_date is not None
+            else str(dataframe_history.iloc[-1]["date"])[:10]
+        )
 
         updates: dict[str, object] = {
             "bars_held": bars_held,
@@ -208,9 +159,8 @@ class WoundedBullSprintTradeStrategy(BaseTradeStrategy):
         if len(dataframe_history) >= MIN_HISTORY_FOR_PREV_HIGH:
             current_close = float(dataframe_history.iloc[-1]["close"])
             prev_high = float(dataframe_history.iloc[-2]["high"])
-            is_setup_today = is_wbs_setup_active(
-                dataframe_history,
-                self.holiday_checker,
+            is_setup_today = self._is_symbol_in_setups(
+                str(trade.get("symbol", "")), qualifying_setups
             )
             should_exit, exit_code = evaluate_wbs_exit(
                 bars_held=bars_held,
@@ -219,12 +169,32 @@ class WoundedBullSprintTradeStrategy(BaseTradeStrategy):
                 is_setup_today=is_setup_today,
                 max_holding_bars=self.max_holding_bars,
             )
-            if should_exit:
-                updates["pending_exit"] = exit_code
-            else:
-                updates["pending_exit"] = None
+            updates["pending_exit"] = exit_code if should_exit else None
 
         return updates
+
+    def _check_entry_blocking_conditions(
+        self,
+        trade: TradeData,
+        date_string: str,
+        dataframe_history: pd.DataFrame,
+        active_symbols: set[str] | None,
+    ) -> TradeTransition | None:
+        """Evaluates expiry, share-class duplicate, and portfolio capacity entry guards."""
+        if self._get_trading_days_post_signal(trade, dataframe_history) > 1:
+            return self._expire_trade(trade, date_string)
+
+        if active_symbols is None:
+            return None
+
+        symbol = str(trade.get("symbol", "")).upper().strip()
+        normalized_active = {s.upper().strip() for s in active_symbols}
+        related_symbols = SymbolFilter().get_related_symbols(symbol)
+        if related_symbols & normalized_active:
+            return self._reject_setup(trade, date_string, "Position already active")
+        if len(normalized_active) >= self.max_positions:
+            return self._reject_setup(trade, date_string, "Max positions reached")
+        return None
 
     @override
     def check_entry(
@@ -235,21 +205,25 @@ class WoundedBullSprintTradeStrategy(BaseTradeStrategy):
         active_symbols: set[str] | None = None,
     ) -> TradeTransition | None:
         """Activates entry on the next trading session open following setup (NextOpen MOO Entry)."""
-        candle_date = (
-            pd.Timestamp(candle["date"]).date()
-            if isinstance(candle["date"], str)
-            else candle["date"].date()
-        )
+        candle_date = normalize_trading_date(candle["date"])
+        if candle_date is None:
+            return None
 
         setup_date = self._get_setup_date(trade)
         if setup_date and candle_date <= setup_date:
             return None
 
+        date_string = candle_date.strftime("%Y-%m-%d")
+        blocking_transition = self._check_entry_blocking_conditions(
+            trade, date_string, dataframe_history, active_symbols
+        )
+        if blocking_transition is not None:
+            return blocking_transition
+
         open_price = float(candle.get("open") or trade.get("entry_price") or 0.0)
         if open_price <= 0:
             return None
 
-        date_string = candle_date.strftime("%Y-%m-%d")
         return self._execute_activation(
             trade,
             open_price,
@@ -267,32 +241,25 @@ class WoundedBullSprintTradeStrategy(BaseTradeStrategy):
         latest_leaders: set[str] | None = None,
     ) -> TradeTransition | None:
         """Manages NextOpen Exits (clexit or TE) on current candle open if triggered prior."""
-        context = self._get_full_context(trade)
         entry_date = self._get_entry_date(trade)
-        if not entry_date:
+        candle_date = normalize_trading_date(current_candle["date"])
+        if entry_date is None or candle_date is None or candle_date <= entry_date:
             return None
 
-        history_prior = dataframe_history[
-            dataframe_history["date"] < current_candle["date"]
-        ]
+        history_dates = pd.to_datetime(dataframe_history["date"]).dt.date
+        history_prior = dataframe_history[history_dates < candle_date]
 
-        if not history_prior.empty and len(history_prior) >= 1:
+        if not history_prior.empty:
             bars_held_prior = calculate_wbs_bars_held(entry_date, history_prior["date"])
-            if len(history_prior) >= MIN_HISTORY_FOR_PREV_HIGH:
-                prior_close = float(history_prior.iloc[-1]["close"])
-                prior_prev_high = float(history_prior.iloc[-2]["high"])
-            else:
-                prior_close = float(history_prior.iloc[-1]["close"])
-                prior_prev_high = float(history_prior.iloc[-1]["high"])
-
-            is_setup_prior = False
-            if latest_leaders is not None:
-                is_setup_prior = str(trade.get("symbol", "")) in latest_leaders
-            if not is_setup_prior:
-                is_setup_prior = is_wbs_setup_active(
-                    history_prior,
-                    self.holiday_checker,
-                )
+            prior_close = float(history_prior.iloc[-1]["close"])
+            prior_prev_high = (
+                float(history_prior.iloc[-2]["high"])
+                if len(history_prior) >= MIN_HISTORY_FOR_PREV_HIGH
+                else float(history_prior.iloc[-1]["high"])
+            )
+            is_setup_prior = self._is_symbol_in_setups(
+                str(trade.get("symbol", "")), latest_leaders
+            )
 
             should_exit_prior, exit_code_prior = evaluate_wbs_exit(
                 bars_held=bars_held_prior,
@@ -303,42 +270,50 @@ class WoundedBullSprintTradeStrategy(BaseTradeStrategy):
             )
 
             if should_exit_prior and exit_code_prior:
-                exit_fill_price = float(current_candle["open"])
-                reason_name = (
-                    ExitReason.TAKE_PROFIT
-                    if exit_code_prior == "clexit"
-                    else ExitReason.TIME_STOP
-                )
-                logger.info(
-                    "Closing WBS trade ID %s on %s: %s at Open (fill=%.2f)",
-                    trade.get("id"),
-                    date_string,
-                    exit_code_prior,
-                    exit_fill_price,
-                )
-                return self._close_trade(
-                    trade,
-                    exit_fill_price,
-                    reason_name,
-                    date_string,
+                return self._build_exit_transition(
+                    trade, current_candle, date_string, exit_code_prior
                 )
 
+        context = self._get_full_context(trade)
         pending_exit = context.get("pending_exit")
-        if pending_exit:
-            exit_fill_price = float(current_candle["open"])
-            reason_name = (
-                ExitReason.TAKE_PROFIT
-                if pending_exit == "clexit"
-                else ExitReason.TIME_STOP
-            )
-            return self._close_trade(
-                trade,
-                exit_fill_price,
-                reason_name,
-                date_string,
+        last_processed_date = normalize_trading_date(context.get("last_processed_date"))
+        if (
+            isinstance(pending_exit, str)
+            and pending_exit
+            and last_processed_date is not None
+            and candle_date > last_processed_date
+        ):
+            return self._build_exit_transition(
+                trade, current_candle, date_string, pending_exit
             )
 
         return None
+
+    def _build_exit_transition(
+        self,
+        trade: TradeData,
+        current_candle: pd.Series,
+        date_string: str,
+        exit_code: str,
+    ) -> TradeTransition:
+        """Constructs a CLOSED transition filled at the current session Open."""
+        exit_fill_price = float(current_candle["open"])
+        reason_name = (
+            ExitReason.TAKE_PROFIT if exit_code == "clexit" else ExitReason.TIME_STOP
+        )
+        logger.info(
+            "Closing WBS trade ID %s on %s: %s at Open (fill=%.2f)",
+            trade.get("id"),
+            date_string,
+            exit_code,
+            exit_fill_price,
+        )
+        return self._close_trade(
+            trade,
+            exit_fill_price,
+            reason_name,
+            date_string,
+        )
 
     @override
     def _generate_entry_order(
@@ -400,9 +375,8 @@ class WoundedBullSprintTradeStrategy(BaseTradeStrategy):
 
         current_close = float(dataframe_history.iloc[-1]["close"])
         prev_high = float(dataframe_history.iloc[-2]["high"])
-        is_setup_today = is_wbs_setup_active(
-            dataframe_history,
-            self.holiday_checker,
+        is_setup_today = self._is_symbol_in_setups(
+            str(trade.get("symbol", "")), created_symbols
         )
 
         should_exit, _ = evaluate_wbs_exit(
@@ -435,5 +409,4 @@ __all__ = [
     "calculate_wbs_bars_held",
     "calculate_wbs_position_quantity",
     "evaluate_wbs_exit",
-    "is_wbs_setup_active",
 ]
