@@ -69,13 +69,13 @@ def test_pinning_tgim_setup_formula_and_trigger() -> None:
     assert res_triggered.threshold_price == Decimal("500.00")
     assert res_triggered.setup_close == Decimal("495.00")
 
-    # Case 2: Rejected because Close >= min (Monday 500 == Friday 500)
+    # Case 2: Triggered when Close == min (Monday 500 == Friday 500, BUY LOC <= parity)
     res_equal = evaluate_tgim_setup(
         current_close=Decimal("500.00"),
         friday_close=Decimal("500.00"),
         thursday_close=Decimal("505.00"),
     )
-    assert res_equal.is_signal is False
+    assert res_equal.is_signal is True
 
     # Case 3: Rejected because Close > min (Monday 502 > Friday 500)
     res_higher = evaluate_tgim_setup(

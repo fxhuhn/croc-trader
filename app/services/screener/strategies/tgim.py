@@ -1,7 +1,7 @@
 """TGIM (Thank God It's Monday) Screener Strategy.
 
-Identifies Monday setup bars for SPY where Monday's close is strictly
-lower than both Friday's close and Thursday's close.
+Identifies Monday setup bars for SPY where Monday's close is at or below
+both Friday's close and Thursday's close (broker-aligned BUY LOC threshold).
 """
 
 import datetime
@@ -18,6 +18,7 @@ from ....database.repositories.trade import TradeRepository
 from ....tools.market_holidays import MarketHolidayChecker
 from ....tools.trading_calendar import (
     MONDAY,
+    get_last_completed_trading_day,
     is_trading_day,
     roll_weekend_to_monday,
 )
@@ -63,10 +64,11 @@ def evaluate_tgim_setup(
 ) -> TGIMSetupResult:
     """Pure calculation: Evaluates TGIM setup condition without side effects.
 
-    Setup Condition: Monday Close < min(Friday Close, Thursday Close).
+    Setup Condition: Monday Close <= min(Friday Close, Thursday Close),
+    matching real BUY LOC execution semantics at threshold_price.
     """
     threshold_price = min(friday_close, thursday_close)
-    is_signal = current_close < threshold_price
+    is_signal = current_close <= threshold_price
 
     return TGIMSetupResult(
         is_signal=is_signal,
@@ -86,6 +88,7 @@ class TGIMConfiguration:
     lookback_period: int = 30
     min_premarket_history_bars: int = 2
     min_postmarket_history_bars: int = 3
+    tick_size: Decimal = Decimal("0.01")
 
 
 class TGIMStrategy(BaseStrategy[int]):
@@ -95,10 +98,10 @@ class TGIMStrategy(BaseStrategy[int]):
     - Asset: SPY exclusively.
     - Timing: Calendar Monday only (date.weekday() == 0). Skipped on holidays.
     - Setup Threshold: min(Friday Close, Thursday Close).
-    - Setup Trigger: Monday Close < min(Friday Close, Thursday Close).
+    - Setup Trigger: Monday Close <= min(Friday Close, Thursday Close).
     - Pre-Market Screening: Prepares SPY setup candidate on Monday using Friday and Thursday closes.
-    - Entry: Market On Close (MOC) at Monday's close if condition is met.
-    - Exits: c1exit (Close > Close[1]) or TE (Time Exit at Bar 2 / Wednesday close).
+    - Entry: Limit On Close (LOC) at Monday's close with limit = threshold_price.
+    - Exits: Bar 1 SELL LOC at entry_price + tick_size (Close > Close[1]) or Bar 2 MOC Time Exit.
     """
 
     STRATEGY_IDENTIFIER = Strategies.TGIM
@@ -125,75 +128,45 @@ class TGIMStrategy(BaseStrategy[int]):
     @override
     def run(self, days: int = 0, analysis_date: str | None = None) -> int:
         """Executes the TGIM screening logic for the specified date."""
-        target_date = self._resolve_target_date(days, analysis_date)
+        resolved_date = self._resolve_analysis_date(days, analysis_date)
+        target_date = roll_weekend_to_monday(resolved_date)
         if not self._is_eligible_monday(target_date):
             return 0
 
         target_date_str = target_date.strftime("%Y-%m-%d")
+        history_end_date_str = resolved_date.strftime("%Y-%m-%d")
 
         history_map = self.data_provider.get_batch_history(
             symbols=[self.configuration.target_symbol],
             days=self.configuration.lookback_period,
-            end_date=target_date_str,
+            end_date=history_end_date_str,
         )
         price_history = history_map.get(
             self.configuration.target_symbol, pd.DataFrame()
         )
 
-        if (
-            price_history.empty
-            or len(price_history) < self.configuration.min_premarket_history_bars
+        setup_prices = self._resolve_setup_prices(
+            price_history, target_date, target_date_str
+        )
+        if setup_prices is None:
+            return 0
+
+        threshold_price, setup_close, friday_close, thursday_close = setup_prices
+        threshold_price_float = float(threshold_price)
+
+        if self._has_existing_trade_or_position(
+            self.trade_repository,
+            self.configuration.target_symbol,
+            self.STRATEGY_IDENTIFIER,
+            target_date_str,
         ):
-            logger.warning(
-                "Insufficient price history for %s on %s.",
+            logger.info(
+                "TGIM trade or active position already exists for %s on %s.",
                 self.configuration.target_symbol,
                 target_date_str,
             )
             return 0
 
-        latest_candle = price_history.iloc[-1]
-        raw_date = latest_candle["date"]
-        candle_date = (
-            pd.Timestamp(raw_date).date()
-            if isinstance(raw_date, str)
-            else raw_date.date()
-        )
-
-        if candle_date == target_date:
-            # Monday candle is present in history (post-market or historical backtest)
-            if len(price_history) < self.configuration.min_postmarket_history_bars:
-                return 0
-            current_close = Decimal(str(latest_candle["close"]))
-            friday_close = Decimal(str(price_history.iloc[-2]["close"]))
-            thursday_close = Decimal(str(price_history.iloc[-3]["close"]))
-
-            setup_result = evaluate_tgim_setup(
-                current_close=current_close,
-                friday_close=friday_close,
-                thursday_close=thursday_close,
-            )
-
-            if not setup_result.is_signal:
-                logger.debug(
-                    "TGIM setup condition failed for %s on %s: close=%s not < min(%s, %s).",
-                    self.configuration.target_symbol,
-                    target_date_str,
-                    current_close,
-                    friday_close,
-                    thursday_close,
-                )
-                return 0
-
-            threshold_price = setup_result.threshold_price
-            setup_close = float(current_close)
-        else:
-            # Pre-market live screening (Monday candle not in DB yet)
-            friday_close = Decimal(str(latest_candle["close"]))
-            thursday_close = Decimal(str(price_history.iloc[-2]["close"]))
-            threshold_price = min(friday_close, thursday_close)
-            setup_close = 0.0
-
-        threshold_price_float = float(threshold_price)
         context_data: TGIMStrategyContext = {
             "date": target_date_str,
             "setup_date": target_date_str,
@@ -205,16 +178,6 @@ class TGIMStrategy(BaseStrategy[int]):
             "max_holding_bars": self.configuration.max_holding_bars,
             "source": "ScreenerEngine",
         }
-
-        if self.trade_repository.exists(
-            self.configuration.target_symbol, self.STRATEGY_IDENTIFIER, target_date_str
-        ):
-            logger.info(
-                "TGIM trade already exists for %s on %s.",
-                self.configuration.target_symbol,
-                target_date_str,
-            )
-            return 0
 
         self.trade_repository.create_trade(
             symbol=self.configuration.target_symbol,
@@ -239,7 +202,7 @@ class TGIMStrategy(BaseStrategy[int]):
                 [
                     SignalReportItem(
                         symbol=self.configuration.target_symbol,
-                        action="BUY MOC",
+                        action="BUY LOC",
                         entry_price=round(threshold_price_float, 2),
                     )
                 ],
@@ -247,6 +210,105 @@ class TGIMStrategy(BaseStrategy[int]):
             )
 
         return 1
+
+    def _resolve_setup_prices(
+        self,
+        price_history: pd.DataFrame,
+        target_date: datetime.date,
+        target_date_str: str,
+    ) -> tuple[Decimal, float, Decimal, Decimal] | None:
+        """Resolves (threshold_price, setup_close, friday_close, thursday_close) with freshness guards."""
+        if (
+            price_history.empty
+            or len(price_history) < self.configuration.min_premarket_history_bars
+        ):
+            logger.warning(
+                "Insufficient price history for %s on %s.",
+                self.configuration.target_symbol,
+                target_date_str,
+            )
+            return None
+
+        latest_candle = price_history.iloc[-1]
+        candle_date = self._extract_candle_date(latest_candle["date"])
+        expected_prev_trading_day = get_last_completed_trading_day(
+            target_date, self.holiday_checker
+        )
+
+        if candle_date == target_date:
+            return self._resolve_postmarket_setup_prices(
+                price_history, target_date_str, expected_prev_trading_day
+            )
+
+        if candle_date != expected_prev_trading_day:
+            logger.warning(
+                "Stale pre-market history for %s targeting %s: expected latest candle %s, got %s.",
+                self.configuration.target_symbol,
+                target_date_str,
+                expected_prev_trading_day,
+                candle_date,
+            )
+            return None
+
+        friday_close = Decimal(str(latest_candle["close"]))
+        thursday_close = Decimal(str(price_history.iloc[-2]["close"]))
+        return min(friday_close, thursday_close), 0.0, friday_close, thursday_close
+
+    def _resolve_postmarket_setup_prices(
+        self,
+        price_history: pd.DataFrame,
+        target_date_str: str,
+        expected_prev_trading_day: datetime.date,
+    ) -> tuple[Decimal, float, Decimal, Decimal] | None:
+        """Validates post-market history continuity and evaluates Monday setup condition."""
+        if len(price_history) < self.configuration.min_postmarket_history_bars:
+            return None
+
+        prev_candle_date = self._extract_candle_date(price_history.iloc[-2]["date"])
+        if prev_candle_date != expected_prev_trading_day:
+            logger.warning(
+                "Stale or gapped prior candle for %s on %s: expected %s, got %s.",
+                self.configuration.target_symbol,
+                target_date_str,
+                expected_prev_trading_day,
+                prev_candle_date,
+            )
+            return None
+
+        current_close = Decimal(str(price_history.iloc[-1]["close"]))
+        friday_close = Decimal(str(price_history.iloc[-2]["close"]))
+        thursday_close = Decimal(str(price_history.iloc[-3]["close"]))
+        setup_result = evaluate_tgim_setup(
+            current_close=current_close,
+            friday_close=friday_close,
+            thursday_close=thursday_close,
+        )
+        if not setup_result.is_signal:
+            logger.debug(
+                "TGIM setup condition failed for %s on %s: close=%s not <= min(%s, %s).",
+                self.configuration.target_symbol,
+                target_date_str,
+                current_close,
+                friday_close,
+                thursday_close,
+            )
+            return None
+
+        return (
+            setup_result.threshold_price,
+            float(current_close),
+            friday_close,
+            thursday_close,
+        )
+
+    @staticmethod
+    def _extract_candle_date(raw_date: object) -> datetime.date:
+        """Normalizes a DataFrame date cell into a datetime.date instance."""
+        if isinstance(raw_date, datetime.datetime):
+            return raw_date.date()
+        if isinstance(raw_date, datetime.date):
+            return raw_date
+        return datetime.date.fromisoformat(str(raw_date)[:10])
 
     def _resolve_target_date(
         self, days: int, analysis_date: str | None

@@ -304,7 +304,7 @@ def test_tgim_generate_exit_order(
     assert order_bar1.quantity == 20
     assert len(order_bar1.exits) == 1
     assert order_bar1.exits[0].type == "LOC"
-    assert order_bar1.exits[0].price == Decimal("500.0")
+    assert order_bar1.exits[0].price == Decimal("500.01")
     assert order_bar1.exits[0].time_in_force == "DAY"
 
     # Bar 2 (Wednesday pre-market) -> History has Monday and Tuesday -> MOC exit order
@@ -323,7 +323,7 @@ def test_tgim_generate_exit_order(
     assert len(order_bar2.exits) == 1
     assert order_bar2.exits[0].type == "MOC"
     assert order_bar2.exits[0].time_in_force == "DAY"
-    assert order_bar2.exits[0].price == Decimal("498.0")
+    assert order_bar2.exits[0].price == Decimal("0.0")
 
     # Quantity <= 0
     assert (
@@ -539,7 +539,7 @@ def test_tgim_lifecycle_timeline_replay(
     assert tuesday_order is not None
     assert len(tuesday_order.exits) == 1
     assert tuesday_order.exits[0].type == "LOC"
-    assert tuesday_order.exits[0].price == Decimal("500.0")
+    assert tuesday_order.exits[0].price == Decimal("500.01")
 
     # Step 2: Wednesday morning pre-market (Monday and Tuesday in database)
     history_wednesday_morning = pd.DataFrame(
@@ -554,4 +554,111 @@ def test_tgim_lifecycle_timeline_replay(
     assert wednesday_order is not None
     assert len(wednesday_order.exits) == 1
     assert wednesday_order.exits[0].type == "MOC"
-    assert wednesday_order.exits[0].price == Decimal("498.0")
+    assert wednesday_order.exits[0].price == Decimal("0.0")
+
+
+def test_tgim_generate_entry_order_skips_mismatched_reference_date(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Regression (TGIM-REV-002): Entry order is suppressed when reference_date != setup_date."""
+    trade = {
+        "symbol": "SPY",
+        "entry_price": 500.0,
+        "budget": 10000.0,
+        "signal_context": '{"setup_date": "2026-07-20"}',
+    }
+    assert (
+        trade_strategy._generate_entry_order(
+            trade, pd.DataFrame(), budget=10000.0, reference_date="2026-07-21"
+        )
+        is None
+    )
+    matching = trade_strategy._generate_entry_order(
+        trade, pd.DataFrame(), budget=10000.0, reference_date="2026-07-20"
+    )
+    assert matching is not None
+
+
+def test_tgim_generate_exit_order_stale_history_raises_error(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Regression (TGIM-REV-002): Missing Tuesday candle on Wednesday raises ValueError."""
+    trade = {
+        "symbol": "SPY",
+        "current_size": 20,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+    }
+    df_stale = pd.DataFrame([{"date": "2026-07-20", "close": 500.0}])
+    with pytest.raises(ValueError, match="Stale market data"):
+        trade_strategy._generate_exit_order(
+            trade, df_stale, budget=10000.0, reference_date="2026-07-22"
+        )
+
+
+def test_tgim_generate_exit_order_bar1_zero_entry_price_returns_none(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Regression (CONCEPT-REV-001): Missing/zero entry_price must never emit a $0.01 SELL LOC."""
+    trade = {
+        "symbol": "SPY",
+        "current_size": 20,
+        "entry_price": 0.0,
+        "entry_date": "2026-07-20",
+    }
+    df_bar1 = pd.DataFrame([{"date": "2026-07-20", "close": 500.0}])
+    assert (
+        trade_strategy._generate_exit_order(
+            trade, df_bar1, budget=10000.0, reference_date="2026-07-21"
+        )
+        is None
+    )
+
+
+def test_tgim_check_entry_rejects_duplicate_active_symbol(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Regression (TGIM-REV-005): check_entry rejects setup when SPY is already active."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.CREATED.value,
+        "entry_price": 500.0,
+        "budget": 10000.0,
+        "signal_context": '{"setup_date": "2026-07-20"}',
+    }
+    monday_candle = pd.Series({"date": "2026-07-20", "close": 495.0})
+    transition = trade_strategy.check_entry(
+        trade,
+        monday_candle,
+        pd.DataFrame([monday_candle]),
+        active_symbols={"SPY"},
+    )
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert "Duplicate Position" in transition.reason
+
+
+def test_tgim_check_entry_uses_decimal_position_sizing(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Regression (TGIM-REV-006): Activation sizing uses exact Decimal floor (0.3 / 0.1 == 3)."""
+    trade = {
+        "id": 2,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.CREATED.value,
+        "entry_price": 0.1,
+        "budget": 0.3,
+        "signal_context": '{"setup_date": "2026-07-20"}',
+    }
+    monday_candle = pd.Series({"date": "2026-07-20", "close": 0.1})
+    transition = trade_strategy.check_entry(
+        trade, monday_candle, pd.DataFrame([monday_candle])
+    )
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.ACTIVE.value
+    # Binary float 0.3 / 0.1 == 2.9999999999999996 -> int() would give 2; Decimal gives 3
+    assert transition.updates["initial_size"] == 3
+    assert transition.updates["current_size"] == 3

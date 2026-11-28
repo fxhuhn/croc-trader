@@ -3,11 +3,11 @@
 Execution Rules:
 1. Entry (CREATED -> ACTIVE):
    - Limit On Close (LOC) on Monday close (Bar 0) with limit = threshold_price.
-   - Position size calculated from portfolio budget allocation.
+   - Position size calculated from portfolio budget allocation via Decimal floor rounding.
 2. Exits (ACTIVE -> CLOSED):
-   - Bar 1 (Tuesday): Exit if Tuesday Close > Monday Close (LOC exit, ExitReason.TAKE_PROFIT).
-   - Bar 2 (Wednesday): Exit if Wednesday Close > Tuesday Close (LOC exit, ExitReason.TAKE_PROFIT),
-     otherwise Time Exit at Wednesday Close (MOC exit, ExitReason.TIME_STOP).
+   - Bar 1 (Tuesday): SELL LOC at entry_price + tick_size (ExitReason.TAKE_PROFIT if Tuesday Close > Monday Close).
+   - Bar 2 (Wednesday): Unconditional SELL MOC exit (ExitReason.TAKE_PROFIT if Wednesday Close > Tuesday Close,
+     otherwise ExitReason.TIME_STOP).
 """
 
 import logging
@@ -18,6 +18,8 @@ import pandas as pd
 
 from ....const import ExitReason, Strategies
 from ....models import Order
+from ....tools.market_holidays import MarketHolidayChecker
+from ....tools.trading_calendar import get_last_completed_trading_day
 from ....types import TradeData
 from ...screener.strategies.tgim import TGIMConfiguration
 from ..types import TradeTransition
@@ -72,9 +74,9 @@ class TGIMTradeStrategy(BaseTradeStrategy):
     Rules:
     1. Entry: LOC entry executed on Monday setup close with limit = threshold_price.
     2. Exits:
-       - Bar 1 (Tuesday): Exit if Tuesday Close > Monday Close (LOC exit).
-       - Bar 2 (Wednesday): Exit if Wednesday Close > Tuesday Close (LOC exit),
-         otherwise Time Exit (TE) at Wednesday Close (MOC exit).
+       - Bar 1 (Tuesday): SELL LOC at entry_price + tick_size (exits if Tuesday Close > Monday Close).
+       - Bar 2 (Wednesday): Unconditional SELL MOC exit (TAKE_PROFIT if Wednesday Close > Tuesday Close,
+         otherwise TIME_STOP).
     """
 
     STRATEGY_IDENTIFIER = Strategies.TGIM
@@ -84,10 +86,48 @@ class TGIMTradeStrategy(BaseTradeStrategy):
     def __init__(
         self,
         configuration: TGIMConfiguration | None = None,
+        *,
+        holiday_checker: MarketHolidayChecker | None = None,
     ) -> None:
-        """Initializes the TGIM trade manager strategy with optional configuration."""
+        """Initializes the TGIM trade manager strategy with optional configuration and holiday checker."""
         super().__init__()
         self.configuration = configuration or TGIMConfiguration()
+        self.holiday_checker = holiday_checker or MarketHolidayChecker()
+
+    @override
+    def _resolve_position_size(
+        self,
+        trade: TradeData,
+        fill_price: float,
+        stop_loss: float = 0.0,
+        fallback_budget: float = 0.0,
+        fallback_risk: float = 100.0,
+    ) -> int:
+        """Resolves TGIM position size using strict Decimal floor rounding."""
+        existing_size = float(
+            trade.get("initial_size") or trade.get("current_size") or 0.0
+        )
+        if existing_size > 0:
+            return int(existing_size)
+
+        if stop_loss > 0 and fill_price != stop_loss:
+            return super()._resolve_position_size(
+                trade,
+                fill_price,
+                stop_loss=stop_loss,
+                fallback_budget=fallback_budget,
+                fallback_risk=fallback_risk,
+            )
+
+        budget_val = float(
+            self._get_context_value(trade, "budget")
+            or trade.get("budget")
+            or fallback_budget
+        )
+        return calculate_tgim_position_quantity(
+            Decimal(str(budget_val)),
+            Decimal(str(fill_price)),
+        )
 
     def _calculate_bars_held(
         self,
@@ -130,7 +170,12 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         created_symbols: set[str] | None = None,
         reference_date: str | None = None,
     ) -> Order | None:
-        """Generates LOC entry order for CREATED trades."""
+        """Generates LOC entry order for CREATED trades on their setup_date."""
+        if reference_date:
+            setup_date = self._get_setup_date(trade)
+            if setup_date and pd.Timestamp(reference_date).date() != setup_date:
+                return None
+
         entry_price_val = trade.get("entry_price") or 0.0
         trade_budget_val = self._get_strategy_budget(trade, budget)
 
@@ -162,7 +207,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         if quantity <= 0 or dataframe_history.empty:
             return None
 
-        if reference_date and not dataframe_history.empty:
+        if reference_date:
             latest_candle_date = pd.to_datetime(
                 dataframe_history["date"].iloc[-1]
             ).date()
@@ -173,25 +218,35 @@ class TGIMTradeStrategy(BaseTradeStrategy):
                     f"from {latest_candle_date} on or after execution date "
                     f"{target_execution_date}"
                 )
+            expected_previous_day = get_last_completed_trading_day(
+                target_execution_date, self.holiday_checker
+            )
+            if latest_candle_date < expected_previous_day:
+                raise ValueError(
+                    f"Stale market data in TGIM order generation: expected candle for "
+                    f"{expected_previous_day} before {target_execution_date}, "
+                    f"got {latest_candle_date}"
+                )
 
         upcoming_bar = self._get_upcoming_execution_bar(trade, dataframe_history)
-        entry_price_val = trade.get("entry_price") or 0.0
-        entry_price = Decimal(str(entry_price_val))
-
         if upcoming_bar >= self.configuration.max_holding_bars:
-            last_candle = dataframe_history.iloc[-1]
-            close_price = Decimal(str(last_candle["close"]))
             return self._create_exit_order(
                 symbol=trade["symbol"],
                 quantity=quantity,
-                price=close_price,
+                price=Decimal("0.0"),
                 options=OrderOptions(order_type="MOC", time_in_force="DAY"),
             )
 
+        entry_price_val = trade.get("entry_price") or 0.0
+        entry_price = Decimal(str(entry_price_val))
+        if entry_price <= Decimal("0"):
+            return None
+
+        limit_price = entry_price + self.configuration.tick_size
         return self._create_exit_order(
             symbol=trade["symbol"],
             quantity=quantity,
-            price=entry_price,
+            price=limit_price,
             options=OrderOptions(order_type="LOC", time_in_force="DAY"),
         )
 
@@ -205,7 +260,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
     ) -> TradeTransition | None:
         """Activates entry on Monday close (Bar 0) if Monday Close <= threshold.
 
-        Invalidates setup if entry window is missed or condition fails.
+        Invalidates setup if entry window is missed, position is already active, or condition fails.
         """
         threshold_price = Decimal(str(trade.get("entry_price") or 0.0))
         if threshold_price <= Decimal("0"):
@@ -225,6 +280,13 @@ class TGIMTradeStrategy(BaseTradeStrategy):
                     date_string,
                     "Missed Entry Window (Monday Close)",
                 )
+
+        if active_symbols and trade["symbol"] in active_symbols:
+            return self._reject_setup(
+                trade,
+                date_string,
+                "Duplicate Position (Already Active)",
+            )
 
         if current_close <= threshold_price:
             return self._execute_activation(

@@ -32,14 +32,14 @@ def test_evaluate_tgim_setup_valid_signal() -> None:
     assert result.thursday_close == Decimal("500.0")
 
 
-def test_evaluate_tgim_setup_equal_threshold_no_signal() -> None:
-    """Tests evaluate_tgim_setup returns is_signal=False when current == threshold (strict inequality required)."""
+def test_evaluate_tgim_setup_equal_threshold_triggers_signal() -> None:
+    """Tests evaluate_tgim_setup returns is_signal=True when current == threshold (BUY LOC <= semantics)."""
     result = evaluate_tgim_setup(
         current_close=Decimal("495.0"),
         friday_close=Decimal("495.0"),
         thursday_close=Decimal("500.0"),
     )
-    assert result.is_signal is False
+    assert result.is_signal is True
     assert result.threshold_price == Decimal("495.0")
 
 
@@ -417,3 +417,104 @@ def test_tgim_days_relative_date_resolution(
     # Executes _resolve_target_date with analysis_date=None
     result = tgim_strategy.run(days=10)
     assert isinstance(result, int)
+
+
+def test_tgim_friday_run_caps_history_end_date_to_friday_no_lookahead(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Regression (TGIM-REV-001): Friday analysis_date must query end_date=Friday, never Monday."""
+    full_history = pd.DataFrame(
+        [
+            {"date": pd.Timestamp("2026-07-16"), "close": 500.0},
+            {"date": pd.Timestamp("2026-07-17"), "close": 495.0},
+            {"date": pd.Timestamp("2026-07-20"), "close": 510.0},  # Future Monday bar
+        ]
+    )
+    mock_data_provider.get_batch_history.side_effect = lambda symbols, days, end_date: {
+        "SPY": full_history[full_history["date"] <= pd.Timestamp(end_date)]
+    }
+
+    hits = tgim_strategy.run(days=0, analysis_date="2026-07-17")
+
+    assert hits == 1
+    assert (
+        mock_data_provider.get_batch_history.call_args.kwargs["end_date"]
+        == "2026-07-17"
+    )
+    context = mock_trade_repo.create_trade.call_args.kwargs["context"]
+    assert context["setup_date"] == "2026-07-20"
+    assert context["setup_close"] == 0.0
+    assert context["threshold_price"] == 495.0
+
+
+def test_tgim_premarket_stale_history_aborts_with_zero(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Regression (TGIM-REV-002): Missing Friday candle in pre-market must abort without signal."""
+    stale_history = pd.DataFrame(
+        [
+            {"date": pd.Timestamp("2026-07-15"), "close": 505.0},
+            {"date": pd.Timestamp("2026-07-16"), "close": 500.0},
+        ]
+    )
+    mock_data_provider.get_batch_history.return_value = {"SPY": stale_history}
+
+    hits = tgim_strategy.run(days=0, analysis_date="2026-07-20")
+
+    assert hits == 0
+    mock_trade_repo.create_trade.assert_not_called()
+
+
+def test_tgim_postmarket_gapped_prior_candle_aborts_with_zero(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Regression (CONCEPT-REV-003): Missing Friday bar between Thursday and Monday aborts."""
+    gapped_history = pd.DataFrame(
+        [
+            {"date": pd.Timestamp("2026-07-15"), "close": 505.0},
+            {"date": pd.Timestamp("2026-07-16"), "close": 500.0},
+            {"date": pd.Timestamp("2026-07-20"), "close": 490.0},
+        ]
+    )
+    mock_data_provider.get_batch_history.return_value = {"SPY": gapped_history}
+
+    hits = tgim_strategy.run(days=0, analysis_date="2026-07-20")
+
+    assert hits == 0
+    mock_trade_repo.create_trade.assert_not_called()
+
+
+def test_tgim_skips_when_prior_week_position_still_active(
+    tgim_strategy: TGIMStrategy,
+    mock_trade_repo: MagicMock,
+    mock_data_provider: MagicMock,
+) -> None:
+    """Regression (CONCEPT-REV-005): Active prior-week SPY position blocks new Monday signal."""
+    df_history = pd.DataFrame(
+        [
+            {"date": pd.Timestamp("2026-07-16"), "close": 500.0},
+            {"date": pd.Timestamp("2026-07-17"), "close": 495.0},
+            {"date": pd.Timestamp("2026-07-20"), "close": 490.0},
+        ]
+    )
+    mock_data_provider.get_batch_history.return_value = {"SPY": df_history}
+    mock_trade_repo.exists.return_value = False
+    mock_trade_repo.get_by_status.return_value = [
+        {
+            "id": 99,
+            "symbol": "SPY",
+            "strategy": Strategies.TGIM.value,
+            "status": "ACTIVE",
+        }
+    ]
+
+    hits = tgim_strategy.run(days=0, analysis_date="2026-07-20")
+
+    assert hits == 0
+    mock_trade_repo.create_trade.assert_not_called()

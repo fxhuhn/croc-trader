@@ -160,7 +160,7 @@ def test_turnover_timing_report_signals_to_telegram() -> None:
 
 
 def test_tgim_report_signals_to_telegram() -> None:
-    """Tests TGIMStrategy sends BUY MOC in telegram report."""
+    """Tests TGIMStrategy sends BUY LOC in telegram report."""
     from app.services.screener.strategies.tgim import TGIMStrategy
 
     mock_trade_repo = MagicMock(spec=TradeRepository)
@@ -194,7 +194,7 @@ def test_tgim_report_signals_to_telegram() -> None:
 
     assert "TGIM" in title
     assert df.iloc[0]["Symbol"] == "SPY"
-    assert df.iloc[0]["Action"] == "BUY MOC"
+    assert df.iloc[0]["Action"] == "BUY LOC"
     assert df.iloc[0]["Entry"] == "498.00"
 
 

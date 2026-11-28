@@ -125,7 +125,7 @@ class TradeManager:
             Strategies.SplitTarget: HoldTargetStrategy(),  # Fallback for old trades
             Strategies.TwoPercent: TwoPercentStrategy(),
             Strategies.NDXMomentum: NDXMomentumTradeStrategy(),
-            Strategies.TGIM: TGIMTradeStrategy(),
+            Strategies.TGIM: TGIMTradeStrategy(holiday_checker=self.holiday_checker),
             Strategies.BridgeScout: BridgeScoutTradeStrategy(),
             Strategies.BounceBandit: BounceBanditTradeStrategy(),
             Strategies.WoundedBullSprint: WoundedBullSprintTradeStrategy(),

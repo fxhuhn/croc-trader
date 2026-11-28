@@ -220,6 +220,7 @@ def test_write_csv_orders_file_includes_tgim_active_exit_bar2_moc(
         assert row["action"] == "SELL"
         assert row["quantity"] == "20"
         assert row["order_type"] == "MOC"
+        assert row["target_price"] == ""
         assert row["tif"] == "DAY"
         assert row["strategy_name"] == "TGIM"
     finally:
@@ -306,7 +307,7 @@ def test_tgim_strategy_to_csv_end_to_end(tmp_path: Path) -> None:
         assert len(order_exit_bar1.exits) == 1
         assert order_exit_bar1.exits[0].type == "LOC"
         assert order_exit_bar1.exits[0].time_in_force == "DAY"
-        assert order_exit_bar1.exits[0].price == Decimal("500.0")
+        assert order_exit_bar1.exits[0].price == Decimal("500.01")
 
         csv_path_exit_bar1 = write_csv_orders_file(
             orders_data=[(trade_active, order_exit_bar1)],
@@ -321,7 +322,7 @@ def test_tgim_strategy_to_csv_end_to_end(tmp_path: Path) -> None:
         assert exit_rows_bar1[0]["trade_group_id"] == "401_TGIM_SPY"
         assert exit_rows_bar1[0]["bracket_role"] == "EXIT"
         assert exit_rows_bar1[0]["order_type"] == "LOC"
-        assert exit_rows_bar1[0]["target_price"] == "500.00"
+        assert exit_rows_bar1[0]["target_price"] == "500.01"
         assert exit_rows_bar1[0]["tif"] == "DAY"
         assert exit_rows_bar1[0]["strategy_name"] == "TGIM"
 
@@ -354,6 +355,7 @@ def test_tgim_strategy_to_csv_end_to_end(tmp_path: Path) -> None:
         assert exit_rows_bar2[0]["trade_group_id"] == "401_TGIM_SPY"
         assert exit_rows_bar2[0]["bracket_role"] == "EXIT"
         assert exit_rows_bar2[0]["order_type"] == "MOC"
+        assert exit_rows_bar2[0]["target_price"] == ""
         assert exit_rows_bar2[0]["tif"] == "DAY"
         assert exit_rows_bar2[0]["strategy_name"] == "TGIM"
 

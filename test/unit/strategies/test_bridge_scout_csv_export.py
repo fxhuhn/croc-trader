@@ -150,7 +150,7 @@ def test_write_csv_orders_file_includes_bridge_scout_active_exit(
         assert row["action"] == "SELL"
         assert row["quantity"] == "20"
         assert row["order_type"] == "MOC"
-        assert row["target_price"] == "492.00"
+        assert row["target_price"] == ""
         assert row["tif"] == "DAY"
         assert row["strategy_name"] == "BridgeScout"
     finally:
@@ -262,7 +262,7 @@ def test_bridge_scout_end_to_end_order_generation_and_csv_export(
         assert rows[1]["trade_group_id"] == "504_BridgeScout_QQQ"
         assert rows[1]["bracket_role"] == "EXIT"
         assert rows[1]["order_type"] == "MOC"
-        assert rows[1]["target_price"] == "502.00"
+        assert rows[1]["target_price"] == ""
         assert rows[1]["tif"] == "DAY"
         assert rows[1]["strategy_name"] == "BridgeScout"
     finally:

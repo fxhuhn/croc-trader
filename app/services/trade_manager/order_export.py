@@ -191,6 +191,9 @@ class OrderExportContext:
     override: dict[str, str]
 
 
+_UNPRICED_ORDER_TYPES: frozenset[str] = frozenset({"MKT", "MOC"})
+
+
 def _format_leg_row(
     context: OrderExportContext,
     leg: OrderLeg,
@@ -198,6 +201,7 @@ def _format_leg_row(
     fallback_quantity: int,
 ) -> dict[str, object]:
     """Formats an individual OrderLeg into a 13-column CSV row dictionary."""
+    target_price = "" if leg.type in _UNPRICED_ORDER_TYPES else f"{leg.price:.2f}"
     return {
         "trade_group_id": context.trade_group_id,
         "bracket_role": bracket_role,
@@ -208,7 +212,7 @@ def _format_leg_row(
         "action": leg.action,
         "quantity": leg.quantity if leg.quantity is not None else fallback_quantity,
         "order_type": leg.type,
-        "target_price": f"{leg.price:.2f}",
+        "target_price": target_price,
         "tif": leg.time_in_force,
         "strategy_name": context.strategy_display_name,
         "currency": context.override.get("currency", ""),

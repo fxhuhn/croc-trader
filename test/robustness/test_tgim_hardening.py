@@ -70,23 +70,33 @@ def test_bva_tgim_target_date_resolution() -> None:
 
 
 @pytest.mark.tier1
-def test_bva_tgim_setup_strict_inequality() -> None:
-    """BVA: Monday Close < min(Friday Close, Thursday Close) exact threshold boundary.
+def test_bva_tgim_setup_threshold_boundary() -> None:
+    """BVA: Monday Close <= min(Friday Close, Thursday Close) exact threshold boundary.
 
-    If Monday Close == min(Friday, Thursday) -> False (No signal)
+    If Monday Close == min(Friday, Thursday) -> True (BUY LOC <= parity)
+    If Monday Close == min(Friday, Thursday) + 0.01 -> False (No signal)
     If Monday Close == min(Friday, Thursday) - 0.01 -> True (Signal)
     """
     thursday = Decimal("550.00")
     friday = Decimal("540.00")  # min is 540.00
 
-    # Case 1: Monday Close == 540.00 (Equal to min) -> False
+    # Case 1: Monday Close == 540.00 (Equal to min) -> True
     res_equal = evaluate_tgim_setup(
         current_close=Decimal("540.00"),
         friday_close=friday,
         thursday_close=thursday,
     )
-    assert not res_equal.is_signal
+    assert res_equal.is_signal
     assert res_equal.threshold_price == Decimal("540.00")
+
+    # Case 1b: Monday Close == 540.01 (0.01 above min) -> False
+    res_above = evaluate_tgim_setup(
+        current_close=Decimal("540.01"),
+        friday_close=friday,
+        thursday_close=thursday,
+    )
+    assert not res_above.is_signal
+    assert res_above.threshold_price == Decimal("540.00")
 
     # Case 2: Monday Close == 539.99 (0.01 below min) -> True
     res_below = evaluate_tgim_setup(
@@ -244,11 +254,11 @@ def test_hypothesis_tgim_setup_invariants(
     friday: Decimal,
     thursday: Decimal,
 ) -> None:
-    """Invariant: evaluate_tgim_setup is_signal == (monday < min(friday, thursday))."""
+    """Invariant: evaluate_tgim_setup is_signal == (monday <= min(friday, thursday))."""
     res = evaluate_tgim_setup(monday, friday, thursday)
     expected_threshold = min(friday, thursday)
     assert res.threshold_price == expected_threshold
-    assert res.is_signal == (monday < expected_threshold)
+    assert res.is_signal == (monday <= expected_threshold)
     assert res.setup_close == monday
 
 

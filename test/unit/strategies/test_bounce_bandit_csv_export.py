@@ -92,7 +92,7 @@ def test_write_csv_orders_file_includes_bounce_bandit_created_entry(
         assert row["action"] == "BUY"
         assert row["quantity"] == "20"
         assert row["order_type"] == "MKT"
-        assert row["target_price"] == "500.00"
+        assert row["target_price"] == ""
         assert row["tif"] == "OPG"
         assert row["strategy_name"] == "BounceBandit"
     finally:
