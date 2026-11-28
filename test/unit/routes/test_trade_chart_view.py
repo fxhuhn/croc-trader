@@ -240,3 +240,55 @@ def test_view_trade_chart_route_200(test_client: FlaskClient) -> None:
         assert "NVDA" in content
         assert "Trade #123" in content
         assert "TradingView Lightweight Charts" in content
+        assert "createPriceLine" not in content
+        assert "priceLineVisible: false" in content
+        assert "lastValueVisible: false" in content
+        assert 'onclick="window.close()"' not in content
+        assert 'data-lucide="x"' in content
+        assert "locale: 'de-DE'" in content
+        assert 'id="reset-chart-btn"' in content
+
+
+def test_view_trade_chart_open_trade_omits_currency_for_missing_exit(
+    test_client: FlaskClient,
+) -> None:
+    """Verifies that a missing exit price renders '-' without a trailing '$'."""
+    with patch(
+        "app.routes.views.trades._get_trade_view_service"
+    ) as mock_service_getter:
+        mock_service = MagicMock()
+        mock_service.get_trade_chart_context.return_value = {
+            "trade": {
+                "id": "124",
+                "symbol": "AAPL",
+                "strategy": "dip_buyer",
+                "entry_price": 200.00,
+                "exit_price": None,
+                "days_held": 3,
+                "realized_pnl": 0.0,
+                "pnl_percentage": 0.0,
+                "exit_reason": "",
+            },
+            "chart_payload": {
+                "candles": [],
+                "entry_date": "2026-10-01",
+                "exit_date": None,
+                "entry_price": 200.00,
+                "exit_price": None,
+                "target_price": None,
+                "exit_reason": "",
+                "is_profitable": True,
+            },
+            "candles_json": "[]",
+            "entry_date": "2026-10-01",
+            "exit_date": None,
+            "target_price": None,
+            "is_empty": True,
+        }
+        mock_service_getter.return_value = mock_service
+
+        response = test_client.get("/trades/124/chart")
+        assert response.status_code == 200
+        content = response.data.decode("utf-8")
+        assert "-&nbsp;$" not in content
+        assert "- $" not in content

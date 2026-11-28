@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros/cards.html" import render_number, render_pnl_cell %}
 
 {% block title %}Croc-Trader — {{ trade.symbol }} (Trade #{{ trade.id }}){% endblock %}
 
@@ -7,14 +8,14 @@
 <script src="https://unpkg.com/lightweight-charts@4.2.1/dist/lightweight-charts.standalone.production.js"></script>
 {% endblock %}
 
-{% block body_class %}bg-slate-50 h-screen text-slate-800 antialiased flex flex-col overflow-hidden select-none{% endblock %}
+{% block body_class %}bg-slate-50 h-screen text-slate-800 antialiased flex flex-col overflow-hidden{% endblock %}
 
 {% block content %}
 <h1 class="sr-only">{{ trade.symbol }} Chart Analyse Trade #{{ trade.id }}</h1>
 
 <!-- Top Navigation & Execution Banner (Light Theme) -->
-<header class="bg-white border-b border-slate-200 px-5 py-3 flex items-center justify-between shrink-0 shadow-sm">
-    <div class="flex items-center gap-4">
+<header class="bg-white border-b border-slate-200 px-5 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm">
+    <div class="flex flex-wrap items-center gap-3 md:gap-4">
         <div class="flex items-center gap-2">
             <span class="text-xl font-bold tracking-tight text-slate-900">{{ trade.symbol }}</span>
             <span class="text-xs font-mono text-slate-400">#{{ trade.id }}</span>
@@ -22,38 +23,62 @@
                 {{ trade.strategy or "Trade" }}
             </span>
         </div>
-        <div class="h-5 w-px bg-slate-200"></div>
-        <div class="flex items-center gap-4 text-xs font-sans tabular-nums text-slate-600">
-            <div>Entry: <strong class="font-bold text-slate-900">{{ trade.entry_price | de_number(2) }}&nbsp;$</strong></div>
-            <div>Exit: <strong class="font-bold text-slate-900">{{ (trade.exit_price | de_number(2)) if trade.exit_price else '-' }}&nbsp;$</strong></div>
-            <div>Haltedauer: <span class="font-normal text-slate-700">{{ trade.days_held }}d</span></div>
+        <div class="hidden sm:block h-5 w-px bg-slate-200"></div>
+        <div class="flex flex-wrap items-center gap-4 text-xs font-sans tabular-nums text-slate-600">
+            <div>Entry: <strong class="font-bold text-slate-900">{{ render_number(trade.entry_price, 2, is_currency=True) }}</strong></div>
+            <div>Exit: <strong class="font-bold text-slate-900">{{ render_number(trade.exit_price, 2, is_currency=True) }}</strong></div>
+            <div>Dauer: <span class="font-medium text-slate-700">{{ trade.days_held }}d</span></div>
             {% if trade.exit_reason %}
-            <div>Grund: <span class="font-bold text-slate-800 uppercase">{{ trade.exit_reason | replace('_', ' ') }}</span></div>
+            <div class="flex items-center gap-1.5">
+                {% if 'TARGET' in trade.exit_reason or 'PROFIT' in trade.exit_reason or 'LOC' in trade.exit_reason %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-50/40 text-emerald-600/80 border border-emerald-100/50 whitespace-nowrap">
+                    {{ trade.exit_reason | replace('_', ' ') | title }}
+                </span>
+                {% elif 'STOP_LOSS' in trade.exit_reason %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-rose-50/40 text-rose-600/80 border border-rose-100/50 whitespace-nowrap">
+                    STOP
+                </span>
+                {% else %}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
+                    {{ trade.exit_reason | replace('_', ' ') | title }}
+                </span>
+                {% endif %}
+            </div>
             {% endif %}
         </div>
     </div>
 
-    <div class="flex items-center gap-4">
-        <div class="text-right">
-            <div class="text-sm font-bold tabular-nums {{ 'text-emerald-600' if (trade.realized_pnl or 0) > 0 else ('text-rose-600' if (trade.realized_pnl or 0) < 0 else 'text-slate-500') }}">
-                {{ trade.realized_pnl | de_number(2, prefix_plus=True) }}&nbsp;$
-            </div>
-            <div class="text-xs font-normal tabular-nums {{ 'text-emerald-600' if (trade.pnl_percentage or 0) > 0 else ('text-rose-600' if (trade.pnl_percentage or 0) < 0 else 'text-slate-500') }}">
-                {{ trade.pnl_percentage | de_number(2, prefix_plus=True) }}&nbsp;%
-            </div>
-        </div>
+    <div class="flex items-center gap-3 md:gap-4">
+        {{ render_pnl_cell(trade.realized_pnl, trade.pnl_percentage, currency="$") }}
         <div class="h-6 w-px bg-slate-200"></div>
         <a href="https://www.tradingview.com/chart/?symbol={{ trade.symbol }}" target="_blank" rel="noopener noreferrer"
-           class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5">
-            <span>TradingView.com</span>
-            <span>↗</span>
+           class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-medium transition-colors inline-flex items-center gap-1.5">
+            <i data-lucide="chart-candlestick" aria-hidden="true" class="w-3.5 h-3.5 text-slate-500"></i>
+            <span>TradingView</span>
+            <i data-lucide="external-link" aria-hidden="true" class="w-3 h-3 text-slate-400"></i>
         </a>
-        <button type="button" onclick="window.close()" 
-                class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 hover:text-slate-900 text-xs font-medium transition-colors">
-            Schließen ✕
+        <button type="button" id="close-popout-btn"
+                class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 hover:text-slate-900 text-xs font-medium transition-colors inline-flex items-center gap-1.5">
+            <span>Schließen</span>
+            <i data-lucide="x" aria-hidden="true" class="w-3.5 h-3.5 text-slate-500"></i>
         </button>
     </div>
 </header>
+
+<!-- Chart OHLC Info Bar (Non-overlapping, fixed height to prevent layout shift) -->
+{% if not is_empty %}
+<div id="chart-legend" class="bg-slate-50/80 border-b border-slate-200/80 px-5 h-9 text-xs font-sans text-slate-600 tabular-nums flex items-center justify-between gap-3 shrink-0 overflow-hidden">
+    <div class="flex items-center gap-3 min-w-0">
+        <span class="font-bold text-slate-900 shrink-0">{{ trade.symbol }} (1D)</span>
+        <span id="legend-ohlc" class="font-normal text-slate-500 flex items-center gap-3 whitespace-nowrap truncate">Fahre mit der Maus über die Kerzen für Details</span>
+    </div>
+    <button type="button" id="reset-chart-btn" title="Zoom & Ausschnitt zurücksetzen"
+            class="px-2 py-1 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 text-xs font-medium transition-colors inline-flex items-center gap-1 shrink-0">
+        <i data-lucide="rotate-ccw" aria-hidden="true" class="w-3 h-3 text-slate-500"></i>
+        <span>Reset</span>
+    </button>
+</div>
+{% endif %}
 
 <!-- Chart Main Container -->
 <main id="popout-chart-container" class="flex-1 w-full bg-white relative min-h-0">
@@ -61,15 +86,14 @@
     <div class="flex flex-col items-center justify-center h-full text-center p-8 text-slate-500 space-y-3">
         <p class="text-sm font-medium">Keine historischen Marktdaten für {{ trade.symbol }} in stocks.db vorhanden.</p>
         <a href="https://www.tradingview.com/chart/?symbol={{ trade.symbol }}" target="_blank" rel="noopener noreferrer"
-           class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors">
-            Auf TradingView.com ansehen ↗
+           class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors inline-flex items-center gap-1.5">
+            <i data-lucide="chart-candlestick" aria-hidden="true" class="w-3.5 h-3.5"></i>
+            <span>Auf TradingView ansehen</span>
+            <i data-lucide="external-link" aria-hidden="true" class="w-3 h-3"></i>
         </a>
     </div>
     {% else %}
-    <div id="chart-legend" class="absolute top-3 left-4 z-10 bg-white/95 backdrop-blur px-3 py-1.5 rounded-xl border border-slate-200 text-xs text-slate-600 tabular-nums shadow-sm flex items-center gap-2">
-        <span class="font-bold text-slate-900">{{ trade.symbol }} (1D)</span>
-        <span id="legend-ohlc" class="font-normal text-slate-500">Fahre mit der Maus über die Kerzen für Details</span>
-    </div>
+    <div id="chart-marker-labels" class="absolute inset-0 pointer-events-none overflow-hidden z-10"></div>
     {% endif %}
 </main>
 
@@ -77,10 +101,10 @@
 <footer class="bg-slate-50 border-t border-slate-200 px-5 py-2 text-xs text-slate-500 flex items-center justify-between shrink-0">
     <div class="flex items-center gap-2">
         <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
-        <span class="font-normal">Lokale SQLite-Marktdaten (stocks.db)</span>
+        <span class="font-normal">Lokale Marktdaten (stocks.db)</span>
     </div>
     <div class="font-normal text-slate-400">
-        Desktop Popout-Fenster
+        ESC zum Schließen
     </div>
 </footer>
 
@@ -91,6 +115,19 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
+    const closeBtn = document.getElementById('close-popout-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function () {
+            window.close();
+        });
+    }
+
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+            window.close();
+        }
+    });
+
     const payloadEl = document.getElementById('chart-payload');
     if (!payloadEl) return;
 
@@ -111,6 +148,23 @@ document.addEventListener('DOMContentLoaded', function () {
         return Number(val).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
+    function formatDeDate(timeVal) {
+        if (!timeVal) return '';
+        if (typeof timeVal === 'string') {
+            const parts = timeVal.split('-');
+            if (parts.length === 3) {
+                return parts[2] + '.' + parts[1] + '.' + parts[0];
+            }
+            return timeVal;
+        }
+        if (typeof timeVal === 'object' && timeVal.year && timeVal.month && timeVal.day) {
+            const day = String(timeVal.day).padStart(2, '0');
+            const month = String(timeVal.month).padStart(2, '0');
+            return day + '.' + month + '.' + timeVal.year;
+        }
+        return String(timeVal);
+    }
+
     function getContainerDimensions() {
         const width = container.clientWidth || window.innerWidth || 1080;
         const height = container.clientHeight || (window.innerHeight - 95) || 560;
@@ -121,6 +175,10 @@ document.addEventListener('DOMContentLoaded', function () {
     const chart = LightweightCharts.createChart(container, {
         width: initialDims.width,
         height: initialDims.height,
+        localization: {
+            locale: 'de-DE',
+            priceFormatter: formatDe,
+        },
         layout: {
             background: { color: '#ffffff' },
             textColor: '#64748b',
@@ -136,6 +194,10 @@ document.addEventListener('DOMContentLoaded', function () {
         },
         rightPriceScale: {
             borderColor: '#e2e8f0',
+            scaleMargins: {
+                top: 0.18,
+                bottom: 0.18,
+            },
         },
         timeScale: {
             borderColor: '#e2e8f0',
@@ -150,54 +212,53 @@ document.addEventListener('DOMContentLoaded', function () {
         borderVisible: false,
         wickUpColor: '#10b981',
         wickDownColor: '#f43f5e',
+        priceLineVisible: false,
+        lastValueVisible: false,
     });
     candleSeries.setData(payload.candles);
 
-    // Entry Reference Line
-    if (payload.entry_price && payload.entry_price > 0) {
-        candleSeries.createPriceLine({
-            price: payload.entry_price,
-            color: '#4f46e5',
-            lineWidth: 2,
-            lineStyle: LightweightCharts.LineStyle.Dotted,
-            axisLabelVisible: true,
-            title: 'ENTRY (' + formatDe(payload.entry_price) + ' $)',
-        });
-    }
+    const candleByTime = new Map();
+    payload.candles.forEach(function (bar) {
+        candleByTime.set(bar.time, bar);
+    });
 
-    // Target Reference Line (if active/positive)
-    if (payload.target_price && payload.target_price > 0) {
-        candleSeries.createPriceLine({
-            price: payload.target_price,
-            color: '#10b981',
-            lineWidth: 2,
-            lineStyle: LightweightCharts.LineStyle.Dashed,
-            axisLabelVisible: true,
-            title: 'TARGET (' + formatDe(payload.target_price) + ' $)',
-        });
-    }
-
-    // Trade Markers for Entry & Exit
+    // Trade Arrow Markers (text rendered as wrapped multi-line badges below/above arrows)
     const markers = [];
+    const labelSpecs = [];
     if (payload.entry_date) {
         markers.push({
             time: payload.entry_date,
             position: 'belowBar',
             color: '#10b981',
             shape: 'arrowUp',
-            text: 'ENTRY @ ' + formatDe(payload.entry_price) + ' $',
+            text: '',
+        });
+        labelSpecs.push({
+            time: payload.entry_date,
+            position: 'below',
+            title: 'ENTRY',
+            priceText: formatDe(payload.entry_price) + '\u00a0$',
+            titleClass: 'text-emerald-700',
+            borderClass: 'border-emerald-200',
         });
     }
 
     if (payload.exit_date) {
-        const exitPriceLabel = payload.exit_price ? ('EXIT @ ' + formatDe(payload.exit_price) + ' $') : 'EXIT';
-        const reasonSuffix = payload.exit_reason ? (' (' + payload.exit_reason.replace(/_/g, ' ') + ')') : '';
+        const exitPositive = Boolean(payload.is_profitable);
         markers.push({
             time: payload.exit_date,
             position: 'aboveBar',
-            color: payload.is_profitable ? '#10b981' : '#f43f5e',
+            color: exitPositive ? '#10b981' : '#f43f5e',
             shape: 'arrowDown',
-            text: exitPriceLabel + reasonSuffix,
+            text: '',
+        });
+        labelSpecs.push({
+            time: payload.exit_date,
+            position: 'above',
+            title: 'EXIT',
+            priceText: payload.exit_price ? (formatDe(payload.exit_price) + '\u00a0$') : '',
+            titleClass: exitPositive ? 'text-emerald-700' : 'text-rose-700',
+            borderClass: exitPositive ? 'border-emerald-200' : 'border-rose-200',
         });
     }
 
@@ -205,12 +266,95 @@ document.addEventListener('DOMContentLoaded', function () {
         candleSeries.setMarkers(markers);
     }
 
+    const labelLayer = document.getElementById('chart-marker-labels');
+    const labelElements = [];
+    if (labelLayer) {
+        labelSpecs.forEach(function (spec) {
+            const el = document.createElement('div');
+            el.className = 'absolute bg-white/95 backdrop-blur px-2 py-1 rounded-lg border shadow-sm text-center leading-tight font-sans tabular-nums ' + spec.borderClass;
+            el.style.display = 'none';
+            const titleLine = document.createElement('div');
+            titleLine.className = 'text-xs font-bold ' + spec.titleClass;
+            titleLine.textContent = spec.title;
+            el.appendChild(titleLine);
+            if (spec.priceText) {
+                const priceLine = document.createElement('div');
+                priceLine.className = 'text-xs font-medium text-slate-700 whitespace-nowrap';
+                priceLine.textContent = spec.priceText;
+                el.appendChild(priceLine);
+            }
+            labelLayer.appendChild(el);
+            labelElements.push({ el: el, spec: spec });
+        });
+    }
+
+    function updateMarkerLabels() {
+        if (!labelLayer || labelElements.length === 0) return;
+        const maxWidth = container.clientWidth;
+        const maxHeight = container.clientHeight;
+        const priceScaleWidth = chart.priceScale('right').width() || 60;
+        const plotRightEdge = Math.max(maxWidth - priceScaleWidth - 8, 80);
+
+        labelElements.forEach(function (item) {
+            const bar = candleByTime.get(item.spec.time);
+            const x = chart.timeScale().timeToCoordinate(item.spec.time);
+            if (!bar || x === null || x < 0 || x > plotRightEdge) {
+                item.el.style.display = 'none';
+                return;
+            }
+            const anchorPrice = item.spec.position === 'below' ? bar.low : bar.high;
+            const y = candleSeries.priceToCoordinate(anchorPrice);
+            if (y === null) {
+                item.el.style.display = 'none';
+                return;
+            }
+
+            item.el.style.display = 'block';
+            const rect = item.el.getBoundingClientRect();
+            const left = Math.min(Math.max(x - rect.width / 2, 8), Math.max(plotRightEdge - rect.width, 8));
+            const rawTop = item.spec.position === 'below' ? (y + 22) : (y - rect.height - 22);
+            const top = Math.min(Math.max(rawTop, 8), Math.max(maxHeight - rect.height - 32, 8));
+
+            item.el.style.left = Math.round(left) + 'px';
+            item.el.style.top = Math.round(top) + 'px';
+        });
+    }
+
+    let labelRafId = null;
+    function scheduleLabelUpdate() {
+        if (labelRafId !== null) return;
+        labelRafId = window.requestAnimationFrame(function () {
+            labelRafId = null;
+            updateMarkerLabels();
+        });
+    }
+
     chart.timeScale().fitContent();
+    chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleLabelUpdate);
+
+    // Keep badges synced during vertical price-scale drag, wheel zoom, and dblclick autoscale
+    container.addEventListener('pointermove', function (event) {
+        if (event.buttons > 0) {
+            scheduleLabelUpdate();
+        }
+    });
+    container.addEventListener('wheel', scheduleLabelUpdate, { passive: true });
+    container.addEventListener('dblclick', scheduleLabelUpdate);
+
+    const resetBtn = document.getElementById('reset-chart-btn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+            chart.priceScale('right').applyOptions({ autoScale: true });
+            chart.timeScale().fitContent();
+            scheduleLabelUpdate();
+        });
+    }
 
     function resizeChart() {
         if (!chart || !container) return;
         const dims = getContainerDimensions();
         chart.resize(dims.width, dims.height);
+        scheduleLabelUpdate();
     }
 
     window.addEventListener('resize', function () {
@@ -227,7 +371,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 return;
             }
             const bar = param.seriesData.get(candleSeries);
-            legendEl.innerHTML = 'O: <span class="text-slate-900 font-bold">' + formatDe(bar.open) + '</span> H: <span class="text-slate-900 font-bold">' + formatDe(bar.high) + '</span> L: <span class="text-slate-900 font-bold">' + formatDe(bar.low) + '</span> C: <span class="text-slate-900 font-bold">' + formatDe(bar.close) + '</span>';
+            const dateLabel = formatDeDate(param.time);
+            legendEl.innerHTML =
+                '<span class="font-medium text-slate-600">' + dateLabel + '</span>' +
+                '<span>O: <strong class="text-slate-900 font-bold">' + formatDe(bar.open) + '&nbsp;$</strong></span>' +
+                '<span>H: <strong class="text-slate-900 font-bold">' + formatDe(bar.high) + '&nbsp;$</strong></span>' +
+                '<span>L: <strong class="text-slate-900 font-bold">' + formatDe(bar.low) + '&nbsp;$</strong></span>' +
+                '<span>C: <strong class="text-slate-900 font-bold">' + formatDe(bar.close) + '&nbsp;$</strong></span>';
         });
     }
 });
