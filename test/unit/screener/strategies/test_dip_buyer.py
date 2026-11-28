@@ -13,7 +13,10 @@ from app.services.telegram import TelegramBot
 
 @pytest.fixture
 def mock_trade_repo() -> MagicMock:
-    return MagicMock(spec=TradeRepository)
+    repo = MagicMock(spec=TradeRepository)
+    repo.exists.return_value = False
+    repo.get_by_status.return_value = []
+    return repo
 
 
 @pytest.fixture
@@ -204,3 +207,70 @@ def test_run_empty_data(
 
     # Assert
     assert count == 0
+
+
+def test_process_signals_skips_existing_trade_idempotency(
+    strategy: DipBuyerStrategy,
+    mock_trade_repo: MagicMock,
+    mock_telegram_bot: MagicMock,
+) -> None:
+    """Tests that duplicate runs skip existing trades without calling create_trade or Telegram."""
+    mock_trade_repo.exists.return_value = True
+    date_obj = pd.Timestamp("2026-02-18")
+    signals = pd.DataFrame(
+        {
+            "close": [100.0],
+            "high": [105.0],
+            "volume": [1e6],
+            "atr": [5.0],
+            "sma200": [90.0],
+            "atr_ratio_3day": [-2.5],
+            "ibs": [0.1],
+            "setup_score": [2.5],
+        },
+        index=["AAPL"],
+    )
+
+    count = strategy._process_signals(signals, date_obj)
+
+    assert count == 0
+    mock_trade_repo.create_trade.assert_not_called()
+    mock_telegram_bot.send_dataframe.assert_not_called()
+
+
+def test_process_signals_enforces_max_positions_cap(
+    strategy: DipBuyerStrategy,
+    mock_trade_repo: MagicMock,
+) -> None:
+    """Tests RealTest MaxSetups = 25 - active_positions and excludes already active symbols."""
+    active_trades = [
+        {"symbol": f"ACT{i}", "strategy": "dip_buyer", "status": "ACTIVE"}
+        for i in range(23)
+    ]
+    # Include AAPL as one of the 23 active symbols to verify it is skipped before capping
+    active_trades[0]["symbol"] = "AAPL"
+    mock_trade_repo.get_by_status.return_value = active_trades
+
+    date_obj = pd.Timestamp("2026-02-18")
+    signals = pd.DataFrame(
+        {
+            "close": [100.0, 100.0, 100.0, 100.0],
+            "high": [105.0, 105.0, 105.0, 105.0],
+            "volume": [2e6, 2e6, 2e6, 2e6],
+            "atr": [5.0, 5.0, 5.0, 5.0],
+            "sma200": [90.0, 90.0, 90.0, 90.0],
+            "atr_ratio_3day": [-3.0, -2.5, -2.0, -1.5],
+            "ibs": [0.1, 0.1, 0.1, 0.1],
+            "setup_score": [3.0, 2.5, 2.0, 1.5],
+        },
+        index=["AAPL", "MSFT", "NVDA", "META"],
+    )
+
+    count = strategy._process_signals(signals, date_obj)
+
+    # 25 - 23 active = 2 remaining slots; AAPL skipped -> MSFT and NVDA created, META capped
+    assert count == 2
+    created_symbols = [
+        call.kwargs["symbol"] for call in mock_trade_repo.create_trade.call_args_list
+    ]
+    assert created_symbols == ["MSFT", "NVDA"]

@@ -1055,7 +1055,7 @@ class TestTradeManagerStrategySpecificEntryCheck:
                 (call for call in update_calls if call[0][0] == 202), None
             )
             assert gs_update_call is not None
-            assert gs_update_call[0][1]["status"] == TradeStatus.INVALID
+            assert gs_update_call[0][1]["status"] == TradeStatus.INVALIDATED
             assert "Symbol already active" in gs_update_call[1].get("reason", "")
 
             # Find update call for STX (201)

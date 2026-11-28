@@ -101,7 +101,7 @@ def test_check_entry_expiration(strategy, mock_trade_repo):
         mock_trade_repo.update_trade.assert_called_once()
         assert (
             mock_trade_repo.update_trade.call_args[0][1]["status"]
-            == TradeStatus.INVALID
+            == TradeStatus.INVALIDATED
         )
         assert (
             mock_trade_repo.update_trade.call_args[0][1]["exit_reason"]

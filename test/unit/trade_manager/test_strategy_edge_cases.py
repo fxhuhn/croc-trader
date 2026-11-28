@@ -143,7 +143,7 @@ def test_base_trade_strategy_invalidate_trade(
         trade, low_price=90.0, stop_loss=95.0, date_string="2026-07-20"
     )
     assert isinstance(transition, TradeTransition)
-    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["status"] == TradeStatus.INVALIDATED.value
     assert transition.updates["exit_reason"] == ExitReason.INVALIDATED.value
 
 
@@ -157,7 +157,7 @@ def test_base_trade_strategy_generate_orders_invalid_status(
         is None
     )
 
-    trade_invalid = {"symbol": "AAPL", "status": TradeStatus.INVALID}
+    trade_invalid = {"symbol": "AAPL", "status": TradeStatus.INVALIDATED}
     assert (
         dummy_strategy.generate_orders(trade_invalid, pd.DataFrame(), budget=1000.0)
         is None
@@ -288,7 +288,7 @@ def test_ndx_momentum_strategy_edge_cases() -> None:
         dup_trade, candle, pd.DataFrame([candle]), active_symbols={"AAPL"}
     )
     assert transition is not None
-    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["status"] == TradeStatus.INVALIDATED.value
 
     # Month switch order error handling with bad dates
     bad_df = pd.DataFrame([{"date": "invalid_date"}])

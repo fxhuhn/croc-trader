@@ -739,7 +739,7 @@ class BaseTradeStrategy(ABC):
         )
         return TradeTransition(
             updates={
-                "status": TradeStatus.INVALID,
+                "status": TradeStatus.INVALIDATED,
                 "exit_reason": ExitReason.INVALIDATED,
                 "exit_date": date_string,
                 "realized_pnl": 0.0,
@@ -751,11 +751,11 @@ class BaseTradeStrategy(ABC):
     def _expire_trade(self, trade: TradeData, date_string: str) -> TradeTransition:
         """Signals expiration when entry isn't hit within time limit.
 
-        Unified transition to TradeStatus.INVALID / ExitReason.INVALIDATED.
+        Unified transition to TradeStatus.INVALIDATED / ExitReason.INVALIDATED.
         """
         return TradeTransition(
             updates={
-                "status": TradeStatus.INVALID,
+                "status": TradeStatus.INVALIDATED,
                 "exit_reason": ExitReason.INVALIDATED,
                 "exit_date": date_string,
                 "realized_pnl": 0.0,
@@ -782,7 +782,7 @@ class BaseTradeStrategy(ABC):
         """
         return TradeTransition(
             updates={
-                "status": TradeStatus.INVALID,
+                "status": TradeStatus.INVALIDATED,
                 "exit_reason": ExitReason.INVALIDATED,
                 "exit_date": date_string,
                 "realized_pnl": 0.0,

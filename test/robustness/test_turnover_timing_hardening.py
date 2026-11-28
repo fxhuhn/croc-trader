@@ -126,7 +126,7 @@ def test_bva_turnover_timing_entry_execution_and_green_state_inheritance() -> No
     )
     transition_missed = manager.check_entry(trade, candle_missed, history)
     assert transition_missed is not None
-    assert transition_missed.updates["status"] == TradeStatus.INVALID
+    assert transition_missed.updates["status"] == TradeStatus.INVALIDATED
     assert "EXPIRED" in transition_missed.reason
 
 

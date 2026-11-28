@@ -141,7 +141,7 @@ def test_tgim_check_entry_invalidates_when_close_equals_threshold(
     transition = trade_strategy.check_entry(trade, candle, df_history)
 
     assert transition is not None
-    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["status"] == TradeStatus.INVALIDATED.value
     assert transition.updates["exit_reason"] == ExitReason.INVALIDATED.value
 
 
@@ -172,7 +172,7 @@ def test_tgim_check_entry_invalidates_when_close_above_threshold(
     transition = trade_strategy.check_entry(trade, candle, df_history)
 
     assert transition is not None
-    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["status"] == TradeStatus.INVALIDATED.value
     assert transition.updates["exit_reason"] == ExitReason.INVALIDATED.value
     assert "Missed Entry Window" in transition.reason
 
@@ -539,7 +539,7 @@ def test_tgim_check_entry_rejects_past_monday_candle(
 
     transition = trade_strategy.check_entry(trade, tuesday_candle, df_history)
     assert transition is not None
-    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["status"] == TradeStatus.INVALIDATED.value
     assert transition.updates["exit_reason"] == ExitReason.INVALIDATED.value
 
 
@@ -719,7 +719,7 @@ def test_tgim_check_entry_rejects_duplicate_active_symbol(
         active_symbols={"SPY"},
     )
     assert transition is not None
-    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["status"] == TradeStatus.INVALIDATED.value
     assert "Duplicate Position" in transition.reason
 
 

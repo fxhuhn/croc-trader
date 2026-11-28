@@ -103,10 +103,10 @@ def test_check_entry_expired(strategy, mock_trade_repo):
         )
 
         assert result is not None
-        assert "INVALIDATED" in result
+        assert "Missed Entry Window" in result
         assert (
             mock_trade_repo.update_trade.call_args[0][1]["status"]
-            == TradeStatus.INVALID
+            == TradeStatus.INVALIDATED
         )
 
 
@@ -610,3 +610,103 @@ def test_manage_active_target_not_hit_on_entry_day(strategy) -> None:
     # Target Hit must not occur on entry day
     if transition:
         assert transition.reason != ExitReason.TARGET_HIT
+
+
+def test_check_entry_uses_entry_day_atr_from_history(strategy) -> None:
+    """Verifies TP uses entry-day Wilder ATR(5) when full OHLC history is available."""
+    dates = pd.date_range("2026-01-01", periods=10, freq="B")
+    # Constant true range of 10.0 on every bar -> Wilder ATR(5) == 10.0
+    history = pd.DataFrame(
+        {
+            "date": dates,
+            "open": [100.0] * 10,
+            "high": [105.0] * 10,
+            "low": [95.0] * 10,
+            "close": [100.0] * 10,
+        }
+    )
+    entry_candle = history.iloc[-1]
+    setup_date_str = str(dates[-2].date())
+    trade = {
+        "id": "ENTRY_ATR",
+        "symbol": "TEST",
+        "entry_price": 96.0,
+        "current_target": 0.0,
+        "current_size": 10,
+        # Deliberately different setup atr5 (2.0) to prove entry-day ATR (10.0) wins
+        "signal_context": f'{{"date": "{setup_date_str}", "atr5": 2.0}}',
+    }
+
+    transition = strategy.check_entry(trade, entry_candle, history)
+
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.ACTIVE
+    assert transition.updates["entry_price"] == 96.0
+    # 96.0 + (0.8 * 10.0) = 104.0 (NOT 96.0 + 0.8 * 2.0 = 97.6)
+    assert transition.updates["current_target"] == 104.0
+
+
+def test_check_entry_rejects_when_max_positions_reached(strategy) -> None:
+    """Verifies Trade Manager enforces RealTest MaxSetups = 25 active positions cap."""
+    trade = {
+        "id": "CAP_TEST",
+        "symbol": "NEW_SYM",
+        "entry_price": 100.0,
+        "signal_context": '{"date": "2026-02-17", "atr5": 4.0}',
+    }
+    candle = pd.Series(
+        {
+            "open": 101.0,
+            "high": 102.0,
+            "low": 99.0,
+            "close": 100.0,
+            "date": "2026-02-18",
+        }
+    )
+    active_symbols = {f"SYM{i}" for i in range(25)}
+
+    transition = strategy.check_entry(
+        trade, candle, pd.DataFrame([candle]), active_symbols=active_symbols
+    )
+
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.INVALIDATED
+    assert "Max Positions Reached" in transition.reason
+
+
+def test_manage_active_loc_exit_uses_enum_reason(strategy) -> None:
+    """Verifies LOC exit records canonical ExitReason.LOC_HIT enum."""
+    trade = {
+        "id": "LOC_ENUM",
+        "symbol": "AAPL",
+        "status": "ACTIVE",
+        "entry_price": 100.0,
+        "entry_date": "2026-02-18",
+        "current_size": 10,
+    }
+    history = pd.DataFrame(
+        [
+            {
+                "date": "2026-02-18",
+                "open": 100.0,
+                "high": 104.0,
+                "low": 99.0,
+                "close": 101.0,
+            },
+            {
+                "date": "2026-02-19",
+                "open": 102.0,
+                "high": 106.0,
+                "low": 101.0,
+                "close": 105.0,
+            },
+        ]
+    )
+
+    transition = strategy._do_manage_active_trade(
+        trade, history.iloc[-1], "2026-02-19", history
+    )
+
+    assert transition is not None
+    assert transition.updates["exit_reason"] == ExitReason.LOC_HIT
+    assert transition.updates["exit_reason"] == "LOC_HIT"

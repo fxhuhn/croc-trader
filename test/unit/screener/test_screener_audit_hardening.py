@@ -261,6 +261,8 @@ class TestFailClosedOnDatabaseErrors:
         # Arrange
         analysis_date = pd.Timestamp("2026-01-30")
         roc_df = pd.DataFrame({"AAPL": [5.0]}, index=[analysis_date])
+        mock_trade_repository.exists.return_value = False
+        mock_trade_repository.get_by_status.return_value = []
         mock_trade_repository.create_trade.side_effect = sqlite3.OperationalError(
             "database is locked"
         )
@@ -306,6 +308,8 @@ class TestFailClosedOnDatabaseErrors:
             },
             index=["AAPL"],
         )
+        mock_trade_repository.exists.return_value = False
+        mock_trade_repository.get_by_status.return_value = []
         mock_trade_repository.create_trade.side_effect = sqlite3.OperationalError(
             "database is locked"
         )
@@ -336,6 +340,8 @@ class TestFailClosedOnDatabaseErrors:
             },
             index=["AAPL"],
         )
+        mock_trade_repository.exists.return_value = False
+        mock_trade_repository.get_by_status.return_value = []
         mock_trade_repository.create_trade.side_effect = ValueError("bad entry price")
 
         # Act

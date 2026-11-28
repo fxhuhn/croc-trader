@@ -319,7 +319,7 @@ def test_pinning_trade_manager_missed_limit_invalidates() -> None:
         result = manager.check_entry(trade, monday_candle, history)
 
     assert result is not None
-    assert result.updates["status"] == TradeStatus.INVALID
+    assert result.updates["status"] == TradeStatus.INVALIDATED
     assert "Missed Entry Window" in result.reason
 
 

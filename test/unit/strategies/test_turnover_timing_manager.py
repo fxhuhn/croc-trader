@@ -101,7 +101,7 @@ def test_check_entry_expired(strategy, mock_trade_repo):
         assert "EXPIRED" in result
         assert (
             mock_trade_repo.update_trade.call_args[0][1]["status"]
-            == TradeStatus.INVALID
+            == TradeStatus.INVALIDATED
         )
 
 

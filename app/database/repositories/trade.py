@@ -190,21 +190,41 @@ class TradeRepository(BaseRepository):
 
         return results
 
+    @staticmethod
+    def _expand_status_filters(
+        status: str | Enum | list[str | Enum],
+    ) -> list[str]:
+        """Normalizes status filters and expands INVALIDATED to include legacy INVALID."""
+        raw_items = status if isinstance(status, list) else [status]
+        expanded: list[str] = []
+        for item in raw_items:
+            value = str(item.value if isinstance(item, Enum) else item)
+            if value not in expanded:
+                expanded.append(value)
+            if (
+                value == TradeStatus.INVALIDATED.value
+                and TradeStatus.INVALID.value not in expanded
+            ):
+                expanded.append(TradeStatus.INVALID.value)
+        return expanded
+
     def get_by_status(
         self, status: str | Enum | list[str | Enum]
     ) -> list[dict[str, object]]:
-        """Fetches trades based on status. Accepts enums or strings."""
-        if isinstance(status, list):
-            # Convert enums to strings
-            statuses = [s.value if isinstance(s, Enum) else s for s in status]
+        """Fetches trades based on status. Accepts enums or strings.
+
+        Queries for ``TradeStatus.INVALIDATED`` transparently include legacy
+        ``TradeStatus.INVALID`` records for backwards compatibility.
+        """
+        statuses = self._expand_status_filters(status)
+        if len(statuses) == 1:
+            rows = self.fetch_all(
+                "SELECT * FROM trades WHERE status = ?", (statuses[0],)
+            )
+        else:
             placeholders = ",".join("?" for _ in statuses)
             sql = f"SELECT * FROM trades WHERE status IN ({placeholders})"  # nosec B608
             rows = self.fetch_all(sql, tuple(statuses))
-        else:
-            status_value = status.value if isinstance(status, Enum) else status
-            rows = self.fetch_all(
-                "SELECT * FROM trades WHERE status = ?", (status_value,)
-            )
 
         return [dict(row) for row in rows]
 

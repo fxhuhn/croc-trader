@@ -6,6 +6,7 @@ import pandas as pd
 
 from ....const import ExitReason, Strategies
 from ....models import Order, OrderLeg
+from ....tools.indicators import calculate_atr
 from ....types import TradeData
 from ...screener.strategies.dip_buyer import DipBuyerConfiguration
 from ..types import TradeTransition
@@ -67,6 +68,14 @@ class DipBuyerStrategy(BaseTradeStrategy):
                 trade, str(candle["date"]), "Symbol already active"
             )
 
+        if (
+            active_symbols is not None
+            and len(active_symbols) >= self.configuration.max_positions
+        ):
+            return self._reject_setup(
+                trade, str(candle["date"]), "Max Positions Reached"
+            )
+
         limit_price = self._extract_entry_price(trade)
         if limit_price <= 0:
             return None
@@ -80,27 +89,18 @@ class DipBuyerStrategy(BaseTradeStrategy):
             return None
 
         date_string = str(candle["date"])
-        if days_passed > 1:
-            # Too late: Missed the entry window
+        if days_passed > 1 or float(candle["low"]) > limit_price:
+            # Too late or limit not reached on Day 1 -> Reject as missed entry window
             return self._reject_setup(trade, date_string, "Missed Entry Window")
 
-        # 2. Check Fill (Day 1)
-        low_price = float(candle["low"])
+        # 2. Execution (with Gap Down benefit)
         open_price = float(candle["open"])
-
-        if low_price > limit_price:
-            # Missed entry on the target day -> Invalidate the setup
-            return self._invalidate_trade(trade, low_price, limit_price, date_string)
-
-        # 3. Execution (with Gap Down benefit)
         fill_price = (
             min(open_price, limit_price) if open_price < limit_price else limit_price
         )
 
         extra_updates: dict[str, object] = {}
-        context = self._get_full_context(trade)
-        raw_atr = context.get("atr5") or context.get("setup_atr")
-        atr_value = float(str(raw_atr)) if raw_atr is not None else 0.0
+        atr_value = self._resolve_entry_atr(trade, dataframe_history)
         if atr_value > 0:
             target_price = round(
                 fill_price + (atr_value * self.configuration.exit_tp_factor), 2
@@ -110,6 +110,37 @@ class DipBuyerStrategy(BaseTradeStrategy):
         return self._execute_activation(
             trade, fill_price, "LIMIT", date_string, extra_updates=extra_updates
         )
+
+    def _resolve_entry_atr(
+        self,
+        trade: TradeData,
+        dataframe_history: pd.DataFrame,
+    ) -> float:
+        """Resolves entry-day Wilder ATR(5) for take-profit calculation.
+
+        Computes entry-day ATR directly from ``dataframe_history`` when sufficient
+        OHLC bars are available (matching RealTest ``atr_5[BarsHeld]``), falling back
+        to setup-day ``atr5``/``setup_atr`` in ``signal_context`` when history is
+        truncated or lacks OHLC columns.
+        """
+        required_columns = {"high", "low", "close"}
+        if (
+            required_columns.issubset(dataframe_history.columns)
+            and len(dataframe_history) >= self.configuration.atr_window
+        ):
+            atr_series = calculate_atr(
+                dataframe_history["high"].astype(float),
+                dataframe_history["low"].astype(float),
+                dataframe_history["close"].astype(float),
+                self.configuration.atr_window,
+            )
+            latest_atr = float(atr_series.iloc[-1])
+            if pd.notna(latest_atr) and latest_atr > 0:
+                return latest_atr
+
+        context = self._get_full_context(trade)
+        raw_atr = context.get("atr5") or context.get("setup_atr")
+        return float(str(raw_atr)) if raw_atr is not None else 0.0
 
     @override
     def _do_manage_active_trade(
@@ -158,7 +189,9 @@ class DipBuyerStrategy(BaseTradeStrategy):
             close_price = float(current_candle["close"])
 
             if close_price > previous_day_high:
-                return self._close_trade(trade, close_price, "LOC_HIT", date_string)
+                return self._close_trade(
+                    trade, close_price, ExitReason.LOC_HIT, date_string
+                )
 
         entry_date_str = trade.get("entry_date")
         if entry_date_str:

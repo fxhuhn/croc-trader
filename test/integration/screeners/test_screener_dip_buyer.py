@@ -43,7 +43,10 @@ def create_market_data(
 
 @pytest.fixture
 def mock_repo():
-    return MagicMock(spec=TradeRepository)
+    repo = MagicMock(spec=TradeRepository)
+    repo.exists.return_value = False
+    repo.get_by_status.return_value = []
+    return repo
 
 
 @pytest.fixture

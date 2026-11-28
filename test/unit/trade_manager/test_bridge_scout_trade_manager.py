@@ -155,7 +155,7 @@ def test_check_entry_threshold_invalidation(
     )
     transition = strategy.check_entry(trade_with_low_threshold, candle, sample_history)
     assert transition is not None
-    assert transition.updates.get("status") == TradeStatus.INVALID
+    assert transition.updates.get("status") == TradeStatus.INVALIDATED
     assert "Bridge Scout condition failed" in str(transition.reason)
 
 
@@ -168,7 +168,7 @@ def test_check_entry_missed_window_invalidation(
     candle_later = sample_history.iloc[1]  # date is 2026-02-01, setup was 2026-01-15
     transition = strategy.check_entry(sample_trade, candle_later, sample_history)
     assert transition is not None
-    assert transition.updates.get("status") == TradeStatus.INVALID
+    assert transition.updates.get("status") == TradeStatus.INVALIDATED
     assert "Missed Entry Window" in str(transition.reason)
 
 

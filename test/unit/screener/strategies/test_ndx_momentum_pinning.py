@@ -96,7 +96,10 @@ def test_pinning_trade_manager_rejects_bear_qqq_even_with_bull_breadth() -> None
     assert result is not None
     assert "QQQ Regime: BEAR" in result.reason
     mock_trade_repo.update_trade.assert_called_once()
-    assert mock_trade_repo.update_trade.call_args[0][1]["status"] == TradeStatus.INVALID
+    assert (
+        mock_trade_repo.update_trade.call_args[0][1]["status"]
+        == TradeStatus.INVALIDATED
+    )
 
 
 # ==============================================================================
@@ -220,7 +223,10 @@ def test_trade_manager_combined_regime_rejects_when_breadth_is_bear() -> None:
     assert result is not None
     assert "Combined Regime: QQQ=BULL, Breadth=BEAR" in result.reason
     mock_trade_repo.update_trade.assert_called_once()
-    assert mock_trade_repo.update_trade.call_args[0][1]["status"] == TradeStatus.INVALID
+    assert (
+        mock_trade_repo.update_trade.call_args[0][1]["status"]
+        == TradeStatus.INVALIDATED
+    )
 
 
 @pytest.mark.tier1

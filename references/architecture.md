@@ -230,7 +230,7 @@ a prior attempt.
 | `target_price` | Decimal | Canonical decimal string with at most 4 decimal places; blank when the order type has no price field | Limit, stop, or LOC price where applicable. Quantization must follow the verified instrument tick size and must not assume a universal two-decimal rule. |
 | `tif` | String | Must be `'DAY'`, `'GTC'`, `'GTD'`, or `'OPG'` | Time-In-Force instruction. Use `'OPG'` with `order_type='MKT'` for market-on-open semantics. |
 | `strategy_name` | String | Matches canonical system Enums | Strategy origin name. |
-| `currency` | String | Default `'USD'` | Asset denomination currency. |
+| `currency` | String | Optional; blank for USD default (explicit override via `order_overrides`, e.g. `'EUR'`) | Asset denomination currency. |
 
 ### 3.3 Strategy-to-CSV Order Mapping
 

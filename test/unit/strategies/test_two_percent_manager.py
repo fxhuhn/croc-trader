@@ -89,7 +89,7 @@ def test_check_entry_missed_window_expiration(strategy, mock_trade_repo):
         strategy.check_entry(trade, candle, pd.DataFrame([candle]), mock_trade_repo)
         assert (
             mock_trade_repo.update_trade.call_args[0][1]["status"]
-            == TradeStatus.INVALID
+            == TradeStatus.INVALIDATED
         )
 
 

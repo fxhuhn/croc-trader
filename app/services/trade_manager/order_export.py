@@ -1,5 +1,7 @@
 import csv
 import logging
+import os
+import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -171,10 +173,31 @@ def write_csv_orders_file(
     csv_filename = f"orders_{date_string.replace('-', '_')}.csv"
     csv_file_path = target_directory / csv_filename
 
-    with open(csv_file_path, "w", newline="") as csv_file_handle:
-        writer = csv.DictWriter(csv_file_handle, fieldnames=list(CSV_ORDER_HEADER))
-        writer.writeheader()
-        writer.writerows(csv_rows)
+    temp_file_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            dir=target_directory,
+            prefix=f".{csv_filename}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temp_file_handle:
+            temp_file_path = Path(temp_file_handle.name)
+            writer = csv.DictWriter(
+                temp_file_handle, fieldnames=list(CSV_ORDER_HEADER), lineterminator="\n"
+            )
+            writer.writeheader()
+            writer.writerows(csv_rows)
+            temp_file_handle.flush()
+            os.fsync(temp_file_handle.fileno())
+
+        os.replace(temp_file_path, csv_file_path)
+    except Exception:
+        if temp_file_path is not None:
+            temp_file_path.unlink(missing_ok=True)
+        raise
 
     logger.info("CSV Orders saved to: %s", csv_file_path)
     return csv_file_path

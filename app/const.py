@@ -116,8 +116,11 @@ class TradeStatus(StrEnum):
     CREATED = "CREATED"
     ACTIVE = "ACTIVE"
     CLOSED = "CLOSED"
+    INVALIDATED = "INVALIDATED"  # Canonical terminal state for invalidated/expired/rejected setups
     MISSED = "MISSED"  # Entry not filled (Limit not reached)
-    INVALID = "INVALID"  # Setup invalidated before entry (e.g. Stop Validation)
+    INVALID = (
+        "INVALID"  # Legacy alias for INVALIDATED (retained for fault-tolerant reads)
+    )
     SKIPPED = "SKIPPED"  # Rejected by Portfolio Manager
 
 
@@ -126,6 +129,7 @@ class ExitReason(StrEnum):
 
     # Profit Exits
     TAKE_PROFIT = "TAKE_PROFIT"
+    LOC_HIT = "LOC_HIT"
     LOC_PROFIT = "LOC_PROFIT"
     TARGET_HIT = "TARGET_HIT"
     CLOSE_ABOVE_PREV_HIGH = "CLOSE_ABOVE_PREV_HIGH"

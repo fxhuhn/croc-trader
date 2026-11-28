@@ -383,7 +383,7 @@ def test_wbs_check_entry_guards_capacity_duplicate_share_class_and_expiry() -> N
             active_symbols={"GOOGL"},
         )
         assert res_dup is not None
-        assert res_dup.updates["status"] == TradeStatus.INVALID
+        assert res_dup.updates["status"] == TradeStatus.INVALIDATED
         assert res_dup.updates["exit_reason"] == ExitReason.INVALIDATED
 
         # 2. GOOGL counts as 1 position (not 2): 4 active trades still allow 5th slot
@@ -411,7 +411,7 @@ def test_wbs_check_entry_guards_capacity_duplicate_share_class_and_expiry() -> N
             active_symbols={"GOOGL", "AAPL", "MSFT", "UPS", "AMT"},
         )
         assert res_full is not None
-        assert res_full.updates["status"] == TradeStatus.INVALID
+        assert res_full.updates["status"] == TradeStatus.INVALIDATED
 
         # 4. Missed NextOpen window (> 1 trading day post signal) expires
         res_expired = strategy.check_entry(
@@ -421,7 +421,7 @@ def test_wbs_check_entry_guards_capacity_duplicate_share_class_and_expiry() -> N
             active_symbols=set(),
         )
         assert res_expired is not None
-        assert res_expired.updates["status"] == TradeStatus.INVALID
+        assert res_expired.updates["status"] == TradeStatus.INVALIDATED
         assert res_expired.updates["exit_reason"] == ExitReason.INVALIDATED
     finally:
         symbol_filter._mapping = original_mapping

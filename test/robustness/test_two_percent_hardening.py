@@ -147,7 +147,7 @@ def test_bva_two_percent_entry_fill_boundaries() -> None:
     df_miss = pd.DataFrame([{"date": "2026-07-24", "close": 100.0}, candle_miss])
     trans_miss = strategy.check_entry(trade, candle_miss, df_miss)
     assert trans_miss is not None
-    assert trans_miss.updates["status"] == TradeStatus.INVALID.value
+    assert trans_miss.updates["status"] == TradeStatus.INVALIDATED.value
 
 
 @pytest.mark.tier1
@@ -196,7 +196,7 @@ def test_bva_two_percent_holiday_monday_entry_fallback() -> None:
     holiday_checker.is_holiday.return_value = False
     trans_stale = strategy.check_entry(trade, candle_tue, df_history_tue)
     assert trans_stale is not None
-    assert trans_stale.updates["status"] == TradeStatus.INVALID.value
+    assert trans_stale.updates["status"] == TradeStatus.INVALIDATED.value
 
 
 @pytest.mark.tier1

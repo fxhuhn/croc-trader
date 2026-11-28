@@ -220,3 +220,24 @@ def test_get_effective_active_trades(trade_session: DatabaseSession) -> None:
     all_effective = repo.get_effective_active_trades()
     assert len(all_effective) == 2
     assert {t["symbol"] for t in all_effective} == {"AAPL", "QQQ"}
+
+
+def test_get_by_status_invalidated_includes_legacy_invalid(
+    trade_session: DatabaseSession,
+) -> None:
+    """Verifies fault-tolerant reads: INVALIDATED queries also return legacy INVALID rows."""
+    repo = TradeRepository(trade_session)
+    id_new = repo.create_trade("NVDA", "dip_buyer", 10, 100.0, 0.0, 0.0, {})
+    id_legacy = repo.create_trade("AMD", "dip_buyer", 10, 50.0, 0.0, 0.0, {})
+    id_active = repo.create_trade("MSFT", "dip_buyer", 10, 300.0, 0.0, 0.0, {})
+
+    repo.update_trade(id_new, {"status": TradeStatus.INVALIDATED})
+    repo.update_trade(id_legacy, {"status": TradeStatus.INVALID})
+    repo.update_trade(id_active, {"status": TradeStatus.ACTIVE})
+
+    invalidated = repo.get_by_status(TradeStatus.INVALIDATED)
+    assert {t["symbol"] for t in invalidated} == {"NVDA", "AMD"}
+
+    # Explicit legacy query still isolates INVALID rows
+    legacy_only = repo.get_by_status(TradeStatus.INVALID)
+    assert {t["symbol"] for t in legacy_only} == {"AMD"}

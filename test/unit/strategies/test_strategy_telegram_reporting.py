@@ -62,6 +62,8 @@ def test_base_strategy_has_existing_position() -> None:
     data_provider = MagicMock(spec=MarketDataProvider)
     strategy = ConcreteTestStrategy(data_provider=data_provider)
     mock_trade_repo = MagicMock(spec=TradeRepository)
+    mock_trade_repo.exists.return_value = False
+    mock_trade_repo.get_by_status.return_value = []
 
     # 1. Existing ACTIVE trade
     mock_trade_repo.get_by_status.return_value = [
@@ -118,6 +120,8 @@ def test_base_strategy_format_report_row_aliases() -> None:
 def test_turnover_timing_report_signals_to_telegram() -> None:
     """Tests _report_signals_to_telegram generates distinct entries for each factor."""
     mock_trade_repo = MagicMock(spec=TradeRepository)
+    mock_trade_repo.exists.return_value = False
+    mock_trade_repo.get_by_status.return_value = []
     mock_data_provider = MagicMock(spec=MarketDataProvider)
     mock_telegram = MagicMock()
 
@@ -165,6 +169,8 @@ def test_tgim_report_signals_to_telegram() -> None:
 
     mock_trade_repo = MagicMock(spec=TradeRepository)
     mock_trade_repo.exists.return_value = False
+    mock_trade_repo.get_by_status.return_value = []
+    mock_trade_repo.exists.return_value = False
     mock_trade_repo.create_trade.return_value = 1
 
     mock_data_provider = MagicMock(spec=MarketDataProvider)
@@ -203,6 +209,8 @@ def test_dip_buyer_report_signals_to_telegram() -> None:
     from app.services.screener.strategies.dip_buyer import DipBuyerStrategy
 
     mock_trade_repo = MagicMock(spec=TradeRepository)
+    mock_trade_repo.exists.return_value = False
+    mock_trade_repo.get_by_status.return_value = []
     mock_data_provider = MagicMock(spec=MarketDataProvider)
     mock_telegram = MagicMock()
 

@@ -145,7 +145,7 @@ def test_bva_tgim_check_entry_threshold_and_timing() -> None:
         trade, candle_exact, pd.DataFrame([candle_exact])
     )
     assert trans_equal is not None
-    assert trans_equal.updates["status"] == TradeStatus.INVALID.value
+    assert trans_equal.updates["status"] == TradeStatus.INVALIDATED.value
 
     # Case 2b: Candle on setup date, Close == 539.99 (< threshold 540.00) -> ACTIVE
     candle_below = pd.Series({"date": "2026-07-27", "close": 539.99})
@@ -162,13 +162,13 @@ def test_bva_tgim_check_entry_threshold_and_timing() -> None:
         trade, candle_high, pd.DataFrame([candle_high])
     )
     assert trans_invalid is not None
-    assert trans_invalid.updates["status"] == TradeStatus.INVALID.value
+    assert trans_invalid.updates["status"] == TradeStatus.INVALIDATED.value
 
     # Case 4: Candle after setup date (Missed Entry Window) -> INVALID
     candle_late = pd.Series({"date": "2026-07-28", "close": 530.00})
     trans_missed = strategy.check_entry(trade, candle_late, pd.DataFrame([candle_late]))
     assert trans_missed is not None
-    assert trans_missed.updates["status"] == TradeStatus.INVALID.value
+    assert trans_missed.updates["status"] == TradeStatus.INVALIDATED.value
 
 
 @pytest.mark.tier1

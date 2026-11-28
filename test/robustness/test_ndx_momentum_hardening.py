@@ -166,7 +166,7 @@ def test_bva_ndx_momentum_entry_regime_and_duplicate_gating() -> None:
         bear_trade, candle, history, active_symbols=set()
     )
     assert bear_transition is not None
-    assert bear_transition.updates["status"] == TradeStatus.INVALID
+    assert bear_transition.updates["status"] == TradeStatus.INVALIDATED
     assert "BEAR" in bear_transition.reason
 
     # 3. Duplicate active position in same symbol -> Rejected immediately
@@ -174,7 +174,7 @@ def test_bva_ndx_momentum_entry_regime_and_duplicate_gating() -> None:
         trade, candle, history, active_symbols={"AAPL"}
     )
     assert dup_transition is not None
-    assert dup_transition.updates["status"] == TradeStatus.INVALID
+    assert dup_transition.updates["status"] == TradeStatus.INVALIDATED
     assert "Position already exists" in dup_transition.reason
 
 

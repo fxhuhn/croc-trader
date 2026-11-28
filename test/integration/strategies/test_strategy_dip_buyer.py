@@ -142,9 +142,9 @@ def test_entry_no_fill_high_above_limit(
     result = strategy.check_entry(base_trade_data, candle, df_history, mock_repository)
 
     # Assert
-    # Logic now invalidates if not hit on the first day
+    # Logic now rejects if not hit on the first day
     assert result is not None
-    assert "INVALIDATED" in result
+    assert "Missed Entry Window" in result
     mock_repository.update_trade.assert_called_once()
 
 
@@ -374,11 +374,11 @@ def test_entry_rejected_if_missed_on_next_day(
 
     # Assert
     assert result is not None
-    assert "INVALIDATED" in result  # Base trade strategy uses SETUP INVALIDATED
+    assert "Missed Entry Window" in result
 
     mock_repository.update_trade.assert_called_once()
     args, _ = mock_repository.update_trade.call_args
-    assert args[1]["status"] == TradeStatus.INVALID
+    assert args[1]["status"] == TradeStatus.INVALIDATED
 
 
 def test_entry_rejected_on_day_plus_two_even_if_price_hit(
@@ -412,4 +412,4 @@ def test_entry_rejected_on_day_plus_two_even_if_price_hit(
     assert "Missed Entry Window" in result
 
     args, _ = mock_repository.update_trade.call_args
-    assert args[1]["status"] == TradeStatus.INVALID
+    assert args[1]["status"] == TradeStatus.INVALIDATED

@@ -4,7 +4,7 @@ from typing import Any, cast, override
 
 import pandas as pd
 
-from ....const import Strategies
+from ....const import Strategies, TradeStatus
 from ....database.repositories.market_data_provider import MarketDataProvider
 from ....database.repositories.trade import TradeRepository
 from ....services.telegram import TelegramBot
@@ -77,9 +77,10 @@ class DipBuyerConfiguration:
     max_ibs: float = 0.2  # Close in bottom 20% of High-Low range
     max_atr_ratio_3day: float = -1.0  # 3-Day drop > 1 ATR (negative value)
 
-    # 4. Exit Parameters
+    # 4. Exit & Portfolio Parameters
     exit_tp_factor: float = 0.8  # Target = Entry + (ATR * exit_tp_factor)
     time_stop_days: int = 8
+    max_positions: int = 25  # RealTest MaxSetups: 25 - S.Positions
     min_history_for_previous_candle: int = 2
 
     # 5. Data Fetching
@@ -458,16 +459,50 @@ class DipBuyerStrategy(BaseStrategy[int]):
 
         return df_results.sort_values(by="setup_score", ascending=False)
 
+    def _get_active_position_symbols(self) -> set[str]:
+        """Returns symbols currently holding ACTIVE positions for this strategy."""
+        active_trades = self.trade_repository.get_by_status(TradeStatus.ACTIVE)
+        strategy_key = self.name.lower()
+        return {
+            str(trade.get("symbol", "")).upper()
+            for trade in active_trades
+            if str(trade.get("strategy", "")).lower() == strategy_key
+            and trade.get("symbol")
+        }
+
     def _process_signals(self, signals: pd.DataFrame, date_obj: pd.Timestamp) -> int:
-        """Creates trade objects and reports results."""
+        """Creates trade objects respecting MaxSameSym, idempotency, and max_positions."""
+        active_symbols = self._get_active_position_symbols()
+        remaining_slots = max(0, self.configuration.max_positions - len(active_symbols))
+        if remaining_slots == 0:
+            logger.info(
+                "[%s] Max positions (%d) reached. Skipping new setups.",
+                self.name,
+                self.configuration.max_positions,
+            )
+            return 0
+
         created_trades: list[SignalReportItem] = []
         saved_count = 0
         date_str = date_obj.strftime("%Y-%m-%d")
 
         for symbol, signal_row in signals.iterrows():
+            if saved_count >= remaining_slots:
+                break
+            symbol_str = str(symbol)
+            if symbol_str.upper() in active_symbols:
+                continue
+            if self.trade_repository.exists(symbol_str, self.name, date_str):
+                logger.debug(
+                    "[%s] Trade already exists for %s on %s. Skipping.",
+                    self.name,
+                    symbol_str,
+                    date_str,
+                )
+                continue
             try:
                 saved = self._create_single_dip_buyer_trade(
-                    str(symbol), signal_row, date_str, created_trades
+                    symbol_str, signal_row, date_str, created_trades
                 )
                 if saved:
                     saved_count += 1

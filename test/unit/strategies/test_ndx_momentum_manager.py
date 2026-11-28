@@ -88,7 +88,10 @@ def test_check_entry_bear_regime_rejection(strategy, mock_trade_repo):
 
     assert result is not None
     assert "QQQ Regime" in result
-    assert mock_trade_repo.update_trade.call_args[0][1]["status"] == TradeStatus.INVALID
+    assert (
+        mock_trade_repo.update_trade.call_args[0][1]["status"]
+        == TradeStatus.INVALIDATED
+    )
 
 
 def test_manage_active_same_month_no_action(strategy, mock_trade_repo):

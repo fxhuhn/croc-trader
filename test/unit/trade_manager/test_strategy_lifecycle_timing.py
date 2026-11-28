@@ -186,7 +186,7 @@ def test_dip_buyer_lifecycle_timing() -> None:
     history_d2 = pd.DataFrame([signal_candle, day1_candle, day2_candle])
     transition_stale = strategy.check_entry(trade, day2_candle, history_d2)
     assert transition_stale is not None
-    assert transition_stale.updates["status"] == TradeStatus.INVALID.value
+    assert transition_stale.updates["status"] == TradeStatus.INVALIDATED.value
     assert "Missed Entry Window" in transition_stale.reason
 
 
@@ -470,7 +470,7 @@ def test_ndx_momentum_lifecycle() -> None:
     }
     transition_bear = strategy.check_entry(bear_trade, day1_candle, history_d1)
     assert transition_bear is not None
-    assert transition_bear.updates["status"] == TradeStatus.INVALID.value
+    assert transition_bear.updates["status"] == TradeStatus.INVALIDATED.value
     assert "QQQ Regime: BEAR" in transition_bear.reason
 
 
@@ -536,5 +536,5 @@ def test_croc_setup_lifecycle() -> None:
     history_stale = pd.DataFrame([signal_candle, stale_candle])
     transition_exp = strategy.check_entry(trade, stale_candle, history_stale)
     assert transition_exp is not None
-    assert transition_exp.updates["status"] == TradeStatus.INVALID.value
+    assert transition_exp.updates["status"] == TradeStatus.INVALIDATED.value
     assert transition_exp.updates["exit_reason"] == ExitReason.INVALIDATED.value

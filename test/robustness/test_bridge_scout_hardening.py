@@ -74,7 +74,7 @@ def test_bva_exact_threshold_entry_and_rejection() -> None:
     candle_above = pd.Series({"date": "2026-07-28", "close": 500.01})
     transition_above = strategy.check_entry(trade_record, candle_above, df_empty)
     assert transition_above is not None
-    assert transition_above.updates["status"] == TradeStatus.INVALID
+    assert transition_above.updates["status"] == TradeStatus.INVALIDATED
 
 
 @pytest.mark.tier1
@@ -93,7 +93,7 @@ def test_bva_missed_entry_window_invalidates_trade() -> None:
     candle_late = pd.Series({"date": "2026-07-29", "close": 490.0})
     transition = strategy.check_entry(trade_record, candle_late, pd.DataFrame())
     assert transition is not None
-    assert transition.updates["status"] == TradeStatus.INVALID
+    assert transition.updates["status"] == TradeStatus.INVALIDATED
     assert "Missed Entry Window" in transition.reason
 
 

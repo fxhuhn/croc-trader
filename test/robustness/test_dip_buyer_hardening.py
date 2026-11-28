@@ -179,8 +179,8 @@ def test_bva_dip_buyer_entry_limit_hit_and_gap_down() -> None:
     )
     transition_missed = manager.check_entry(trade, candle_missed, history)
     assert transition_missed is not None
-    assert transition_missed.updates["status"] == TradeStatus.INVALID
-    assert "INVALIDATED" in transition_missed.reason
+    assert transition_missed.updates["status"] == TradeStatus.INVALIDATED
+    assert "Missed Entry Window" in transition_missed.reason
 
     # 4. Stale Entry Window (days_passed > 1) -> Rejected with Missed Entry Window
     history_stale = pd.DataFrame(
@@ -194,7 +194,7 @@ def test_bva_dip_buyer_entry_limit_hit_and_gap_down() -> None:
     )
     transition_stale = manager.check_entry(trade, candle_stale, history_stale)
     assert transition_stale is not None
-    assert transition_stale.updates["status"] == TradeStatus.INVALID
+    assert transition_stale.updates["status"] == TradeStatus.INVALIDATED
     assert "Missed Entry Window" in transition_stale.reason
 
 

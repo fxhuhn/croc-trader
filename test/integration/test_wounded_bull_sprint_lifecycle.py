@@ -280,8 +280,8 @@ def test_wbs_score_prioritized_capacity_and_share_class_cap(tmp_path: Path) -> N
         assert goog_trade is not None
         assert low_trade is not None
         assert high_trade["status"] == TradeStatus.ACTIVE.value
-        assert goog_trade["status"] == TradeStatus.INVALID.value
-        assert low_trade["status"] == TradeStatus.INVALID.value
+        assert goog_trade["status"] == TradeStatus.INVALIDATED.value
+        assert low_trade["status"] == TradeStatus.INVALIDATED.value
     finally:
         symbol_filter._mapping = original_mapping
         settings.app.database.folders = original_folders
@@ -364,4 +364,4 @@ def test_wbs_backfill_active_exits_free_slot_before_created_entries(
     assert new1_trade is not None
     assert new2_trade is not None
     assert new1_trade["status"] == TradeStatus.ACTIVE.value
-    assert new2_trade["status"] == TradeStatus.INVALID.value
+    assert new2_trade["status"] == TradeStatus.INVALIDATED.value

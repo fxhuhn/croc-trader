@@ -195,7 +195,7 @@ def test_check_entry_invalidation_no_trigger(
     args, _ = mock_repository.update_trade.call_args
     data = args[1]
 
-    assert data["status"] == TradeStatus.INVALID
+    assert data["status"] == TradeStatus.INVALIDATED
     assert data["exit_reason"] == ExitReason.INVALIDATED
 
 
@@ -314,5 +314,5 @@ def test_check_expiration(
     assert result == "EXPIRED"
     mock_repository.update_trade.assert_called_once()
     args, _ = mock_repository.update_trade.call_args
-    assert args[1]["status"] == TradeStatus.INVALID
+    assert args[1]["status"] == TradeStatus.INVALIDATED
     assert args[1]["exit_reason"] == ExitReason.INVALIDATED

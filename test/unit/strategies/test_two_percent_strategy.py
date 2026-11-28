@@ -417,7 +417,7 @@ def test_entry_invalidated_if_no_fill_on_day_one(
     assert "REJECTED" in result or "INVALIDATED" in result
     mock_trade_repository.update_trade.assert_called_once()
     call_args = mock_trade_repository.update_trade.call_args[0]
-    assert call_args[1]["status"] == TradeStatus.INVALID
+    assert call_args[1]["status"] == TradeStatus.INVALIDATED
 
 
 # --- TRADE MANAGER EXIT TESTS ---
@@ -817,7 +817,7 @@ def test_monday_no_fill_no_holiday_invalidation(
         "REJECTED" in result or "INVALIDATED" in result
     )  # Base Strategy might return REJECTED
     call_args = mock_trade_repository.update_trade.call_args[0]
-    assert call_args[1]["status"] == TradeStatus.INVALID
+    assert call_args[1]["status"] == TradeStatus.INVALIDATED
 
 
 def test_two_percent_calculate_target_price_zero(
@@ -915,7 +915,7 @@ def test_two_percent_process_day_two_entry_no_fill(
         )
     )
     assert transition is not None
-    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["status"] == TradeStatus.INVALIDATED.value
 
 
 def test_two_percent_do_manage_active_trade_no_entry_date(

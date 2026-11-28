@@ -493,3 +493,44 @@ def test_characterization_golden_master_snapshot() -> None:
 
     finally:
         settings.app.order_overrides = original_overrides
+
+
+def test_write_csv_orders_file_atomic_publication_leaves_no_temp_files(
+    tmp_path: Path,
+) -> None:
+    """Verifies atomic CSV publication leaves only the final file and no leftover .tmp files."""
+    order = Order(
+        id="order_dip_atomic",
+        symbol="AAPL",
+        quantity=10,
+        mode="BRACKET",
+        entry=OrderLeg(
+            action="BUY",
+            type="LMT",
+            price=Decimal("150.00"),
+            quantity=10,
+            time_in_force="DAY",
+        ),
+        exits=[],
+        last_status="CREATED",
+    )
+    trade: TradeData = {
+        "id": "99",
+        "symbol": "AAPL",
+        "strategy": Strategies.DipBuyer.value,
+        "status": TradeStatus.CREATED.value,
+    }
+
+    csv_file = write_csv_orders_file(
+        orders_data=[(trade, order)],
+        date_string="2026-11-28",
+        ibkr_account_id="U123456",
+        resolve_strategy_fn=lambda name: Strategies.DipBuyer,
+        output_directory=tmp_path,
+    )
+
+    assert csv_file is not None
+    assert csv_file == tmp_path / "orders_2026_11_28.csv"
+    assert csv_file.exists()
+    assert list(tmp_path.glob("*.tmp")) == []
+    assert [p.name for p in tmp_path.iterdir()] == ["orders_2026_11_28.csv"]
