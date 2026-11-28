@@ -266,3 +266,76 @@ def test_turnover_timing_self_healing_after_historical_price_correction(
     with patch.object(strategy, "_is_end_of_trading_week", return_value=False):
         order = strategy.generate_orders(trade, history, 2000.0, mock_repo)
         assert order is None
+
+
+def test_generate_exit_order_holiday_thursday_does_not_emit_friday_holiday_moc() -> (
+    None
+):
+    """Regression: On Holiday-Thursday EOD (Good Friday next day), no MOC is emitted for the holiday."""
+    holiday_checker = MagicMock()
+    good_friday = pd.Timestamp("2026-04-03").date()
+    holiday_checker.is_holiday.side_effect = lambda dt: dt == good_friday
+
+    strategy_with_holidays = TurnoverTimingStrategy(holiday_checker=holiday_checker)
+    trade = {
+        "id": 99,
+        "symbol": "AAPL",
+        "strategy": "turnover_timing_0.5",
+        "status": "ACTIVE",
+        "current_size": 10,
+        "entry_price": 100.0,
+        "signal_context": json.dumps(
+            {"setup_date": "2026-03-27", "setup_candle_green": False}
+        ),
+    }
+
+    # Wednesday 2026-04-01 EOD -> next day is Holiday-Thursday 2026-04-02 -> MUST emit MOC
+    history_wed = pd.DataFrame(
+        [{"date": pd.Timestamp("2026-04-01"), "open": 102.0, "close": 100.0}]
+    )
+    wed_order = strategy_with_holidays.generate_orders(trade, history_wed, 3000.0)
+    assert wed_order is not None
+    assert wed_order.exits[0].type == "MOC"
+
+    # Thursday 2026-04-02 EOD -> next day is Good Friday (holiday) -> MUST NOT emit MOC
+    history_thu = pd.DataFrame(
+        [{"date": pd.Timestamp("2026-04-02"), "open": 102.0, "close": 100.0}]
+    )
+    thu_order = strategy_with_holidays.generate_orders(trade, history_thu, 3000.0)
+    assert thu_order is None
+
+
+def test_manage_active_trade_idempotency_normalizes_date_formats(
+    strategy: TurnoverTimingStrategy,
+) -> None:
+    """Regression: last_processed_date matches across YYYY-MM-DD and Timestamp string formats."""
+    trade = {
+        "id": 100,
+        "symbol": "AAPL",
+        "status": "ACTIVE",
+        "entry_price": 100.0,
+        "current_size": 10,
+        "signal_context": json.dumps(
+            {
+                "date": "2026-02-13",
+                "green_candle_count": 2,
+                "last_processed_date": "2026-02-16",
+            }
+        ),
+    }
+    # Timestamp string format ("2026-02-16 00:00:00") must match "2026-02-16"
+    history = pd.DataFrame(
+        [{"date": pd.Timestamp("2026-02-16"), "open": 100.0, "close": 102.0}]
+    )
+    assert strategy.manage_active_trade(trade, history) is None
+
+    daily_updates = strategy.get_daily_updates(trade, history)
+    assert daily_updates["last_processed_date"] == "2026-02-16"
+
+    from app.services.trade_manager.strategies.turnover_timing import (
+        _normalize_iso_date,
+    )
+
+    assert _normalize_iso_date(pd.NaT) is None
+    assert _normalize_iso_date(float("nan")) is None
+    assert _normalize_iso_date("NaT") is None

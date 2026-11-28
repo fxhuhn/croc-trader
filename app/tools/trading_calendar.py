@@ -227,19 +227,18 @@ def is_last_trading_day_of_week(
         date_val = check_date
 
     weekday = date_val.weekday()
+    if weekday not in (THURSDAY, FRIDAY):
+        return False
+
+    checker = holiday_checker if holiday_checker is not None else MarketHolidayChecker()
+    is_holiday_fn = getattr(checker, "is_holiday", None)
     if weekday == FRIDAY:
-        return True
+        return not (is_holiday_fn is not None and bool(is_holiday_fn(date_val)))
 
-    if weekday == THURSDAY:
-        checker = (
-            holiday_checker if holiday_checker is not None else MarketHolidayChecker()
-        )
-        is_holiday_fn = getattr(checker, "is_holiday", None)
-        if is_holiday_fn is not None:
-            next_day = date_val + datetime.timedelta(days=1)
-            return bool(is_holiday_fn(next_day))
-
-    return False
+    if is_holiday_fn is None:
+        return False
+    next_day = date_val + datetime.timedelta(days=1)
+    return bool(is_holiday_fn(next_day))
 
 
 def resolve_effective_trading_date(

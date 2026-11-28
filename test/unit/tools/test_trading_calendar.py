@@ -486,3 +486,15 @@ def test_is_last_trading_day_of_week_default_holiday_checker() -> None:
     # 2026-07-16 is a normal Thursday (Friday 2026-07-17 is not a holiday)
     normal_thursday = datetime.date(2026, 7, 16)
     assert is_last_trading_day_of_week(normal_thursday) is False
+
+
+def test_is_last_trading_day_of_week_friday_holiday_returns_false() -> None:
+    """Verifies that a Friday market holiday (e.g. Good Friday) evaluates to False."""
+    holiday_checker = MagicMock(spec=MarketHolidayChecker)
+    good_friday = datetime.date(2026, 4, 3)
+    holiday_checker.is_holiday.side_effect = lambda dt: dt == good_friday
+
+    assert is_last_trading_day_of_week(good_friday, holiday_checker) is False
+    assert (
+        is_last_trading_day_of_week(datetime.date(2026, 4, 2), holiday_checker) is True
+    )

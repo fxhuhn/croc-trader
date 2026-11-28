@@ -126,16 +126,18 @@ def test_base_strategy_close_trade_pnl_long_and_short():
 def test_base_strategy_is_end_of_trading_week_holiday_protocol():
     """Validates end-of-week detection with a mock holiday checker implementing Protocol."""
     strategy = DummyStrategy()
-    friday = pd.Timestamp("2026-02-06")  # Friday
-    thursday = pd.Timestamp("2026-02-05")  # Thursday
+    holiday_friday = pd.Timestamp("2026-02-06")  # Holiday Friday
+    thursday = pd.Timestamp("2026-02-05")  # Thursday before Holiday Friday
+    regular_friday = pd.Timestamp("2026-02-13")  # Normal Friday
 
     mock_checker = MagicMock()
     mock_checker.is_holiday.side_effect = lambda d: (
         d.strftime("%Y-%m-%d") == "2026-02-06"
     )
 
-    assert strategy._is_end_of_trading_week(friday, mock_checker) is True
+    assert strategy._is_end_of_trading_week(holiday_friday, mock_checker) is False
     assert strategy._is_end_of_trading_week(thursday, mock_checker) is True
+    assert strategy._is_end_of_trading_week(regular_friday, mock_checker) is True
 
 
 # --- TESTS FOR TWO PERCENT STRATEGY (two_percent_strategy.py) ---

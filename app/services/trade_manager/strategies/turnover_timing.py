@@ -21,6 +21,19 @@ def is_green_candle(open_price: float, close_price: float) -> bool:
     return close_price > open_price
 
 
+def _normalize_iso_date(value: object) -> str | None:
+    """Normalizes a date-like value to an ISO YYYY-MM-DD string."""
+    if value is None or value == "" or bool(pd.isna(value)):
+        return None
+    try:
+        timestamp = pd.Timestamp(str(value))
+        if pd.isna(timestamp):
+            return None
+        return str(timestamp.strftime("%Y-%m-%d"))
+    except (ValueError, TypeError):
+        return str(value)
+
+
 def calculate_consecutive_green_candles(
     dataframe_history: pd.DataFrame,
     start_date: pd.Timestamp | datetime.date | str | None = None,
@@ -300,8 +313,12 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
         context = self._get_full_context(trade)
 
         # Idempotency check: Do not process the same candle twice
-        last_processed_date = context.get("last_processed_date")
-        if last_processed_date == date_string:
+        last_processed_date = _normalize_iso_date(context.get("last_processed_date"))
+        normalized_date_string = _normalize_iso_date(date_string)
+        if (
+            last_processed_date is not None
+            and last_processed_date == normalized_date_string
+        ):
             return None
 
         # 1. Signal-Specific Exit (Green Candles sequence)
@@ -372,7 +389,9 @@ class TurnoverTimingStrategy(BaseTradeStrategy):
             return {}
 
         current_candle = dataframe_history.iloc[-1]
-        date_string = str(current_candle["date"])
+        date_string = _normalize_iso_date(current_candle["date"]) or str(
+            current_candle["date"]
+        )
 
         green_candle_count = self._resolve_green_candle_count(trade, dataframe_history)
 

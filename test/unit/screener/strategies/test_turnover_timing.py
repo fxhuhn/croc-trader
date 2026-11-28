@@ -463,3 +463,46 @@ def test_weekend_execution_resolves_friday_setup(
             # Assert: Resolved to Friday and produced signals
             assert signal_count > 0
             assert mock_trade_repository.create_trade.called
+
+
+def test_rank_and_filter_top_m_before_uptrend_and_young_ipo_slot() -> None:
+    """Verifies RealTest parity: TopM is ranked on turnover_sma before SMA_150 uptrend filter."""
+    from app.services.screener.strategies.turnover_timing import (
+        TurnoverCandidateFilterContext,
+    )
+
+    config = TurnoverConfiguration(top_m_candidates=3, top_n_candidates=2)
+    strategy_custom = TurnoverTimingStrategy(
+        trade_repository=MagicMock(spec=TradeRepository),
+        data_provider=MagicMock(spec=MarketDataProvider),
+        configuration=config,
+    )
+
+    # S1: Highest turnover, but young IPO (NaN sma_price) -> occupies TopM slot #1, excluded at uptrend
+    # S2: 2nd turnover, in downtrend -> occupies TopM slot #2, excluded at uptrend
+    # S3: 3rd turnover, in uptrend -> occupies TopM slot #3, selected!
+    # S4: 4th turnover, in uptrend -> outside TopM=3, MUST NOT be selected!
+    symbols = ["S1", "S2", "S3", "S4"]
+    closes_df = pd.DataFrame(
+        {s: [100.0] for s in symbols}, index=[pd.Timestamp("2026-07-17")]
+    )
+    context = TurnoverCandidateFilterContext(
+        closes=closes_df,
+        indices_map={"NDX": symbols},
+        current_close=pd.Series({"S1": 100.0, "S2": 90.0, "S3": 110.0, "S4": 120.0}),
+        current_sma_price=pd.Series(
+            {"S1": float("nan"), "S2": 100.0, "S3": 100.0, "S4": 100.0}
+        ),
+        current_sma_turnover=pd.Series(
+            {"S1": 4_000_000.0, "S2": 3_000_000.0, "S3": 2_000_000.0, "S4": 1_000_000.0}
+        ),
+        current_atr=pd.Series({"S1": 2.0, "S2": 2.0, "S3": 2.0, "S4": 2.0}),
+    )
+
+    with patch(
+        "app.services.screener.strategies.turnover_timing.SymbolFilter"
+    ) as mock_filter_cls:
+        mock_filter_cls.return_value.filter_symbols.side_effect = lambda syms: syms
+        selected = strategy_custom._rank_and_filter_candidates(context)
+
+    assert [c["symbol"] for c in selected] == ["S3"]

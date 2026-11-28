@@ -72,10 +72,13 @@ class TurnoverConfiguration:
     atr_window: int = 3
     # Entry Factors: 0.5 * ATR and 1.0 * ATR below Close
     entry_factors: list[float] = field(default_factory=lambda: [0.5, 1.0])
+    # Lookback slice buffer in bars (retained for backwards compatibility; trend filter uses trend_sma_window)
     sma_window: int = 200
     minimum_lookback_days: int = 800
     trend_sma_window: int = 150
     turnover_sma_window: int = 20
+    top_m_candidates: int = 20
+    top_n_candidates: int = 4
     min_sma_lookback_bars: int = 200
     min_green_candles_for_exit: int = 2
 
@@ -332,7 +335,9 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
             if not index_mask:
                 continue
 
-            # Consolidate data for vectorized filtering
+            # Consolidate data for vectorized filtering.
+            # Rank TopM strictly on 20-day turnover before applying the 150-day uptrend filter
+            # (RealTest parity: ndx_rank_all only requires avg_to, not ma_long).
             current_data = pd.DataFrame(
                 {
                     "close": context.current_close.reindex(index_mask),
@@ -340,7 +345,7 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
                     "turnover_sma": context.current_sma_turnover.reindex(index_mask),
                     "atr": context.current_atr.reindex(index_mask),
                 }
-            ).dropna()
+            ).dropna(subset=["turnover_sma"])
 
             if current_data.empty:
                 continue
@@ -354,12 +359,16 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
             ranked_symbols = symbol_filter.filter_symbols(
                 ranked_candidates.index.tolist()
             )
-            top_20_candidates = ranked_candidates.loc[ranked_symbols].head(20)
+            top_m_candidates = ranked_candidates.loc[ranked_symbols].head(
+                self.configuration.top_m_candidates
+            )
 
             # Filter: Close > SMA 150 (Uptrend) and ATR > 0
-            final_selection = top_20_candidates.query(
-                "close > sma_price and atr > 0"
-            ).head(4)
+            final_selection = (
+                top_m_candidates.dropna(subset=["close", "sma_price", "atr"])
+                .query("close > sma_price and atr > 0")
+                .head(self.configuration.top_n_candidates)
+            )
 
             candidates.extend(
                 final_selection.rename_axis("symbol")
@@ -714,9 +723,9 @@ class TurnoverTimingStrategy(BaseStrategy[int]):
                 "min_price_ok": True,
                 "volume_sma_20": 0.0,
                 "volume_ok": True,
-                "sma_200": round(current_sma150, 2),
+                "sma_150": round(current_sma150, 2),
                 "uptrend_ok": uptrend,
-                "atr_3": 0.0,
+                "atr_3": round(current_atr, 2),
                 "atr_pct": round(
                     (current_atr / current_close * 100.0) if current_close > 0 else 0.0,
                     2,
