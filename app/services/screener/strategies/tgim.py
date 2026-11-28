@@ -1,7 +1,7 @@
 """TGIM (Thank God It's Monday) Screener Strategy.
 
-Identifies Monday setup bars for SPY where Monday's close is at or below
-both Friday's close and Thursday's close (broker-aligned BUY LOC threshold).
+Identifies Monday setup bars for SPY where Monday's close is strictly below
+both Friday's close and Thursday's close (RealTest: C < min(C[1], C[2])).
 """
 
 import datetime
@@ -64,11 +64,11 @@ def evaluate_tgim_setup(
 ) -> TGIMSetupResult:
     """Pure calculation: Evaluates TGIM setup condition without side effects.
 
-    Setup Condition: Monday Close <= min(Friday Close, Thursday Close),
-    matching real BUY LOC execution semantics at threshold_price.
+    Setup Condition: Monday Close < min(C[1], C[2]) (strict inequality matching
+    RealTest reference logic; mapped to BUY LOC at threshold_price - tick_size).
     """
     threshold_price = min(friday_close, thursday_close)
-    is_signal = current_close <= threshold_price
+    is_signal = current_close < threshold_price
 
     return TGIMSetupResult(
         is_signal=is_signal,
@@ -97,11 +97,11 @@ class TGIMStrategy(BaseStrategy[int]):
     Strategy Logic:
     - Asset: SPY exclusively.
     - Timing: Calendar Monday only (date.weekday() == 0). Skipped on holidays.
-    - Setup Threshold: min(Friday Close, Thursday Close).
-    - Setup Trigger: Monday Close <= min(Friday Close, Thursday Close).
-    - Pre-Market Screening: Prepares SPY setup candidate on Monday using Friday and Thursday closes.
-    - Entry: Limit On Close (LOC) at Monday's close with limit = threshold_price.
-    - Exits: Bar 1 SELL LOC at entry_price + tick_size (Close > Close[1]) or Bar 2 MOC Time Exit.
+    - Setup Threshold: min(C[1], C[2]) (last two completed trading closes).
+    - Setup Trigger: Monday Close < min(C[1], C[2]) (strict RealTest inequality).
+    - Pre-Market Screening: Prepares SPY setup candidate on Monday using C[1] and C[2] closes.
+    - Entry: Limit On Close (LOC) at Monday's close with limit = threshold_price - tick_size.
+    - Exits: Bar 1 SELL LOC at C[1] + tick_size (Close > Close[1]) or Bar 2 MOC Time Exit.
     """
 
     STRATEGY_IDENTIFIER = Strategies.TGIM
@@ -285,7 +285,7 @@ class TGIMStrategy(BaseStrategy[int]):
         )
         if not setup_result.is_signal:
             logger.debug(
-                "TGIM setup condition failed for %s on %s: close=%s not <= min(%s, %s).",
+                "TGIM setup condition failed for %s on %s: close=%s not < min(%s, %s).",
                 self.configuration.target_symbol,
                 target_date_str,
                 current_close,

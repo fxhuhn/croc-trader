@@ -71,22 +71,22 @@ def test_bva_tgim_target_date_resolution() -> None:
 
 @pytest.mark.tier1
 def test_bva_tgim_setup_threshold_boundary() -> None:
-    """BVA: Monday Close <= min(Friday Close, Thursday Close) exact threshold boundary.
+    """BVA: Monday Close < min(Friday Close, Thursday Close) exact threshold boundary.
 
-    If Monday Close == min(Friday, Thursday) -> True (BUY LOC <= parity)
+    If Monday Close == min(Friday, Thursday) -> False (strict RealTest <)
     If Monday Close == min(Friday, Thursday) + 0.01 -> False (No signal)
     If Monday Close == min(Friday, Thursday) - 0.01 -> True (Signal)
     """
     thursday = Decimal("550.00")
     friday = Decimal("540.00")  # min is 540.00
 
-    # Case 1: Monday Close == 540.00 (Equal to min) -> True
+    # Case 1: Monday Close == 540.00 (Equal to min) -> False
     res_equal = evaluate_tgim_setup(
         current_close=Decimal("540.00"),
         friday_close=friday,
         thursday_close=thursday,
     )
-    assert res_equal.is_signal
+    assert not res_equal.is_signal
     assert res_equal.threshold_price == Decimal("540.00")
 
     # Case 1b: Monday Close == 540.01 (0.01 above min) -> False
@@ -139,14 +139,22 @@ def test_bva_tgim_check_entry_threshold_and_timing() -> None:
         strategy.check_entry(trade, candle_early, pd.DataFrame([candle_early])) is None
     )
 
-    # Case 2: Candle on setup date, Close == 540.00 (<= threshold 540.00) -> ACTIVE
+    # Case 2: Candle on setup date, Close == 540.00 (== threshold 540.00) -> INVALID (strict RealTest <)
     candle_exact = pd.Series({"date": "2026-07-27", "close": 540.00})
-    trans_active = strategy.check_entry(
+    trans_equal = strategy.check_entry(
         trade, candle_exact, pd.DataFrame([candle_exact])
+    )
+    assert trans_equal is not None
+    assert trans_equal.updates["status"] == TradeStatus.INVALID.value
+
+    # Case 2b: Candle on setup date, Close == 539.99 (< threshold 540.00) -> ACTIVE
+    candle_below = pd.Series({"date": "2026-07-27", "close": 539.99})
+    trans_active = strategy.check_entry(
+        trade, candle_below, pd.DataFrame([candle_below])
     )
     assert trans_active is not None
     assert trans_active.updates["status"] == TradeStatus.ACTIVE.value
-    assert trans_active.updates["entry_price"] == 540.00
+    assert trans_active.updates["entry_price"] == 539.99
 
     # Case 3: Candle on setup date, Close == 540.01 (> threshold 540.00) -> INVALID
     candle_high = pd.Series({"date": "2026-07-27", "close": 540.01})
@@ -254,11 +262,11 @@ def test_hypothesis_tgim_setup_invariants(
     friday: Decimal,
     thursday: Decimal,
 ) -> None:
-    """Invariant: evaluate_tgim_setup is_signal == (monday <= min(friday, thursday))."""
+    """Invariant: evaluate_tgim_setup is_signal == (monday < min(friday, thursday))."""
     res = evaluate_tgim_setup(monday, friday, thursday)
     expected_threshold = min(friday, thursday)
     assert res.threshold_price == expected_threshold
-    assert res.is_signal == (monday <= expected_threshold)
+    assert res.is_signal == (monday < expected_threshold)
     assert res.setup_close == monday
 
 

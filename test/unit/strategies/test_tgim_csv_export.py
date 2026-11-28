@@ -279,7 +279,7 @@ def test_tgim_strategy_to_csv_end_to_end(tmp_path: Path) -> None:
         assert entry_rows[0]["trade_group_id"] == "401_TGIM_SPY"
         assert entry_rows[0]["bracket_role"] == "ENTRY"
         assert entry_rows[0]["order_type"] == "LOC"
-        assert entry_rows[0]["target_price"] == "500.00"
+        assert entry_rows[0]["target_price"] == "499.99"
         assert entry_rows[0]["tif"] == "DAY"
         assert entry_rows[0]["strategy_name"] == "TGIM"
         assert entry_rows[0]["quantity"] == "20"

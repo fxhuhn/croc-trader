@@ -86,7 +86,38 @@ def trade_strategy() -> TGIMTradeStrategy:
 def test_tgim_check_entry_activates_on_monday_close(
     trade_strategy: TGIMTradeStrategy,
 ) -> None:
-    """Tests that check_entry activates a CREATED trade at Monday MOC."""
+    """Tests that check_entry activates a CREATED trade when Monday Close < threshold."""
+    trade = {
+        "id": 1,
+        "symbol": "SPY",
+        "strategy": "tgim",
+        "status": TradeStatus.CREATED.value,
+        "entry_price": 500.0,
+        "entry_date": "2026-07-20",
+        "budget": 10000.0,
+    }
+    candle = pd.Series(
+        {
+            "date": "2026-07-20",
+            "open": 502.0,
+            "high": 505.0,
+            "low": 498.0,
+            "close": 499.99,
+        }
+    )
+    df_history = pd.DataFrame([candle])
+
+    transition = trade_strategy.check_entry(trade, candle, df_history)
+
+    assert transition is not None
+    assert transition.updates["status"] == TradeStatus.ACTIVE.value
+    assert transition.updates["entry_price"] == 499.99
+
+
+def test_tgim_check_entry_invalidates_when_close_equals_threshold(
+    trade_strategy: TGIMTradeStrategy,
+) -> None:
+    """Tests check_entry invalidates setup when Monday Close == threshold (strict RealTest <)."""
     trade = {
         "id": 1,
         "symbol": "SPY",
@@ -110,8 +141,8 @@ def test_tgim_check_entry_activates_on_monday_close(
     transition = trade_strategy.check_entry(trade, candle, df_history)
 
     assert transition is not None
-    assert transition.updates["status"] == TradeStatus.ACTIVE.value
-    assert transition.updates["entry_price"] == 500.0
+    assert transition.updates["status"] == TradeStatus.INVALID.value
+    assert transition.updates["exit_reason"] == ExitReason.INVALIDATED.value
 
 
 def test_tgim_check_entry_invalidates_when_close_above_threshold(
@@ -249,7 +280,7 @@ def test_tgim_time_exit_on_wednesday_close_if_c1exit_false(
 def test_tgim_generate_entry_order(
     trade_strategy: TGIMTradeStrategy,
 ) -> None:
-    """Tests _generate_entry_order creates valid LOC entry order and handles invalid inputs."""
+    """Tests _generate_entry_order creates valid LOC entry order at threshold - tick_size."""
     trade = {"symbol": "SPY", "entry_price": 500.0, "budget": 10000.0}
     df_history = pd.DataFrame()
     order = trade_strategy._generate_entry_order(trade, df_history, budget=10000.0)
@@ -259,12 +290,18 @@ def test_tgim_generate_entry_order(
     assert order.entry is not None
     assert order.entry.type == "LOC"
     assert order.entry.time_in_force == "DAY"
-    assert order.entry.price == Decimal("500.0")
+    assert order.entry.price == Decimal("499.99")
 
-    # Invalid entry_price or budget
+    # Invalid entry_price or threshold <= tick_size
     assert (
         trade_strategy._generate_entry_order(
             {"symbol": "SPY", "entry_price": 0.0}, df_history, budget=10000.0
+        )
+        is None
+    )
+    assert (
+        trade_strategy._generate_entry_order(
+            {"symbol": "SPY", "entry_price": 0.01}, df_history, budget=10000.0
         )
         is None
     )
@@ -596,23 +633,69 @@ def test_tgim_generate_exit_order_stale_history_raises_error(
         )
 
 
-def test_tgim_generate_exit_order_bar1_zero_entry_price_returns_none(
+def test_tgim_generate_exit_order_bar1_zero_or_nan_previous_close_returns_none(
     trade_strategy: TGIMTradeStrategy,
 ) -> None:
-    """Regression (CONCEPT-REV-001): Missing/zero entry_price must never emit a $0.01 SELL LOC."""
+    """Regression (CONCEPT-REV-001): Missing/zero/NaN previous close must never emit a $0.01 SELL LOC."""
     trade = {
         "symbol": "SPY",
         "current_size": 20,
-        "entry_price": 0.0,
+        "entry_price": 500.0,
         "entry_date": "2026-07-20",
     }
-    df_bar1 = pd.DataFrame([{"date": "2026-07-20", "close": 500.0}])
+    df_zero = pd.DataFrame([{"date": "2026-07-20", "close": 0.0}])
     assert (
         trade_strategy._generate_exit_order(
-            trade, df_bar1, budget=10000.0, reference_date="2026-07-21"
+            trade, df_zero, budget=10000.0, reference_date="2026-07-21"
         )
         is None
     )
+
+    df_nan = pd.DataFrame([{"date": "2026-07-20", "close": float("nan")}])
+    assert (
+        trade_strategy._generate_exit_order(
+            trade, df_nan, budget=10000.0, reference_date="2026-07-21"
+        )
+        is None
+    )
+
+
+def test_tgim_generate_exit_order_uses_previous_close_c1_not_entry_price() -> None:
+    """Regression (Finding-03): SELL LOC limit uses C[1] + tick_size from history, not entry_price."""
+    from app.services.screener.strategies.tgim import TGIMConfiguration
+
+    # Bar 1: broker entry fill differs from Monday Close
+    strategy_default = TGIMTradeStrategy()
+    trade = {
+        "symbol": "SPY",
+        "current_size": 20,
+        "entry_price": 499.50,
+        "entry_date": "2026-07-20",
+    }
+    df_bar1 = pd.DataFrame([{"date": "2026-07-20", "close": 500.00}])
+    order_bar1 = strategy_default._generate_exit_order(
+        trade, df_bar1, budget=10000.0, reference_date="2026-07-21"
+    )
+    assert order_bar1 is not None
+    assert order_bar1.exits[0].type == "LOC"
+    assert order_bar1.exits[0].price == Decimal("500.01")
+
+    # Bar 2 with max_holding_bars=3: must reference Tuesday Close (498.00), not Monday entry (499.50)
+    strategy_three_bars = TGIMTradeStrategy(
+        configuration=TGIMConfiguration(max_holding_bars=3)
+    )
+    df_bar2 = pd.DataFrame(
+        [
+            {"date": "2026-07-20", "close": 500.00},
+            {"date": "2026-07-21", "close": 498.00},
+        ]
+    )
+    order_bar2 = strategy_three_bars._generate_exit_order(
+        trade, df_bar2, budget=10000.0, reference_date="2026-07-22"
+    )
+    assert order_bar2 is not None
+    assert order_bar2.exits[0].type == "LOC"
+    assert order_bar2.exits[0].price == Decimal("498.01")
 
 
 def test_tgim_check_entry_rejects_duplicate_active_symbol(
@@ -649,7 +732,7 @@ def test_tgim_check_entry_uses_decimal_position_sizing(
         "symbol": "SPY",
         "strategy": "tgim",
         "status": TradeStatus.CREATED.value,
-        "entry_price": 0.1,
+        "entry_price": 0.2,
         "budget": 0.3,
         "signal_context": '{"setup_date": "2026-07-20"}',
     }

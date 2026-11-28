@@ -32,14 +32,14 @@ def test_evaluate_tgim_setup_valid_signal() -> None:
     assert result.thursday_close == Decimal("500.0")
 
 
-def test_evaluate_tgim_setup_equal_threshold_triggers_signal() -> None:
-    """Tests evaluate_tgim_setup returns is_signal=True when current == threshold (BUY LOC <= semantics)."""
+def test_evaluate_tgim_setup_equal_threshold_does_not_trigger_signal() -> None:
+    """Tests evaluate_tgim_setup returns is_signal=False when current == threshold (strict RealTest <)."""
     result = evaluate_tgim_setup(
         current_close=Decimal("495.0"),
         friday_close=Decimal("495.0"),
         thursday_close=Decimal("500.0"),
     )
-    assert result.is_signal is True
+    assert result.is_signal is False
     assert result.threshold_price == Decimal("495.0")
 
 

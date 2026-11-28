@@ -2,10 +2,11 @@
 
 Execution Rules:
 1. Entry (CREATED -> ACTIVE):
-   - Limit On Close (LOC) on Monday close (Bar 0) with limit = threshold_price.
+   - Limit On Close (LOC) on Monday close (Bar 0) with limit = threshold_price - tick_size
+     (matching RealTest strict inequality C < min(C[1], C[2])).
    - Position size calculated from portfolio budget allocation via Decimal floor rounding.
 2. Exits (ACTIVE -> CLOSED):
-   - Bar 1 (Tuesday): SELL LOC at entry_price + tick_size (ExitReason.TAKE_PROFIT if Tuesday Close > Monday Close).
+   - Bar 1 (Tuesday): SELL LOC at C[1] + tick_size (ExitReason.TAKE_PROFIT if Tuesday Close > Monday Close).
    - Bar 2 (Wednesday): Unconditional SELL MOC exit (ExitReason.TAKE_PROFIT if Wednesday Close > Tuesday Close,
      otherwise ExitReason.TIME_STOP).
 """
@@ -72,9 +73,9 @@ class TGIMTradeStrategy(BaseTradeStrategy):
     """Manages execution and exit lifecycle for the 'TGIM' strategy.
 
     Rules:
-    1. Entry: LOC entry executed on Monday setup close with limit = threshold_price.
+    1. Entry: LOC entry executed on Monday setup close with limit = threshold_price - tick_size.
     2. Exits:
-       - Bar 1 (Tuesday): SELL LOC at entry_price + tick_size (exits if Tuesday Close > Monday Close).
+       - Bar 1 (Tuesday): SELL LOC at C[1] + tick_size (exits if Tuesday Close > Monday Close).
        - Bar 2 (Wednesday): Unconditional SELL MOC exit (TAKE_PROFIT if Wednesday Close > Tuesday Close,
          otherwise TIME_STOP).
     """
@@ -176,20 +177,23 @@ class TGIMTradeStrategy(BaseTradeStrategy):
             if setup_date and pd.Timestamp(reference_date).date() != setup_date:
                 return None
 
-        entry_price_val = trade.get("entry_price") or 0.0
+        threshold_price_val = trade.get("entry_price") or 0.0
         trade_budget_val = self._get_strategy_budget(trade, budget)
 
-        entry_price = Decimal(str(entry_price_val))
-        trade_budget = Decimal(str(trade_budget_val))
+        threshold_price = Decimal(str(threshold_price_val))
+        limit_price = threshold_price - self.configuration.tick_size
+        if limit_price <= Decimal("0"):
+            return None
 
-        quantity = calculate_tgim_position_quantity(trade_budget, entry_price)
+        trade_budget = Decimal(str(trade_budget_val))
+        quantity = calculate_tgim_position_quantity(trade_budget, limit_price)
         if quantity < 1:
             return None
 
         return self._create_entry_order(
             symbol=trade["symbol"],
             quantity=quantity,
-            entry_price=entry_price,
+            entry_price=limit_price,
             options=OrderOptions(order_type="LOC", time_in_force="DAY"),
         )
 
@@ -237,12 +241,15 @@ class TGIMTradeStrategy(BaseTradeStrategy):
                 options=OrderOptions(order_type="MOC", time_in_force="DAY"),
             )
 
-        entry_price_val = trade.get("entry_price") or 0.0
-        entry_price = Decimal(str(entry_price_val))
-        if entry_price <= Decimal("0"):
+        raw_previous_close = dataframe_history["close"].iloc[-1]
+        if pd.isna(raw_previous_close):
             return None
 
-        limit_price = entry_price + self.configuration.tick_size
+        previous_close = Decimal(str(raw_previous_close))
+        if previous_close <= Decimal("0"):
+            return None
+
+        limit_price = previous_close + self.configuration.tick_size
         return self._create_exit_order(
             symbol=trade["symbol"],
             quantity=quantity,
@@ -258,7 +265,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
         dataframe_history: pd.DataFrame,
         active_symbols: set[str] | None = None,
     ) -> TradeTransition | None:
-        """Activates entry on Monday close (Bar 0) if Monday Close <= threshold.
+        """Activates entry on Monday close (Bar 0) if Monday Close < threshold.
 
         Invalidates setup if entry window is missed, position is already active, or condition fails.
         """
@@ -288,7 +295,7 @@ class TGIMTradeStrategy(BaseTradeStrategy):
                 "Duplicate Position (Already Active)",
             )
 
-        if current_close <= threshold_price:
+        if current_close < threshold_price:
             return self._execute_activation(
                 trade,
                 float(current_close),
